@@ -1,18 +1,72 @@
-import { useEffect, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 
-/* ==== Config env ==== */
+type ApiConfig = {
+  backendUrl: string;
+  apiKey: string;
+};
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL as string;
-const API_KEY = import.meta.env.VITE_API_KEY as string;
+const CONFIG_STORAGE_KEY = "stronghold_api_config";
+const DEFAULT_BACKEND_URL = "http://localhost:4000";
+
+function sanitizeBackendUrl(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw.replace(/\/$/, "");
+}
+
+function loadStoredConfig(): Partial<ApiConfig> {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Partial<ApiConfig>) : {};
+  } catch (_err) {
+    return {};
+  }
+}
+
+function loadApiConfig(): ApiConfig {
+  const stored = loadStoredConfig();
+  const envBackend = import.meta.env.VITE_BACKEND_URL as string | undefined;
+  const envApiKey = import.meta.env.VITE_API_KEY as string | undefined;
+
+  const backendUrl =
+    sanitizeBackendUrl(envBackend) ||
+    sanitizeBackendUrl(stored.backendUrl) ||
+    DEFAULT_BACKEND_URL;
+
+  const apiKey = envApiKey || stored.apiKey || "";
+
+  return { backendUrl, apiKey };
+}
+
+function persistApiConfig(config: ApiConfig) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+}
 
 /* ==== Helper API ==== */
 
 async function apiFetch(path: string, options: RequestInit = {}) {
-  const res = await fetch(`${BACKEND_URL}${path}`, {
+  const { backendUrl, apiKey } = loadApiConfig();
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!backendUrl) {
+    throw new Error(
+      "Backend URL manquante : définissez VITE_BACKEND_URL ou utilisez la bannière de configuration locale."
+    );
+  }
+
+  if (!apiKey) {
+    throw new Error(
+      "API key manquante : définissez VITE_API_KEY ou renseignez-la dans la bannière de configuration en haut de page."
+    );
+  }
+
+  const res = await fetch(`${backendUrl}${normalizedPath}`, {
     ...options,
     headers: {
-      "x-api-key": API_KEY,
+      "x-api-key": apiKey,
       "Content-Type": "application/json",
       ...(options.headers || {}),
     },
@@ -168,10 +222,20 @@ const domainMetaByValue: Record<
 }, {} as any);
 
 function App() {
+  const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
+  const [configVersion, setConfigVersion] = useState(0);
   const [activeTab, setActiveTab] = useState<Tab>("services");
+
+  const handleConfigSave = (config: ApiConfig) => {
+    persistApiConfig(config);
+    setApiConfig(config);
+    setConfigVersion((v) => v + 1);
+  };
 
   return (
     <div style={{ padding: 20, fontFamily: "system-ui, sans-serif" }}>
+      <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
+
       <h1>Stronghold PRA/PCA</h1>
       <p style={{ marginBottom: 16 }}>
         Noyau PRA/PCA multi-tenant : services, Landing Zone, scénarios & runbooks, analyses et graphe.
@@ -218,18 +282,111 @@ function App() {
         </button>
       </div>
 
-      {activeTab === "services" && <ServicesView />}
-      {activeTab === "analysis" && <AnalysisView />}
-      {activeTab === "graph" && <GraphView />}
-      {activeTab === "landing" && <LandingZoneView />}
-      {activeTab === "scenarios" && <ScenariosView />}
+      {activeTab === "services" && <ServicesView configVersion={configVersion} />}
+      {activeTab === "analysis" && <AnalysisView configVersion={configVersion} />}
+      {activeTab === "graph" && <GraphView configVersion={configVersion} />}
+      {activeTab === "landing" && <LandingZoneView configVersion={configVersion} />}
+      {activeTab === "scenarios" && <ScenariosView configVersion={configVersion} />}
+    </div>
+  );
+}
+
+function ConfigBanner({
+  config,
+  onSave,
+}: {
+  config: ApiConfig;
+  onSave: (config: ApiConfig) => void;
+}) {
+  const [backendUrl, setBackendUrl] = useState(config.backendUrl);
+  const [apiKey, setApiKey] = useState(config.apiKey);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    setBackendUrl(config.backendUrl);
+    setApiKey(config.apiKey);
+  }, [config]);
+
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    const cleaned: ApiConfig = {
+      backendUrl: sanitizeBackendUrl(backendUrl) || DEFAULT_BACKEND_URL,
+      apiKey: apiKey.trim(),
+    };
+    onSave(cleaned);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  };
+
+  const missingApiKey =
+    !apiKey && !(import.meta.env.VITE_API_KEY as string | undefined);
+
+  return (
+    <div
+      style={{
+        marginBottom: 16,
+        padding: 12,
+        border: "1px solid #e5e7eb",
+        borderRadius: 8,
+        background: "#f9fafb",
+      }}
+    >
+      <form
+        onSubmit={handleSubmit}
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+          gap: 12,
+          alignItems: "end",
+        }}
+      >
+        <div>
+          <label style={{ fontWeight: 600 }}>Backend URL</label>
+          <input
+            type="text"
+            value={backendUrl}
+            onChange={(e) => setBackendUrl(e.target.value)}
+            style={input}
+            placeholder="http://localhost:4000"
+          />
+        </div>
+        <div>
+          <label style={{ fontWeight: 600 }}>API key (x-api-key)</label>
+          <input
+            type="text"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            style={input}
+            placeholder="Clé tenant depuis la base"
+          />
+        </div>
+        <div style={{ gridColumn: "span 2" }}>
+          <button type="submit" style={btn}>
+            Mettre à jour la configuration API
+          </button>
+          {saved && (
+            <span style={{ marginLeft: 8, color: "#15803d", fontSize: 13 }}>
+              Configuration enregistrée (priorité aux variables d&apos;environnement)
+            </span>
+          )}
+        </div>
+      </form>
+      <div style={{ marginTop: 8, fontSize: 13, color: "#4b5563" }}>
+        Les valeurs VITE_BACKEND_URL / VITE_API_KEY sont utilisées si elles existent,
+        sinon la configuration ci-dessus (stockée en localStorage) est appliquée.
+      </div>
+      {missingApiKey && (
+        <div style={{ marginTop: 6, color: "#b91c1c", fontSize: 13 }}>
+          Aucune API key n&apos;est configurée : renseignez-la pour éviter les erreurs 401.
+        </div>
+      )}
     </div>
   );
 }
 
 /* === VUE SERVICES === */
 
-function ServicesView() {
+function ServicesView({ configVersion }: { configVersion: number }) {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -263,7 +420,7 @@ function ServicesView() {
 
   useEffect(() => {
     loadServices();
-  }, []);
+  }, [configVersion]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -519,7 +676,7 @@ function ServicesView() {
 
 /* === VUE ANALYSE PRA === */
 
-function AnalysisView() {
+function AnalysisView({ configVersion }: { configVersion: number }) {
   const [appWarnings, setAppWarnings] = useState<AppWarning[]>([]);
   const [infraFindings, setInfraFindings] = useState<InfraFinding[]>([]);
   const [loading, setLoading] = useState(true);
@@ -543,7 +700,7 @@ function AnalysisView() {
     };
 
     fetchAnalysis();
-  }, []);
+  }, [configVersion]);
 
   if (loading) return <div>Analyse en cours...</div>;
 
@@ -625,7 +782,7 @@ function AnalysisView() {
 
 /* === VUE GRAPHE === */
 
-function GraphView() {
+function GraphView({ configVersion }: { configVersion: number }) {
   const [data, setData] = useState<{ nodes: any[]; links: any[] }>({
     nodes: [],
     links: [],
@@ -664,7 +821,7 @@ function GraphView() {
     };
 
     fetchGraph();
-  }, []);
+  }, [configVersion]);
 
   if (loading) return <div>Chargement du graphe...</div>;
 
@@ -729,7 +886,7 @@ function GraphView() {
 
 /* === VUE LANDING ZONE / INFRA === */
 
-function LandingZoneView() {
+function LandingZoneView({ configVersion }: { configVersion: number }) {
   const [components, setComponents] = useState<InfraComponent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -762,7 +919,7 @@ function LandingZoneView() {
 
   useEffect(() => {
     loadInfra();
-  }, []);
+  }, [configVersion]);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -968,7 +1125,7 @@ function LandingZoneView() {
 
 /* === VUE SCÉNARIOS PRA & RUNBOOKS === */
 
-function ScenariosView() {
+function ScenariosView({ configVersion }: { configVersion: number }) {
   const [scenarios, setScenarios] = useState<ScenarioFront[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1004,7 +1161,7 @@ function ScenariosView() {
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [configVersion]);
 
   const toggleServiceSelection = (id: string) => {
     setNewScenario((prev) => {

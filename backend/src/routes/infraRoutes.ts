@@ -114,6 +114,7 @@ router.post("/link", async (req: TenantRequest, res) => {
 
     const link = await prisma.serviceInfraLink.create({
       data: {
+        tenantId,
         serviceId,
         infraId,
       },

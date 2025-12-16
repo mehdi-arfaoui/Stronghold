@@ -192,13 +192,23 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     error = e?.message || String(e);
   }
 
-  const updated = await prisma.document.update({
-    where: { id: doc.id },
-    data: {
-      extractionStatus: status,
-      extractionError: error,
-      textContent: status === "SUCCESS" ? text : null,
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const updateResult = await tx.document.updateMany({
+      where: { id: doc.id, tenantId: doc.tenantId },
+      data: {
+        extractionStatus: status,
+        extractionError: error,
+        textContent: status === "SUCCESS" ? text : null,
+      },
+    });
+
+    if (updateResult.count !== 1) {
+      throw new Error("Failed to update document for this tenant");
+    }
+
+    return tx.document.findFirstOrThrow({
+      where: { id: doc.id, tenantId: doc.tenantId },
+    });
   });
 
   return updated;
