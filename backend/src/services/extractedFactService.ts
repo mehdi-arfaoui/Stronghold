@@ -112,11 +112,26 @@ export async function getOrCreateExtractedFacts(
     });
   }
 
-  const aiFacts = await factAnalyzer({
-    text: documentText,
-    documentName: document.originalName,
-    docType: document.docType,
-  });
+  const correlationId = `doc-${document.id}`;
+
+  let aiFacts;
+  try {
+    aiFacts = await factAnalyzer({
+      text: documentText,
+      documentName: document.originalName,
+      docType: document.docType,
+      correlationId,
+    });
+  } catch (err: any) {
+    const message = err?.message || "Unknown OpenAI analysis error";
+    console.error("[extractedFactService] analysis failed", {
+      correlationId,
+      tenantId,
+      documentId: document.id,
+      message: message.slice(0, 300),
+    });
+    throw err;
+  }
 
   const createdFacts: ExtractedFactPayload[] = [];
 

@@ -158,4 +158,65 @@ export async function analyzeExtractedFacts(
   const parsed = extractJsonFromResponse(payload);
 
   return parsed.facts;
+  const correlationId = params.correlationId || "openai-analyzer";
+  const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...(params.retryConfig || {}) };
+
+  const requestBody = {
+    model,
+    temperature: 0.1,
+    input: [
+      {
+        role: "system",
+        content:
+          "Tu es un assistant PRA/PCA qui extrait des faits exploitables et structurés. Reste concis, inclue la catégorie (SERVICE, INFRA, RISK, RTO_RPO, OTHER), un label bref, des données structurées, et si possible une courte référence de source (page ou extrait <280 caractères). N'inclus jamais le texte complet du document.",
+      },
+      {
+        role: "user",
+        content: `Document: ${params.documentName || "document"} (type: ${
+          params.docType || "inconnu"
+        }). Analyse et extrait les faits PRA/PCA.`,
+      },
+      {
+        role: "user",
+        content: truncatedText,
+      },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "extracted_facts",
+        schema: RESPONSE_SCHEMA,
+        strict: true,
+      },
+    },
+  };
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
+
+  const response = await callOpenAiWithRetry(
+    requestBody,
+    headers,
+    correlationId,
+    retryConfig
+  );
+
+  try {
+    const payload = await response.json();
+    const parsed = extractJsonFromResponse(payload);
+    return parsed.facts;
+  } catch (err: any) {
+    const message = err?.message || "Failed to parse OpenAI response";
+    logOpenAiError(correlationId, {
+      attempt: retryConfig.maxAttempts,
+      status: undefined,
+      message,
+    });
+    throw new OpenAiCallError(
+      `${message} [correlationId=${correlationId}]`,
+      correlationId
+    );
+  }
 }

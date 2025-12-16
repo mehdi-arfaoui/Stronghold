@@ -136,6 +136,8 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     throw new Error("Document not found or not owned by tenant");
   }
 
+  const correlationId = `doc-${doc.id}`;
+
   const filePath = path.isAbsolute(doc.storagePath)
     ? doc.storagePath
     : path.join(process.cwd(), doc.storagePath);
@@ -179,8 +181,13 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       error = `Type de document non supporté pour l'instant (mime=${mime}, ext=${ext})`;
     }
   } catch (e: any) {
-
-    console.error("Error extracting document text:", e);
+    const message = e?.message || String(e);
+    console.error("[documentIngestion] extraction error", {
+      correlationId,
+      tenantId,
+      documentId: doc.id,
+      message: message.slice(0, 300),
+    });
     status = "FAILED";
     error = e?.message || String(e);
   }
