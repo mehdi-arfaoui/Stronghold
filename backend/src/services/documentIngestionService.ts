@@ -1,5 +1,5 @@
-import fs from "fs";
-import path from "path";
+import * as fs from "fs";
+import * as path from "path";
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const pdfParseModule = require("pdf-parse");
 import * as xlsx from "xlsx";
@@ -33,6 +33,10 @@ async function extractTextFromXlsx(filePath: string): Promise<string> {
 
   workbook.SheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
+    if (!sheet) {
+      return;
+    }
+
     const sheetJson = xlsx.utils.sheet_to_json<any>(sheet, { header: 1 });
     parts.push(`# Feuille: ${sheetName}`);
     for (const row of sheetJson) {
@@ -65,8 +69,65 @@ function isExcelExtension(ext: string): boolean {
   return exts.includes(ext.toLowerCase());
 }
 
-export async function ingestDocumentText(documentId: string, tenantId: string) {
-  const doc = await prisma.document.findFirst({
+type OcrResult = { text: string; confidence: number };
+
+type IngestionDependencies = {
+  prismaClient?: typeof prisma;
+  ocrProvider?: (filePath: string) => Promise<OcrResult>;
+};
+
+function isOcrEnabled(): boolean {
+  return (process.env.OCR_ENABLED || "").toLowerCase() === "true";
+}
+
+function getOcrConfidenceThreshold(): number {
+  const raw = process.env.OCR_CONFIDENCE_THRESHOLD;
+  const parsed = raw ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) {
+    return 60;
+  }
+  return parsed;
+}
+
+async function defaultOcrProvider(filePath: string): Promise<OcrResult> {
+  // @ts-expect-error - dépendance OCR optionnelle résolue uniquement lorsque l'OCR est activée
+  const tesseractModule = await import("tesseract.js");
+  const createWorker =
+    (tesseractModule as any)?.createWorker ??
+    (tesseractModule as any)?.default?.createWorker;
+
+  if (!createWorker) {
+    throw new Error("Dépendance OCR non disponible (createWorker absent)");
+  }
+
+  const worker = await createWorker();
+  const lang = process.env.OCR_LANG || "eng";
+
+  try {
+    await worker.load();
+    await worker.loadLanguage(lang);
+    await worker.initialize(lang);
+    const result = await worker.recognize(filePath);
+    const data = (result as any)?.data || {};
+    const numericConfidence = Number(data.confidence);
+
+    return {
+      text: typeof data.text === "string" ? data.text : "",
+      confidence: Number.isFinite(numericConfidence) ? numericConfidence : 0,
+    };
+  } finally {
+    if (typeof worker.terminate === "function") {
+      await worker.terminate();
+    }
+  }
+}
+
+export async function ingestDocumentText(
+  documentId: string,
+  tenantId: string,
+  { prismaClient = prisma, ocrProvider = defaultOcrProvider }: IngestionDependencies = {}
+) {
+  const doc = await prismaClient.document.findFirst({
     where: { id: documentId, tenantId },
   });
 
@@ -87,9 +148,25 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
 
   try {
     if (mime.startsWith("image/")) {
-      // TODO: plus tard, OCR / vision IA
-      status = "UNSUPPORTED";
-      error = "Extraction OCR non implémentée (image)";
+      if (!isOcrEnabled()) {
+        status = "UNSUPPORTED";
+        error = "OCR désactivée par la configuration (OCR_ENABLED=false)";
+      } else {
+        try {
+          const ocrResult = await ocrProvider(filePath);
+          const confidenceThreshold = getOcrConfidenceThreshold();
+
+          if (ocrResult.confidence < confidenceThreshold) {
+            status = "UNSUPPORTED";
+            error = `Confiance OCR insuffisante (${ocrResult.confidence} < ${confidenceThreshold})`;
+          } else {
+            text = ocrResult.text || "";
+          }
+        } catch (ocrError: any) {
+          status = "UNSUPPORTED";
+          error = `OCR indisponible ou non installée (${ocrError?.message || ocrError})`;
+        }
+      }
     } else if (mime === "application/pdf" || ext === ".pdf") {
       // 🔧 Temporairement, on ne traite pas les PDF pour ne pas bloquer le projet.
       // Quand on résoudra le problème de pdf-parse ou qu'on changera de lib,
@@ -123,7 +200,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     error = e?.message || String(e);
   }
 
-  const updated = await prisma.document.update({
+  const updated = await prismaClient.document.update({
     where: { id: doc.id },
     data: {
       extractionStatus: status,
