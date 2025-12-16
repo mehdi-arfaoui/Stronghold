@@ -1,31 +1,28 @@
-import fs from "fs";
-import path from "path";
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const pdfParseModule = require("pdf-parse");
+import * as fs from "fs";
+import * as path from "path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+import { PDFParse } from "pdf-parse";
 import * as xlsx from "xlsx";
 import prisma from "../prismaClient";
-
-// On normalise pour couvrir tous les cas possibles d'export du module pdf-parse
-const pdfParse: (buffer: Buffer) => Promise<{ text: string }> = (
-  (pdfParseModule as any)?.default?.default ??
-  (pdfParseModule as any)?.default ??
-  pdfParseModule
-);
 
 
 
 // même logique que dans documentRoutes pour le dossier uploads
 const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads");
 
+const execFileAsync = promisify(execFile);
+
 async function extractTextFromPdf(filePath: string): Promise<string> {
-    const buffer = await fs.promises.readFile(filePath);
-  
-    const data = await pdfParse(buffer);
-  
-    return (data as any).text || "";
+  const buffer = await fs.promises.readFile(filePath);
+  const parser = new PDFParse({ data: buffer });
+  try {
+    const data = await parser.getText();
+    return data.text || "";
+  } finally {
+    await parser.destroy().catch(() => undefined);
   }
-  
-  
+}
 
 async function extractTextFromXlsx(filePath: string): Promise<string> {
   const workbook = xlsx.readFile(filePath);
@@ -33,6 +30,7 @@ async function extractTextFromXlsx(filePath: string): Promise<string> {
 
   workbook.SheetNames.forEach((sheetName) => {
     const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
     const sheetJson = xlsx.utils.sheet_to_json<any>(sheet, { header: 1 });
     parts.push(`# Feuille: ${sheetName}`);
     for (const row of sheetJson) {
@@ -55,8 +53,72 @@ async function extractTextFromPlain(filePath: string): Promise<string> {
   return data;
 }
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'");
+}
+
+async function unzipEntry(filePath: string, entryPath: string): Promise<string> {
+  const { stdout } = await execFileAsync("unzip", ["-p", filePath, entryPath], {
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return stdout.toString();
+}
+
+async function listZipEntries(filePath: string): Promise<string[]> {
+  const { stdout } = await execFileAsync("unzip", ["-Z1", filePath], {
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  return stdout
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+async function extractTextFromDocx(filePath: string): Promise<string> {
+  const xml = await unzipEntry(filePath, "word/document.xml");
+  const matches = Array.from(xml.matchAll(/<w:t[^>]*>(.*?)<\/w:t>/g));
+  const parts = matches.map((m) => decodeXmlEntities(m[1] || ""));
+  return parts.join(" ").trim();
+}
+
+async function extractTextFromPptx(filePath: string): Promise<string> {
+  const entries = await listZipEntries(filePath);
+  const slideEntries = entries
+    .filter((e) => e.startsWith("ppt/slides/slide") && e.endsWith(".xml"))
+    .sort();
+
+  const parts: string[] = [];
+
+  for (const entry of slideEntries) {
+    const xml = await unzipEntry(filePath, entry);
+    const texts = Array.from(xml.matchAll(/<a:t[^>]*>(.*?)<\/a:t>/g)).map((m) =>
+      decodeXmlEntities(m[1] || "")
+    );
+    if (texts.length > 0) {
+      parts.push(texts.join(" ").trim());
+    }
+  }
+
+  return parts.join("\n").trim();
+}
+
 function isPlainTextExtension(ext: string): boolean {
   const exts = [".txt", ".md", ".json", ".csv", ".log", ".yml", ".yaml"];
+  return exts.includes(ext.toLowerCase());
+}
+
+function isDocxExtension(ext: string): boolean {
+  const exts = [".docx", ".docm"];
+  return exts.includes(ext.toLowerCase());
+}
+
+function isPptxExtension(ext: string): boolean {
+  const exts = [".pptx", ".pptm"];
   return exts.includes(ext.toLowerCase());
 }
 
@@ -93,12 +155,19 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       status = "UNSUPPORTED";
       error = "Extraction OCR non implémentée (image)";
     } else if (mime === "application/pdf" || ext === ".pdf") {
-      // 🔧 Temporairement, on ne traite pas les PDF pour ne pas bloquer le projet.
-      // Quand on résoudra le problème de pdf-parse ou qu'on changera de lib,
-      // on activera à nouveau l'extraction ici.
-      status = "UNSUPPORTED";
-      error =
-        "Extraction PDF non activée pour l'instant (problème de librairie côté serveur)";
+      text = await extractTextFromPdf(filePath);
+    } else if (
+      mime ===
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+      isDocxExtension(ext)
+    ) {
+      text = await extractTextFromDocx(filePath);
+    } else if (
+      mime ===
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+      isPptxExtension(ext)
+    ) {
+      text = await extractTextFromPptx(filePath);
     } else if (
       mime ===
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
@@ -107,13 +176,6 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       text = await extractTextFromXlsx(filePath);
     } else if (isPlainTextExtension(ext) || mime.startsWith("text/")) {
       text = await extractTextFromPlain(filePath);
-    } else if (
-      mime ===
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    ) {
-      // Pour DOCX, on peut ajouter une lib dédiée plus tard (mammoth, etc.)
-      status = "UNSUPPORTED";
-      error = "Extraction DOCX non implémentée pour l'instant";
     } else {
       status = "UNSUPPORTED";
       error = `Type de document non supporté pour l'instant (mime=${mime}, ext=${ext})`;
@@ -141,3 +203,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
 
   return updated;
 }
+
+export const __test__ = {
+  extractTextFromPdf,
+  extractTextFromDocx,
+  extractTextFromPptx,
+  decodeXmlEntities,
+};
