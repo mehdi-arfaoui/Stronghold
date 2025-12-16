@@ -2,6 +2,11 @@ import { Router } from "express";
 import prisma from "../prismaClient";
 import { TenantRequest } from "../middleware/tenantMiddleware";
 import { recommendPraOptions } from "../analysis/praRecommender";
+import {
+  DocumentNotFoundError,
+  MissingExtractedTextError,
+  getOrCreateExtractedFacts,
+} from "../services/extractedFactService";
 
 const router = Router();
 
@@ -562,5 +567,35 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/* ========= 6. Analyse IA d'un document ========= */
+
+router.post(
+  "/documents/:id/extracted-facts",
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const { id } = req.params;
+      const force = String(req.query.force ?? "false").toLowerCase() === "true";
+
+      const result = await getOrCreateExtractedFacts(id, tenantId, force);
+
+      return res.json(result);
+    } catch (error) {
+      if (error instanceof DocumentNotFoundError) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      if (error instanceof MissingExtractedTextError) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      console.error("Error in POST /analysis/documents/:id/extracted-facts:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 export default router;

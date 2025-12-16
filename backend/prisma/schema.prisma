@@ -193,21 +193,19 @@ model Document {
 
 
 model ExtractedFact {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
 
-  documentId String?
-  document   Document? @relation(fields: [documentId], references: [id])
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
 
-  sourceType String   // "SERVICE", "INFRA", "SCENARIO", etc.
-  key        String   // ex: "SERVICE_NAME", "RTO_HOURS"
-  value      String   // ex: "ERP", "4"
-
-  confidence Float?   // niveau de confiance de l’IA (0–1)
-
-  linkedServiceId String?
-  linkedInfraId   String?
+  type       String   // ex: "PRA_PCA_FACT"
+  category   String   // SERVICE, INFRA, RISK, RTO_RPO, OTHER
+  label      String
+  data       String   // JSON string payload of extracted details
+  source     String?
+  confidence Float?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
