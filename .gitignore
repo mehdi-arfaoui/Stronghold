@@ -1,0 +1,21 @@
+# Node
+node_modules/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Prisma
+prisma/dev.db
+prisma/*.db
+prisma/*.sqlite
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

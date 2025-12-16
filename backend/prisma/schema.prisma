@@ -1,0 +1,214 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id     String @id @default(cuid())
+  name   String
+  apiKey String @unique
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  services          Service[]
+  infraComponents   InfraComponent[]
+  scenarios         Scenario[]
+  runbookSteps      RunbookStep[]
+  scenarioServices  ScenarioService[]
+  ServiceDependency ServiceDependency[]
+  ServiceInfraLink  ServiceInfraLink[]
+  documents         Document[]
+  extractedFacts    ExtractedFact[]
+
+}
+
+model Service {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name             String
+  type             String
+  description      String?
+  criticality      String
+  recoveryPriority Int?
+
+  // Domaine fonctionnel : APP, DB, NETWORK, SECURITY, IAC, GOV, SAAS, DATA...
+  domain String?
+
+  continuity       ServiceContinuity?
+  dependenciesFrom ServiceDependency[] @relation("ServiceDependenciesFrom")
+  dependenciesTo   ServiceDependency[] @relation("ServiceDependenciesTo")
+  infraLinks       ServiceInfraLink[]
+  scenarioLinks    ScenarioService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceContinuity {
+  id        String  @id @default(cuid())
+  serviceId String  @unique
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  rtoHours   Int
+  rpoMinutes Int
+  mtpdHours  Int
+  notes      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceDependency {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  fromServiceId String
+  toServiceId   String
+
+  fromService Service @relation("ServiceDependenciesFrom", fields: [fromServiceId], references: [id])
+  toService   Service @relation("ServiceDependenciesTo", fields: [toServiceId], references: [id])
+
+  dependencyType String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InfraComponent {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name        String
+  type        String
+  provider    String?
+  location    String?
+  criticality String?
+  isSingleAz  Boolean @default(false)
+  notes       String?
+
+  services ServiceInfraLink[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ServiceInfraLink {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  serviceId String
+  infraId   String
+
+  service Service        @relation(fields: [serviceId], references: [id])
+  infra   InfraComponent @relation(fields: [infraId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Scenario {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name           String
+  type           String // ex: REGION_LOSS, AZ_LOSS, DB_CORRUPTION...
+  description    String?
+  impactLevel    String? // low, medium, high
+  rtoTargetHours Int? // tolérance globale de reprise pour ce scénario
+
+  services ScenarioService[]
+  steps    RunbookStep[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RunbookStep {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id])
+
+  order                    Int
+  title                    String
+  description              String?
+  estimatedDurationMinutes Int?
+  role                     String? // ex: "Equipe Réseau", "Equipe AD"
+  blocking                 Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ScenarioService {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  scenarioId String
+  scenario   Scenario @relation(fields: [scenarioId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+}
+
+model Document {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+
+  originalName String
+  storedName   String   // nom de fichier sur disque
+  mimeType     String
+  size         Int
+  storagePath  String   // chemin relatif/absolu sur le serveur
+
+  docType      String?  // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
+  description  String?
+
+  // Extraction de texte
+  extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
+  extractionError  String?
+  textContent      String? // texte brut extrait (pour debug / IA)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  extractedFacts ExtractedFact[]
+}
+
+
+
+model ExtractedFact {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id])
+
+  sourceType String   // "SERVICE", "INFRA", "SCENARIO", etc.
+  key        String   // ex: "SERVICE_NAME", "RTO_HOURS"
+  value      String   // ex: "ERP", "4"
+
+  confidence Float?   // niveau de confiance de l’IA (0–1)
+
+  linkedServiceId String?
+  linkedInfraId   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
