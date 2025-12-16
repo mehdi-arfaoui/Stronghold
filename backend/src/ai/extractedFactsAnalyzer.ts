@@ -10,6 +10,7 @@ export interface AiExtractedFact {
   data: Record<string, unknown>;
   source?: string | null;
   confidence?: number | null;
+  chunkIndex?: number;
 }
 
 export interface AiExtractedFactsResult {
@@ -69,6 +70,21 @@ interface AnalyzeParams {
   docType?: string | null;
 }
 
+const DEFAULT_CHUNK_SIZE = 10_000;
+
+function chunkText(text: string, chunkSize = DEFAULT_CHUNK_SIZE): string[] {
+  if (!text) return [];
+
+  const normalizedSize = Math.max(1, chunkSize);
+  const chunks: string[] = [];
+
+  for (let index = 0; index < text.length; index += normalizedSize) {
+    chunks.push(text.slice(index, index + normalizedSize));
+  }
+
+  return chunks;
+}
+
 function safeParseJson<T>(value: unknown): T | null {
   if (typeof value === "string") {
     try {
@@ -101,17 +117,13 @@ function extractJsonFromResponse(payload: any): AiExtractedFactsResult {
   throw new Error("Unable to parse structured JSON response from OpenAI");
 }
 
-export async function analyzeExtractedFacts(
-  params: AnalyzeParams
-): Promise<AiExtractedFact[]> {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing OPENAI_API_KEY environment variable");
-  }
+function buildFactKey(fact: AiExtractedFact): string {
+  const dataKey = JSON.stringify(fact.data ?? {});
+  const sourceKey = fact.source ?? "";
+  return [fact.type, fact.category, fact.label, dataKey, sourceKey].join("|");
+}
 
-  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
-  const truncatedText = params.text.slice(0, 12000);
-
+async function callAiForChunk(params: AnalyzeParams, chunk: string, chunkIndex: number, totalChunks: number, model: string, apiKey: string): Promise<AiExtractedFact[]> {
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
     headers: {
@@ -131,11 +143,11 @@ export async function analyzeExtractedFacts(
           role: "user",
           content: `Document: ${params.documentName || "document"} (type: ${
             params.docType || "inconnu"
-          }). Analyse et extrait les faits PRA/PCA.`,
+          }). Analyse le chunk ${chunkIndex + 1}/${totalChunks} et extrais les faits PRA/PCA.`,
         },
         {
           role: "user",
-          content: truncatedText,
+          content: chunk,
         },
       ],
       response_format: {
@@ -157,5 +169,38 @@ export async function analyzeExtractedFacts(
   const payload = await response.json();
   const parsed = extractJsonFromResponse(payload);
 
-  return parsed.facts;
+  return parsed.facts.map((fact) => ({ ...fact, chunkIndex }));
+}
+
+export async function analyzeExtractedFacts(
+  params: AnalyzeParams
+): Promise<AiExtractedFact[]> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY environment variable");
+  }
+
+  const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
+  const textChunks = chunkText(params.text, DEFAULT_CHUNK_SIZE);
+  const deduplicatedFacts = new Map<string, AiExtractedFact>();
+
+  for (let index = 0; index < textChunks.length; index++) {
+    const facts = await callAiForChunk(
+      params,
+      textChunks[index],
+      index,
+      textChunks.length,
+      model,
+      apiKey
+    );
+
+    for (const fact of facts) {
+      const key = buildFactKey(fact);
+      if (!deduplicatedFacts.has(key)) {
+        deduplicatedFacts.set(key, fact);
+      }
+    }
+  }
+
+  return Array.from(deduplicatedFacts.values());
 }
