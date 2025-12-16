@@ -63,10 +63,42 @@ const RESPONSE_SCHEMA = {
   },
 } as const;
 
+export class OpenAiCallError extends Error {
+  status: number | undefined;
+  correlationId: string;
+
+  constructor(message: string, status: number | undefined, correlationId: string) {
+    super(message);
+    this.name = "OpenAiCallError";
+    this.status = status;
+    this.correlationId = correlationId;
+  }
+}
+
+type RetryConfig = {
+  maxAttempts: number;
+  initialDelayMs: number;
+  maxDelayMs: number;
+  chunkTimeoutMs: number;
+};
+
+type PartialRetryConfig = Partial<RetryConfig>;
+
+const DEFAULT_RETRY_CONFIG: RetryConfig = {
+  maxAttempts: 3,
+  initialDelayMs: 200,
+  maxDelayMs: 1500,
+  chunkTimeoutMs: 20_000,
+};
+
+const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+
 interface AnalyzeParams {
   text: string;
   documentName?: string | null;
   docType?: string | null;
+  correlationId?: string | null;
+  retryConfig?: PartialRetryConfig;
 }
 
 function safeParseJson<T>(value: unknown): T | null {
@@ -101,6 +133,96 @@ function extractJsonFromResponse(payload: any): AiExtractedFactsResult {
   throw new Error("Unable to parse structured JSON response from OpenAI");
 }
 
+function resolveRetryConfig(overrides?: PartialRetryConfig): RetryConfig {
+  const config: RetryConfig = {
+    maxAttempts: overrides?.maxAttempts ?? DEFAULT_RETRY_CONFIG.maxAttempts,
+    initialDelayMs:
+      overrides?.initialDelayMs ?? DEFAULT_RETRY_CONFIG.initialDelayMs,
+    maxDelayMs: overrides?.maxDelayMs ?? DEFAULT_RETRY_CONFIG.maxDelayMs,
+    chunkTimeoutMs:
+      overrides?.chunkTimeoutMs ?? DEFAULT_RETRY_CONFIG.chunkTimeoutMs,
+  };
+  return {
+    maxAttempts: Math.max(1, config.maxAttempts),
+    initialDelayMs: Math.max(0, config.initialDelayMs),
+    maxDelayMs: Math.max(config.initialDelayMs, config.maxDelayMs),
+    chunkTimeoutMs: Math.max(0, config.chunkTimeoutMs),
+  };
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function callOpenAiWithRetry(
+  requestBody: unknown,
+  headers: Record<string, string>,
+  correlationId: string,
+  retryOverrides?: PartialRetryConfig
+) {
+  const config = resolveRetryConfig(retryOverrides);
+  let attempt = 0;
+  let delay = config.initialDelayMs;
+
+  while (attempt < config.maxAttempts) {
+    attempt += 1;
+    const controller =
+      typeof AbortController !== "undefined" ? new AbortController() : undefined;
+    const timeoutId =
+      controller && config.chunkTimeoutMs > 0
+        ? setTimeout(() => controller.abort(), config.chunkTimeoutMs)
+        : undefined;
+
+    try {
+      const response = await fetch(OPENAI_RESPONSES_URL, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(requestBody),
+        signal: controller?.signal ?? null,
+      });
+
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      if (response.ok) {
+        return response;
+      }
+
+      if (attempt >= config.maxAttempts) {
+        const message = await response.text().catch(() => response.statusText);
+        throw new OpenAiCallError(
+          `OpenAI request failed (${response.status}) [correlationId=${correlationId}]: ${message}`,
+          response.status,
+          correlationId
+        );
+      }
+    } catch (err: any) {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+
+      if (attempt >= config.maxAttempts) {
+        const message = err?.message || "OpenAI request failed";
+        throw new OpenAiCallError(
+          `${message} [correlationId=${correlationId}]`,
+          err?.status ?? err?.code,
+          correlationId
+        );
+      }
+    }
+
+    await sleep(Math.min(delay, config.maxDelayMs));
+    delay = Math.min(delay * 2, config.maxDelayMs);
+  }
+
+  throw new OpenAiCallError(
+    `OpenAI request failed [correlationId=${correlationId}]`,
+    undefined,
+    correlationId
+  );
+}
+
 export async function analyzeExtractedFacts(
   params: AnalyzeParams
 ): Promise<AiExtractedFact[]> {
@@ -109,58 +231,13 @@ export async function analyzeExtractedFacts(
     throw new Error("Missing OPENAI_API_KEY environment variable");
   }
 
+  const correlationId = params.correlationId || "openai-analyzer";
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const truncatedText = params.text.slice(0, 12000);
-
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      temperature: 0.1,
-      input: [
-        {
-          role: "system",
-          content:
-            "Tu es un assistant PRA/PCA qui extrait des faits exploitables et structurés. Reste concis, inclue la catégorie (SERVICE, INFRA, RISK, RTO_RPO, OTHER), un label bref, des données structurées, et si possible une courte référence de source (page ou extrait <280 caractères). N'inclus jamais le texte complet du document.",
-        },
-        {
-          role: "user",
-          content: `Document: ${params.documentName || "document"} (type: ${
-            params.docType || "inconnu"
-          }). Analyse et extrait les faits PRA/PCA.`,
-        },
-        {
-          role: "user",
-          content: truncatedText,
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "extracted_facts",
-          schema: RESPONSE_SCHEMA,
-          strict: true,
-        },
-      },
-    }),
-  });
-
-  if (!response.ok) {
-    const message = await response.text().catch(() => response.statusText);
-    throw new Error(`OpenAI API error (${response.status}): ${message}`);
-  }
-
-  const payload = await response.json();
-  const parsed = extractJsonFromResponse(payload);
-
-  return parsed.facts;
-  const correlationId = params.correlationId || "openai-analyzer";
-  const retryConfig = { ...DEFAULT_RETRY_CONFIG, ...(params.retryConfig || {}) };
-
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${apiKey}`,
+  };
   const requestBody = {
     model,
     temperature: 0.1,
@@ -191,16 +268,11 @@ export async function analyzeExtractedFacts(
     },
   };
 
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${apiKey}`,
-  };
-
   const response = await callOpenAiWithRetry(
     requestBody,
     headers,
     correlationId,
-    retryConfig
+    params.retryConfig
   );
 
   try {
@@ -209,13 +281,9 @@ export async function analyzeExtractedFacts(
     return parsed.facts;
   } catch (err: any) {
     const message = err?.message || "Failed to parse OpenAI response";
-    logOpenAiError(correlationId, {
-      attempt: retryConfig.maxAttempts,
-      status: undefined,
-      message,
-    });
     throw new OpenAiCallError(
       `${message} [correlationId=${correlationId}]`,
+      undefined,
       correlationId
     );
   }
