@@ -107,10 +107,10 @@ router.post("/", async (req: TenantRequest, res) => {
       notes,
     } = req.body || {};
 
-    if (!name || !type || !criticality || !businessPriority) {
+    // Champs obligatoires minimum pour créer un service
+    if (!name || !type || !criticality) {
       return res.status(400).json({
-        error:
-          "name, type, criticality et businessPriority sont obligatoires pour créer un service",
+        error: "name, type et criticality sont obligatoires pour créer un service",
       });
     }
 
@@ -134,7 +134,9 @@ router.post("/", async (req: TenantRequest, res) => {
         type: String(type).trim(),
         description: description ? String(description).trim() : null,
         criticality: String(criticality).toLowerCase(),
-        businessPriority: String(businessPriority).trim(),
+        businessPriority: businessPriority
+          ? String(businessPriority).trim()
+          : null,
         recoveryPriority:
           recoveryPriority != null ? Number(recoveryPriority) : null,
         domain: domain ? String(domain).toUpperCase() : null,
