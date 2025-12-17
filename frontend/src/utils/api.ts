@@ -1,7 +1,7 @@
 import type { ApiConfig } from "../types";
 
 const CONFIG_STORAGE_KEY = "stronghold_api_config";
-const DEFAULT_BACKEND_URL = "http://localhost:4000";
+const DEFAULT_BACKEND_URL = "http://localhost:3000";
 
 export function sanitizeBackendUrl(raw: string | null | undefined): string {
   if (!raw) return "";
@@ -21,7 +21,9 @@ function loadStoredConfig(): Partial<ApiConfig> {
 
 export function loadApiConfig(): ApiConfig {
   const stored = loadStoredConfig();
-  const envBackend = import.meta.env.VITE_BACKEND_URL as string | undefined;
+  const envBackend =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    (import.meta.env.VITE_BACKEND_URL as string | undefined);
   const envApiKey = import.meta.env.VITE_API_KEY as string | undefined;
 
   const backendUrl =

@@ -19,6 +19,7 @@ export const tenantMiddleware = async (
     const apiKey = req.header("x-api-key");
 
     if (!apiKey) {
+      console.warn("tenantMiddleware: missing x-api-key header");
       return res.status(401).json({ error: "Missing x-api-key header" });
     }
 
@@ -27,7 +28,8 @@ export const tenantMiddleware = async (
     });
 
     if (!tenant) {
-      return res.status(401).json({ error: "Invalid API key" });
+      console.warn("tenantMiddleware: invalid API key provided");
+      return res.status(403).json({ error: "Invalid API key" });
     }
 
     req.tenantId = tenant.id;
