@@ -5,6 +5,15 @@ import { promisify } from "node:util";
 import { PDFParse } from "pdf-parse";
 import * as xlsx from "xlsx";
 import prisma from "../prismaClient";
+import * as crypto from "crypto";
+import {
+  buildChunks,
+  classifyDocumentType,
+  extractDocumentMetadata,
+  extractStructuredMetadata,
+  pushChunksToChroma,
+  serializeMetadata,
+} from "./documentIntelligenceService";
 
 
 
@@ -22,6 +31,18 @@ async function extractTextFromPdf(filePath: string): Promise<string> {
   } finally {
     await parser.destroy().catch(() => undefined);
   }
+}
+
+async function extractTextWithOcr(filePath: string): Promise<string> {
+  const enableOcr = String(process.env.ENABLE_OCR || "false").toLowerCase() === "true";
+  if (!enableOcr) {
+    throw new Error("OCR désactivé (ENABLE_OCR non défini)");
+  }
+
+  const { stdout } = await execFileAsync("tesseract", [filePath, "stdout", "-l", "eng+fra"], {
+    maxBuffer: 12 * 1024 * 1024,
+  });
+  return stdout.toString();
 }
 
 async function extractTextFromXlsx(filePath: string): Promise<string> {
@@ -127,6 +148,41 @@ function isExcelExtension(ext: string): boolean {
   return exts.includes(ext.toLowerCase());
 }
 
+function parseCsvQuick(text: string): Record<string, any>[] {
+  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (lines.length === 0) return [];
+  const headers = (lines[0] || "").split(/[,;\t]/).map((h) => h.trim());
+  return lines.slice(1).map((line) => {
+    const values = line.split(/[,;\t]/).map((v) => v.trim());
+    const row: Record<string, any> = {};
+    headers.forEach((h, idx) => (row[h || `col_${idx}`] = values[idx] ?? ""));
+    return row;
+  });
+}
+
+function mergeMetadata(primary: any, secondary: any) {
+  const merged = { ...primary };
+  if (secondary?.services) {
+    const dedup = new Set([...(primary.services || []), ...secondary.services]);
+    merged.services = Array.from(dedup);
+  }
+  if (secondary?.slas) {
+    const dedup = new Set([...(primary.slas || []), ...secondary.slas]);
+    merged.slas = Array.from(dedup);
+  }
+  merged.rtoHours = primary.rtoHours || secondary.rtoHours;
+  merged.rpoMinutes = primary.rpoMinutes || secondary.rpoMinutes;
+  merged.mtpdHours = primary.mtpdHours || secondary.mtpdHours;
+  merged.backupMentions = Array.from(
+    new Set([...(primary.backupMentions || []), ...(secondary.backupMentions || [])])
+  );
+  merged.dependencies = Array.from(
+    new Set([...(primary.dependencies || []), ...(secondary.dependencies || [])])
+  );
+  merged.structuredSummary = primary.structuredSummary || secondary.structuredSummary;
+  return merged;
+}
+
 export async function ingestDocumentText(documentId: string, tenantId: string) {
   const doc = await prisma.document.findFirst({
     where: { id: documentId, tenantId },
@@ -148,12 +204,14 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   let text = "";
   let status: "SUCCESS" | "FAILED" | "UNSUPPORTED" = "SUCCESS";
   let error: string | null = null;
+  let detectedDocType: string | null = null;
+  let detectedMetadata: string | null = null;
+  let textHash: string | null = null;
+  let vectorizedAt: Date | null = null;
 
   try {
     if (mime.startsWith("image/")) {
-      // TODO: plus tard, OCR / vision IA
-      status = "UNSUPPORTED";
-      error = "Extraction OCR non implémentée (image)";
+      text = await extractTextWithOcr(filePath);
     } else if (mime === "application/pdf" || ext === ".pdf") {
       text = await extractTextFromPdf(filePath);
     } else if (
@@ -180,6 +238,56 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       status = "UNSUPPORTED";
       error = `Type de document non supporté pour l'instant (mime=${mime}, ext=${ext})`;
     }
+
+    if (status === "SUCCESS" && text.trim().length === 0) {
+      status = "FAILED";
+      error = "Aucun contenu extrait du document";
+    }
+
+    if (status === "SUCCESS") {
+      textHash = crypto.createHash("sha256").update(text).digest("hex");
+      const classification = classifyDocumentType(text, doc.originalName, doc.docType);
+      detectedDocType = classification.type;
+
+      const textMetadata = extractDocumentMetadata(text);
+      let structuredPayload: unknown = null;
+      if (ext === ".json") {
+        try {
+          structuredPayload = JSON.parse(text);
+        } catch (_err) {
+          structuredPayload = null;
+        }
+      }
+      if (ext === ".csv") {
+        structuredPayload = parseCsvQuick(text);
+      }
+
+      const structuredMetadata = structuredPayload
+        ? extractStructuredMetadata(structuredPayload)
+        : { services: [], slas: [] };
+      const mergedMetadata = mergeMetadata(textMetadata, structuredMetadata);
+      detectedMetadata = serializeMetadata(mergedMetadata);
+
+      const baseMetadata = {
+        classification: classification.type,
+        classificationConfidence: classification.confidence,
+        declaredDocType: doc.docType,
+      } as Record<string, unknown>;
+      const chunks = buildChunks(text, baseMetadata);
+      if (chunks.length > 0) {
+        try {
+          await pushChunksToChroma(chunks, tenantId, doc.id);
+          vectorizedAt = new Date();
+        } catch (vecErr: any) {
+          console.error("[documentIngestion] vectorization error", {
+            correlationId,
+            tenantId,
+            documentId: doc.id,
+            message: (vecErr?.message || "vectorization failed").slice(0, 200),
+          });
+        }
+      }
+    }
   } catch (e: any) {
     const message = e?.message || String(e);
     console.error("[documentIngestion] extraction error", {
@@ -188,8 +296,11 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       documentId: doc.id,
       message: message.slice(0, 300),
     });
-    status = "FAILED";
-    error = e?.message || String(e);
+    const errMessage = e?.message || String(e);
+    const isOcrDisabled = errMessage.toLowerCase().includes("ocr") &&
+      errMessage.toLowerCase().includes("désactivé");
+    status = isOcrDisabled ? "UNSUPPORTED" : "FAILED";
+    error = errMessage;
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -199,6 +310,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         extractionStatus: status,
         extractionError: error,
         textContent: status === "SUCCESS" ? text : null,
+        detectedDocType: detectedDocType,
+        detectedMetadata: detectedMetadata,
+        textHash,
+        vectorizedAt,
       },
     });
 

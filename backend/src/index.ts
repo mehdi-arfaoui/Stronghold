@@ -10,6 +10,8 @@ import infraRoutes from "./routes/infraRoutes";
 import { tenantMiddleware, TenantRequest } from "./middleware/tenantMiddleware";
 import scenarioRoutes from "./routes/scenarioRoutes";
 import documentRoutes from "./routes/documentRoutes";
+import continuityRoutes from "./routes/continuityRoutes";
+import runbookRoutes from "./routes/runbookRoutes";
 
 dotenv.config();
 
@@ -33,6 +35,8 @@ app.use("/analysis", analysisRoutes);
 app.use("/infra", infraRoutes);
 app.use("/scenarios", scenarioRoutes);
 app.use("/documents", documentRoutes);
+app.use("/continuity", continuityRoutes);
+app.use("/runbooks", runbookRoutes);
 
 
 const PORT = process.env.PORT || 4000;

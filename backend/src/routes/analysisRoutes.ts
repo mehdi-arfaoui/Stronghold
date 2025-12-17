@@ -223,7 +223,11 @@ router.get("/report", async (req: TenantRequest, res) => {
     text += "1. Catalogue des services\n";
     text += "-------------------------\n";
     for (const s of services) {
-      text += `- ${s.name} [${s.type}] (criticité : ${s.criticality})\n`;
+      text += `- ${s.name} [${s.type}] (criticité : ${s.criticality}`;
+      if (s.businessPriority) {
+        text += ` | priorité métier : ${s.businessPriority}`;
+      }
+      text += ")\n";
       if (s.continuity) {
         text += `  RTO : ${s.continuity.rtoHours} h | RPO : ${s.continuity.rpoMinutes} min | MTPD : ${s.continuity.mtpdHours} h\n`;
       }
@@ -469,6 +473,7 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
           type: s.type,
           description: s.description,
           criticality: s.criticality,
+          businessPriority: s.businessPriority,
           recoveryPriority: s.recoveryPriority,
           domain: s.domain,
           continuity: s.continuity
