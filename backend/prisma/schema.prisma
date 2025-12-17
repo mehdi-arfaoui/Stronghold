@@ -24,6 +24,12 @@ model Tenant {
   ServiceInfraLink  ServiceInfraLink[]
   documents         Document[]
   extractedFacts    ExtractedFact[]
+  backupStrategies  BackupStrategy[]
+  securityPolicies  SecurityPolicy[]
+  policyLinks       SecurityPolicyService[]
+  dependencyCycles  DependencyCycle[]
+  dependencyCycleLinks DependencyCycleService[]
+  runbooks          Runbook[]
 
 }
 
@@ -36,6 +42,7 @@ model Service {
   type             String
   description      String?
   criticality      String
+  businessPriority String? // priorité métier fournie par le client
   recoveryPriority Int?
 
   // Domaine fonctionnel : APP, DB, NETWORK, SECURITY, IAC, GOV, SAAS, DATA...
@@ -46,6 +53,9 @@ model Service {
   dependenciesTo   ServiceDependency[] @relation("ServiceDependenciesTo")
   infraLinks       ServiceInfraLink[]
   scenarioLinks    ScenarioService[]
+  backupStrategies BackupStrategy[]
+  policyLinks      SecurityPolicyService[]
+  dependencyCycles DependencyCycleService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -60,6 +70,9 @@ model ServiceContinuity {
   rpoMinutes Int
   mtpdHours  Int
   notes      String?
+
+  // Champs calculés ou conseillés pour l'utilisateur à partir des définitions RTO/RPO/MTPD
+  advisoryNotes String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -129,6 +142,7 @@ model Scenario {
 
   services ScenarioService[]
   steps    RunbookStep[]
+  runbooks Runbook[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -178,6 +192,10 @@ model Document {
 
   docType      String?  // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
   description  String?
+  detectedDocType String?
+  detectedMetadata String? // JSON stringified metadata for heuristiques
+  textHash     String? @unique
+  vectorizedAt DateTime?
 
   // Extraction de texte
   extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
@@ -188,6 +206,113 @@ model Document {
   updatedAt DateTime @updatedAt
 
   extractedFacts ExtractedFact[]
+}
+
+model BackupStrategy {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id])
+
+  type             String // full | differential | incremental | continuous | snapshot
+  frequencyMinutes Int
+  retentionDays    Int
+  storageLocation  String?
+  encryptionLevel  String?
+  compression      Boolean @default(false)
+  immutability     Boolean @default(false)
+  rtoImpactHours   Int?
+  rpoImpactMinutes Int?
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityPolicy {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name           String
+  policyType     String
+  classification String?
+  scope          String?
+  controls       String?
+  reviewFrequencyDays Int?
+  owner          String?
+
+  services SecurityPolicyService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model SecurityPolicyService {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  policyId String
+  policy   SecurityPolicy @relation(fields: [policyId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DependencyCycle {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  label    String
+  severity String?
+  notes    String?
+
+  services DependencyCycleService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DependencyCycleService {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  cycleId  String
+  cycle    DependencyCycle @relation(fields: [cycleId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  roleInCycle String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Runbook {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  scenarioId String?
+  scenario   Scenario? @relation(fields: [scenarioId], references: [id])
+
+  title     String
+  status    String @default("DRAFT")
+  summary   String?
+  markdownPath String?
+  pdfPath      String?
+  generatedForServices String?
+  generatedAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 

@@ -25,6 +25,7 @@ router.get("/", async (req: TenantRequest, res) => {
       label: s.name,
       type: s.type,
       criticality: s.criticality,
+      businessPriority: s.businessPriority,
       rtoHours: s.continuity?.rtoHours ?? null,
       rpoMinutes: s.continuity?.rpoMinutes ?? null,
       mtpdHours: s.continuity?.mtpdHours ?? null,

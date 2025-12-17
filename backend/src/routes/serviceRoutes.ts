@@ -4,6 +4,23 @@ import { TenantRequest } from "../middleware/tenantMiddleware";
 
 const router = Router();
 
+function buildContinuityAdvisory(rtoHours: number, rpoMinutes: number, mtpdHours: number) {
+  const parts: string[] = [];
+  parts.push(
+    "RTO (Recovery Time Objective) = durée maximale d'interruption acceptée avant reprise du service (référence f5.com)."
+  );
+  parts.push(
+    "RPO (Recovery Point Objective) = perte de données maximale acceptable exprimée en minutes ou heures (référence tierpoint.com)."
+  );
+  parts.push(
+    "MTPD (Maximum Tolerable Period of Disruption) = durée totale au-delà de laquelle l'impact devient inacceptable (référence riskythinking.com)."
+  );
+  parts.push(
+    `Ce service vise RTO=${rtoHours}h, RPO=${rpoMinutes} min, MTPD=${mtpdHours}h. Vérifier que les dépendances et backups respectent ces bornes.`
+  );
+  return parts.join(" \n");
+}
+
 /**
  * GET /services
  * Retourne la liste des services du tenant courant,
@@ -33,6 +50,17 @@ router.get("/", async (req: TenantRequest, res) => {
         infraLinks: {
           include: {
             infra: true,
+          },
+        },
+        backupStrategies: true,
+        policyLinks: {
+          include: {
+            policy: true,
+          },
+        },
+        dependencyCycles: {
+          include: {
+            cycle: true,
           },
         },
       },
@@ -70,6 +98,7 @@ router.post("/", async (req: TenantRequest, res) => {
       type,
       description,
       criticality,
+      businessPriority,
       recoveryPriority,
       domain,
       rtoHours,
@@ -78,10 +107,10 @@ router.post("/", async (req: TenantRequest, res) => {
       notes,
     } = req.body || {};
 
-    if (!name || !type || !criticality) {
+    if (!name || !type || !criticality || !businessPriority) {
       return res.status(400).json({
         error:
-          "name, type et criticality sont obligatoires pour créer un service",
+          "name, type, criticality et businessPriority sont obligatoires pour créer un service",
       });
     }
 
@@ -105,6 +134,7 @@ router.post("/", async (req: TenantRequest, res) => {
         type: String(type).trim(),
         description: description ? String(description).trim() : null,
         criticality: String(criticality).toLowerCase(),
+        businessPriority: String(businessPriority).trim(),
         recoveryPriority:
           recoveryPriority != null ? Number(recoveryPriority) : null,
         domain: domain ? String(domain).toUpperCase() : null,
@@ -114,6 +144,11 @@ router.post("/", async (req: TenantRequest, res) => {
             rpoMinutes: Number(rpoMinutes),
             mtpdHours: Number(mtpdHours),
             notes: notes ? String(notes).trim() : null,
+            advisoryNotes: buildContinuityAdvisory(
+              Number(rtoHours),
+              Number(rpoMinutes),
+              Number(mtpdHours)
+            ),
           },
         },
       },
