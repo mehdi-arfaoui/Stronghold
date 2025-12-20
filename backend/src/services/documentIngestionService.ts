@@ -6,9 +6,11 @@ import { PDFParse } from "pdf-parse";
 import * as xlsx from "xlsx";
 import prisma from "../prismaClient";
 import * as crypto from "crypto";
+import type { Prisma, Service, InfraComponent } from "@prisma/client";
 import {
   buildChunks,
   classifyDocumentType,
+  deriveMetadataMappings,
   extractDocumentMetadata,
   extractStructuredMetadata,
   pushChunksToChroma,
@@ -48,6 +50,31 @@ async function resolveDocumentFilePath(doc: { storagePath: string; tenantId: str
       await fs.promises.rm(directory, { recursive: true, force: true });
     },
   };
+}
+
+type TxClient = Prisma.TransactionClient;
+
+const DEFAULT_SERVICE_TYPE = "DISCOVERED";
+const DEFAULT_SERVICE_CRITICALITY = "MEDIUM";
+const DEFAULT_DEPENDENCY_TYPE = "IMPLICIT_DOCUMENT";
+const DEFAULT_INFRA_TYPE = "DISCOVERED";
+
+function normalizeName(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function dedupePreserveCase(values: string[]): string[] {
+  const map = new Map<string, string>();
+  values
+    .map((v) => normalizeName(v))
+    .filter((v) => v.length > 0)
+    .forEach((v) => {
+      const key = v.toLowerCase();
+      if (!map.has(key)) {
+        map.set(key, v);
+      }
+    });
+  return Array.from(map.values());
 }
 
 async function extractTextFromPdf(filePath: string): Promise<string> {
@@ -211,6 +238,212 @@ function mergeMetadata(primary: any, secondary: any) {
   return merged;
 }
 
+function expandDependencies(
+  dependencies: Array<{ from?: string; to: string; targetIsInfra: boolean }>,
+  anchors: string[]
+): Array<{ from: string; to: string; targetIsInfra: boolean }> {
+  const seen = new Set<string>();
+  const expanded: Array<{ from: string; to: string; targetIsInfra: boolean }> = [];
+  const normalizedAnchors = dedupePreserveCase(anchors);
+
+  for (const dep of dependencies) {
+    const fromCandidates = dep.from ? [normalizeName(dep.from)] : normalizedAnchors;
+    for (const anchor of fromCandidates) {
+      if (!anchor || !dep.to) continue;
+      const key = `${anchor.toLowerCase()}::${dep.to.toLowerCase()}::${dep.targetIsInfra ? "infra" : "service"}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      expanded.push({
+        from: anchor,
+        to: normalizeName(dep.to),
+        targetIsInfra: dep.targetIsInfra,
+      });
+    }
+  }
+
+  return expanded;
+}
+
+async function ensureServices(tx: TxClient, tenantId: string, serviceNames: string[]): Promise<Map<string, Service>> {
+  const cleanedNames = dedupePreserveCase(serviceNames);
+  if (cleanedNames.length === 0) return new Map();
+
+  const existing = await tx.service.findMany({
+    where: { tenantId, name: { in: cleanedNames } },
+  });
+
+  const byKey = new Map<string, Service>();
+  existing.forEach((svc) => byKey.set(svc.name.toLowerCase(), svc));
+
+  for (const name of cleanedNames) {
+    const key = name.toLowerCase();
+    if (byKey.has(key)) continue;
+    const created = await tx.service.create({
+      data: {
+        tenantId,
+        name,
+        type: DEFAULT_SERVICE_TYPE,
+        criticality: DEFAULT_SERVICE_CRITICALITY,
+        description: "Créé automatiquement depuis l'ingestion de documents",
+      },
+    });
+    byKey.set(key, created);
+  }
+
+  return byKey;
+}
+
+async function ensureInfraComponents(
+  tx: TxClient,
+  tenantId: string,
+  infraInputs: Array<{ name: string; type: string; provider?: string }>
+): Promise<Map<string, InfraComponent>> {
+  const cleaned = dedupePreserveCase(infraInputs.map((i) => i.name));
+  if (cleaned.length === 0) return new Map();
+
+  const existing = await tx.infraComponent.findMany({
+    where: { tenantId, name: { in: cleaned } },
+  });
+
+  const byKey = new Map<string, InfraComponent>();
+  existing.forEach((infra) => byKey.set(infra.name.toLowerCase(), infra));
+
+  for (const infraInput of infraInputs) {
+    const name = normalizeName(infraInput.name);
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (byKey.has(key)) continue;
+    const created = await tx.infraComponent.create({
+      data: {
+        tenantId,
+        name,
+        type: infraInput.type || DEFAULT_INFRA_TYPE,
+        provider: infraInput.provider ?? null,
+        notes: "Composant détecté automatiquement via ingestion de document",
+      },
+    });
+    byKey.set(key, created);
+  }
+
+  return byKey;
+}
+
+async function ensureServiceInfraLinks(
+  tx: TxClient,
+  tenantId: string,
+  links: Array<{ serviceName: string; infraName: string }>,
+  services: Map<string, Service>,
+  infraComponents: Map<string, InfraComponent>
+) {
+  if (links.length === 0) return;
+
+  const existing = await tx.serviceInfraLink.findMany({
+    where: { tenantId },
+  });
+  const existingKeys = new Set(existing.map((l) => `${l.serviceId}:${l.infraId}`));
+
+  for (const link of links) {
+    const service = services.get(link.serviceName.toLowerCase());
+    const infra = infraComponents.get(link.infraName.toLowerCase());
+    if (!service || !infra) continue;
+    const key = `${service.id}:${infra.id}`;
+    if (existingKeys.has(key)) continue;
+
+    await tx.serviceInfraLink.create({
+      data: {
+        tenantId,
+        serviceId: service.id,
+        infraId: infra.id,
+      },
+    });
+    existingKeys.add(key);
+  }
+}
+
+async function ensureServiceDependencies(
+  tx: TxClient,
+  tenantId: string,
+  dependencies: Array<{ from: string; to: string }>,
+  services: Map<string, Service>
+) {
+  if (dependencies.length === 0) return;
+
+  const existing = await tx.serviceDependency.findMany({
+    where: { tenantId },
+  });
+  const existingKeys = new Set(existing.map((d) => `${d.fromServiceId}:${d.toServiceId}`));
+
+  for (const dep of dependencies) {
+    const from = services.get(dep.from.toLowerCase());
+    const to = services.get(dep.to.toLowerCase());
+    if (!from || !to) continue;
+    const key = `${from.id}:${to.id}`;
+    if (existingKeys.has(key)) continue;
+
+    await tx.serviceDependency.create({
+      data: {
+        tenantId,
+        fromServiceId: from.id,
+        toServiceId: to.id,
+        dependencyType: DEFAULT_DEPENDENCY_TYPE,
+      },
+    });
+    existingKeys.add(key);
+  }
+}
+
+async function ensureContinuityFromMetadata(
+  tx: TxClient,
+  tenantId: string,
+  services: Map<string, Service>,
+  metadata: any
+) {
+  const hasContinuityData =
+    metadata.rtoHours != null || metadata.rpoMinutes != null || metadata.mtpdHours != null;
+  const slaNotes =
+    Array.isArray(metadata.slas) && metadata.slas.length > 0
+      ? `SLAs détectés: ${metadata.slas.join(" | ").slice(0, 600)}`
+      : undefined;
+
+  if (!hasContinuityData && !slaNotes) return;
+
+  const serviceIds = Array.from(services.values()).map((s) => s.id);
+  const existing = await tx.serviceContinuity.findMany({
+    where: { serviceId: { in: serviceIds } },
+  });
+  const continuityByService = new Map(existing.map((c) => [c.serviceId, c]));
+
+  for (const service of services.values()) {
+    const existingContinuity = continuityByService.get(service.id);
+    const data: any = {};
+    if (metadata.rtoHours != null) data.rtoHours = metadata.rtoHours;
+    if (metadata.rpoMinutes != null) data.rpoMinutes = metadata.rpoMinutes;
+    if (metadata.mtpdHours != null) data.mtpdHours = metadata.mtpdHours;
+    if (slaNotes) {
+      data.notes = existingContinuity?.notes
+        ? `${existingContinuity.notes}\n${slaNotes}`.slice(0, 1000)
+        : slaNotes;
+    }
+
+    if (existingContinuity) {
+      await tx.serviceContinuity.update({
+        where: { serviceId: service.id },
+        data,
+      });
+    } else if (metadata.rtoHours != null || metadata.rpoMinutes != null) {
+      await tx.serviceContinuity.create({
+        data: {
+          serviceId: service.id,
+          rtoHours: metadata.rtoHours ?? metadata.mtpdHours ?? 0,
+          rpoMinutes: metadata.rpoMinutes ?? 0,
+          mtpdHours: metadata.mtpdHours ?? metadata.rtoHours ?? 0,
+          notes: slaNotes ?? null,
+        },
+      });
+    }
+  }
+}
+
 export async function ingestDocumentText(documentId: string, tenantId: string) {
   const doc = await prisma.document.findFirst({
     where: { id: documentId, tenantId },
@@ -219,6 +452,11 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   if (!doc) {
     throw new Error("Document not found or not owned by tenant");
   }
+
+  await prisma.document.updateMany({
+    where: { id: doc.id, tenantId: doc.tenantId },
+    data: { ingestionStatus: "PROCESSING", ingestionError: null },
+  });
 
   const correlationId = `doc-${doc.id}`;
 
@@ -231,7 +469,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   let detectedDocType: string | null = null;
   let detectedMetadata: string | null = null;
   let textHash: string | null = null;
-  let vectorizedAt: Date | null = null;
+  let textExtractedAt: Date | null = null;
+  let mergedMetadata: any = null;
+  let chunks: ReturnType<typeof buildChunks> = [];
+  let ingestionError: string | null = null;
 
   const resolvedFile = await resolveDocumentFilePath({
     storagePath: doc.storagePath,
@@ -276,6 +517,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
 
     if (status === "SUCCESS") {
       textHash = crypto.createHash("sha256").update(text).digest("hex");
+      textExtractedAt = new Date();
       const classification = classifyDocumentType(text, doc.originalName, doc.docType);
       detectedDocType = classification.type;
 
@@ -295,7 +537,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       const structuredMetadata = structuredPayload
         ? extractStructuredMetadata(structuredPayload)
         : { services: [], slas: [] };
-      const mergedMetadata = mergeMetadata(textMetadata, structuredMetadata);
+      mergedMetadata = mergeMetadata(textMetadata, structuredMetadata);
       detectedMetadata = serializeMetadata(mergedMetadata);
 
       const baseMetadata = {
@@ -303,20 +545,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         classificationConfidence: classification.confidence,
         declaredDocType: doc.docType,
       } as Record<string, unknown>;
-      const chunks = buildChunks(text, baseMetadata);
-      if (chunks.length > 0) {
-        try {
-          await pushChunksToChroma(chunks, tenantId, doc.id);
-          vectorizedAt = new Date();
-        } catch (vecErr: any) {
-          console.error("[documentIngestion] vectorization error", {
-            correlationId,
-            tenantId,
-            documentId: doc.id,
-            message: (vecErr?.message || "vectorization failed").slice(0, 200),
-          });
-        }
-      }
+      chunks = buildChunks(text, baseMetadata);
     }
   } catch (e: any) {
     const message = e?.message || String(e);
@@ -331,11 +560,40 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       errMessage.toLowerCase().includes("désactivé");
     status = isOcrDisabled ? "UNSUPPORTED" : "FAILED";
     error = errMessage;
+    ingestionError = errMessage;
   } finally {
     await resolvedFile.cleanup().catch(() => undefined);
   }
 
-  const updated = await prisma.$transaction(async (tx) => {
+  const mapping = mergedMetadata ? deriveMetadataMappings(mergedMetadata) : { services: [], dependencies: [], infra: [] };
+  const anchoredDependencies = expandDependencies(mapping.dependencies, mapping.services);
+
+  const updatedAfterExtraction = await prisma.$transaction(async (tx) => {
+    const services = await ensureServices(tx, tenantId, mapping.services);
+    const infraComponents = await ensureInfraComponents(tx, tenantId, mapping.infra);
+
+    await ensureServiceDependencies(
+      tx,
+      tenantId,
+      anchoredDependencies.filter((d) => !d.targetIsInfra),
+      services
+    );
+
+    await ensureServiceInfraLinks(
+      tx,
+      tenantId,
+      anchoredDependencies
+        .filter((d) => d.targetIsInfra)
+        .map((d) => ({ serviceName: d.from, infraName: d.to })),
+      services,
+      infraComponents
+    );
+
+    await ensureContinuityFromMetadata(tx, tenantId, services, mergedMetadata || {});
+
+    const ingestionStatusValue =
+      status === "SUCCESS" ? "TEXT_EXTRACTED" : status === "UNSUPPORTED" ? "UNSUPPORTED" : "ERROR";
+
     const updateResult = await tx.document.updateMany({
       where: { id: doc.id, tenantId: doc.tenantId },
       data: {
@@ -345,7 +603,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         detectedDocType: detectedDocType,
         detectedMetadata: detectedMetadata,
         textHash,
-        vectorizedAt,
+        vectorizedAt: null,
+        ingestionStatus: ingestionStatusValue,
+        ingestionError,
+        textExtractedAt: status === "SUCCESS" ? textExtractedAt : null,
       },
     });
 
@@ -358,7 +619,128 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     });
   });
 
-  return updated;
+  if (status !== "SUCCESS") {
+    return updatedAfterExtraction;
+  }
+
+  if (chunks.length === 0) {
+    await prisma.document.updateMany({
+      where: { id: doc.id, tenantId: doc.tenantId },
+      data: { ingestionError: "Vectorisation ignorée: aucun chunk généré" },
+    });
+    return prisma.document.findFirstOrThrow({ where: { id: doc.id, tenantId: doc.tenantId } });
+  }
+
+  try {
+    const vecResult = await pushChunksToChroma(chunks, tenantId, doc.id);
+    if (vecResult.submitted > 0) {
+      const updated = await prisma.document.updateMany({
+        where: { id: doc.id, tenantId: doc.tenantId },
+        data: {
+          vectorizedAt: new Date(),
+          ingestionStatus: "VECTORIZED",
+          ingestionError: null,
+        },
+      });
+
+      if (updated.count !== 1) {
+        throw new Error("Failed to update document after vectorization");
+      }
+    } else if (vecResult.skippedReason) {
+      await prisma.document.updateMany({
+        where: { id: doc.id, tenantId: doc.tenantId },
+        data: { ingestionError: `Vectorisation ignorée: ${vecResult.skippedReason}`.slice(0, 255) },
+      });
+    }
+  } catch (vecErr: any) {
+    console.error("[documentIngestion] vectorization error", {
+      correlationId,
+      tenantId,
+      documentId: doc.id,
+      message: (vecErr?.message || "vectorization failed").slice(0, 200),
+    });
+    await prisma.document.updateMany({
+      where: { id: doc.id, tenantId: doc.tenantId },
+      data: {
+        ingestionError: (vecErr?.message || "vectorization failed").slice(0, 255),
+        ingestionStatus: "ERROR",
+      },
+    });
+  }
+
+  return prisma.document.findFirstOrThrow({ where: { id: doc.id, tenantId: doc.tenantId } });
+}
+
+function resolveCallbackUrl(): string | null {
+  if (process.env.N8N_INGESTION_CALLBACK_URL) {
+    return process.env.N8N_INGESTION_CALLBACK_URL;
+  }
+  if (process.env.API_PUBLIC_URL) {
+    return `${process.env.API_PUBLIC_URL.replace(/\/$/, "")}/webhooks/n8n/document-ingestion`;
+  }
+  return null;
+}
+
+export async function enqueueDocumentIngestion(documentId: string, tenantId: string) {
+  const queueUrl = process.env.N8N_INGESTION_TRIGGER_URL;
+  const doc = await prisma.document.findFirst({
+    where: { id: documentId, tenantId },
+  });
+
+  if (!doc) {
+    throw new Error("Document not found or not owned by tenant");
+  }
+
+  await prisma.document.updateMany({
+    where: { id: doc.id, tenantId: doc.tenantId },
+    data: {
+      ingestionStatus: queueUrl ? "QUEUED" : "PROCESSING",
+      ingestionQueuedAt: queueUrl ? new Date() : null,
+      ingestionError: null,
+      extractionStatus: "PENDING",
+      extractionError: null,
+    },
+  });
+
+  if (!queueUrl) {
+    return ingestDocumentText(documentId, tenantId);
+  }
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.N8N_WEBHOOK_TOKEN) {
+    headers["x-webhook-token"] = process.env.N8N_WEBHOOK_TOKEN;
+  }
+
+  const payload = {
+    documentId: doc.id,
+    tenantId,
+    storagePath: doc.storagePath,
+    mimeType: doc.mimeType,
+    callbackUrl: resolveCallbackUrl(),
+  };
+
+  try {
+    const response = await fetch(queueUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const errText = await response.text().catch(() => response.statusText);
+      throw new Error(`Queue dispatch failed: ${response.status} ${errText}`);
+    }
+  } catch (err: any) {
+    const message = err?.message || "Queue dispatch failed";
+    await prisma.document.updateMany({
+      where: { id: doc.id, tenantId: doc.tenantId },
+      data: { ingestionStatus: "ERROR", ingestionError: message.slice(0, 255) },
+    });
+    throw err;
+  }
+
+  return prisma.document.findFirstOrThrow({
+    where: { id: doc.id, tenantId: doc.tenantId },
+  });
 }
 
 export const __test__ = {
