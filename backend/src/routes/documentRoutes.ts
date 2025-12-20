@@ -6,31 +6,20 @@ import * as crypto from "crypto";
 import prisma from "../prismaClient";
 import { TenantRequest } from "../middleware/tenantMiddleware";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService";
+import { ingestDocumentText } from "../services/documentIngestionService";
+
+
+import {
+  buildObjectKey,
+  getSignedUrlForObject,
+  getTenantBucketName,
+  resolveBucketAndKey,
+  uploadObjectToBucket,
+} from "../clients/s3Client";
 
 const router = Router();
 
-// Répertoire de stockage local des fichiers
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads");
-
-// S'assurer que le dossier existe
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
-
-// Config Multer : stockage disque
-const storage = multer.diskStorage({
-  destination: function (req, file, cb) {
-    cb(null, UPLOAD_DIR);
-  },
-  filename: function (req, file, cb) {
-    // on évite les collisions avec un préfixe cuid-like
-    const uniquePrefix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
-    cb(null, `${uniquePrefix}-${safeName}`);
-  },
-});
-
-const upload = multer({ storage });
+const upload = multer({ storage: multer.memoryStorage() });
 
 async function computeFileHash(filePath: string): Promise<string> {
   const hash = crypto.createHash("sha256");
@@ -68,6 +57,18 @@ router.post(
 
       const { docType, description } = req.body || {};
       const file = req.file;
+      const objectKey = buildObjectKey(tenantId, file.originalname);
+      const bucketAndKey = {
+        bucket: getTenantBucketName(tenantId),
+        key: objectKey,
+      };
+
+      await uploadObjectToBucket({
+        bucket: bucketAndKey.bucket,
+        key: bucketAndKey.key,
+        body: file.buffer,
+        contentType: file.mimetype,
+      });
 
       const fileHash = await computeFileHash(file.path);
       const duplicate = await prisma.document.findFirst({
@@ -85,10 +86,10 @@ router.post(
         data: {
           tenantId,
           originalName: file.originalname,
-          storedName: file.filename,
+          storedName: path.basename(objectKey),
           mimeType: file.mimetype,
           size: file.size,
-          storagePath: path.relative(process.cwd(), file.path),
+          storagePath: `s3://${bucketAndKey.bucket}/${bucketAndKey.key}`,
           docType: docType ? String(docType).toUpperCase() : null,
           description: description ? String(description).trim() : null,
           fileHash,
@@ -96,7 +97,9 @@ router.post(
         },
       });
 
-      return res.status(201).json(doc);
+      const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
+
+      return res.status(201).json({ ...doc, signedUrl });
     } catch (error) {
       console.error("Error in POST /documents:", error);
       return res.status(500).json({ error: "Internal server error" });
@@ -120,7 +123,29 @@ router.get("/", async (req: TenantRequest, res) => {
       orderBy: { createdAt: "desc" },
     });
 
-    return res.json(docs);
+    const docsWithSignedPaths = await Promise.all(
+      docs.map(async (doc) => {
+        const isS3Path = (doc.storagePath || "").startsWith("s3://");
+        if (!isS3Path) {
+          return { ...doc, signedUrl: null };
+        }
+
+        try {
+          const bucketAndKey = resolveBucketAndKey(doc.storagePath, doc.tenantId, doc.storedName);
+          const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
+          return { ...doc, signedUrl };
+        } catch (err: any) {
+          console.error("Error signing document URL", {
+            tenantId: doc.tenantId,
+            documentId: doc.id,
+            message: err?.message,
+          });
+          return { ...doc, signedUrl: null };
+        }
+      })
+    );
+
+    return res.json(docsWithSignedPaths);
   } catch (error) {
     console.error("Error in GET /documents:", error);
     return res.status(500).json({ error: "Internal server error" });

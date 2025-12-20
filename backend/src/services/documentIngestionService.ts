@@ -16,13 +16,41 @@ import {
   pushChunksToChroma,
   serializeMetadata,
 } from "./documentIntelligenceService";
-
-
-
-// même logique que dans documentRoutes pour le dossier uploads
-const UPLOAD_DIR = path.join(__dirname, "..", "..", "uploads");
+import {
+  downloadObjectToTempFile,
+  resolveBucketAndKey,
+} from "../clients/s3Client";
 
 const execFileAsync = promisify(execFile);
+
+async function fileExists(filePath: string) {
+  try {
+    await fs.promises.access(filePath, fs.constants.R_OK);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+async function resolveDocumentFilePath(doc: { storagePath: string; tenantId: string; storedName: string }) {
+  const localPath = path.isAbsolute(doc.storagePath)
+    ? doc.storagePath
+    : path.join(process.cwd(), doc.storagePath);
+
+  if (await fileExists(localPath)) {
+    return { filePath: localPath, cleanup: async () => undefined };
+  }
+
+  const { bucket, key } = resolveBucketAndKey(doc.storagePath, doc.tenantId, doc.storedName);
+  const downloadPath = await downloadObjectToTempFile(bucket, key, doc.storedName);
+  return {
+    filePath: downloadPath,
+    cleanup: async () => {
+      const directory = path.dirname(downloadPath);
+      await fs.promises.rm(directory, { recursive: true, force: true });
+    },
+  };
+}
 
 type TxClient = Prisma.TransactionClient;
 
@@ -432,10 +460,6 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
 
   const correlationId = `doc-${doc.id}`;
 
-  const filePath = path.isAbsolute(doc.storagePath)
-    ? doc.storagePath
-    : path.join(process.cwd(), doc.storagePath);
-
   const ext = path.extname(doc.originalName || "").toLowerCase();
   const mime = (doc.mimeType || "").toLowerCase();
 
@@ -450,31 +474,37 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   let chunks: ReturnType<typeof buildChunks> = [];
   let ingestionError: string | null = null;
 
+  const resolvedFile = await resolveDocumentFilePath({
+    storagePath: doc.storagePath,
+    tenantId: doc.tenantId,
+    storedName: doc.storedName,
+  });
+
   try {
     if (mime.startsWith("image/")) {
-      text = await extractTextWithOcr(filePath);
+      text = await extractTextWithOcr(resolvedFile.filePath);
     } else if (mime === "application/pdf" || ext === ".pdf") {
-      text = await extractTextFromPdf(filePath);
+      text = await extractTextFromPdf(resolvedFile.filePath);
     } else if (
       mime ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
       isDocxExtension(ext)
     ) {
-      text = await extractTextFromDocx(filePath);
+      text = await extractTextFromDocx(resolvedFile.filePath);
     } else if (
       mime ===
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
       isPptxExtension(ext)
     ) {
-      text = await extractTextFromPptx(filePath);
+      text = await extractTextFromPptx(resolvedFile.filePath);
     } else if (
       mime ===
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       isExcelExtension(ext)
     ) {
-      text = await extractTextFromXlsx(filePath);
+      text = await extractTextFromXlsx(resolvedFile.filePath);
     } else if (isPlainTextExtension(ext) || mime.startsWith("text/")) {
-      text = await extractTextFromPlain(filePath);
+      text = await extractTextFromPlain(resolvedFile.filePath);
     } else {
       status = "UNSUPPORTED";
       error = `Type de document non supporté pour l'instant (mime=${mime}, ext=${ext})`;
@@ -531,6 +561,8 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     status = isOcrDisabled ? "UNSUPPORTED" : "FAILED";
     error = errMessage;
     ingestionError = errMessage;
+  } finally {
+    await resolvedFile.cleanup().catch(() => undefined);
   }
 
   const mapping = mergedMetadata ? deriveMetadataMappings(mergedMetadata) : { services: [], dependencies: [], infra: [] };
