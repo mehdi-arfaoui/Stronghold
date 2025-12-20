@@ -3,6 +3,11 @@ import prisma from "../prismaClient";
 import { TenantRequest } from "../middleware/tenantMiddleware";
 import { recommendPraOptions } from "../analysis/praRecommender";
 import {
+  DR_SCENARIOS,
+  getSuggestedDRStrategy,
+  summarizeScenarioForTable,
+} from "../analysis/drStrategyEngine";
+import {
   DocumentNotFoundError,
   MissingExtractedTextError,
   getOrCreateExtractedFacts,
@@ -458,6 +463,32 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
 
     const praRecs = recommendPraOptions(praInput);
 
+    const drStrategyInputServices = services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      domain: s.domain,
+      criticality: s.criticality,
+      rtoHours: s.continuity?.rtoHours,
+      rpoMinutes: s.continuity?.rpoMinutes,
+    }));
+
+    const drStrategyDeps = services.flatMap((s) =>
+      s.dependenciesFrom.map((d) => ({
+        from: d.fromServiceId,
+        to: d.toServiceId,
+        type: d.dependencyType,
+      }))
+    );
+
+    const drSuggestions = getSuggestedDRStrategy(
+      drStrategyInputServices,
+      drStrategyDeps,
+      praInput.maxRtoHours,
+      praInput.maxRpoMinutes,
+      praInput.criticality
+    );
+
     const report = {
       meta: {
         tenantId,
@@ -563,6 +594,16 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
       praOptions: {
         input: praInput,
         recommendations: praRecs,
+        drStrategies: {
+          scenarios: DR_SCENARIOS,
+          suggestions: drSuggestions.map((rec) => ({
+            id: rec.scenario.id,
+            label: rec.scenario.label,
+            score: rec.score,
+            rationale: rec.rationale,
+            summary: summarizeScenarioForTable(rec),
+          })),
+        },
       },
     };
 
