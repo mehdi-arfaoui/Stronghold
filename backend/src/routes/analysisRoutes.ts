@@ -12,6 +12,12 @@ import {
   MissingExtractedTextError,
   getOrCreateExtractedFacts,
 } from "../services/extractedFactService";
+import {
+  buildRagPrompt,
+  draftAnswerFromContext,
+  recommendScenariosWithRag,
+  retrieveRagContext,
+} from "../ai/ragService";
 
 const router = Router();
 
@@ -118,6 +124,45 @@ function buildInfraFindings(infraList: any[]) {
 
   return findings;
 }
+
+/* ========= Service RAG simple ========= */
+
+router.post("/rag-query", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { question, documentIds, maxChunks, maxFacts } = req.body || {};
+    if (!question || typeof question !== "string" || question.trim().length < 4) {
+      return res.status(400).json({ error: "Question manquante ou trop courte" });
+    }
+
+    const ragResult = await retrieveRagContext({
+      tenantId,
+      question,
+      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
+      maxChunks: typeof maxChunks === "number" ? maxChunks : undefined,
+      maxFacts: typeof maxFacts === "number" ? maxFacts : undefined,
+    });
+
+    const prompt = buildRagPrompt({ question, context: ragResult.context });
+    const answerHint = draftAnswerFromContext(question, ragResult.context);
+
+    return res.json({
+      question: question.trim(),
+      context: ragResult.context,
+      prompt: prompt.prompt,
+      promptSize: prompt.totalChars,
+      draftAnswer: answerHint,
+      usedDocumentIds: ragResult.usedDocumentIds,
+    });
+  } catch (error) {
+    console.error("Error in /analysis/rag-query:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 /* ========= 1. Analyse simple applicative ========= */
 
@@ -489,6 +534,33 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
       praInput.criticality
     );
 
+    const ragQuestion =
+      tenant?.name && tenant.name.length > 0
+        ? `Synthèse PRA/PCA pour ${tenant.name} (tenant ${tenantId})`
+        : `Synthèse PRA/PCA pour le tenant ${tenantId}`;
+
+    const ragContextResult = await retrieveRagContext({
+      tenantId,
+      question: ragQuestion,
+      maxChunks: 4,
+      maxFacts: 6,
+    });
+
+    const ragPrompt = buildRagPrompt({
+      question: `${ragQuestion} avec rappel des risques et services prioritaires.`,
+      context: ragContextResult.context,
+      maxTotalLength: 3800,
+    });
+
+    const ragScenarioRecs = await recommendScenariosWithRag({
+      tenantId,
+      question: ragQuestion,
+      services: drStrategyInputServices,
+      scenarios,
+      context: ragContextResult.context,
+      maxResults: 5,
+    });
+
     const report = {
       meta: {
         tenantId,
@@ -604,6 +676,13 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
             summary: summarizeScenarioForTable(rec),
           })),
         },
+      },
+      ragSupport: {
+        question: ragQuestion,
+        prompt: ragPrompt.prompt,
+        promptSize: ragPrompt.totalChars,
+        context: ragContextResult.context,
+        scenarioRecommendations: ragScenarioRecs,
       },
     };
 

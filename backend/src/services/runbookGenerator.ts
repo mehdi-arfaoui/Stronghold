@@ -3,6 +3,7 @@ import path from "path";
 import prisma from "../prismaClient";
 import { recommendPraOptions } from "../analysis/praRecommender";
 import * as crypto from "crypto";
+import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService";
 
 export interface RunbookGenerationOptions {
   scenarioId?: string | null;
@@ -130,6 +131,32 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     })
     .join("\n");
 
+  const ragQuestion = scenario
+    ? `Préparer un runbook PRA/PCA pour le scénario ${scenario.name} (${scenario.type})`
+    : "Préparer un runbook PRA/PCA multi-services pour ce tenant";
+
+  const ragContext = await retrieveRagContext({
+    tenantId,
+    question: ragQuestion,
+    maxChunks: 3,
+    maxFacts: 5,
+  });
+
+  const ragPrompt = buildRagPrompt({
+    question: `${ragQuestion}. Utilise le contexte pour prioriser les actions.`,
+    context: ragContext.context,
+    maxTotalLength: 3600,
+  });
+
+  const ragScenarioRecommendations = await recommendScenariosWithRag({
+    tenantId,
+    question: ragQuestion,
+    services,
+    scenarios: scenario ? [scenario as any] : undefined,
+    context: ragContext.context,
+    maxResults: 5,
+  });
+
   const markdown = [
     `# ${options.title || "Runbook PRA/PCA"}`,
     ``,
@@ -209,5 +236,8 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     markdown,
     pdfPath: runbookRecord.pdfPath,
     markdownPath: runbookRecord.markdownPath,
+    ragContext: ragContext.context,
+    llmPrompt: ragPrompt.prompt,
+    ragScenarioRecommendations,
   };
 }
