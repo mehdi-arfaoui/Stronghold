@@ -37,9 +37,47 @@ services:
     ports:
       - "8000:8000"
 
-  # backend et frontend seront ajoutés plus tard
-  # backend:
-  # frontend:
+  backend:
+    image: node:20
+    container_name: pra_backend
+    working_dir: /app
+    command: sh -c "npm install && npx prisma migrate deploy && node prisma/seed.cjs && npm run dev"
+    volumes:
+      - ./backend:/app
+    environment:
+      PORT: 4000
+      DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
+      CHROMADB_URL: http://chroma:8000
+      CHROMADB_COLLECTION: pra-documents
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: change_me_minio
+      S3_BUCKET_PREFIX: stronghold-docs
+      S3_FORCE_PATH_STYLE: "true"
+      S3_SIGNED_URL_TTL_SECONDS: 900
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+      - minio
+      - chroma
+
+  frontend:
+    image: node:20
+    container_name: pra_frontend
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host --port 3000"
+    volumes:
+      - ./frontend:/app
+    environment:
+      VITE_BACKEND_URL: http://backend:4000
+      VITE_API_URL: http://backend:4000
+      VITE_API_KEY: dev-key
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:
