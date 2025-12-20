@@ -189,13 +189,18 @@ model Document {
   mimeType     String
   size         Int
   storagePath  String   // chemin relatif/absolu sur le serveur
+  fileHash     String?
 
   docType      String?  // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
   description  String?
   detectedDocType String?
   detectedMetadata String? // JSON stringified metadata for heuristiques
-  textHash     String? @unique
+  textHash     String?
   vectorizedAt DateTime?
+  textExtractedAt DateTime?
+  ingestionStatus String @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
+  ingestionQueuedAt DateTime?
+  ingestionError String?
 
   // Extraction de texte
   extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
@@ -206,6 +211,9 @@ model Document {
   updatedAt DateTime @updatedAt
 
   extractedFacts ExtractedFact[]
+
+  @@unique([tenantId, textHash])
+  @@unique([tenantId, fileHash])
 }
 
 model BackupStrategy {

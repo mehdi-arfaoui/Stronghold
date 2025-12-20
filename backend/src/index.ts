@@ -7,11 +7,12 @@ import serviceRoutes from "./routes/serviceRoutes";
 import graphRoutes from "./routes/graphRoutes";
 import analysisRoutes from "./routes/analysisRoutes";
 import infraRoutes from "./routes/infraRoutes";
-import { tenantMiddleware, TenantRequest } from "./middleware/tenantMiddleware";
+import { tenantMiddleware } from "./middleware/tenantMiddleware";
 import scenarioRoutes from "./routes/scenarioRoutes";
 import documentRoutes from "./routes/documentRoutes";
 import continuityRoutes from "./routes/continuityRoutes";
 import runbookRoutes from "./routes/runbookRoutes";
+import webhookRoutes from "./routes/webhookRoutes";
 
 dotenv.config();
 
@@ -37,6 +38,7 @@ app.use("/scenarios", scenarioRoutes);
 app.use("/documents", documentRoutes);
 app.use("/continuity", continuityRoutes);
 app.use("/runbooks", runbookRoutes);
+app.use("/webhooks", webhookRoutes);
 
 
 const PORT = process.env.PORT || 4000;

@@ -2,9 +2,10 @@ import { Router } from "express";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import * as crypto from "crypto";
 import prisma from "../prismaClient";
 import { TenantRequest } from "../middleware/tenantMiddleware";
-import { ingestDocumentText } from "../services/documentIngestionService";
+import { enqueueDocumentIngestion } from "../services/documentIngestionService";
 
 const router = Router();
 
@@ -30,6 +31,17 @@ const storage = multer.diskStorage({
 });
 
 const upload = multer({ storage });
+
+async function computeFileHash(filePath: string): Promise<string> {
+  const hash = crypto.createHash("sha256");
+  const stream = fs.createReadStream(filePath);
+
+  return new Promise((resolve, reject) => {
+    stream.on("data", (data) => hash.update(data));
+    stream.on("end", () => resolve(hash.digest("hex")));
+    stream.on("error", reject);
+  });
+}
 
 /**
  * POST /documents
@@ -57,6 +69,18 @@ router.post(
       const { docType, description } = req.body || {};
       const file = req.file;
 
+      const fileHash = await computeFileHash(file.path);
+      const duplicate = await prisma.document.findFirst({
+        where: { tenantId, fileHash },
+      });
+      if (duplicate) {
+        await fs.promises.unlink(file.path).catch(() => undefined);
+        return res.status(409).json({
+          error: "Document déjà présent pour ce tenant (hash identique)",
+          existingDocumentId: duplicate.id,
+        });
+      }
+
       const doc = await prisma.document.create({
         data: {
           tenantId,
@@ -67,6 +91,8 @@ router.post(
           storagePath: path.relative(process.cwd(), file.path),
           docType: docType ? String(docType).toUpperCase() : null,
           description: description ? String(description).trim() : null,
+          fileHash,
+          ingestionStatus: "FILE_STORED",
         },
       });
 
@@ -112,7 +138,7 @@ router.post("/:id/extract", async (req: TenantRequest, res) => {
 
     const docId = req.params.id;
 
-    const updated = await ingestDocumentText(docId, tenantId);
+    const updated = await enqueueDocumentIngestion(docId, tenantId);
     return res.json(updated);
   } catch (error: any) {
     console.error("Error in POST /documents/:id/extract:", error);
@@ -142,7 +168,7 @@ router.post("/extract-all-pending", async (req: TenantRequest, res) => {
 
     const results = [];
     for (const d of pendingDocs) {
-      const updated = await ingestDocumentText(d.id, tenantId);
+      const updated = await enqueueDocumentIngestion(d.id, tenantId);
       results.push(updated);
     }
 
@@ -159,5 +185,3 @@ router.post("/extract-all-pending", async (req: TenantRequest, res) => {
 });
 
 export default router;
-
-

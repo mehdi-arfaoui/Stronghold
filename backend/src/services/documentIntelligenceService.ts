@@ -34,8 +34,132 @@ export interface DocumentChunk {
   metadata: Record<string, unknown>;
 }
 
+export interface MetadataMapping {
+  services: string[];
+  dependencies: Array<{ from?: string; to: string; targetIsInfra: boolean }>;
+  infra: Array<{ name: string; type: string; provider?: string }>;
+}
+
 function scoreKeywords(content: string, keywords: RegExp[]): number {
   return keywords.reduce((acc, regex) => (regex.test(content) ? acc + 1 : acc), 0);
+}
+
+function normalizeEntityLabel(value: string): string {
+  return (value || "").replace(/\s+/g, " ").trim();
+}
+
+export function parseDependencyExpression(raw: string): { from?: string; to: string } | null {
+  if (!raw || raw.trim().length === 0) return null;
+  const cleaned = normalizeEntityLabel(raw);
+
+  const arrowMatch = cleaned.split(/(?:->|=>|→|>)/);
+  if (arrowMatch.length >= 2) {
+    const from = normalizeEntityLabel(arrowMatch[0] || "");
+    const to = normalizeEntityLabel(arrowMatch.slice(1).join("->"));
+    if (to) {
+      return from ? { from, to } : { to };
+    }
+  }
+
+  const dependsMatch = cleaned.match(/(.+?)\s+(?:d[ée]pend(?:s)? de|depends on)\s+(.+)/i);
+  if (dependsMatch?.[2]) {
+    const from = normalizeEntityLabel(dependsMatch[1] || "");
+    const to = normalizeEntityLabel(dependsMatch[2]);
+    return from ? { from, to } : { to };
+  }
+
+  if (cleaned.includes(":")) {
+    const [lhs, rhs] = cleaned.split(/:/, 2);
+    const to = normalizeEntityLabel(rhs || "");
+    if (to) {
+      const from = normalizeEntityLabel(lhs || "");
+      return from ? { from, to } : { to };
+    }
+  }
+
+  return { to: cleaned };
+}
+
+const INFRA_HINTS: Array<{ regex: RegExp; type: string; provider?: string }> = [
+  { regex: /\b(postgres(?:ql)?|mysql|mariadb|oracle|sql\s*server)\b/i, type: "DATABASE" },
+  { regex: /\b(redis|cache|memcached)\b/i, type: "CACHE" },
+  { regex: /\b(kafka|rabbitmq|sqs|pubsub|activemq|mq)\b/i, type: "MESSAGE_BUS" },
+  { regex: /\b(kubernetes|k8s|eks|aks|gke|openshift)\b/i, type: "CONTAINER_ORCHESTRATION" },
+  { regex: /\b(nginx|haproxy|load balancer|reverse proxy|ingress)\b/i, type: "NETWORK" },
+  { regex: /\b(vpn|firewall|waf|ids|ips)\b/i, type: "SECURITY" },
+  { regex: /\b(storage|bucket|s3|blob|gcs|nas|san)\b/i, type: "STORAGE" },
+  { regex: /\b(aws|ec2|lambda|rds|aurora)\b/i, type: "CLOUD", provider: "AWS" },
+  { regex: /\b(azure|vmss|aks|cosmos|blob)\b/i, type: "CLOUD", provider: "AZURE" },
+  { regex: /\b(gcp|gce|gke|cloud run|spanner)\b/i, type: "CLOUD", provider: "GCP" },
+  { regex: /\b(vm|server|instance|bare[- ]metal)\b/i, type: "COMPUTE" },
+];
+
+export function inferInfraComponent(label: string): { name: string; type: string; provider?: string } | null {
+  const normalized = normalizeEntityLabel(label);
+  if (!normalized) return null;
+
+  for (const hint of INFRA_HINTS) {
+    if (hint.regex.test(normalized)) {
+      const result: { name: string; type: string; provider?: string } = {
+        name: normalized,
+        type: hint.type,
+      };
+      if (hint.provider) {
+        result.provider = hint.provider;
+      }
+      return result;
+    }
+  }
+
+  return null;
+}
+
+export function deriveMetadataMappings(metadata: DetectedMetadata): MetadataMapping {
+  const serviceMap = new Map<string, string>();
+  const infraMap = new Map<string, { name: string; type: string; provider?: string }>();
+  const dependencies: Array<{ from?: string; to: string; targetIsInfra: boolean }> = [];
+
+  (metadata.services || []).forEach((svc) => {
+    const normalized = normalizeEntityLabel(svc);
+    if (normalized) {
+      serviceMap.set(normalized.toLowerCase(), normalized);
+    }
+  });
+
+  for (const rawDep of metadata.dependencies || []) {
+    const parsed = parseDependencyExpression(rawDep);
+    if (!parsed?.to) continue;
+
+    const targetInfra = inferInfraComponent(parsed.to);
+    const normalizedTo = normalizeEntityLabel(parsed.to);
+    const normalizedFrom = parsed.from ? normalizeEntityLabel(parsed.from) : null;
+
+    if (normalizedFrom && normalizedFrom.length > 0) {
+      serviceMap.set(normalizedFrom.toLowerCase(), normalizedFrom);
+    }
+    if (!targetInfra && normalizedTo) {
+      serviceMap.set(normalizedTo.toLowerCase(), normalizedTo);
+    }
+    if (targetInfra) {
+      infraMap.set(targetInfra.name.toLowerCase(), targetInfra);
+    }
+
+    const dependencyBase: { from?: string; to: string; targetIsInfra: boolean } = {
+      to: targetInfra ? targetInfra.name : normalizedTo,
+      targetIsInfra: Boolean(targetInfra),
+    };
+    if (normalizedFrom) {
+      dependencyBase.from = normalizedFrom;
+    }
+
+    dependencies.push(dependencyBase);
+  }
+
+  return {
+    services: Array.from(serviceMap.values()),
+    dependencies,
+    infra: Array.from(infraMap.values()),
+  };
 }
 
 export function classifyDocumentType(
