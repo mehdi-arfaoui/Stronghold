@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
@@ -87,7 +86,7 @@ router.get("/", async (req: TenantRequest, res) => {
  *   rtoHours, rpoMinutes, mtpdHours, notes?
  * }
  */
-router.post("/", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
+router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -183,7 +182,7 @@ router.post("/", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) 
  */
 router.post(
   "/:id/dependencies",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;

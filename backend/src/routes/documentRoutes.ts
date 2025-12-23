@@ -3,7 +3,6 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import * as crypto from "crypto";
-import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService";
@@ -50,7 +49,7 @@ function computeRetentionDate(days: number): Date | null {
  */
 router.post(
   "/",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   upload.single("file"),
   async (req: TenantRequest, res) => {
     try {
@@ -165,7 +164,7 @@ router.get("/", async (req: TenantRequest, res) => {
 
 
 
-router.post("/:id/extract", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
+router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -188,7 +187,7 @@ router.post("/:id/extract", requireRole(ApiRole.OPERATOR), async (req: TenantReq
  * POST /documents/extract-all-pending
  * Parcourt tous les documents PENDING du tenant et tente l'extraction.
  */
-router.post("/extract-all-pending", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
+router.post("/extract-all-pending", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
