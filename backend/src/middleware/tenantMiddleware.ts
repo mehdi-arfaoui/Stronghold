@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
-import { ApiRole } from "@prisma/client";
+import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 
 export interface TenantRequest extends Request {
@@ -55,7 +55,7 @@ export const tenantMiddleware = async (
       return res.status(403).json({ error: "Invalid API key" });
     }
 
-    const apiRole = existingApiKey?.role ?? ApiRole.ADMIN;
+    const apiRole: ApiRole = existingApiKey?.role ?? "ADMIN";
 
     req.tenantId = resolvedTenant.id;
     req.apiKeyId = existingApiKey?.id;
@@ -98,9 +98,9 @@ export const tenantMiddleware = async (
 };
 
 const ROLE_RANK: Record<ApiRole, number> = {
-  [ApiRole.READER]: 1,
-  [ApiRole.OPERATOR]: 2,
-  [ApiRole.ADMIN]: 3,
+  READER: 1,
+  OPERATOR: 2,
+  ADMIN: 3,
 };
 
 function hasSufficientRole(current: ApiRole | undefined, required: ApiRole): boolean {
