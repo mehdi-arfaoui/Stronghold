@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import ReactECharts from "echarts-for-react";
-import type { DependencyRisk, GraphApiResponse, GraphEdge, GraphNode } from "../types";
+import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
 type GraphView = "landing" | "applications" | "mixed" | "bubbles";
@@ -76,7 +76,6 @@ function filterEdges(edges: GraphEdge[], nodes: GraphNode[]) {
 
 export function GraphSection({ configVersion }: GraphSectionProps) {
   const [graph, setGraph] = useState<GraphApiResponse | null>(null);
-  const [risks, setRisks] = useState<DependencyRisk[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<GraphView>("landing");
@@ -85,12 +84,8 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
   useEffect(() => {
     const fetchGraph = async () => {
       try {
-        const [graphData, riskData] = await Promise.all([
-          apiFetch("/graph"),
-          apiFetch("/analysis/dependency-risks"),
-        ]);
-        setGraph(graphData);
-        setRisks(riskData);
+        const data: GraphApiResponse = await apiFetch("/graph");
+        setGraph(data);
       } catch (err: any) {
         setError(err.message || "Erreur inconnue");
       } finally {
@@ -121,11 +116,6 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
       filteredNodes
     );
   }, [graph, filteredNodes]);
-
-  const filteredRisks = useMemo(() => {
-    const nodeIds = new Set(filteredNodes.map((n) => n.id));
-    return risks.filter((risk) => nodeIds.has(risk.fromServiceId) && nodeIds.has(risk.toServiceId));
-  }, [risks, filteredNodes]);
 
   const bubbleOptions = useMemo(() => {
     const categories = graph?.views?.categories ?? graph?.categories ?? [];
@@ -232,49 +222,6 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
             linkLabel={(link: any) => link.type || "dépendance"}
             nodeCanvasObject={(node: any, ctx, globalScale) => shapeNode(node as GraphNode, ctx, globalScale)}
           />
-        )}
-      </div>
-      <div className="card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Risques</p>
-            <h3>Risques & recommandations par dépendance</h3>
-          </div>
-          <span className="pill subtle">{filteredRisks.length}</span>
-        </div>
-        {filteredRisks.length === 0 ? (
-          <p className="empty-state">Aucun risque listé pour les dépendances filtrées.</p>
-        ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Dépendance</th>
-                  <th>Type</th>
-                  <th>Niveau</th>
-                  <th>Risques</th>
-                  <th>Solutions recommandées</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRisks.map((risk) => (
-                  <tr key={risk.id}>
-                    <td>
-                      {risk.fromServiceName} → {risk.toServiceName}
-                    </td>
-                    <td>{risk.dependencyType || "-"}</td>
-                    <td>
-                      <span className={`pill ${risk.riskLevel === "high" ? "error" : risk.riskLevel === "medium" ? "warning" : "subtle"}`}>
-                        {risk.riskLevel}
-                      </span>
-                    </td>
-                    <td className="muted small">{risk.risks.join(" • ")}</td>
-                    <td className="muted small">{risk.recommendations.join(" • ")}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
         )}
       </div>
       <div className="muted small">

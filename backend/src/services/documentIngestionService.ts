@@ -549,8 +549,6 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         tenantId,
         originalName: doc.originalName,
         normalizedDocType: (doc.docType || classification.type || "").toString().toUpperCase(),
-        detectedServices: mergedMetadata?.services ?? [],
-        detectedDependencies: mergedMetadata?.dependencies ?? [],
       } as Record<string, unknown>;
       chunks = buildChunks(text, baseMetadata);
     }

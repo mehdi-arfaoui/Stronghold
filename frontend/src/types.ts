@@ -91,18 +91,6 @@ export type GraphApiResponse = {
   }>;
 };
 
-export type DependencyRisk = {
-  id: string;
-  fromServiceId: string;
-  toServiceId: string;
-  fromServiceName: string;
-  toServiceName: string;
-  dependencyType: string | null;
-  riskLevel: "low" | "medium" | "high";
-  risks: string[];
-  recommendations: string[];
-};
-
 export type InfraComponent = {
   id: string;
   name: string;

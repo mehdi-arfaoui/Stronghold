@@ -279,31 +279,6 @@ router.get("/pra-dashboard", requireRole(ApiRole.READER), async (req: TenantRequ
   }
 });
 
-router.get("/dependency-risks", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
-  try {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
-      return res.status(500).json({ error: "Tenant not resolved" });
-    }
-
-    const services = await prisma.service.findMany({
-      where: { tenantId },
-      include: { continuity: true },
-    });
-
-    const dependencies = await prisma.serviceDependency.findMany({
-      where: { tenantId },
-      include: { toService: { include: { continuity: true } } },
-    });
-
-    const risks = buildDependencyRisks(services, dependencies);
-    return res.json(risks);
-  } catch (error) {
-    console.error("Error in /analysis/dependency-risks:", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 /* ========= Service RAG simple ========= */
 
 router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
