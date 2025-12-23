@@ -24,10 +24,14 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
+    "adm-zip": "^0.5.15",
     "multer": "^2.0.2",
+    "mammoth": "^1.7.2",
     "pdf-parse": "^2.4.5",
+    "pdf-lib": "^1.17.1",
     "prisma": "^5.21.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "docx": "^8.5.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.5",
