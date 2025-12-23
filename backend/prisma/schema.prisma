@@ -32,7 +32,9 @@ model Tenant {
   dependencyCycleLinks DependencyCycleService[]
   runbooks          Runbook[]
   auditLogs        AuditLog[]
+  
 
+  RunbookTemplate RunbookTemplate[]
 }
 
 model Service {
@@ -51,8 +53,8 @@ model Service {
   domain String?
 
   continuity       ServiceContinuity?
-  dependenciesFrom ServiceDependency[] @relation("ServiceDependenciesFrom")
-  dependenciesTo   ServiceDependency[] @relation("ServiceDependenciesTo")
+  dependenciesFrom ServiceDependency[]      @relation("ServiceDependenciesFrom")
+  dependenciesTo   ServiceDependency[]      @relation("ServiceDependenciesTo")
   infraLinks       ServiceInfraLink[]
   scenarioLinks    ScenarioService[]
   backupStrategies BackupStrategy[]
@@ -182,25 +184,25 @@ model ScenarioService {
 }
 
 model Document {
-  id           String   @id @default(cuid())
-  tenantId     String
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   originalName String
-  storedName   String   // nom de fichier sur disque
+  storedName   String // nom de fichier sur disque
   mimeType     String
   size         Int
-  storagePath  String   // chemin relatif/absolu sur le serveur
+  storagePath  String // chemin relatif/absolu sur le serveur
   fileHash     String?
 
-  docType      String?  // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
-  description  String?
-  detectedDocType String?
-  detectedMetadata String? // JSON stringified metadata for heuristiques
-  textHash     String?
-  vectorizedAt DateTime?
-  textExtractedAt DateTime?
-  ingestionStatus String @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
+  docType           String? // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
+  description       String?
+  detectedDocType   String?
+  detectedMetadata  String? // JSON stringified metadata for heuristiques
+  textHash          String?
+  vectorizedAt      DateTime?
+  textExtractedAt   DateTime?
+  ingestionStatus   String    @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
   ingestionQueuedAt DateTime?
   ingestionError String?
   retentionUntil DateTime?
@@ -248,13 +250,13 @@ model SecurityPolicy {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  name           String
-  policyType     String
-  classification String?
-  scope          String?
-  controls       String?
+  name                String
+  policyType          String
+  classification      String?
+  scope               String?
+  controls            String?
   reviewFrequencyDays Int?
-  owner          String?
+  owner               String?
 
   services SecurityPolicyService[]
 
@@ -297,8 +299,8 @@ model DependencyCycleService {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  cycleId  String
-  cycle    DependencyCycle @relation(fields: [cycleId], references: [id])
+  cycleId String
+  cycle   DependencyCycle @relation(fields: [cycleId], references: [id])
 
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id])
@@ -317,30 +319,54 @@ model Runbook {
   scenarioId String?
   scenario   Scenario? @relation(fields: [scenarioId], references: [id])
 
-  title     String
-  status    String @default("DRAFT")
-  summary   String?
-  markdownPath String?
-  pdfPath      String?
+  title                String
+  status               String           @default("DRAFT")
+  summary              String?
+  markdownPath         String?
+  pdfPath              String?
+  docxPath             String?
   generatedForServices String?
-  generatedAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  templateId           String?
+  template             RunbookTemplate? @relation(fields: [templateId], references: [id])
+  templateNameSnapshot String?
+  generatedAt          DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 }
 
+model RunbookTemplate {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
+  originalName String
+  storedName   String
+  mimeType     String
+  size         Int
+  storagePath  String
+  format       String
+  description  String?
+  fileHash     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  runbooks Runbook[]
+
+  @@unique([tenantId, fileHash])
+}
 
 model ExtractedFact {
-  id         String   @id @default(cuid())
-  tenantId   String
-  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   documentId String
   document   Document @relation(fields: [documentId], references: [id])
 
-  type       String   // ex: "PRA_PCA_FACT"
-  category   String   // SERVICE, INFRA, RISK, RTO_RPO, OTHER
+  type       String // ex: "PRA_PCA_FACT"
+  category   String // SERVICE, INFRA, RISK, RTO_RPO, OTHER
   label      String
-  data       String   // JSON string payload of extracted details
+  data       String // JSON string payload of extracted details
   source     String?
   confidence Float?
 
