@@ -4,8 +4,11 @@ import { MainLayout } from "./components/layout/MainLayout";
 import { TabNavigation } from "./components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
+import { DocumentsSection } from "./sections/DocumentsSection";
 import { GraphSection } from "./sections/GraphSection";
 import { LandingZoneSection } from "./sections/LandingZoneSection";
+import { RagSection } from "./sections/RagSection";
+import { RunbooksSection } from "./sections/RunbooksSection";
 import { ScenariosSection } from "./sections/ScenariosSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import type { ApiConfig, TabDefinition, TabId } from "./types";
@@ -13,6 +16,9 @@ import { loadApiConfig } from "./utils/api";
 
 const tabs: TabDefinition[] = [
   { id: "services", label: "Services", description: "Catalogue et criticité" },
+  { id: "documents", label: "Documents", description: "Upload & extraction" },
+  { id: "rag", label: "Faits IA / RAG", description: "Questions & contexte" },
+  { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
   { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
   { id: "graph", label: "Graphe", description: "Dépendances" },
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
@@ -33,6 +39,12 @@ function App() {
     switch (activeTab) {
       case "services":
         return <ServicesSection configVersion={configVersion} />;
+      case "documents":
+        return <DocumentsSection configVersion={configVersion} />;
+      case "rag":
+        return <RagSection configVersion={configVersion} />;
+      case "runbooks":
+        return <RunbooksSection configVersion={configVersion} />;
       case "analysis":
         return <AnalysisSection configVersion={configVersion} />;
       case "graph":
