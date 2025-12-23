@@ -1,6 +1,6 @@
 import { Router } from "express";
 import crypto from "crypto";
-import { ApiRole } from "@prisma/client";
+import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
@@ -14,9 +14,9 @@ function generateApiKey(): { raw: string; hash: string } {
 
 function parseRole(input: any): ApiRole {
   const normalized = String(input || "").toUpperCase();
-  if (normalized === ApiRole.ADMIN) return ApiRole.ADMIN;
-  if (normalized === ApiRole.READER) return ApiRole.READER;
-  return ApiRole.OPERATOR;
+  if (normalized === "ADMIN") return "ADMIN";
+  if (normalized === "READER") return "READER";
+  return "OPERATOR";
 }
 
 function computeExpiry(days?: any): Date | null {
@@ -29,7 +29,7 @@ function computeExpiry(days?: any): Date | null {
 
 router.get(
   "/api-keys",
-  requireRole(ApiRole.ADMIN),
+  requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
       const tenantId = req.tenantId;
@@ -63,7 +63,7 @@ router.get(
 
 router.post(
   "/api-keys",
-  requireRole(ApiRole.ADMIN),
+  requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
       const tenantId = req.tenantId;
@@ -102,7 +102,7 @@ router.post(
 
 router.post(
   "/api-keys/rotate",
-  requireRole(ApiRole.ADMIN),
+  requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
       const tenantId = req.tenantId;
@@ -113,7 +113,7 @@ router.post(
       const { label, expiresInDays, role } = req.body || {};
       const { raw, hash } = generateApiKey();
       const expiresAt = computeExpiry(expiresInDays);
-      const parsedRole = parseRole(role || req.apiRole || ApiRole.OPERATOR);
+      const parsedRole = parseRole(role || req.apiRole || "OPERATOR");
 
       const created = await prisma.apiKey.create({
         data: {
