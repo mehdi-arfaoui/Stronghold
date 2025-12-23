@@ -31,6 +31,8 @@ export type RagQueryOptions = {
   tenantId: string;
   question: string;
   documentIds?: string[] | null;
+  documentTypes?: string[] | null;
+  serviceFilter?: string | null;
   maxChunks?: number;
   maxFacts?: number;
   prismaClient?: PrismaClientOrTx;
@@ -143,8 +145,13 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
   const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
   const maxFacts = options.maxFacts ?? DEFAULT_MAX_FACTS;
 
-  const questionTokens = buildTokenSet(options.question);
-  const docFilter = options.documentIds && options.documentIds.length > 0 ? { id: { in: options.documentIds } } : {};
+  const questionTokens = buildTokenSet(`${options.question} ${options.serviceFilter || ""}`);
+  const docFilter: Prisma.DocumentWhereInput = {
+    ...(options.documentIds && options.documentIds.length > 0 ? { id: { in: options.documentIds } } : {}),
+    ...(options.documentTypes && options.documentTypes.length > 0
+      ? { docType: { in: options.documentTypes.map((d) => d.toUpperCase()) } }
+      : {}),
+  };
 
   const [documents, facts] = await Promise.all([
     prismaClient.document.findMany({
@@ -185,10 +192,15 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     }
   }
 
-  const factCandidates = facts.map(buildFactPreview).map((fact) => {
-    const basis = `${fact.label} ${fact.dataPreview} ${fact.category}`;
-    return { ...fact, score: similarityScore(questionTokens, basis) };
-  });
+  const allowedDocIds = new Set(documents.map((d) => d.id));
+
+  const factCandidates = facts
+    .filter((fact) => allowedDocIds.has(fact.documentId))
+    .map(buildFactPreview)
+    .map((fact) => {
+      const basis = `${fact.label} ${fact.dataPreview} ${fact.category}`;
+      return { ...fact, score: similarityScore(questionTokens, basis) };
+    });
 
   const sortedChunks = chunkCandidates.sort((a, b) => b.score - a.score).slice(0, maxChunks);
   const sortedFacts = factCandidates.sort((a, b) => b.score - a.score).slice(0, maxFacts);
@@ -242,7 +254,12 @@ export function buildRagPrompt(params: {
   maxTotalLength?: number;
 }): { prompt: string; totalChars: number } {
   const maxTotal = params.maxTotalLength ?? PROMPT_MAX_TOTAL;
-  const header = `Tu es un assistant PRA/PCA. Réponds en français de manière concise et factuelle.\nQuestion: ${params.question}`;
+  const header =
+    `Tu es un assistant PRA/PCA. Réponds en français de manière concise et factuelle.\n` +
+    `Utilise UNIQUEMENT le contexte fourni (chunks + faits) et cite l'origine sous la forme [doc=<id>].\n` +
+    `Question: ${params.question}\n` +
+    `Inclure: (1) résumé des dépendances clés, (2) stratégies DR adaptées (Backup & Restore, Pilot Light, Warm Standby, Multi-AZ, Active/Active, Active/Passive, CDP), ` +
+    `(3) estimation RTO/RPO, coût et complexité, (4) mini-runbook étape par étape.`;
 
   const chunkLines = params.context.chunks
     .map(
@@ -263,11 +280,11 @@ export function buildRagPrompt(params: {
 
   const parts = [
     header,
-    "Contexte textuel:",
+    "Contexte textuel (chunks):",
     chunkLines || "- Aucun chunk sélectionné.",
     "Faits extraits:",
     factLines || "- Aucun fait structuré disponible.",
-    "Règles: ignore les documents hors tenant, ne divulgue pas de données personnelles.",
+    "Règles: ignore les documents hors tenant, ne divulgue pas de données personnelles, ne fabrique pas de faits.",
   ];
 
   let prompt = "";
@@ -354,4 +371,96 @@ export async function recommendScenariosWithRag(params: {
   });
 
   return candidates.sort((a, b) => b.score - a.score).slice(0, maxResults);
+}
+
+export async function generatePraReport(params: {
+  tenantId: string;
+  question: string;
+  documentIds?: string[];
+  documentTypes?: string[];
+  serviceFilter?: string | null;
+  maxChunks?: number;
+  maxFacts?: number;
+  prismaClient?: PrismaClientOrTx;
+}) {
+  const contextResult = await retrieveRagContext({
+    tenantId: params.tenantId,
+    question: params.question,
+    documentIds: params.documentIds,
+    documentTypes: params.documentTypes,
+    serviceFilter: params.serviceFilter,
+    maxChunks: params.maxChunks ?? 6,
+    maxFacts: params.maxFacts ?? 8,
+    prismaClient: params.prismaClient,
+  });
+
+  const prompt = buildRagPrompt({
+    question: params.question,
+    context: contextResult.context,
+  });
+
+  const scenarioRecommendations = await recommendScenariosWithRag({
+    tenantId: params.tenantId,
+    question: params.question,
+    context: contextResult.context,
+    maxResults: 6,
+    prismaClient: params.prismaClient,
+  });
+
+  return {
+    prompt: prompt.prompt,
+    promptSize: prompt.totalChars,
+    context: contextResult.context,
+    draftAnswer: draftAnswerFromContext(params.question, contextResult.context),
+    scenarioRecommendations,
+    usedDocumentIds: contextResult.usedDocumentIds,
+  };
+}
+
+export async function generateRunbookDraft(params: {
+  tenantId: string;
+  question: string;
+  documentIds?: string[];
+  documentTypes?: string[];
+  serviceFilter?: string | null;
+}) {
+  const baseQuestion =
+    params.question ||
+    "Génère un runbook PRA détaillé incluant dépendances, sauvegardes et étapes de reprise.";
+
+  const report = await generatePraReport({
+    tenantId: params.tenantId,
+    question: baseQuestion,
+    documentIds: params.documentIds,
+    documentTypes: params.documentTypes,
+    serviceFilter: params.serviceFilter,
+    maxChunks: 8,
+    maxFacts: 10,
+  });
+
+  const sources = [
+    ...new Set(report.context.chunks.map((c) => c.documentName)),
+    ...report.context.extractedFacts.map((f) => f.documentId),
+  ];
+
+  return {
+    ...report,
+    sources,
+    draftRunbook: [
+      "# Runbook PRA (brouillon)",
+      `Question utilisateur: ${baseQuestion}`,
+      "## Services et dépendances clés",
+      report.context.extractedFacts.slice(0, 5).map((f) => `- ${f.label} (${f.category})`).join("\n") ||
+        "- Aucun fait structuré détecté.",
+      "## Étapes de reprise (esquisse)",
+      "- Déclencher la cellule de crise et confirmer le périmètre du sinistre.",
+      "- Activer la stratégie DR recommandée (Pilot Light / Warm Standby / Multi-AZ) selon les contraintes RTO/RPO.",
+      "- Restaurer les sauvegardes critiques ou promouvoir les réplicas.",
+      "- Vérifier l'application et les dépendances (DB, messaging, réseau).",
+      "- Communiquer la reprise et clôturer avec un post-mortem.",
+      "",
+      "## Sources utilisées",
+      sources.map((s) => `- ${s || "document inconnu"}`).join("\n"),
+    ].join("\n"),
+  };
 }
