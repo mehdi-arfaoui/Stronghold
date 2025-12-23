@@ -4,6 +4,7 @@ import { MainLayout } from "./components/layout/MainLayout";
 import { TabNavigation } from "./components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
+import { ArchitectureSection } from "./sections/ArchitectureSection";
 import { DocumentsSection } from "./sections/DocumentsSection";
 import { GraphSection } from "./sections/GraphSection";
 import { LandingZoneSection } from "./sections/LandingZoneSection";
@@ -21,6 +22,7 @@ const tabs: TabDefinition[] = [
   { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
   { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
   { id: "graph", label: "Graphe", description: "Dépendances" },
+  { id: "architecture", label: "Architecture", description: "Vue d'ensemble" },
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
   { id: "scenarios", label: "Scénarios", description: "Runbooks" },
 ];
@@ -49,6 +51,8 @@ function App() {
         return <AnalysisSection configVersion={configVersion} />;
       case "graph":
         return <GraphSection configVersion={configVersion} />;
+      case "architecture":
+        return <ArchitectureSection configVersion={configVersion} />;
       case "landing":
         return <LandingZoneSection configVersion={configVersion} />;
       case "scenarios":

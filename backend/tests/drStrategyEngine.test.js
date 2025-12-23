@@ -30,6 +30,8 @@ test("prioritizes aggressive strategies for critical workloads", () => {
   const recs = getSuggestedDRStrategy(sampleServices, sampleDeps, 2, 10, "critical");
   const top = recs[0];
   assert.ok(top.scenario.id === "active-active" || top.scenario.id === "warm-standby");
+  assert.ok(top.justification.length > 0);
+  assert.ok(["strong", "medium", "weak"].includes(top.matchLevel));
 });
 
 test("ranks backup & restore lower for strong dependencies", () => {
@@ -43,4 +45,11 @@ test("favors cost-effective options for low criticality", () => {
   const recs = getSuggestedDRStrategy(lowServices, [], 48, 600, "low");
   const top = recs[0];
   assert.equal(top.scenario.id, "backup-restore");
+});
+
+test("includes multi-az scenario for high criticality", () => {
+  const recs = getSuggestedDRStrategy(sampleServices, [], 3, 30, "high");
+  const multiAz = recs.find((r) => r.scenario.id === "multi-az-ha");
+  assert.ok(multiAz, "Multi-AZ scenario should be present");
+  assert.ok(multiAz.justification.toLowerCase().includes("multi"));
 });

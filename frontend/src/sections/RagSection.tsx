@@ -33,6 +33,8 @@ export function RagSection({ configVersion }: RagSectionProps) {
 
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
+  const [docTypeFilter, setDocTypeFilter] = useState("");
+  const [serviceFilter, setServiceFilter] = useState("");
   const [ragResult, setRagResult] = useState<RagResponse | null>(null);
   const [ragError, setRagError] = useState<string | null>(null);
   const [ragLoading, setRagLoading] = useState(false);
@@ -105,6 +107,13 @@ export function RagSection({ configVersion }: RagSectionProps) {
         body: JSON.stringify({
           question,
           documentIds: selectedDocIds.length > 0 ? selectedDocIds : undefined,
+          documentTypes: docTypeFilter
+            ? docTypeFilter
+                .split(",")
+                .map((v) => v.trim().toUpperCase())
+                .filter((v) => v.length > 0)
+            : undefined,
+          serviceFilter: serviceFilter || undefined,
         }),
       });
       setRagResult(response);
@@ -230,6 +239,26 @@ export function RagSection({ configVersion }: RagSectionProps) {
                 rows={3}
               />
             </label>
+            <div className="form-grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))" }}>
+              <label className="form-field">
+                <span>Filtrer par type de document</span>
+                <input
+                  type="text"
+                  value={docTypeFilter}
+                  onChange={(e) => setDocTypeFilter(e.target.value)}
+                  placeholder="BACKUP_POLICY,ARCHI"
+                />
+              </label>
+              <label className="form-field">
+                <span>Service ciblé (optionnel)</span>
+                <input
+                  type="text"
+                  value={serviceFilter}
+                  onChange={(e) => setServiceFilter(e.target.value)}
+                  placeholder="Nom de service"
+                />
+              </label>
+            </div>
             <div>
               <p className="muted small">Limiter le contexte aux documents sélectionnés :</p>
               <div className="service-selector" style={{ maxHeight: "180px", overflow: "auto" }}>

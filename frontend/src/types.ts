@@ -50,6 +50,13 @@ export type GraphNode = {
   id: string;
   label: string;
   type: string;
+  nodeKind?: "service" | "application";
+  category?: string;
+  businessPriority?: number | null;
+  domain?: string | null;
+  isLandingZone?: boolean;
+  dependsOnCount?: number;
+  usedByCount?: number;
   criticality: string;
   rtoHours: number | null;
   rpoMinutes: number | null;
@@ -61,11 +68,39 @@ export type GraphEdge = {
   from: string;
   to: string;
   type: string;
+  strength?: string;
 };
 
 export type GraphApiResponse = {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  views?: {
+    categories?: Array<{
+      category: string;
+      serviceCount: number;
+      averageCriticality: string;
+      dependencies: Array<{ target: string; count: number }>;
+    }>;
+  };
+  categories?: Array<{
+    category: string;
+    serviceCount?: number;
+    count?: number;
+    averageCriticality: string;
+    dependencies?: Array<{ target: string; count: number }>;
+  }>;
+};
+
+export type DependencyRisk = {
+  id: string;
+  fromServiceId: string;
+  toServiceId: string;
+  fromServiceName: string;
+  toServiceName: string;
+  dependencyType: string | null;
+  riskLevel: "low" | "medium" | "high";
+  risks: string[];
+  recommendations: string[];
 };
 
 export type InfraComponent = {
@@ -189,6 +224,67 @@ export type RagResponse = {
   usedDocumentIds: string[];
 };
 
+export type RagScenarioFront = {
+  scenarioId: string;
+  name: string;
+  reason: string[];
+  score: number;
+  matchedServices: string[];
+};
+
+export type PraRagReport = {
+  prompt: string;
+  promptSize: number;
+  context: RagContextFront;
+  draftAnswer: string;
+  scenarioRecommendations: RagScenarioFront[];
+  usedDocumentIds: string[];
+};
+
+export type DrRecommendationFront = {
+  scenario: {
+    id: string;
+    label: string;
+    description: string;
+    rtoRangeHours: [number, number];
+    rpoRangeMinutes: [number, number];
+    cost: string;
+    complexity: string;
+    suitableFor: string[];
+    notes: string;
+  };
+  score: number;
+  matchLevel: "strong" | "medium" | "weak";
+  rationale: string[];
+  justification: string;
+};
+
+export type PraDashboard = {
+  meta: {
+    tenantId: string;
+    targetRtoHours: number;
+    targetRpoMinutes: number;
+    globalCriticality: string;
+  };
+  warnings: AppWarning[];
+  infraFindings: InfraFinding[];
+  dr: {
+    recommendations: DrRecommendationFront[];
+    comparison: Array<{
+      id: string;
+      label: string;
+      rto: string;
+      rpo: string;
+      cost: string;
+      complexity: string;
+      description: string;
+      notes: string;
+    }>;
+  };
+  categories: Array<{ category: string; count: number; averageCriticality: string }>;
+  rag: PraRagReport;
+};
+
 export type RunbookFront = {
   id: string;
   scenarioId?: string | null;
@@ -205,6 +301,7 @@ export type TabId =
   | "services"
   | "analysis"
   | "graph"
+  | "architecture"
   | "landing"
   | "scenarios"
   | "documents"

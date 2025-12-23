@@ -8,6 +8,7 @@ import {
   getSuggestedDRStrategy,
   summarizeScenarioForTable,
 } from "../analysis/drStrategyEngine";
+import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
 import {
   DocumentNotFoundError,
   MissingExtractedTextError,
@@ -16,6 +17,8 @@ import {
 import {
   buildRagPrompt,
   draftAnswerFromContext,
+  generatePraReport,
+  generateRunbookDraft,
   recommendScenariosWithRag,
   retrieveRagContext,
 } from "../ai/ragService";
@@ -126,6 +129,181 @@ function buildInfraFindings(infraList: any[]) {
   return findings;
 }
 
+function normalizeCrit(value: string | null | undefined): "critical" | "high" | "medium" | "low" {
+  const v = (value || "").toLowerCase();
+  if (v === "critical") return "critical";
+  if (v === "high") return "high";
+  if (v === "medium") return "medium";
+  return "low";
+}
+
+function resolveCategory(domain: string | null, type: string | null): string {
+  const normalizedDomain = (domain || "").toUpperCase();
+  const normalizedType = (type || "").toUpperCase();
+
+  if (normalizedDomain.includes("NETWORK") || normalizedType.includes("NETWORK")) {
+    return "Network";
+  }
+  if (normalizedDomain.includes("SECURITY") || normalizedDomain.includes("GOV")) {
+    return "Foundation";
+  }
+  if (normalizedDomain.includes("DATA") || normalizedDomain.includes("DB")) {
+    return "Platform";
+  }
+  if (normalizedDomain.includes("IAC") || normalizedDomain.includes("PLATFORM")) {
+    return "Platform";
+  }
+  if (normalizedDomain.includes("APP")) {
+    return "Application";
+  }
+  return "Application";
+}
+
+router.get("/pra-dashboard", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const [services, infra] = await Promise.all([
+      prisma.service.findMany({
+        where: { tenantId },
+        include: {
+          continuity: true,
+          dependenciesFrom: {
+            include: { toService: { include: { continuity: true } } },
+          },
+          dependenciesTo: true,
+        },
+      }),
+      prisma.infraComponent.findMany({
+        where: { tenantId },
+        include: { services: { include: { service: true } } },
+      }),
+    ]);
+
+    const warnings = buildAppContinuityWarnings(services);
+    const infraFindings = buildInfraFindings(infra);
+
+    const drServices = services.map((s) => ({
+      id: s.id,
+      name: s.name,
+      type: s.type,
+      domain: s.domain,
+      criticality: s.criticality,
+      rtoHours: s.continuity?.rtoHours ?? undefined,
+      rpoMinutes: s.continuity?.rpoMinutes ?? undefined,
+    }));
+    const dependencies = services.flatMap((s) =>
+      s.dependenciesFrom.map((d) => ({
+        from: d.fromServiceId,
+        to: d.toServiceId,
+        type: d.dependencyType,
+      }))
+    );
+
+    const globalCriticality: "critical" | "high" | "medium" | "low" = (() => {
+      const critical = services.some((s) => normalizeCrit(s.criticality) === "critical");
+      if (critical) return "critical";
+      const high = services.some((s) => normalizeCrit(s.criticality) === "high");
+      if (high) return "high";
+      return "medium";
+    })();
+
+    const targetRtoHours =
+      services
+        .map((s) => s.continuity?.rtoHours)
+        .filter((v): v is number => v != null)
+        .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 2 : 8);
+    const targetRpoMinutes =
+      services
+        .map((s) => s.continuity?.rpoMinutes)
+        .filter((v): v is number => v != null)
+        .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 15 : 120);
+
+    const drRecommendations = getSuggestedDRStrategy(
+      drServices,
+      dependencies,
+      targetRtoHours,
+      targetRpoMinutes,
+      globalCriticality
+    );
+
+    const scenarioComparison = drRecommendations.map((rec) => summarizeScenarioForTable(rec));
+
+    const categories = services.reduce<Record<string, { count: number; scoreSum: number }>>((acc, s) => {
+      const category = resolveCategory(s.domain, s.type);
+      const crit = normalizeCrit(s.criticality);
+      if (!acc[category]) acc[category] = { count: 0, scoreSum: 0 };
+      acc[category].count += 1;
+      acc[category].scoreSum += crit === "critical" ? 4 : crit === "high" ? 3 : crit === "medium" ? 2 : 1;
+      return acc;
+    }, {});
+
+    const categoryView = Object.entries(categories).map(([category, stats]) => {
+      const average = stats.scoreSum / Math.max(1, stats.count);
+      const normalizedAverage =
+        average >= 3.5 ? "critical" : average >= 2.5 ? "high" : average >= 1.5 ? "medium" : "low";
+      return { category, count: stats.count, averageCriticality: normalizedAverage };
+    });
+
+    const ragQuestion =
+      req.query?.question && typeof req.query.question === "string"
+        ? (req.query.question as string)
+        : `Recommandations PRA pour ${tenantId}`;
+
+    const ragReport = await generatePraReport({
+      tenantId,
+      question: ragQuestion,
+      documentTypes: Array.isArray(req.query?.docTypes) ? (req.query.docTypes as string[]) : undefined,
+      serviceFilter: typeof req.query?.service === "string" ? (req.query.service as string) : null,
+      maxChunks: 6,
+      maxFacts: 8,
+    });
+
+    return res.json({
+      meta: { tenantId, targetRtoHours, targetRpoMinutes, globalCriticality },
+      warnings,
+      infraFindings,
+      dr: {
+        recommendations: drRecommendations,
+        comparison: scenarioComparison,
+      },
+      categories: categoryView,
+      rag: ragReport,
+    });
+  } catch (error) {
+    console.error("Error in /analysis/pra-dashboard:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/dependency-risks", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const services = await prisma.service.findMany({
+      where: { tenantId },
+      include: { continuity: true },
+    });
+
+    const dependencies = await prisma.serviceDependency.findMany({
+      where: { tenantId },
+      include: { toService: { include: { continuity: true } } },
+    });
+
+    const risks = buildDependencyRisks(services, dependencies);
+    return res.json(risks);
+  } catch (error) {
+    console.error("Error in /analysis/dependency-risks:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 /* ========= Service RAG simple ========= */
 
 router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
@@ -135,7 +313,7 @@ router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const { question, documentIds, maxChunks, maxFacts } = req.body || {};
+    const { question, documentIds, documentTypes, serviceFilter, maxChunks, maxFacts } = req.body || {};
     if (!question || typeof question !== "string" || question.trim().length < 4) {
       return res.status(400).json({ error: "Question manquante ou trop courte" });
     }
@@ -144,6 +322,8 @@ router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest
       tenantId,
       question,
       documentIds: Array.isArray(documentIds) ? documentIds : undefined,
+      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
       maxChunks: typeof maxChunks === "number" ? maxChunks : undefined,
       maxFacts: typeof maxFacts === "number" ? maxFacts : undefined,
     });
@@ -161,6 +341,58 @@ router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest
     });
   } catch (error) {
     console.error("Error in /analysis/rag-query:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/pra-rag-report", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { question, documentIds, documentTypes, serviceFilter } = req.body || {};
+    if (!question || typeof question !== "string" || question.trim().length < 4) {
+      return res.status(400).json({ error: "Question manquante ou trop courte" });
+    }
+
+    const report = await generatePraReport({
+      tenantId,
+      question,
+      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
+      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
+      maxChunks: 8,
+      maxFacts: 10,
+    });
+
+    return res.json(report);
+  } catch (error) {
+    console.error("Error in /analysis/pra-rag-report:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/runbook-draft", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+    const { question, documentIds, documentTypes, serviceFilter } = req.body || {};
+
+    const draft = await generateRunbookDraft({
+      tenantId,
+      question: typeof question === "string" && question.trim().length > 0 ? question : undefined,
+      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
+      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
+    });
+
+    return res.json(draft);
+  } catch (error) {
+    console.error("Error in /analysis/runbook-draft:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
