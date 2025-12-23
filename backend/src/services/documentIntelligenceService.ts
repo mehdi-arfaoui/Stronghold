@@ -328,13 +328,28 @@ export function buildChunks(
   return chunks;
 }
 
+function sanitizeCollectionPart(value: string): string {
+  const normalized = value.toLowerCase().replace(/[^a-z0-9-_]/g, "-");
+  return normalized.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+export function buildChromaCollectionName(baseCollection: string, tenantId: string): string {
+  const base = sanitizeCollectionPart(baseCollection || "pra-documents") || "pra-documents";
+  const tenantPart = sanitizeCollectionPart(tenantId) || "tenant";
+  return `${base}-${tenantPart}`.slice(0, 60);
+}
+
 export async function pushChunksToChroma(
   chunks: DocumentChunk[],
   tenantId: string,
-  documentId: string
+  documentId: string,
+  retention?: { document?: Date | null; embedding?: Date | null }
 ): Promise<{ submitted: number; skippedReason?: string }> {
   const chromaUrl = process.env.CHROMADB_URL;
-  const collection = process.env.CHROMADB_COLLECTION || "pra-documents";
+  const collection = buildChromaCollectionName(
+    process.env.CHROMADB_COLLECTION || "pra-documents",
+    tenantId
+  );
 
   if (!chromaUrl) {
     return { submitted: 0, skippedReason: "CHROMADB_URL not configured" };
@@ -346,7 +361,15 @@ export async function pushChunksToChroma(
   const payload = {
     ids: chunks.map((c) => c.id),
     documents: chunks.map((c) => c.content),
-    metadatas: chunks.map((c) => ({ ...c.metadata, tenantId, documentId })),
+    metadatas: chunks.map((c) => ({
+      ...c.metadata,
+      tenantId,
+      documentId,
+      retentionUntil: retention?.document ? retention.document.toISOString() : undefined,
+      embeddingRetentionUntil: retention?.embedding
+        ? retention.embedding.toISOString()
+        : undefined,
+    })),
   };
 
   const headers: Record<string, string> = { "Content-Type": "application/json" };

@@ -1,10 +1,14 @@
 import { Router } from "express";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { ApiRole } from "@prisma/client";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { ingestDocumentText } from "../services/documentIngestionService";
 
 const router = Router();
 
-router.post("/n8n/document-ingestion", async (req: TenantRequest, res) => {
+router.post(
+  "/n8n/document-ingestion",
+  requireRole(ApiRole.OPERATOR),
+  async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

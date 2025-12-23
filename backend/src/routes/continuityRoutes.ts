@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
 const router = Router();
 
@@ -12,7 +13,10 @@ const BACKUP_TYPES = [
   "snapshot",
 ] as const;
 
-router.post("/backup-strategies", async (req: TenantRequest, res) => {
+router.post(
+  "/backup-strategies",
+  requireRole(ApiRole.OPERATOR),
+  async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -102,7 +106,10 @@ router.get("/backup-strategies", async (req: TenantRequest, res) => {
   }
 });
 
-router.post("/security-policies", async (req: TenantRequest, res) => {
+router.post(
+  "/security-policies",
+  requireRole(ApiRole.OPERATOR),
+  async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -176,7 +183,10 @@ router.get("/security-policies", async (req: TenantRequest, res) => {
   }
 });
 
-router.post("/dependency-cycles", async (req: TenantRequest, res) => {
+router.post(
+  "/dependency-cycles",
+  requireRole(ApiRole.OPERATOR),
+  async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

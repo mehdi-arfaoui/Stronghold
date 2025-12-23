@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient";
+import { metricsConfig } from "./config/observability";
+import { getMetricsSnapshot } from "./observability/metrics";
 
 import serviceRoutes from "./routes/serviceRoutes";
 import graphRoutes from "./routes/graphRoutes";
@@ -13,6 +15,7 @@ import documentRoutes from "./routes/documentRoutes";
 import continuityRoutes from "./routes/continuityRoutes";
 import runbookRoutes from "./routes/runbookRoutes";
 import webhookRoutes from "./routes/webhookRoutes";
+import authRoutes from "./routes/authRoutes";
 
 dotenv.config();
 
@@ -24,7 +27,16 @@ app.use(express.json());
 // ✅ health-check sans tenant
 app.get("/health", async (_req, res) => {
   const tenantsCount = await prisma.tenant.count();
-  res.json({ status: "ok", tenantsCount });
+  const metrics = getMetricsSnapshot();
+  res.json({
+    status: "ok",
+    tenantsCount,
+    metrics,
+    alerts: {
+      extractionFailureRate: metrics.extraction.failureRate >= metricsConfig.extractionFailureAlertThreshold,
+      llmFailureRate: metrics.llm.failureRate >= metricsConfig.llmFailureAlertThreshold,
+    },
+  });
 });
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
@@ -39,6 +51,7 @@ app.use("/documents", documentRoutes);
 app.use("/continuity", continuityRoutes);
 app.use("/runbooks", runbookRoutes);
 app.use("/webhooks", webhookRoutes);
+app.use("/auth", authRoutes);
 
 
 const PORT = process.env.PORT || 4000;

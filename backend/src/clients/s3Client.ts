@@ -52,6 +52,13 @@ export function getTenantBucketName(tenantId: string): string {
   return candidate.slice(0, 63).replace(/-+$/g, "");
 }
 
+function assertTenantBucket(bucket: string, tenantId: string) {
+  const expectedBucket = getTenantBucketName(tenantId);
+  if (bucket !== expectedBucket) {
+    throw new Error(`Bucket ${bucket} does not match tenant scope`);
+  }
+}
+
 export async function ensureBucketExists(bucket: string) {
   try {
     await s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
@@ -96,14 +103,20 @@ export function resolveBucketAndKey(
     const withoutScheme = trimmed.slice("s3://".length);
     const [bucket, ...rest] = withoutScheme.split("/");
     const key = rest.join("/");
+    const resolvedBucket = bucket || getTenantBucketName(tenantId);
+    if (resolvedBucket) {
+      assertTenantBucket(resolvedBucket, tenantId);
+    }
     return {
-      bucket: bucket || getTenantBucketName(tenantId),
+      bucket: resolvedBucket || getTenantBucketName(tenantId),
       key: key || extractObjectKey(storagePath, storedName),
     };
   }
 
+  const bucket = getTenantBucketName(tenantId);
+  assertTenantBucket(bucket, tenantId);
   return {
-    bucket: getTenantBucketName(tenantId),
+    bucket,
     key: extractObjectKey(storagePath, storedName),
   };
 }

@@ -20,6 +20,7 @@ import {
   downloadObjectToTempFile,
   resolveBucketAndKey,
 } from "../clients/s3Client";
+import { recordExtractionResult } from "../observability/metrics";
 
 const execFileAsync = promisify(execFile);
 
@@ -632,7 +633,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   }
 
   try {
-    const vecResult = await pushChunksToChroma(chunks, tenantId, doc.id);
+    const vecResult = await pushChunksToChroma(chunks, tenantId, doc.id, {
+      document: doc.retentionUntil ?? null,
+      embedding: doc.embeddingRetentionUntil ?? null,
+    });
     if (vecResult.submitted > 0) {
       const updated = await prisma.document.updateMany({
         where: { id: doc.id, tenantId: doc.tenantId },
@@ -668,6 +672,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     });
   }
 
+  recordExtractionResult(status === "SUCCESS");
   return prisma.document.findFirstOrThrow({ where: { id: doc.id, tenantId: doc.tenantId } });
 }
 
