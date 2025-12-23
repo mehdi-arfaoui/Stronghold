@@ -289,6 +289,7 @@ export type TabId =
   | "services"
   | "analysis"
   | "graph"
+  | "architecture"
   | "landing"
   | "scenarios"
   | "documents"

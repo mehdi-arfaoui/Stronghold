@@ -8,6 +8,7 @@ import {
   getSuggestedDRStrategy,
   summarizeScenarioForTable,
 } from "../analysis/drStrategyEngine";
+import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
 import {
   DocumentNotFoundError,
   MissingExtractedTextError,
