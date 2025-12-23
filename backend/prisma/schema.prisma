@@ -15,21 +15,24 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  services             Service[]
-  infraComponents      InfraComponent[]
-  scenarios            Scenario[]
-  runbookSteps         RunbookStep[]
-  scenarioServices     ScenarioService[]
-  ServiceDependency    ServiceDependency[]
-  ServiceInfraLink     ServiceInfraLink[]
-  documents            Document[]
-  extractedFacts       ExtractedFact[]
-  backupStrategies     BackupStrategy[]
-  securityPolicies     SecurityPolicy[]
-  policyLinks          SecurityPolicyService[]
-  dependencyCycles     DependencyCycle[]
+  apiKeys          ApiKey[]
+  services          Service[]
+  infraComponents   InfraComponent[]
+  scenarios         Scenario[]
+  runbookSteps      RunbookStep[]
+  scenarioServices  ScenarioService[]
+  ServiceDependency ServiceDependency[]
+  ServiceInfraLink  ServiceInfraLink[]
+  documents         Document[]
+  extractedFacts    ExtractedFact[]
+  backupStrategies  BackupStrategy[]
+  securityPolicies  SecurityPolicy[]
+  policyLinks       SecurityPolicyService[]
+  dependencyCycles  DependencyCycle[]
   dependencyCycleLinks DependencyCycleService[]
-  runbooks             Runbook[]
+  runbooks          Runbook[]
+  auditLogs        AuditLog[]
+  
 
   RunbookTemplate RunbookTemplate[]
 }
@@ -201,7 +204,9 @@ model Document {
   textExtractedAt   DateTime?
   ingestionStatus   String    @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
   ingestionQueuedAt DateTime?
-  ingestionError    String?
+  ingestionError String?
+  retentionUntil DateTime?
+  embeddingRetentionUntil DateTime?
 
   // Extraction de texte
   extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
@@ -367,4 +372,51 @@ model ExtractedFact {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+enum ApiRole {
+  ADMIN
+  READER
+  OPERATOR
+}
+
+model ApiKey {
+  id       String   @id @default(cuid())
+  tenantId String
+  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+
+  label    String?
+  keyHash  String   @unique
+  role     ApiRole  @default(OPERATOR)
+  lastUsedAt DateTime?
+  expiresAt DateTime?
+  revokedAt DateTime?
+  rotatedFromId String?
+  rotatedFrom   ApiKey?  @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
+  rotatedTo     ApiKey[] @relation("ApiKeyRotation")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  apiKeyId  String?
+  apiKey    ApiKey?  @relation(fields: [apiKeyId], references: [id])
+  path      String
+  method    String
+  statusCode Int
+  success    Boolean @default(false)
+  errorCode  String?
+  latencyMs  Int?
+  clientIp   String?
+  userAgent  String?
+  correlationId String?
+
+  createdAt DateTime @default(now())
 }

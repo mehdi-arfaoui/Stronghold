@@ -2,6 +2,7 @@ import {
   EXTRACTED_FACT_CATEGORIES,
   ExtractedFactCategory,
 } from "./extractedFactSchema";
+import { recordLlmCall } from "../observability/metrics";
 
 export interface AiExtractedFact {
   type: string;
@@ -268,18 +269,26 @@ export async function analyzeExtractedFacts(
     },
   };
 
-  const response = await callOpenAiWithRetry(
-    requestBody,
-    headers,
-    correlationId,
-    params.retryConfig
-  );
+  let response;
+  try {
+    response = await callOpenAiWithRetry(
+      requestBody,
+      headers,
+      correlationId,
+      params.retryConfig
+    );
+  } catch (err) {
+    recordLlmCall(false);
+    throw err;
+  }
 
   try {
     const payload = await response.json();
     const parsed = extractJsonFromResponse(payload);
+    recordLlmCall(true);
     return parsed.facts;
   } catch (err: any) {
+    recordLlmCall(false);
     const message = err?.message || "Failed to parse OpenAI response";
     throw new OpenAiCallError(
       `${message} [correlationId=${correlationId}]`,

@@ -1,7 +1,8 @@
 import { Router } from "express";
+import { ApiRole } from "@prisma/client";
 import multer from "multer";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { generateRunbook } from "../services/runbookGenerator";
 import {
   computeBufferHash,
@@ -178,7 +179,7 @@ router.get("/:id", async (req: TenantRequest, res) => {
   }
 });
 
-router.post("/generate", async (req: TenantRequest, res) => {
+router.post("/generate", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });

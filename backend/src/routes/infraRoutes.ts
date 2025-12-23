@@ -1,11 +1,12 @@
 import { Router } from "express";
+import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
 const router = Router();
 
 // POST /infra/components : créer un composant d'infra (LZ)
-router.post("/components", async (req: TenantRequest, res) => {
+router.post("/components", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -90,7 +91,7 @@ router.get("/components", async (req: TenantRequest, res) => {
 
 
 // POST /infra/link : lier un service à un composant d'infra
-router.post("/link", async (req: TenantRequest, res) => {
+router.post("/link", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

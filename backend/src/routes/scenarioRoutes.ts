@@ -1,6 +1,7 @@
 import { Router } from "express";
+import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
 const router = Router();
 
@@ -45,7 +46,7 @@ router.get("/", async (req: TenantRequest, res) => {
  * POST /scenarios
  * body: { name, type, description?, impactLevel?, rtoTargetHours?, serviceIds?: string[] }
  */
-router.post("/", async (req: TenantRequest, res) => {
+router.post("/", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -156,7 +157,7 @@ router.post("/", async (req: TenantRequest, res) => {
  * POST /scenarios/:id/steps
  * body: { order, title, description?, estimatedDurationMinutes?, role?, blocking? }
  */
-router.post("/:id/steps", async (req: TenantRequest, res) => {
+router.post("/:id/steps", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

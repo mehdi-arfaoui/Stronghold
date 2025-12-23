@@ -3,11 +3,12 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import * as crypto from "crypto";
+import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService";
 import { ingestDocumentText } from "../services/documentIngestionService";
-
+import { retentionConfig } from "../config/observability";
 
 import {
   buildObjectKey,
@@ -32,6 +33,13 @@ async function computeFileHash(filePath: string): Promise<string> {
   });
 }
 
+function computeRetentionDate(days: number): Date | null {
+  if (!Number.isFinite(days) || days <= 0) return null;
+  const date = new Date();
+  date.setDate(date.getDate() + Math.floor(days));
+  return date;
+}
+
 /**
  * POST /documents
  * Upload d'un document pour le tenant courant.
@@ -42,6 +50,7 @@ async function computeFileHash(filePath: string): Promise<string> {
  */
 router.post(
   "/",
+  requireRole(ApiRole.OPERATOR),
   upload.single("file"),
   async (req: TenantRequest, res) => {
     try {
@@ -94,6 +103,8 @@ router.post(
           description: description ? String(description).trim() : null,
           fileHash,
           ingestionStatus: "FILE_STORED",
+          retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
+          embeddingRetentionUntil: computeRetentionDate(retentionConfig.embeddingRetentionDays),
         },
       });
 
@@ -154,7 +165,7 @@ router.get("/", async (req: TenantRequest, res) => {
 
 
 
-router.post("/:id/extract", async (req: TenantRequest, res) => {
+router.post("/:id/extract", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -177,7 +188,7 @@ router.post("/:id/extract", async (req: TenantRequest, res) => {
  * POST /documents/extract-all-pending
  * Parcourt tous les documents PENDING du tenant et tente l'extraction.
  */
-router.post("/extract-all-pending", async (req: TenantRequest, res) => {
+router.post("/extract-all-pending", requireRole(ApiRole.OPERATOR), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
