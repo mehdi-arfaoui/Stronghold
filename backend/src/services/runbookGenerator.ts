@@ -1,23 +1,19 @@
-import fs from "fs";
-import path from "path";
 import prisma from "../prismaClient";
 import { recommendPraOptions } from "../analysis/praRecommender";
 import * as crypto from "crypto";
 import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService";
+import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { RunbookTemplate } from "@prisma/client";
+import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService";
+import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client";
 
 export interface RunbookGenerationOptions {
   scenarioId?: string | null;
   title?: string;
   summary?: string;
   owner?: string;
-}
-
-const RUNBOOK_DIR = path.join(__dirname, "..", "..", "uploads", "runbooks");
-
-function ensureRunbookDir() {
-  if (!fs.existsSync(RUNBOOK_DIR)) {
-    fs.mkdirSync(RUNBOOK_DIR, { recursive: true });
-  }
+  templateId?: string | null;
 }
 
 function toMarkdownList(items: string[]): string {
@@ -61,20 +57,136 @@ function buildBackupComparison(strategies: any[]) {
   return lines.join("\n");
 }
 
-async function renderPdf(markdownContent: string, targetPath: string, title: string) {
-  // Sans dépendance externe, on produit un export texte sobre avec extension .pdf.
-  const header = `${title}\n=====================\n`;
-  await fs.promises.writeFile(targetPath, `${header}${markdownContent}`);
+function splitLines(text: string): string[] {
+  return text.replace(/\r\n/g, "\n").split("\n");
+}
+
+function toDocxParagraph(line: string): Paragraph {
+  if (line.startsWith("# ")) {
+    return new Paragraph({
+      text: line.replace(/^#\s*/, "").trim(),
+      heading: HeadingLevel.HEADING_1,
+    });
+  }
+  if (line.startsWith("## ")) {
+    return new Paragraph({
+      text: line.replace(/^##\s*/, "").trim(),
+      heading: HeadingLevel.HEADING_2,
+    });
+  }
+  return new Paragraph({
+    children: [new TextRun(line)],
+  });
+}
+
+async function renderDocx(content: string): Promise<Buffer> {
+  const lines = splitLines(content);
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children: lines.map((line) => toDocxParagraph(line || " ")),
+      },
+    ],
+  });
+  return Packer.toBuffer(doc);
+}
+
+async function renderPdf(content: string, title: string): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const lines = splitLines(`${title}\n\n${content}`);
+  let page = pdfDoc.addPage();
+  const fontSize = 11;
+  const margin = 40;
+  const lineHeight = fontSize * 1.4;
+  let y = page.getHeight() - margin;
+
+  const drawLine = (text: string) => {
+    page.drawText(text, {
+      x: margin,
+      y,
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+  };
+
+  for (const line of lines) {
+    if (y <= margin) {
+      page = pdfDoc.addPage();
+      y = page.getHeight() - margin;
+    }
+    drawLine(line);
+    y -= lineHeight;
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
+}
+
+function buildFindingsSummary(ragContext: any): string {
+  const factLines =
+    ragContext.extractedFacts && ragContext.extractedFacts.length > 0
+      ? ragContext.extractedFacts
+          .slice(0, 6)
+          .map((f: any) => `- ${f.label} (${f.category}) ${f.dataPreview ? `→ ${f.dataPreview}` : ""}`)
+          .join("\n")
+      : "- Aucun fait extrait trouvé.";
+
+  const chunkLines =
+    ragContext.chunks && ragContext.chunks.length > 0
+      ? ragContext.chunks
+          .slice(0, 3)
+          .map((c: any) => `- ${c.documentName} : ${c.text}`)
+          .join("\n")
+      : "- Aucun extrait textuel utilisé.";
+
+  return ["Faits extraits:", factLines, "Extraits RAG:", chunkLines].join("\n");
+}
+
+function buildPlaceholderValues(params: {
+  servicesList: string;
+  depsList: string;
+  cycleList: string;
+  targetRto: number;
+  targetRpo: number;
+  backupComparison: string;
+  policiesList: string;
+  scenarioSteps: string;
+  ragFindings: string;
+}) {
+  const depsCombined = [params.depsList || "", params.cycleList ? `Cycles critiques:\n${params.cycleList}` : ""]
+    .filter((part) => part && part.trim().length > 0)
+    .join("\n");
+
+  return {
+    SERVICES: params.servicesList || "Aucun service enregistré.",
+    DEPENDANCES: depsCombined || "Pas de dépendances renseignées.",
+    "RTO/RPO": `Cible RTO: ${params.targetRto}h | Cible RPO: ${params.targetRpo} minutes`,
+    RTO_RPO: `Cible RTO: ${params.targetRto}h | Cible RPO: ${params.targetRpo} minutes`,
+    SAUVEGARDES: params.backupComparison || "Aucune stratégie de sauvegarde renseignée.",
+    POLITIQUES: params.policiesList || "Aucune politique de sécurité liée.",
+    ETAPES: params.scenarioSteps || "Pas d'étapes spécifiques.",
+    FINDINGS: params.ragFindings || "Aucun élément RAG disponible.",
+  };
+}
+
+async function mergeTemplateWithPlaceholders(template: RunbookTemplate, placeholders: Record<string, string>) {
+  const rawContent = await loadTemplateText(template);
+  return applyPlaceholders(rawContent || "", placeholders);
 }
 
 export async function generateRunbook(tenantId: string, options: RunbookGenerationOptions) {
-  ensureRunbookDir();
-
   const scenario = options.scenarioId
-    ? await prisma.scenario.findFirst({ where: { id: options.scenarioId, tenantId }, include: { services: { include: { service: true } }, steps: true } })
+    ? await prisma.scenario.findFirst({
+        where: { id: options.scenarioId, tenantId },
+        include: { services: { include: { service: true } }, steps: true },
+      })
     : null;
 
-  const [tenant, services, dependencies, backupStrategies, policies, cycles] = await Promise.all([
+  const [tenant, services, dependencies, backupStrategies, policies, cycles, template] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.service.findMany({
       where: { tenantId },
@@ -94,6 +206,9 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
       where: { tenantId },
       include: { services: { include: { service: true } } },
     }),
+    options.templateId
+      ? prisma.runbookTemplate.findFirst({ where: { id: options.templateId, tenantId } })
+      : null,
   ]);
 
   const highCrit = services.filter((s) => s.criticality === "high" && s.continuity);
@@ -110,7 +225,12 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
 
   const topRec = praRecs[0];
   const servicesList = services
-    .map((s) => `- ${s.name} (${s.type}) — Criticité ${s.criticality.toUpperCase()} | RTO ${s.continuity?.rtoHours ?? "?"}h | RPO ${s.continuity?.rpoMinutes ?? "?"}min | MTPD ${s.continuity?.mtpdHours ?? "?"}h`)
+    .map(
+      (s) =>
+        `- ${s.name} (${s.type}) — Criticité ${s.criticality?.toUpperCase() ?? "?"} | RTO ${
+          s.continuity?.rtoHours ?? "?"
+        }h | RPO ${s.continuity?.rpoMinutes ?? "?"}min | MTPD ${s.continuity?.mtpdHours ?? "?"}h`
+    )
     .join("\n");
 
   const depsList = dependencies
@@ -135,7 +255,7 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     ? `Préparer un runbook PRA/PCA pour le scénario ${scenario.name} (${scenario.type})`
     : "Préparer un runbook PRA/PCA multi-services pour ce tenant";
 
-  const ragContext = await retrieveRagContext({
+  const ragContextResult = await retrieveRagContext({
     tenantId,
     question: ragQuestion,
     maxChunks: 3,
@@ -144,7 +264,7 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
 
   const ragPrompt = buildRagPrompt({
     question: `${ragQuestion}. Utilise le contexte pour prioriser les actions.`,
-    context: ragContext.context,
+    context: ragContextResult.context,
     maxTotalLength: 3600,
   });
 
@@ -153,69 +273,108 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     question: ragQuestion,
     services,
     scenarios: scenario ? [scenario as any] : undefined,
-    context: ragContext.context,
+    context: ragContextResult.context,
     maxResults: 5,
   });
 
-  const markdown = [
+  const scenarioSteps =
+    scenario && scenario.steps.length > 0
+      ? scenario.steps
+          .sort((a, b) => a.order - b.order)
+          .map((s) => `- [${s.order}] ${s.title}${s.role ? ` (${s.role})` : ""}`)
+          .join("\n")
+      : "";
+
+  const ragFindings = buildFindingsSummary(ragContextResult.context);
+  const placeholderValues = buildPlaceholderValues({
+    servicesList,
+    depsList,
+    cycleList,
+    targetRto,
+    targetRpo,
+    backupComparison: buildBackupComparison(backupStrategies),
+    policiesList,
+    scenarioSteps,
+    ragFindings,
+  });
+
+  const baseMarkdown = [
     `# ${options.title || "Runbook PRA/PCA"}`,
-    ``,
+    "",
     options.summary || "Synthèse générée automatiquement à partir des services, dépendances et stratégies PRA.",
-    ``,
+    "",
     `Tenant : ${tenant?.name || tenantId}`,
-    scenario ? `Scénario ciblé : ${scenario.name} (${scenario.type})` : "Scénario : général", 
-    ``,
-    "## Définitions clés",
-    "- RTO : durée maximale d'interruption acceptable avant reprise du service.",
-    "- RPO : perte de données maximale acceptable.",
-    "- MTPD : durée maximale de perturbation tolérée avant impact majeur.",
-    "- Types de backup : full (rapide à restaurer, volumineux), differential (compromis), incremental (rapide à sauvegarder, restauration plus longue).",
-    ``,
+    scenario ? `Scénario ciblé : ${scenario.name} (${scenario.type})` : "Scénario : général",
+    "",
     "## Catalogue des services (priorité métier)",
-    servicesList || "Aucun service enregistré.",
-    ``,
+    placeholderValues.SERVICES,
+    "",
     "## Dépendances et cycles critiques",
-    depsList || "Pas de dépendances renseignées.",
+    placeholderValues.DEPENDANCES,
     cycleList ? `\nCycles circulaires :\n${cycleList}` : "",
-    ``,
+    "",
     "## Stratégies de sauvegarde",
-    buildBackupComparison(backupStrategies),
-    ``,
+    placeholderValues.SAUVEGARDES,
+    "",
     "## Politiques de sécurité associées",
-    policiesList || "Aucune politique de sécurité liée.",
-    ``,
+    placeholderValues.POLITIQUES,
+    "",
     "## Recommandation PRA priorisée",
     topRec
-      ? toMarkdownList([
-          `${topRec.name} (score ${topRec.score})`,
-          ...topRec.reasons.slice(0, 3),
-        ])
+      ? toMarkdownList([`${topRec.name} (score ${topRec.score})`, ...topRec.reasons.slice(0, 3)])
       : "Pas de recommandation calculée.",
-    ``,
+    "",
     "## Plan d'action",
     "- Vérifier que les dépendances respectent le RTO/RPO cibles (voir cycles circulaires).",
-    "- Tester la restauration sur échantillon (n8n/CI) et consigner les résultats.",
+    "- Tester la restauration sur échantillon et consigner les résultats.",
     "- Consolider le runbook avec les contacts et validations métiers.",
-    scenario && scenario.steps.length > 0
-      ? `- Étapes du scénario :\n${scenario.steps
-          .sort((a, b) => a.order - b.order)
-          .map((s) => `  - [${s.order}] ${s.title} (${s.role || ""})`)
-          .join("\n")}`
-      : "- Aucun step spécifique au scénario n'est renseigné.",
-    ``,
-    "## Tests de reprise et post-mortem",
-    "- Planifier un test semestriel de restauration (échantillon + volumétrie).",
-    "- Vérifier les temps mesurés vs RTO/RPO/MTPD et ajuster les stratégies.",
-    "- Documenter les écarts et mettre à jour ce runbook (versionner).",
+    scenarioSteps ? scenarioSteps : "- Aucun step spécifique au scénario n'est renseigné.",
+    "",
+    "## Synthèse RTO/RPO",
+    placeholderValues["RTO/RPO"],
+    "",
+    "## Contexte RAG",
+    ragFindings,
   ]
     .filter((block) => block !== "")
     .join("\n");
 
+  const mergedContent =
+    template && template.id
+      ? await mergeTemplateWithPlaceholders(template, placeholderValues)
+      : baseMarkdown;
+
+  const finalContent = mergedContent && mergedContent.trim().length > 0 ? mergedContent : baseMarkdown;
+
   const runbookId = crypto.randomUUID();
-  const markdownPath = path.join(RUNBOOK_DIR, `${runbookId}.md`);
-  const pdfPath = path.join(RUNBOOK_DIR, `${runbookId}.pdf`);
-  await fs.promises.writeFile(markdownPath, markdown, "utf8");
-  await renderPdf(markdown, pdfPath, options.title || "Runbook PRA/PCA");
+  const bucket = getTenantBucketName(tenantId);
+  const markdownKey = buildObjectKey(tenantId, `runbooks/${runbookId}.md`);
+  const pdfKey = buildObjectKey(tenantId, `runbooks/${runbookId}.pdf`);
+  const docxKey = buildObjectKey(tenantId, `runbooks/${runbookId}.docx`);
+
+  await uploadObjectToBucket({
+    bucket,
+    key: markdownKey,
+    body: Buffer.from(finalContent, "utf8"),
+    contentType: "text/markdown",
+  });
+
+  const pdfBuffer = await renderPdf(finalContent, options.title || "Runbook PRA/PCA");
+  await uploadObjectToBucket({
+    bucket,
+    key: pdfKey,
+    body: pdfBuffer,
+    contentType: "application/pdf",
+  });
+
+  const docxBuffer = await renderDocx(finalContent);
+  await uploadObjectToBucket({
+    bucket,
+    key: docxKey,
+    body: docxBuffer,
+    contentType:
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  });
 
   const runbookRecord = await prisma.runbook.create({
     data: {
@@ -225,18 +384,22 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
       title: options.title || "Runbook PRA/PCA",
       status: "READY",
       summary: options.summary || null,
-      markdownPath: path.relative(process.cwd(), markdownPath),
-      pdfPath: path.relative(process.cwd(), pdfPath),
+      markdownPath: `s3://${bucket}/${markdownKey}`,
+      pdfPath: `s3://${bucket}/${pdfKey}`,
+      docxPath: `s3://${bucket}/${docxKey}`,
       generatedForServices: JSON.stringify(services.map((s) => s.id)),
+      templateId: template?.id || null,
+      templateNameSnapshot: template?.originalName || null,
     },
   });
 
   return {
     runbook: runbookRecord,
-    markdown,
+    markdown: finalContent,
     pdfPath: runbookRecord.pdfPath,
+    docxPath: runbookRecord.docxPath,
     markdownPath: runbookRecord.markdownPath,
-    ragContext: ragContext.context,
+    ragContext: ragContextResult.context,
     llmPrompt: ragPrompt.prompt,
     ragScenarioRecommendations,
   };
