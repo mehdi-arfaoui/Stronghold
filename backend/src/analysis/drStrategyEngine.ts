@@ -33,6 +33,8 @@ export type DrRecommendation = {
   scenario: DrScenario;
   score: number;
   rationale: string[];
+  justification: string;
+  matchLevel: "strong" | "medium" | "weak";
 };
 
 const SCENARIOS: DrScenario[] = [
@@ -103,6 +105,21 @@ const SCENARIOS: DrScenario[] = [
     source: "tutorialsdojo.com",
   },
   {
+    id: "multi-az-ha",
+    label: "Multi-AZ haute disponibilité",
+    description:
+      "Déploiement multi-zone avec réplication synchronisée ou quasi temps réel, bascule orchestrée (active/passive).",
+    rtoRangeHours: [0.25, 2],
+    rpoRangeMinutes: [1, 30],
+    cost: "medium",
+    complexity: "medium",
+    suitableFor: ["high", "critical"],
+    notes:
+      "Alternative moins coûteuse que l'active-active multi-région tout en réduisant fortement le RTO.",
+    // Source: AWS multi-AZ HA patterns (tutorialsdojo.com)
+    source: "tutorialsdojo.com",
+  },
+  {
     id: "continuous-data-protection",
     label: "Continuous Data Protection",
     description:
@@ -146,6 +163,20 @@ function costPenalty(criticity: CriticalityLevel, cost: DrScenario["cost"]): num
 function complexityPenalty(complexity: DrScenario["complexity"]): number {
   if (complexity === "high") return 2;
   return complexity === "medium" ? 1 : 0;
+}
+
+function formatRationaleSummary(scenario: DrScenario, rationale: string[], targetRto: number, targetRpo: number) {
+  const base = `${scenario.label} (${scenario.rtoRangeHours[0]}-${scenario.rtoRangeHours[1]}h / ${scenario.rpoRangeMinutes[0]}-${scenario.rpoRangeMinutes[1]}min)`;
+  if (rationale.length === 0) {
+    return `${base} correspond aux objectifs ${targetRto}h/${targetRpo}min avec un coût ${scenario.cost} et une complexité ${scenario.complexity}.`;
+  }
+  return `${base} : ${rationale.join("; ")}`;
+}
+
+function resolveMatchLevel(score: number): DrRecommendation["matchLevel"] {
+  if (score <= 2) return "strong";
+  if (score <= 5) return "medium";
+  return "weak";
 }
 
 export function getSuggestedDRStrategy(
@@ -211,10 +242,15 @@ export function getSuggestedDRStrategy(
       rationale.push("Scénario cohérent avec les objectifs PRA fournis.");
     }
 
+    const justification = formatRationaleSummary(scenario, rationale, targetRtoHours, targetRpoMinutes);
+    const matchLevel = resolveMatchLevel(score);
+
     return {
       scenario,
       score,
       rationale,
+      justification,
+      matchLevel,
     };
   }).sort((a, b) => a.score - b.score);
 }

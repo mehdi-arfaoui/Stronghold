@@ -545,6 +545,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         classification: classification.type,
         classificationConfidence: classification.confidence,
         declaredDocType: doc.docType,
+        documentId: doc.id,
+        tenantId,
+        originalName: doc.originalName,
+        normalizedDocType: (doc.docType || classification.type || "").toString().toUpperCase(),
       } as Record<string, unknown>;
       chunks = buildChunks(text, baseMetadata);
     }
@@ -633,9 +637,11 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   }
 
   try {
+    const retentionUntil = (doc as any).retentionUntil ?? null;
+    const embeddingRetentionUntil = (doc as any).embeddingRetentionUntil ?? null;
     const vecResult = await pushChunksToChroma(chunks, tenantId, doc.id, {
-      document: doc.retentionUntil ?? null,
-      embedding: doc.embeddingRetentionUntil ?? null,
+      document: retentionUntil,
+      embedding: embeddingRetentionUntil,
     });
     if (vecResult.submitted > 0) {
       const updated = await prisma.document.updateMany({

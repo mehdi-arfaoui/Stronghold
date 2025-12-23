@@ -50,6 +50,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
   const [docType, setDocType] = useState("ARCHI");
   const [description, setDescription] = useState("");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [uploadStep, setUploadStep] = useState<string | null>(null);
 
   const loadDocuments = async () => {
     try {
@@ -73,8 +74,8 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     setFile(selected);
   };
 
-  const handleUpload = async (event: FormEvent) => {
-    event.preventDefault();
+  const performUpload = async (autoIngest: boolean, event?: FormEvent) => {
+    event?.preventDefault();
     if (!file) {
       setUploadError("Sélectionnez un fichier avant l'envoi.");
       return;
@@ -82,6 +83,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     setUploading(true);
     setUploadError(null);
     setActionMessage(null);
+    setUploadStep("upload");
 
     try {
       const formData = new FormData();
@@ -89,15 +91,22 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
       if (docType) formData.append("docType", docType);
       if (description) formData.append("description", description);
 
-      await apiFetchFormData("/documents", formData);
+      const created = await apiFetchFormData("/documents", formData);
+      setUploadStep("ingestion");
+      if (autoIngest && created?.id) {
+        await triggerExtraction(created.id);
+        setActionMessage("Document importé et indexation déclenchée.");
+      } else {
+        setActionMessage("Document chargé et stocké. Lancez l'extraction pour indexer le contenu.");
+      }
       setDescription("");
       setFile(null);
       await loadDocuments();
-      setActionMessage("Document chargé et stocké. Lancez l'extraction pour indexer le contenu.");
     } catch (err: any) {
       setUploadError(err.message || "Échec de l'upload");
     } finally {
       setUploading(false);
+      setUploadStep(null);
     }
   };
 
@@ -163,7 +172,13 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
         </div>
       </div>
 
-      <form className="card form-grid" onSubmit={handleUpload}>
+      <form
+        className="card form-grid"
+        onSubmit={(event) => {
+          event.preventDefault();
+          performUpload(false, event);
+        }}
+      >
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <label className="form-field">
             <span>Fichier</span>
@@ -194,12 +209,21 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
             <button className="btn primary" type="submit" disabled={uploading}>
               {uploading ? "Upload en cours..." : "Charger le document"}
             </button>
+            <button
+              className="btn"
+              type="button"
+              disabled={uploading}
+              onClick={(event) => performUpload(true, event)}
+            >
+              {uploading && uploadStep === "ingestion" ? "Indexation..." : "Importer et indexer"}
+            </button>
             <button className="btn" type="button" onClick={triggerExtractAll}>
               Extraire les documents en attente
             </button>
           </div>
           <div className="stack" style={{ gap: "4px" }}>
             {uploadError && <p className="helper error">{uploadError}</p>}
+            {uploadStep && <p className="helper muted">Étape : {uploadStep}</p>}
             {actionMessage && <p className="helper success">{actionMessage}</p>}
           </div>
         </div>
