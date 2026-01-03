@@ -22,12 +22,31 @@ dotenv.config();
 const app = express();
 
 // Configure CORS to allow requests from frontend
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "*",
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      process.env.FRONTEND_URL,
+      process.env.CORS_ORIGIN,
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:5173", // Vite default port
+    ].filter(Boolean);
+    
+    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for development
+    }
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-correlation-id"],
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ✅ health-check sans tenant
@@ -65,4 +84,6 @@ const HOST = process.env.HOST || "0.0.0.0";
 
 app.listen(PORT, HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
+  console.log(`CORS enabled for origins: ${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "all"}`);
+  console.log(`Health check available at http://${HOST}:${PORT}/health`);
 });

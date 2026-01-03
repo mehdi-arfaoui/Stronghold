@@ -13,6 +13,11 @@ services:
       - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pra_user -d pra_platform"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   minio:
     image: minio/minio
@@ -41,11 +46,12 @@ services:
     image: node:20
     container_name: pra_backend
     working_dir: /app
-    command: sh -c "npm install && npx prisma migrate deploy && node prisma/seed.cjs && npm run dev"
+    command: sh -c "npm install && npx prisma generate && npx prisma migrate deploy && node prisma/seed.cjs && npm run dev"
     volumes:
       - ./backend:/app
     environment:
       PORT: 4000
+      HOST: 0.0.0.0
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       CHROMADB_URL: http://chroma:8000
       CHROMADB_COLLECTION: pra-documents
@@ -59,15 +65,24 @@ services:
     ports:
       - "4000:4000"
     depends_on:
-      - postgres
-      - minio
-      - chroma
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      chroma:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   frontend:
     image: node:20
     container_name: pra_frontend
     working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host --port 3000"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
     volumes:
       - ./frontend:/app
     environment:
@@ -77,7 +92,8 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

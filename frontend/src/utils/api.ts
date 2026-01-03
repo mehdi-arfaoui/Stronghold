@@ -55,6 +55,16 @@ export function loadApiConfig(): ApiConfig {
 
   const apiKey = envApiKey || stored.apiKey || "";
 
+  // Debug logging in development
+  if (import.meta.env.DEV) {
+    console.log("[API Config]", {
+      envBackend,
+      storedBackendUrl: stored.backendUrl,
+      finalBackendUrl: backendUrl,
+      hasApiKey: !!apiKey,
+    });
+  }
+
   return { backendUrl, apiKey };
 }
 
