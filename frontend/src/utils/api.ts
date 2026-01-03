@@ -88,11 +88,41 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
       },
     });
 
+    // Get response text first to check content type
+    const contentType = res.headers.get("content-type");
+    const text = await res.text();
+
     if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`API ${path} failed: ${res.status} – ${text}`);
+      // Try to parse as JSON for error messages
+      let errorMessage = text;
+      try {
+        const errorJson = JSON.parse(text);
+        errorMessage = errorJson.error || errorJson.message || text;
+      } catch {
+        // Not JSON, use text as is
+      }
+      throw new Error(`API ${path} failed: ${res.status} – ${errorMessage}`);
     }
-    return res.json();
+
+    // Check if response is actually JSON
+    if (!contentType || !contentType.includes("application/json")) {
+      if (text.trim() === "") {
+        // Empty response, return empty object
+        return {};
+      }
+      throw new Error(
+        `Réponse invalide du serveur (attendu JSON, reçu ${contentType || "unknown"}): ${text.substring(0, 100)}`
+      );
+    }
+
+    // Parse JSON
+    try {
+      return JSON.parse(text);
+    } catch (parseError: any) {
+      throw new Error(
+        `Erreur de parsing JSON: ${parseError.message}. Réponse reçue: ${text.substring(0, 200)}`
+      );
+    }
   } catch (err: any) {
     // Improve error message for network errors
     if (err.name === "TypeError" && err.message.includes("fetch")) {

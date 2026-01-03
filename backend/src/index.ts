@@ -78,6 +78,19 @@ app.use("/runbooks", runbookRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/auth", authRoutes);
 
+// Global error handler - ensure all errors return JSON
+app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error("Unhandled error:", err);
+  res.status(err.status || 500).json({
+    error: err.message || "Internal server error",
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+  });
+});
+
+// 404 handler - ensure 404s return JSON
+app.use((req: express.Request, res: express.Response) => {
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
+});
 
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || "0.0.0.0";
