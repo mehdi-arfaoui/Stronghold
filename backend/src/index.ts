@@ -21,7 +21,13 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Configure CORS to allow requests from frontend
+app.use(
+  cors({
+    origin: process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "*",
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 // ✅ health-check sans tenant
@@ -55,7 +61,8 @@ app.use("/auth", authRoutes);
 
 
 const PORT = process.env.PORT || 4000;
+const HOST = process.env.HOST || "0.0.0.0";
 
-app.listen(PORT, () => {
-  console.log(`API PRA/PCA running on port ${PORT}`);
+app.listen(PORT, HOST, () => {
+  console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
 });

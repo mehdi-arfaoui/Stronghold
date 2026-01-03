@@ -66,21 +66,32 @@ export function persistApiConfig(config: ApiConfig) {
 export async function apiFetch(path: string, options: RequestInit = {}) {
   const { backendUrl, apiKey } = assertApiConfig();
   const normalizedPath = normalizePath(path);
+  const fullUrl = `${backendUrl}${normalizedPath}`;
 
-  const res = await fetch(`${backendUrl}${normalizedPath}`, {
-    ...options,
-    headers: {
-      "x-api-key": apiKey,
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
-  });
+  try {
+    const res = await fetch(fullUrl, {
+      ...options,
+      headers: {
+        "x-api-key": apiKey,
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${path} failed: ${res.status} – ${text}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`API ${path} failed: ${res.status} – ${text}`);
+    }
+    return res.json();
+  } catch (err: any) {
+    // Improve error message for network errors
+    if (err.name === "TypeError" && err.message.includes("fetch")) {
+      throw new Error(
+        `Impossible de se connecter au backend à ${fullUrl}. Vérifiez que le backend est démarré et accessible. Erreur: ${err.message}`
+      );
+    }
+    throw err;
   }
-  return res.json();
 }
 
 export const DEFAULTS = {
