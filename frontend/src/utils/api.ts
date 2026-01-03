@@ -1,7 +1,7 @@
 import type { ApiConfig } from "../types";
 
 const CONFIG_STORAGE_KEY = "stronghold_api_config";
-const DEFAULT_BACKEND_URL = "http://localhost:3000";
+const DEFAULT_BACKEND_URL = "http://localhost:4000";
 
 function normalizePath(path: string) {
   return path.startsWith("/") ? path : `/${path}`;

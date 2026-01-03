@@ -71,8 +71,8 @@ services:
     volumes:
       - ./frontend:/app
     environment:
-      VITE_BACKEND_URL: http://backend:4000
-      VITE_API_URL: http://backend:4000
+      VITE_BACKEND_URL: http://localhost:4000
+      VITE_API_URL: http://localhost:4000
       VITE_API_KEY: dev-key
     ports:
       - "3000:3000"
