@@ -2,9 +2,8 @@ import prisma from "../prismaClient";
 import { recommendPraOptions } from "../analysis/praRecommender";
 import * as crypto from "crypto";
 import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService";
-import { Document, HeadingLevel, Packer, Paragraph, TextRun } from "docx";
+import type { RunbookTemplate } from "@prisma/client";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { RunbookTemplate } from "@prisma/client";
 import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService";
 import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client";
 
@@ -61,35 +60,50 @@ function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, "\n").split("\n");
 }
 
-function toDocxParagraph(line: string): Paragraph {
+type DocxModule = typeof import("docx");
+
+async function loadDocx(): Promise<DocxModule> {
+  try {
+    return await import("docx");
+  } catch (err) {
+    const error = new Error(
+      "Module 'docx' requis pour générer les runbooks DOCX. Installez les dépendances backend (npm install)."
+    );
+    (error as any).cause = err;
+    throw error;
+  }
+}
+
+function toDocxParagraph(docx: DocxModule, line: string) {
   if (line.startsWith("# ")) {
-    return new Paragraph({
+    return new docx.Paragraph({
       text: line.replace(/^#\s*/, "").trim(),
-      heading: HeadingLevel.HEADING_1,
+      heading: docx.HeadingLevel.HEADING_1,
     });
   }
   if (line.startsWith("## ")) {
-    return new Paragraph({
+    return new docx.Paragraph({
       text: line.replace(/^##\s*/, "").trim(),
-      heading: HeadingLevel.HEADING_2,
+      heading: docx.HeadingLevel.HEADING_2,
     });
   }
-  return new Paragraph({
-    children: [new TextRun(line)],
+  return new docx.Paragraph({
+    children: [new docx.TextRun(line)],
   });
 }
 
 async function renderDocx(content: string): Promise<Buffer> {
+  const docx = await loadDocx();
   const lines = splitLines(content);
-  const doc = new Document({
+  const doc = new docx.Document({
     sections: [
       {
         properties: {},
-        children: lines.map((line) => toDocxParagraph(line || " ")),
+        children: lines.map((line) => toDocxParagraph(docx, line || " ")),
       },
     ],
   });
-  return Packer.toBuffer(doc);
+  return docx.Packer.toBuffer(doc);
 }
 
 async function renderPdf(content: string, title: string): Promise<Buffer> {
