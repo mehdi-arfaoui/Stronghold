@@ -1,8 +1,7 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { S3Client, CreateBucketCommand, GetObjectCommand, HeadBucketCommand, PutObjectCommand, type S3ClientConfig } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import type { S3Client, S3ClientConfig } from "@aws-sdk/client-s3";
 import type { AwsCredentialIdentity } from "@aws-sdk/types";
 import { pipeline } from "stream/promises";
 import { Readable } from "stream";
@@ -30,7 +29,30 @@ if (credentials) {
   s3Config.credentials = credentials;
 }
 
-export const s3Client = new S3Client(s3Config);
+let s3ClientPromise: Promise<S3Client> | null = null;
+let s3SdkPromise: Promise<typeof import("@aws-sdk/client-s3")> | null = null;
+let presignerPromise: Promise<typeof import("@aws-sdk/s3-request-presigner")> | null = null;
+
+async function loadS3Sdk() {
+  if (!s3SdkPromise) {
+    s3SdkPromise = import("@aws-sdk/client-s3");
+  }
+  return s3SdkPromise;
+}
+
+async function loadPresigner() {
+  if (!presignerPromise) {
+    presignerPromise = import("@aws-sdk/s3-request-presigner");
+  }
+  return presignerPromise;
+}
+
+async function getS3Client() {
+  if (!s3ClientPromise) {
+    s3ClientPromise = loadS3Sdk().then((sdk) => new sdk.S3Client(s3Config));
+  }
+  return s3ClientPromise;
+}
 
 const DEFAULT_SIGNED_URL_TTL = Number(process.env.S3_SIGNED_URL_TTL_SECONDS || 900);
 
@@ -60,11 +82,13 @@ function assertTenantBucket(bucket: string, tenantId: string) {
 }
 
 export async function ensureBucketExists(bucket: string) {
+  const sdk = await loadS3Sdk();
+  const s3Client = await getS3Client();
   try {
-    await s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
+    await s3Client.send(new sdk.HeadBucketCommand({ Bucket: bucket }));
   } catch (err: any) {
     if (err?.$metadata?.httpStatusCode === 404 || err?.name === "NotFound") {
-      await s3Client.send(new CreateBucketCommand({ Bucket: bucket }));
+      await s3Client.send(new sdk.CreateBucketCommand({ Bucket: bucket }));
     } else {
       throw err;
     }
@@ -127,9 +151,11 @@ export async function uploadObjectToBucket(params: {
   body: Buffer;
   contentType?: string;
 }) {
+  const sdk = await loadS3Sdk();
+  const s3Client = await getS3Client();
   await ensureBucketExists(params.bucket);
   await s3Client.send(
-    new PutObjectCommand({
+    new sdk.PutObjectCommand({
       Bucket: params.bucket,
       Key: params.key,
       Body: params.body,
@@ -140,8 +166,11 @@ export async function uploadObjectToBucket(params: {
 }
 
 export async function getSignedUrlForObject(bucket: string, key: string, ttlSeconds?: number) {
+  const sdk = await loadS3Sdk();
+  const { getSignedUrl } = await loadPresigner();
+  const s3Client = await getS3Client();
   const expiresIn = Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
-  const command = new GetObjectCommand({ Bucket: bucket, Key: key });
+  const command = new sdk.GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(s3Client, command, { expiresIn });
 }
 
@@ -150,7 +179,9 @@ export async function downloadObjectToTempFile(
   key: string,
   preferredName?: string
 ): Promise<string> {
-  const response = await s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+  const sdk = await loadS3Sdk();
+  const s3Client = await getS3Client();
+  const response = await s3Client.send(new sdk.GetObjectCommand({ Bucket: bucket, Key: key }));
   if (!response.Body) {
     throw new Error("Object stream is empty");
   }

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 
@@ -15,7 +14,7 @@ const BACKUP_TYPES = [
 
 router.post(
   "/backup-strategies",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -108,7 +107,7 @@ router.get("/backup-strategies", async (req: TenantRequest, res) => {
 
 router.post(
   "/security-policies",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -185,7 +184,7 @@ router.get("/security-policies", async (req: TenantRequest, res) => {
 
 router.post(
   "/dependency-cycles",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;

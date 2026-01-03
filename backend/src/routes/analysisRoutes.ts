@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { recommendPraOptions } from "../analysis/praRecommender";
@@ -159,7 +158,7 @@ function resolveCategory(domain: string | null, type: string | null): string {
   return "Application";
 }
 
-router.get("/pra-dashboard", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -281,7 +280,7 @@ router.get("/pra-dashboard", requireRole(ApiRole.READER), async (req: TenantRequ
 
 /* ========= Service RAG simple ========= */
 
-router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -320,7 +319,7 @@ router.post("/rag-query", requireRole(ApiRole.READER), async (req: TenantRequest
   }
 });
 
-router.post("/pra-rag-report", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+router.post("/pra-rag-report", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -349,7 +348,7 @@ router.post("/pra-rag-report", requireRole(ApiRole.READER), async (req: TenantRe
   }
 });
 
-router.post("/runbook-draft", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -531,7 +530,7 @@ router.get("/report", async (req: TenantRequest, res) => {
 
 /* ========= 4. Moteur de reco PRA (endpoint direct) ========= */
 
-router.post("/pra-options", requireRole(ApiRole.READER), async (req: TenantRequest, res) => {
+router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -905,7 +904,7 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
 
 router.post(
   "/documents/:id/extracted-facts",
-  requireRole(ApiRole.OPERATOR),
+  requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
     try {
       const tenantId = req.tenantId;
