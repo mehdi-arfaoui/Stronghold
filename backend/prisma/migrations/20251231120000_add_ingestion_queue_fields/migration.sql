@@ -1,8 +1,8 @@
 -- Add ingestion tracking fields and file hashing
 ALTER TABLE "Document" ADD COLUMN "fileHash" TEXT;
-ALTER TABLE "Document" ADD COLUMN "textExtractedAt" DATETIME;
+ALTER TABLE "Document" ADD COLUMN "textExtractedAt" TIMESTAMP;
 ALTER TABLE "Document" ADD COLUMN "ingestionStatus" TEXT NOT NULL DEFAULT 'FILE_STORED';
-ALTER TABLE "Document" ADD COLUMN "ingestionQueuedAt" DATETIME;
+ALTER TABLE "Document" ADD COLUMN "ingestionQueuedAt" TIMESTAMP;
 ALTER TABLE "Document" ADD COLUMN "ingestionError" TEXT;
 
 -- Adjust uniqueness to be scoped by tenant and cover file hashes
