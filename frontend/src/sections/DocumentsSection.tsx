@@ -51,6 +51,13 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
   const [description, setDescription] = useState("");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [uploadStep, setUploadStep] = useState<string | null>(null);
+  const [editingDocId, setEditingDocId] = useState<string | null>(null);
+  const [editDocType, setEditDocType] = useState("ARCHI");
+  const [editDescription, setEditDescription] = useState("");
+  const [updatingDoc, setUpdatingDoc] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadDocuments = async () => {
     try {
@@ -130,6 +137,45 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
       setActionMessage(`${count} document(s) en attente envoyés en extraction.`);
     } catch (err: any) {
       setUploadError(err.message || "Impossible de lancer l'extraction groupée");
+    }
+  };
+
+  const startEdit = (doc: DocumentRecord) => {
+    setEditingDocId(doc.id);
+    setEditDocType(doc.docType || "ARCHI");
+    setEditDescription(doc.description || "");
+    setUpdateError(null);
+  };
+
+  const handleUpdate = async (docId: string) => {
+    setUpdatingDoc(true);
+    setUpdateError(null);
+    try {
+      await apiFetch(`/documents/${docId}`, {
+        method: "PUT",
+        body: JSON.stringify({ docType: editDocType, description: editDescription }),
+      });
+      await loadDocuments();
+      setEditingDocId(null);
+    } catch (err: any) {
+      setUpdateError(err.message || "Erreur lors de la mise à jour");
+    } finally {
+      setUpdatingDoc(false);
+    }
+  };
+
+  const handleDelete = async (docId: string) => {
+    const confirmed = window.confirm("Supprimer ce document ?");
+    if (!confirmed) return;
+    setDeletingDocId(docId);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/documents/${docId}`, { method: "DELETE" });
+      await loadDocuments();
+    } catch (err: any) {
+      setDeleteError(err.message || "Erreur lors de la suppression");
+    } finally {
+      setDeletingDocId(null);
     }
   };
 
@@ -249,6 +295,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
               <tbody>
                 {documents.map((doc) => {
                   const metadata = parseMetadata(doc.detectedMetadata);
+                  const isEditing = editingDocId === doc.id;
                   return (
                     <tr key={doc.id}>
                       <td>
@@ -261,8 +308,33 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
                       </td>
                       <td>
                         <div className="stack">
-                          <span className="pill subtle">{doc.docType || "Non renseigné"}</span>
-                          {doc.description && <span className="muted small">{doc.description}</span>}
+                          {isEditing ? (
+                            <>
+                              <select
+                                value={editDocType}
+                                onChange={(e) => setEditDocType(e.target.value)}
+                              >
+                                {DOC_TYPES.map((type) => (
+                                  <option key={type} value={type}>
+                                    {type}
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                type="text"
+                                value={editDescription}
+                                onChange={(e) => setEditDescription(e.target.value)}
+                                placeholder="Description"
+                              />
+                            </>
+                          ) : (
+                            <>
+                              <span className="pill subtle">{doc.docType || "Non renseigné"}</span>
+                              {doc.description && (
+                                <span className="muted small">{doc.description}</span>
+                              )}
+                            </>
+                          )}
                         </div>
                       </td>
                       <td>
@@ -315,6 +387,34 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
                           <button className="btn" onClick={() => triggerExtraction(doc.id)}>
                             Lancer l'extraction
                           </button>
+                          <button className="btn ghost" onClick={() => startEdit(doc)}>
+                            Modifier
+                          </button>
+                          {isEditing && (
+                            <div className="stack horizontal" style={{ gap: "8px" }}>
+                              <button
+                                className="btn primary"
+                                onClick={() => handleUpdate(doc.id)}
+                                disabled={updatingDoc}
+                              >
+                                {updatingDoc ? "Mise à jour..." : "Enregistrer"}
+                              </button>
+                              <button
+                                className="btn"
+                                onClick={() => setEditingDocId(null)}
+                                disabled={updatingDoc}
+                              >
+                                Annuler
+                              </button>
+                            </div>
+                          )}
+                          <button
+                            className="btn"
+                            onClick={() => handleDelete(doc.id)}
+                            disabled={deletingDocId === doc.id}
+                          >
+                            {deletingDocId === doc.id ? "Suppression..." : "Supprimer"}
+                          </button>
                           {doc.signedUrl && (
                             <a
                               className="btn ghost"
@@ -333,6 +433,12 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
               </tbody>
             </table>
           </div>
+          {(updateError || deleteError) && (
+            <div className="form-actions">
+              {updateError && <p className="helper error">{updateError}</p>}
+              {deleteError && <p className="helper error">{deleteError}</p>}
+            </div>
+          )}
         </div>
       )}
     </section>

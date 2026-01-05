@@ -145,6 +145,63 @@ router.get("/templates/:id", async (req: TenantRequest, res) => {
   }
 });
 
+router.put("/templates/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const templateId = req.params.id;
+    const { description } = req.body || {};
+
+    const template = await prisma.runbookTemplate.findFirst({
+      where: { id: templateId, tenantId },
+    });
+    if (!template) {
+      return res.status(404).json({ error: "Template introuvable" });
+    }
+
+    const updated = await prisma.runbookTemplate.update({
+      where: { id: templateId },
+      data: {
+        description: description ? String(description).trim() : null,
+      },
+    });
+
+    return res.json(updated);
+  } catch (error: any) {
+    console.error("Error updating runbook template", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/templates/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const templateId = req.params.id;
+    const template = await prisma.runbookTemplate.findFirst({
+      where: { id: templateId, tenantId },
+    });
+    if (!template) {
+      return res.status(404).json({ error: "Template introuvable" });
+    }
+
+    await prisma.$transaction([
+      prisma.runbook.updateMany({
+        where: { tenantId, templateId },
+        data: { templateId: null },
+      }),
+      prisma.runbookTemplate.deleteMany({ where: { id: templateId, tenantId } }),
+    ]);
+
+    return res.status(204).send();
+  } catch (error: any) {
+    console.error("Error deleting runbook template", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/", async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -174,6 +231,64 @@ router.get("/:id", async (req: TenantRequest, res) => {
     return res.json(enriched);
   } catch (error) {
     console.error("Error fetching runbook", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const runbookId = req.params.id;
+    const { title, summary, status } = req.body || {};
+
+    const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
+    if (!runbook) {
+      return res.status(404).json({ error: "Runbook introuvable" });
+    }
+
+    const data: any = {};
+    if (title !== undefined) {
+      if (!title || typeof title !== "string") {
+        return res.status(400).json({ error: "title est requis" });
+      }
+      data.title = title.trim();
+    }
+    if (summary !== undefined) {
+      data.summary = summary ? String(summary).trim() : null;
+    }
+    if (status !== undefined) {
+      data.status = status ? String(status).trim() : "DRAFT";
+    }
+
+    const updated = await prisma.runbook.update({
+      where: { id: runbookId },
+      data,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating runbook", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const runbookId = req.params.id;
+    const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
+    if (!runbook) {
+      return res.status(404).json({ error: "Runbook introuvable" });
+    }
+
+    await prisma.runbook.deleteMany({ where: { id: runbookId, tenantId } });
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting runbook", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

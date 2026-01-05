@@ -153,6 +153,175 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 });
 
 /**
+ * PUT /scenarios/:id
+ * body: { name?, type?, description?, impactLevel?, rtoTargetHours?, serviceIds?: string[] }
+ */
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const scenarioId = req.params.id;
+    const {
+      name,
+      type,
+      description,
+      impactLevel,
+      rtoTargetHours,
+      serviceIds,
+    } = req.body || {};
+
+    const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, tenantId } });
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found for this tenant" });
+    }
+
+    const data: any = {};
+
+    if (name !== undefined) {
+      if (!name || typeof name !== "string" || name.trim().length < 3) {
+        return res
+          .status(400)
+          .json({ error: "name is required and must be at least 3 characters" });
+      }
+      data.name = name.trim();
+    }
+
+    if (type !== undefined) {
+      if (!type || typeof type !== "string") {
+        return res.status(400).json({ error: "type is required" });
+      }
+      data.type = type.trim();
+    }
+
+    if (description !== undefined) {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    if (impactLevel !== undefined) {
+      if (!impactLevel) {
+        data.impactLevel = null;
+      } else {
+        const lvl = String(impactLevel).toLowerCase();
+        const allowed = ["low", "medium", "high"];
+        if (!allowed.includes(lvl)) {
+          return res.status(400).json({
+            error: "impactLevel must be one of low|medium|high when provided",
+          });
+        }
+        data.impactLevel = lvl;
+      }
+    }
+
+    if (rtoTargetHours !== undefined) {
+      if (rtoTargetHours === null) {
+        data.rtoTargetHours = null;
+      } else {
+        const parsed = Number(rtoTargetHours);
+        if (isNaN(parsed) || parsed < 0) {
+          return res
+            .status(400)
+            .json({ error: "rtoTargetHours must be a number >= 0 when provided" });
+        }
+        data.rtoTargetHours = parsed;
+      }
+    }
+
+    const updates: Promise<any>[] = [];
+    updates.push(
+      prisma.scenario.update({
+        where: { id: scenarioId },
+        data,
+      })
+    );
+
+    if (Array.isArray(serviceIds)) {
+      const ids = serviceIds.map((id: any) => String(id));
+      if (ids.length > 0) {
+        const services = await prisma.service.findMany({
+          where: {
+            tenantId,
+            id: { in: ids },
+          },
+          select: { id: true },
+        });
+
+        if (services.length !== ids.length) {
+          return res.status(400).json({
+            error:
+              "One or more serviceIds do not belong to this tenant or do not exist",
+          });
+        }
+      }
+
+      updates.push(prisma.scenarioService.deleteMany({ where: { tenantId, scenarioId } }));
+      if (ids.length > 0) {
+        updates.push(
+          prisma.scenarioService.createMany({
+            data: ids.map((serviceId) => ({
+              tenantId,
+              scenarioId,
+              serviceId,
+            })),
+          })
+        );
+      }
+    }
+
+    await prisma.$transaction(updates);
+
+    const fullScenario = await prisma.scenario.findUnique({
+      where: { id: scenarioId },
+      include: {
+        services: {
+          include: { service: true },
+        },
+        steps: {
+          orderBy: { order: "asc" },
+        },
+      },
+    });
+
+    return res.json(fullScenario);
+  } catch (error) {
+    console.error("Error updating scenario:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /scenarios/:id
+ */
+router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const scenarioId = req.params.id;
+    const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, tenantId } });
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario not found for this tenant" });
+    }
+
+    await prisma.$transaction([
+      prisma.runbookStep.deleteMany({ where: { tenantId, scenarioId } }),
+      prisma.scenarioService.deleteMany({ where: { tenantId, scenarioId } }),
+      prisma.runbook.updateMany({ where: { tenantId, scenarioId }, data: { scenarioId: null } }),
+      prisma.scenario.deleteMany({ where: { id: scenarioId, tenantId } }),
+    ]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting scenario:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
  * POST /scenarios/:id/steps
  * body: { order, title, description?, estimatedDurationMinutes?, role?, blocking? }
  */
@@ -221,6 +390,114 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
     return res.status(201).json(step);
   } catch (error) {
     console.error("Error creating runbook step:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * PUT /scenarios/:id/steps/:stepId
+ */
+router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const scenarioId = req.params.id;
+    const stepId = req.params.stepId;
+    const { order, title, description, estimatedDurationMinutes, role, blocking } = req.body || {};
+
+    const step = await prisma.runbookStep.findFirst({
+      where: { id: stepId, scenarioId, tenantId },
+    });
+
+    if (!step) {
+      return res.status(404).json({ error: "Étape introuvable pour ce tenant" });
+    }
+
+    const data: any = {};
+
+    if (order !== undefined) {
+      const ord = Number(order);
+      if (!Number.isInteger(ord) || ord < 1) {
+        return res.status(400).json({ error: "order must be an integer >= 1" });
+      }
+      data.order = ord;
+    }
+
+    if (title !== undefined) {
+      if (!title || typeof title !== "string" || title.trim().length < 3) {
+        return res.status(400).json({
+          error: "title is required and must be at least 3 characters",
+        });
+      }
+      data.title = title.trim();
+    }
+
+    if (description !== undefined) {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    if (estimatedDurationMinutes !== undefined) {
+      if (estimatedDurationMinutes === null) {
+        data.estimatedDurationMinutes = null;
+      } else {
+        const parsed = Number(estimatedDurationMinutes);
+        if (isNaN(parsed) || parsed < 0) {
+          return res.status(400).json({
+            error: "estimatedDurationMinutes must be a number >= 0 when provided",
+          });
+        }
+        data.estimatedDurationMinutes = parsed;
+      }
+    }
+
+    if (role !== undefined) {
+      data.role = role ? String(role).trim() : null;
+    }
+
+    if (blocking !== undefined) {
+      data.blocking = Boolean(blocking);
+    }
+
+    const updated = await prisma.runbookStep.update({
+      where: { id: stepId },
+      data,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating runbook step:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /scenarios/:id/steps/:stepId
+ */
+router.delete("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const scenarioId = req.params.id;
+    const stepId = req.params.stepId;
+
+    const step = await prisma.runbookStep.findFirst({
+      where: { id: stepId, scenarioId, tenantId },
+    });
+
+    if (!step) {
+      return res.status(404).json({ error: "Étape introuvable pour ce tenant" });
+    }
+
+    await prisma.runbookStep.delete({ where: { id: stepId } });
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting runbook step:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

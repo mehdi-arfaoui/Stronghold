@@ -77,6 +77,196 @@ router.get("/", async (req: TenantRequest, res) => {
 });
 
 /**
+ * PUT /services/:id
+ * Met à jour un service et ses critères de continuité.
+ */
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const serviceId = req.params.id;
+    const {
+      name,
+      type,
+      description,
+      criticality,
+      businessPriority,
+      recoveryPriority,
+      domain,
+      rtoHours,
+      rpoMinutes,
+      mtpdHours,
+      notes,
+    } = req.body || {};
+
+    const service = await prisma.service.findFirst({
+      where: { id: serviceId, tenantId },
+      include: { continuity: true },
+    });
+
+    if (!service) {
+      return res.status(404).json({ error: "Service introuvable pour ce tenant" });
+    }
+
+    const data: any = {};
+
+    if (name !== undefined) {
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "name est requis" });
+      }
+      data.name = name.trim();
+    }
+
+    if (type !== undefined) {
+      if (!type || typeof type !== "string") {
+        return res.status(400).json({ error: "type est requis" });
+      }
+      data.type = type.trim();
+    }
+
+    if (description !== undefined) {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    if (criticality !== undefined) {
+      const crit = String(criticality).toLowerCase();
+      if (!["low", "medium", "high"].includes(crit)) {
+        return res.status(400).json({ error: "criticality doit être low|medium|high" });
+      }
+      data.criticality = crit;
+    }
+
+    if (businessPriority !== undefined) {
+      data.businessPriority = businessPriority ? String(businessPriority).trim() : null;
+    }
+
+    if (recoveryPriority !== undefined) {
+      if (recoveryPriority === null) {
+        data.recoveryPriority = null;
+      } else {
+        const parsed = Number(recoveryPriority);
+        if (isNaN(parsed)) {
+          return res.status(400).json({ error: "recoveryPriority doit être un nombre" });
+        }
+        data.recoveryPriority = parsed;
+      }
+    }
+
+    if (domain !== undefined) {
+      data.domain = domain ? String(domain).toUpperCase() : null;
+    }
+
+    const continuityPayload: any = {};
+    if (rtoHours !== undefined) {
+      if (rtoHours === null || isNaN(Number(rtoHours))) {
+        return res.status(400).json({ error: "rtoHours doit être un nombre" });
+      }
+      continuityPayload.rtoHours = Number(rtoHours);
+    }
+    if (rpoMinutes !== undefined) {
+      if (rpoMinutes === null || isNaN(Number(rpoMinutes))) {
+        return res.status(400).json({ error: "rpoMinutes doit être un nombre" });
+      }
+      continuityPayload.rpoMinutes = Number(rpoMinutes);
+    }
+    if (mtpdHours !== undefined) {
+      if (mtpdHours === null || isNaN(Number(mtpdHours))) {
+        return res.status(400).json({ error: "mtpdHours doit être un nombre" });
+      }
+      continuityPayload.mtpdHours = Number(mtpdHours);
+    }
+    if (notes !== undefined) {
+      continuityPayload.notes = notes ? String(notes).trim() : null;
+    }
+
+    if (Object.keys(continuityPayload).length > 0) {
+      const existingContinuity = service.continuity;
+      const nextRto = continuityPayload.rtoHours ?? existingContinuity?.rtoHours;
+      const nextRpo = continuityPayload.rpoMinutes ?? existingContinuity?.rpoMinutes;
+      const nextMtpd = continuityPayload.mtpdHours ?? existingContinuity?.mtpdHours;
+
+      if (!existingContinuity && (nextRto == null || nextRpo == null || nextMtpd == null)) {
+        return res.status(400).json({
+          error: "rtoHours, rpoMinutes et mtpdHours sont requis pour créer la continuité",
+        });
+      }
+
+      if (nextRto != null && nextRpo != null && nextMtpd != null) {
+        continuityPayload.advisoryNotes = buildContinuityAdvisory(nextRto, nextRpo, nextMtpd);
+      }
+
+      data.continuity = existingContinuity
+        ? { update: continuityPayload }
+        : {
+            create: {
+              rtoHours: Number(nextRto),
+              rpoMinutes: Number(nextRpo),
+              mtpdHours: Number(nextMtpd),
+              notes: continuityPayload.notes ?? null,
+              advisoryNotes: continuityPayload.advisoryNotes,
+            },
+          };
+    }
+
+    const updated = await prisma.service.update({
+      where: { id: serviceId },
+      data,
+      include: {
+        continuity: true,
+        dependenciesFrom: true,
+        dependenciesTo: true,
+        infraLinks: { include: { infra: true } },
+      },
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error in PUT /services/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /services/:id
+ * Supprime un service et ses liens.
+ */
+router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const serviceId = req.params.id;
+    const service = await prisma.service.findFirst({ where: { id: serviceId, tenantId } });
+    if (!service) {
+      return res.status(404).json({ error: "Service introuvable pour ce tenant" });
+    }
+
+    await prisma.$transaction([
+      prisma.serviceDependency.deleteMany({
+        where: { tenantId, OR: [{ fromServiceId: serviceId }, { toServiceId: serviceId }] },
+      }),
+      prisma.serviceInfraLink.deleteMany({ where: { tenantId, serviceId } }),
+      prisma.scenarioService.deleteMany({ where: { tenantId, serviceId } }),
+      prisma.backupStrategy.deleteMany({ where: { tenantId, serviceId } }),
+      prisma.securityPolicyService.deleteMany({ where: { tenantId, serviceId } }),
+      prisma.dependencyCycleService.deleteMany({ where: { tenantId, serviceId } }),
+      prisma.serviceContinuity.deleteMany({ where: { serviceId } }),
+      prisma.service.deleteMany({ where: { id: serviceId, tenantId } }),
+    ]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error in DELETE /services/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
  * POST /services
  * Crée un service avec ses critères de continuité.
  * Body attendu :
