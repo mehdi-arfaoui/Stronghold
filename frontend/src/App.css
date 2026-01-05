@@ -62,6 +62,124 @@
   gap: 20px;
 }
 
+.graph-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+
+.legend {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #475569;
+}
+
+.legend-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.legend-divider {
+  width: 1px;
+  height: 16px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.legend-shape {
+  display: inline-block;
+  background: #cbd5f5;
+  border: 1px solid #94a3b8;
+}
+
+.legend-shape-service {
+  width: 16px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.legend-shape-app {
+  width: 14px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.graph-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: start;
+}
+
+.graph-side-panel {
+  min-height: 520px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.detail-list div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.detail-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.toggle input {
+  width: 16px;
+  height: 16px;
+}
+
+.section-title {
+  margin: 0;
+  font-size: 16px;
+}
+
 .card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
@@ -315,6 +433,12 @@
   transition: all 0.2s ease;
 }
 
+.btn.subtle {
+  padding: 6px 12px;
+  font-weight: 600;
+  background: #f8fafc;
+}
+
 .btn.primary {
   background: linear-gradient(135deg, #0ea5e9, #2563eb);
   color: #0b1224;
@@ -493,5 +617,13 @@
 
   .tab-list {
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .graph-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .graph-side-panel {
+    min-height: auto;
   }
 }

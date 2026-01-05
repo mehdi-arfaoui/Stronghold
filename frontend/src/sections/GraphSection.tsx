@@ -5,6 +5,7 @@ import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
 type GraphView = "landing" | "applications" | "mixed" | "bubbles";
+type InfoLevel = "compact" | "normal" | "detailed";
 
 interface GraphSectionProps {
   configVersion: number;
@@ -24,6 +25,19 @@ const VIEW_LABELS: Record<GraphView, string> = {
   mixed: "Service ↔ Application",
   bubbles: "Bulles de criticité",
 };
+
+const INFO_LEVEL_LABELS: Record<InfoLevel, string> = {
+  compact: "Compact",
+  normal: "Normal",
+  detailed: "Détaillé",
+};
+
+const CRIT_LEGEND = [
+  { key: "critical", label: "Critique" },
+  { key: "high", label: "Haute" },
+  { key: "medium", label: "Moyenne" },
+  { key: "low", label: "Faible" },
+] as const;
 
 function colorFromCrit(crit?: string | null) {
   if (!crit) return CRIT_COLORS.default;
@@ -74,12 +88,70 @@ function filterEdges(edges: GraphEdge[], nodes: GraphNode[]) {
     .map((edge) => ({ ...edge, source: edge.from, target: edge.to }));
 }
 
+function getNodeDetails(node: GraphNode) {
+  return (
+    node.detailPayload || {
+      name: node.label,
+      type: node.type ?? null,
+      category: node.category || "-",
+      criticality: node.criticality,
+      businessPriority: node.businessPriority ?? null,
+      domain: node.domain ?? null,
+      isLandingZone: Boolean(node.isLandingZone),
+      rtoHours: node.rtoHours ?? null,
+      rpoMinutes: node.rpoMinutes ?? null,
+      mtpdHours: node.mtpdHours ?? null,
+      dependsOnCount: node.dependsOnCount ?? 0,
+      usedByCount: node.usedByCount ?? 0,
+    }
+  );
+}
+
+function isEssentialNode(node: GraphNode) {
+  const crit = (node.criticality || "").toLowerCase();
+  const details = getNodeDetails(node);
+  const linkLoad = (details.dependsOnCount || 0) + (details.usedByCount || 0);
+  return crit === "critical" || crit === "high" || Boolean(details.isLandingZone) || linkLoad >= 6;
+}
+
+function buildTooltip(node: GraphNode, infoLevel: InfoLevel) {
+  const details = getNodeDetails(node);
+  const lines = [
+    `<strong>${details.name}</strong>`,
+    `Criticité: ${details.criticality}`,
+  ];
+
+  if (infoLevel !== "compact") {
+    lines.push(
+      `Type: ${details.type || "-"}`,
+      `Catégorie: ${details.category || "-"}`,
+      `Dépend de: ${details.dependsOnCount} • Utilisé par: ${details.usedByCount}`
+    );
+  }
+
+  if (infoLevel === "detailed") {
+    lines.push(
+      `Domaine: ${details.domain || "-"}`,
+      `Priorité métier: ${details.businessPriority ?? "-"}`,
+      `RTO: ${details.rtoHours ?? "-"}h / RPO: ${details.rpoMinutes ?? "-"} min / MTPD: ${
+        details.mtpdHours ?? "-"
+      }h`,
+      `Landing zone: ${details.isLandingZone ? "Oui" : "Non"}`
+    );
+  }
+
+  return lines.join("<br/>");
+}
+
 export function GraphSection({ configVersion }: GraphSectionProps) {
   const [graph, setGraph] = useState<GraphApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<GraphView>("landing");
   const [critFilter, setCritFilter] = useState<string>("all");
+  const [showDetails, setShowDetails] = useState(false);
+  const [infoLevel, setInfoLevel] = useState<InfoLevel>("normal");
+  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
 
   useEffect(() => {
     const fetchGraph = async () => {
@@ -101,13 +173,17 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
     const base = filterNodesByView(
       graph.nodes.map((n) => ({
         ...n,
-        label: n.label || n.id,
+        label: n.summaryLabel || n.label || n.id,
       })),
       view
     );
 
-    return critAllowed ? base.filter((n) => (n.criticality || "").toLowerCase() === critAllowed) : base;
-  }, [graph, view, critFilter]);
+    const filteredByCrit = critAllowed
+      ? base.filter((n) => (n.criticality || "").toLowerCase() === critAllowed)
+      : base;
+
+    return showDetails ? filteredByCrit : filteredByCrit.filter((n) => isEssentialNode(n));
+  }, [graph, view, critFilter, showDetails]);
 
   const filteredEdges = useMemo(() => {
     if (!graph) return [];
@@ -116,6 +192,14 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
       filteredNodes
     );
   }, [graph, filteredNodes]);
+
+  useEffect(() => {
+    if (!selectedNode) return;
+    const stillVisible = filteredNodes.some((node) => node.id === selectedNode.id);
+    if (!stillVisible) {
+      setSelectedNode(null);
+    }
+  }, [filteredNodes, selectedNode]);
 
   const bubbleOptions = useMemo(() => {
     const categories = graph?.views?.categories ?? graph?.categories ?? [];
@@ -203,29 +287,144 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         </div>
       </div>
 
-      <div className="card graph-card">
-        {view === "bubbles" ? (
-          <ReactECharts option={bubbleOptions as any} style={{ height: 520 }} />
-        ) : (
-          <ForceGraph2D
-            graphData={{ nodes: filteredNodes, links: filteredEdges }}
-            enableZoomInteraction
-            nodeLabel={(node: any) =>
-              `${node.label}\nType: ${node.type}\nCatégorie: ${node.category || "-"}\nCriticité: ${
-                node.criticality
-              }\nDépend de: ${node.dependsOnCount ?? 0} • Utilisé par: ${node.usedByCount ?? 0}\nRTO: ${
-                node.rtoHours ?? "-"
-              }h / RPO: ${node.rpoMinutes ?? "-"} min`
-            }
-            linkDirectionalArrowLength={6}
-            linkDirectionalArrowRelPos={1}
-            linkLabel={(link: any) => link.type || "dépendance"}
-            nodeCanvasObject={(node: any, ctx, globalScale) => shapeNode(node as GraphNode, ctx, globalScale)}
-          />
-        )}
+      <div className="graph-toolbar">
+        <div className="legend">
+          <span className="legend-title">Criticité</span>
+          {CRIT_LEGEND.map((item) => (
+            <span key={item.key} className="legend-item">
+              <span className="legend-swatch" style={{ background: CRIT_COLORS[item.key] }} />
+              {item.label}
+            </span>
+          ))}
+          <span className="legend-divider" />
+          <span className="legend-title">Formes</span>
+          <span className="legend-item">
+            <span className="legend-shape legend-shape-service" />
+            Service
+          </span>
+          <span className="legend-item">
+            <span className="legend-shape legend-shape-app" />
+            Application
+          </span>
+        </div>
+        <div className="stack horizontal" style={{ gap: "12px" }}>
+          <label className="form-field" style={{ minWidth: "180px" }}>
+            <span>Niveau d'information</span>
+            <select value={infoLevel} onChange={(e) => setInfoLevel(e.target.value as InfoLevel)}>
+              {(Object.keys(INFO_LEVEL_LABELS) as InfoLevel[]).map((level) => (
+                <option key={level} value={level}>
+                  {INFO_LEVEL_LABELS[level]}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="toggle">
+            <input type="checkbox" checked={showDetails} onChange={(e) => setShowDetails(e.target.checked)} />
+            <span>Détails</span>
+          </label>
+        </div>
       </div>
+
+      <div className="graph-layout">
+        <div className="card graph-card">
+          {view === "bubbles" ? (
+            <ReactECharts option={bubbleOptions as any} style={{ height: 520 }} />
+          ) : (
+            <ForceGraph2D
+              graphData={{ nodes: filteredNodes, links: filteredEdges }}
+              enableZoomInteraction
+              nodeLabel={(node: any) => buildTooltip(node as GraphNode, infoLevel)}
+              linkDirectionalArrowLength={6}
+              linkDirectionalArrowRelPos={1}
+              linkLabel={(link: any) =>
+                infoLevel === "detailed"
+                  ? link.edgeLabelLong || link.edgeLabelShort || link.type || "dépendance"
+                  : link.edgeLabelShort || link.type || "dépendance"
+              }
+              onNodeClick={(node: any) => setSelectedNode(node as GraphNode)}
+              onBackgroundClick={() => setSelectedNode(null)}
+              nodeCanvasObject={(node: any, ctx, globalScale) => shapeNode(node as GraphNode, ctx, globalScale)}
+            />
+          )}
+        </div>
+
+        <aside className="graph-side-panel card" aria-live="polite">
+          <div className="card-header">
+            <h3 className="section-title">Détails du nœud</h3>
+            {selectedNode ? (
+              <button className="btn subtle" type="button" onClick={() => setSelectedNode(null)}>
+                Fermer
+              </button>
+            ) : null}
+          </div>
+          {selectedNode ? (
+            (() => {
+              const details = getNodeDetails(selectedNode);
+              return (
+                <div className="detail-list">
+                  <div>
+                    <span className="detail-label">Nom</span>
+                    <span>{details.name}</span>
+                  </div>
+                  {infoLevel !== "compact" ? (
+                    <>
+                      <div>
+                        <span className="detail-label">Type</span>
+                        <span>{details.type || "-"}</span>
+                      </div>
+                      <div>
+                        <span className="detail-label">Catégorie</span>
+                        <span>{details.category || "-"}</span>
+                      </div>
+                    </>
+                  ) : null}
+                  <div>
+                    <span className="detail-label">Criticité</span>
+                    <span>{details.criticality}</span>
+                  </div>
+                  {infoLevel !== "compact" ? (
+                    <div>
+                      <span className="detail-label">Relations</span>
+                      <span>
+                        Dépend de {details.dependsOnCount} • Utilisé par {details.usedByCount}
+                      </span>
+                    </div>
+                  ) : null}
+                  {infoLevel === "detailed" ? (
+                    <>
+                      <div>
+                        <span className="detail-label">Domaine</span>
+                        <span>{details.domain || "-"}</span>
+                      </div>
+                      <div>
+                        <span className="detail-label">Priorité métier</span>
+                        <span>{details.businessPriority ?? "-"}</span>
+                      </div>
+                      <div>
+                        <span className="detail-label">Continuité</span>
+                        <span>
+                          RTO {details.rtoHours ?? "-"}h / RPO {details.rpoMinutes ?? "-"} min / MTPD{" "}
+                          {details.mtpdHours ?? "-"}h
+                        </span>
+                      </div>
+                      <div>
+                        <span className="detail-label">Landing zone</span>
+                        <span>{details.isLandingZone ? "Oui" : "Non"}</span>
+                      </div>
+                    </>
+                  ) : null}
+                </div>
+              );
+            })()
+          ) : (
+            <p className="muted">Cliquez sur un nœud pour afficher ses informations détaillées.</p>
+          )}
+        </aside>
+      </div>
+
       <div className="muted small">
-        Astuces : survoler pour le détail, zoom/drag activés, les rectangles = services, ellipses = applications, couleurs = criticité.
+        Astuces : survoler pour le détail, zoom/drag activés, rectangles = services, ellipses = applications, couleurs
+        = criticité. Le mode essentiel masque les nœuds secondaires.
       </div>
     </section>
   );

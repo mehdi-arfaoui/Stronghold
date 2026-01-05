@@ -47,6 +47,14 @@ function resolveNodeKind(type: string | null): "service" | "application" {
   return "service";
 }
 
+function buildSummaryLabel(name: string, type: string | null): string {
+  const trimmed = (name || "").trim();
+  const shortName = trimmed.length > 24 ? `${trimmed.slice(0, 21)}…` : trimmed;
+  const suffix = type ? ` (${type})` : "";
+  const combined = `${shortName}${suffix}`;
+  return combined.length > 32 ? `${combined.slice(0, 29)}…` : combined;
+}
+
 const router = Router();
 
 router.get("/", async (req: TenantRequest, res) => {
@@ -68,9 +76,25 @@ router.get("/", async (req: TenantRequest, res) => {
     const nodes = services.map((s) => {
       const category = resolveCategory(s.domain, s.type);
       const crit = normalizeCriticality(s.criticality);
+      const summaryLabel = buildSummaryLabel(s.name, s.type);
       return {
         id: s.id,
         label: s.name,
+        summaryLabel,
+        detailPayload: {
+          name: s.name,
+          type: s.type,
+          category,
+          criticality: crit,
+          businessPriority: s.businessPriority,
+          domain: s.domain,
+          isLandingZone: category === "Foundation" || category === "Network" || category === "Platform",
+          rtoHours: s.continuity?.rtoHours ?? null,
+          rpoMinutes: s.continuity?.rpoMinutes ?? null,
+          mtpdHours: s.continuity?.mtpdHours ?? null,
+          dependsOnCount: s.dependenciesFrom.length,
+          usedByCount: s.dependenciesTo.length,
+        },
         type: s.type,
         nodeKind: resolveNodeKind(s.type),
         category,
@@ -86,12 +110,21 @@ router.get("/", async (req: TenantRequest, res) => {
       };
     });
 
+    const serviceNameById = services.reduce<Record<string, string>>((acc, service) => {
+      acc[service.id] = service.name;
+      return acc;
+    }, {});
+
     const edges = services.flatMap((s) =>
       s.dependenciesFrom.map((d) => ({
         id: d.id,
         from: d.fromServiceId,
         to: d.toServiceId,
         type: d.dependencyType,
+        edgeLabelShort: d.dependencyType || "dépendance",
+        edgeLabelLong: `${serviceNameById[d.fromServiceId] || d.fromServiceId} → ${
+          serviceNameById[d.toServiceId] || d.toServiceId
+        } (${d.dependencyType || "dépendance"})`,
         strength: (d.dependencyType || "").toLowerCase().includes("fort") ? "strong" : "normal",
       }))
     );
