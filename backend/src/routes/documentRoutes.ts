@@ -153,6 +153,74 @@ router.get("/", async (req: TenantRequest, res) => {
   }
 });
 
+/**
+ * PUT /documents/:id
+ * Met à jour les métadonnées (docType, description) d'un document.
+ */
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const docId = req.params.id;
+    const { docType, description } = req.body || {};
+
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    const data: any = {};
+    if (docType !== undefined) {
+      data.docType = docType ? String(docType).toUpperCase() : null;
+    }
+    if (description !== undefined) {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    const updated = await prisma.document.update({
+      where: { id: docId },
+      data,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error in PUT /documents/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /documents/:id
+ * Supprime un document et ses faits extraits.
+ */
+router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const docId = req.params.id;
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    await prisma.$transaction([
+      prisma.extractedFact.deleteMany({ where: { tenantId, documentId: docId } }),
+      prisma.document.deleteMany({ where: { id: docId, tenantId } }),
+    ]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error in DELETE /documents/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 
 router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, res) => {

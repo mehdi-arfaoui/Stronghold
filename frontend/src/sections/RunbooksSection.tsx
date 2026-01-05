@@ -55,6 +55,20 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
   const [templateDescription, setTemplateDescription] = useState("");
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editTemplateDescription, setEditTemplateDescription] = useState("");
+  const [updatingTemplate, setUpdatingTemplate] = useState(false);
+  const [templateActionError, setTemplateActionError] = useState<string | null>(null);
+  const [deletingTemplateId, setDeletingTemplateId] = useState<string | null>(null);
+  const [editingRunbookId, setEditingRunbookId] = useState<string | null>(null);
+  const [editRunbook, setEditRunbook] = useState({
+    title: "",
+    summary: "",
+    status: "DRAFT",
+  });
+  const [updatingRunbook, setUpdatingRunbook] = useState(false);
+  const [runbookActionError, setRunbookActionError] = useState<string | null>(null);
+  const [deletingRunbookId, setDeletingRunbookId] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -227,6 +241,92 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
       link.remove();
     } catch (err: any) {
       setTemplateError(err.message || "Téléchargement du template impossible");
+    }
+  };
+
+  const startTemplateEdit = (tpl: RunbookTemplateFront) => {
+    setEditingTemplateId(tpl.id);
+    setEditTemplateDescription(tpl.description || "");
+    setTemplateActionError(null);
+  };
+
+  const handleTemplateUpdate = async (tplId: string) => {
+    setUpdatingTemplate(true);
+    setTemplateActionError(null);
+    try {
+      await apiFetch(`/runbooks/templates/${tplId}`, {
+        method: "PUT",
+        body: JSON.stringify({ description: editTemplateDescription }),
+      });
+      await loadTemplates();
+      setEditingTemplateId(null);
+    } catch (err: any) {
+      setTemplateActionError(err.message || "Mise à jour impossible");
+    } finally {
+      setUpdatingTemplate(false);
+    }
+  };
+
+  const handleTemplateDelete = async (tplId: string) => {
+    const confirmed = window.confirm("Supprimer ce template ?");
+    if (!confirmed) return;
+    setDeletingTemplateId(tplId);
+    setTemplateActionError(null);
+    try {
+      await apiFetch(`/runbooks/templates/${tplId}`, { method: "DELETE" });
+      await loadTemplates();
+    } catch (err: any) {
+      setTemplateActionError(err.message || "Suppression impossible");
+    } finally {
+      setDeletingTemplateId(null);
+    }
+  };
+
+  const startRunbookEdit = (runbook: RunbookFront) => {
+    setEditingRunbookId(runbook.id);
+    setEditRunbook({
+      title: runbook.title,
+      summary: runbook.summary || "",
+      status: runbook.status,
+    });
+    setRunbookActionError(null);
+  };
+
+  const handleRunbookUpdate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingRunbookId) return;
+    setUpdatingRunbook(true);
+    setRunbookActionError(null);
+    try {
+      await apiFetch(`/runbooks/${editingRunbookId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          title: editRunbook.title,
+          summary: editRunbook.summary,
+          status: editRunbook.status,
+        }),
+      });
+      await loadData();
+      setEditingRunbookId(null);
+    } catch (err: any) {
+      setRunbookActionError(err.message || "Mise à jour impossible");
+    } finally {
+      setUpdatingRunbook(false);
+    }
+  };
+
+  const handleRunbookDelete = async (runbookId: string) => {
+    const confirmed = window.confirm("Supprimer ce runbook ?");
+    if (!confirmed) return;
+    setDeletingRunbookId(runbookId);
+    setRunbookActionError(null);
+    try {
+      await apiFetch(`/runbooks/${runbookId}`, { method: "DELETE" });
+      await loadData();
+    } catch (err: any) {
+      setRunbookActionError(err.message || "Suppression impossible");
+    } finally {
+      setDeletingRunbookId(null);
     }
   };
 
@@ -421,6 +521,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
                   <th>Description</th>
                   <th>Upload</th>
                   <th>Téléchargement</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -428,17 +529,61 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
                   <tr key={tpl.id}>
                     <td>{tpl.originalName}</td>
                     <td>{tpl.format?.toUpperCase()}</td>
-                    <td>{tpl.description || "—"}</td>
+                    <td>
+                      {editingTemplateId === tpl.id ? (
+                        <input
+                          type="text"
+                          value={editTemplateDescription}
+                          onChange={(e) => setEditTemplateDescription(e.target.value)}
+                        />
+                      ) : (
+                        tpl.description || "—"
+                      )}
+                    </td>
                     <td>{tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString() : "-"}</td>
                     <td>
                       <button className="btn ghost" onClick={() => downloadTemplate(tpl)}>
                         Télécharger
                       </button>
                     </td>
+                    <td>
+                      <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                        {editingTemplateId === tpl.id ? (
+                          <>
+                            <button
+                              className="btn primary"
+                              onClick={() => handleTemplateUpdate(tpl.id)}
+                              disabled={updatingTemplate}
+                            >
+                              {updatingTemplate ? "Mise à jour..." : "Enregistrer"}
+                            </button>
+                            <button
+                              className="btn"
+                              onClick={() => setEditingTemplateId(null)}
+                              disabled={updatingTemplate}
+                            >
+                              Annuler
+                            </button>
+                          </>
+                        ) : (
+                          <button className="btn ghost" onClick={() => startTemplateEdit(tpl)}>
+                            Modifier
+                          </button>
+                        )}
+                        <button
+                          className="btn"
+                          onClick={() => handleTemplateDelete(tpl.id)}
+                          disabled={deletingTemplateId === tpl.id}
+                        >
+                          {deletingTemplateId === tpl.id ? "Suppression..." : "Supprimer"}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            {templateActionError && <p className="helper error">{templateActionError}</p>}
           </div>
         )}
       </div>
@@ -462,6 +607,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
                   <th>Statut</th>
                   <th>Généré le</th>
                   <th>Téléchargements</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -494,12 +640,74 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
                           )}
                         </div>
                       </td>
+                      <td>
+                        <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                          <button className="btn ghost" onClick={() => startRunbookEdit(runbook)}>
+                            Modifier
+                          </button>
+                          <button
+                            className="btn"
+                            onClick={() => handleRunbookDelete(runbook.id)}
+                            disabled={deletingRunbookId === runbook.id}
+                          >
+                            {deletingRunbookId === runbook.id ? "Suppression..." : "Supprimer"}
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
               </tbody>
             </table>
           </div>
+        )}
+        {runbookActionError && <p className="helper error">{runbookActionError}</p>}
+        {editingRunbookId && (
+          <form className="card form-grid" onSubmit={handleRunbookUpdate} style={{ marginTop: "16px" }}>
+            <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+              <label className="form-field">
+                <span>Titre</span>
+                <input
+                  type="text"
+                  value={editRunbook.title}
+                  onChange={(e) => setEditRunbook((s) => ({ ...s, title: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="form-field">
+                <span>Statut</span>
+                <input
+                  type="text"
+                  value={editRunbook.status}
+                  onChange={(e) => setEditRunbook((s) => ({ ...s, status: e.target.value }))}
+                />
+              </label>
+              <label className="form-field" style={{ gridColumn: "span 3" }}>
+                <span>Résumé</span>
+                <textarea
+                  value={editRunbook.summary}
+                  onChange={(e) => setEditRunbook((s) => ({ ...s, summary: e.target.value }))}
+                  rows={3}
+                />
+              </label>
+            </div>
+            <div className="form-actions">
+              <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
+                <button className="btn primary" type="submit" disabled={updatingRunbook}>
+                  {updatingRunbook ? "Mise à jour..." : "Enregistrer"}
+                </button>
+                <button
+                  className="btn"
+                  type="button"
+                  onClick={() => setEditingRunbookId(null)}
+                  disabled={updatingRunbook}
+                >
+                  Annuler
+                </button>
+              </div>
+              {runbookActionError && <p className="helper error">{runbookActionError}</p>}
+            </div>
+          </form>
         )}
       </div>
     </section>

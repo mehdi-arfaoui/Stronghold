@@ -186,7 +186,12 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
       ) : (
         <div className="stack" style={{ gap: "16px" }}>
           {scenarios.map((scenario) => (
-            <ScenarioCard key={scenario.id} scenario={scenario} onUpdated={loadData} />
+            <ScenarioCard
+              key={scenario.id}
+              scenario={scenario}
+              services={services}
+              onUpdated={loadData}
+            />
           ))}
         </div>
       )}
@@ -196,10 +201,11 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
 
 interface ScenarioCardProps {
   scenario: ScenarioFront;
+  services: Service[];
   onUpdated: () => void;
 }
 
-function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
+function ScenarioCard({ scenario, services, onUpdated }: ScenarioCardProps) {
   const [addingStep, setAddingStep] = useState(false);
   const [stepError, setStepError] = useState<string | null>(null);
   const [newStep, setNewStep] = useState({
@@ -210,6 +216,26 @@ function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
     blocking: false,
     description: "",
   });
+  const [editingScenario, setEditingScenario] = useState(false);
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const [updatingScenario, setUpdatingScenario] = useState(false);
+  const [editScenario, setEditScenario] = useState({
+    name: scenario.name,
+    type: scenario.type,
+    impactLevel: scenario.impactLevel ?? "medium",
+    rtoTargetHours: scenario.rtoTargetHours ?? 0,
+    selectedServiceIds: scenario.services.map((s) => s.service.id),
+  });
+  const [editingStepId, setEditingStepId] = useState<string | null>(null);
+  const [editStep, setEditStep] = useState({
+    order: 1,
+    title: "",
+    estimatedDurationMinutes: 30,
+    role: "",
+    blocking: false,
+    description: "",
+  });
+  const [updatingStep, setUpdatingStep] = useState(false);
 
   const totalDuration = scenario.steps.reduce(
     (sum, step) => sum + (step.estimatedDurationMinutes ?? 0),
@@ -248,6 +274,119 @@ function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
     }
   };
 
+  const handleScenarioEdit = () => {
+    setEditingScenario(true);
+    setScenarioError(null);
+    setEditScenario({
+      name: scenario.name,
+      type: scenario.type,
+      impactLevel: scenario.impactLevel ?? "medium",
+      rtoTargetHours: scenario.rtoTargetHours ?? 0,
+      selectedServiceIds: scenario.services.map((s) => s.service.id),
+    });
+  };
+
+  const toggleScenarioService = (id: string) => {
+    setEditScenario((prev) => {
+      const exists = prev.selectedServiceIds.includes(id);
+      return {
+        ...prev,
+        selectedServiceIds: exists
+          ? prev.selectedServiceIds.filter((s) => s !== id)
+          : [...prev.selectedServiceIds, id],
+      };
+    });
+  };
+
+  const handleScenarioUpdate = async (e: FormEvent) => {
+    e.preventDefault();
+    setUpdatingScenario(true);
+    setScenarioError(null);
+    try {
+      await apiFetch(`/scenarios/${scenario.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: editScenario.name,
+          type: editScenario.type,
+          impactLevel: editScenario.impactLevel,
+          rtoTargetHours: editScenario.rtoTargetHours,
+          serviceIds: editScenario.selectedServiceIds,
+        }),
+      });
+      await onUpdated();
+      setEditingScenario(false);
+    } catch (err: any) {
+      setScenarioError(err.message || "Erreur lors de la mise à jour");
+    } finally {
+      setUpdatingScenario(false);
+    }
+  };
+
+  const handleScenarioDelete = async () => {
+    const confirmed = window.confirm("Supprimer ce scénario ?");
+    if (!confirmed) return;
+    setScenarioError(null);
+    try {
+      await apiFetch(`/scenarios/${scenario.id}`, { method: "DELETE" });
+      await onUpdated();
+    } catch (err: any) {
+      setScenarioError(err.message || "Erreur lors de la suppression");
+    }
+  };
+
+  const startEditStep = (stepId: string) => {
+    const step = scenario.steps.find((s) => s.id === stepId);
+    if (!step) return;
+    setEditingStepId(stepId);
+    setEditStep({
+      order: step.order,
+      title: step.title,
+      estimatedDurationMinutes: step.estimatedDurationMinutes ?? 0,
+      role: step.role ?? "",
+      blocking: step.blocking,
+      description: step.description ?? "",
+    });
+    setStepError(null);
+  };
+
+  const handleStepUpdate = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!editingStepId) return;
+    setUpdatingStep(true);
+    setStepError(null);
+    try {
+      await apiFetch(`/scenarios/${scenario.id}/steps/${editingStepId}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          order: editStep.order,
+          title: editStep.title,
+          estimatedDurationMinutes: editStep.estimatedDurationMinutes,
+          role: editStep.role,
+          blocking: editStep.blocking,
+          description: editStep.description,
+        }),
+      });
+      await onUpdated();
+      setEditingStepId(null);
+    } catch (err: any) {
+      setStepError(err.message || "Erreur lors de la mise à jour");
+    } finally {
+      setUpdatingStep(false);
+    }
+  };
+
+  const handleStepDelete = async (stepId: string) => {
+    const confirmed = window.confirm("Supprimer cette étape ?");
+    if (!confirmed) return;
+    setStepError(null);
+    try {
+      await apiFetch(`/scenarios/${scenario.id}/steps/${stepId}`, { method: "DELETE" });
+      await onUpdated();
+    } catch (err: any) {
+      setStepError(err.message || "Erreur lors de la suppression");
+    }
+  };
+
   const impactLabel =
     scenario.impactLevel === "high"
       ? "Fort"
@@ -280,8 +419,17 @@ function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
         <div className="scenario-meta">
           <span className="pill subtle">Étapes : {scenario.steps.length}</span>
           <span className="pill subtle">Durée estimée : ~{totalDuration} min</span>
+          <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+            <button className="btn ghost" onClick={handleScenarioEdit}>
+              Modifier
+            </button>
+            <button className="btn" onClick={handleScenarioDelete}>
+              Supprimer
+            </button>
+          </div>
         </div>
       </header>
+      {scenarioError && <p className="helper error">{scenarioError}</p>}
 
       <div className="table-wrapper">
         {scenario.steps.length === 0 ? (
@@ -295,6 +443,7 @@ function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
                 <th>Rôle</th>
                 <th>Durée (min)</th>
                 <th>Bloquant</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -310,12 +459,198 @@ function ScenarioCard({ scenario, onUpdated }: ScenarioCardProps) {
                   <td>{step.role ?? "-"}</td>
                   <td className="numeric">{step.estimatedDurationMinutes ?? "-"}</td>
                   <td>{step.blocking ? "Oui" : "Non"}</td>
+                  <td>
+                    <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                      <button className="btn ghost" onClick={() => startEditStep(step.id)}>
+                        Modifier
+                      </button>
+                      <button className="btn" onClick={() => handleStepDelete(step.id)}>
+                        Supprimer
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         )}
       </div>
+
+      {editingScenario && (
+        <form className="form-grid" onSubmit={handleScenarioUpdate}>
+          <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+            <label className="form-field">
+              <span>Nom du scénario</span>
+              <input
+                type="text"
+                value={editScenario.name}
+                onChange={(e) => setEditScenario((s) => ({ ...s, name: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="form-field">
+              <span>Type</span>
+              <select
+                value={editScenario.type}
+                onChange={(e) => setEditScenario((s) => ({ ...s, type: e.target.value }))}
+              >
+                <option value="REGION_LOSS">Perte région</option>
+                <option value="AZ_LOSS">Perte AZ</option>
+                <option value="DC_LOSS">Perte DC on-prem</option>
+                <option value="DB_CORRUPTION">Corruption base de données</option>
+                <option value="RANSOMWARE">Ransomware</option>
+                <option value="AD_FAILURE">Perte Active Directory</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>Impact</span>
+              <select
+                value={editScenario.impactLevel}
+                onChange={(e) =>
+                  setEditScenario((s) => ({ ...s, impactLevel: e.target.value }))
+                }
+              >
+                <option value="low">Faible</option>
+                <option value="medium">Moyen</option>
+                <option value="high">Fort</option>
+              </select>
+            </label>
+            <label className="form-field">
+              <span>RTO cible global (h)</span>
+              <input
+                type="number"
+                min={0}
+                value={editScenario.rtoTargetHours}
+                onChange={(e) =>
+                  setEditScenario((s) => ({
+                    ...s,
+                    rtoTargetHours: Number(e.target.value),
+                  }))
+                }
+              />
+            </label>
+            <div className="form-field" style={{ gridColumn: "span 2" }}>
+              <span>Services impactés</span>
+              <div className="service-selector">
+                {services.length === 0 ? (
+                  <div className="empty-state">Aucun service défini pour ce tenant.</div>
+                ) : (
+                  services.map((service) => (
+                    <label key={service.id} className="checkbox-row">
+                      <input
+                        type="checkbox"
+                        checked={editScenario.selectedServiceIds.includes(service.id)}
+                        onChange={() => toggleScenarioService(service.id)}
+                      />
+                      <span>
+                        {service.name}{" "}
+                        <span className="muted">
+                          ({service.type}, {service.criticality})
+                        </span>
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="form-actions">
+            <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
+              <button className="btn primary" type="submit" disabled={updatingScenario}>
+                {updatingScenario ? "Mise à jour..." : "Enregistrer"}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setEditingScenario(false)}
+                disabled={updatingScenario}
+              >
+                Annuler
+              </button>
+            </div>
+            {scenarioError && <p className="helper error">{scenarioError}</p>}
+          </div>
+        </form>
+      )}
+
+      {editingStepId && (
+        <form className="form-grid" onSubmit={handleStepUpdate}>
+          <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+            <label className="form-field">
+              <span>Ordre</span>
+              <input
+                type="number"
+                min={1}
+                value={editStep.order}
+                onChange={(e) => setEditStep((s) => ({ ...s, order: Number(e.target.value) }))}
+              />
+            </label>
+            <label className="form-field">
+              <span>Titre de l'étape</span>
+              <input
+                type="text"
+                value={editStep.title}
+                onChange={(e) => setEditStep((s) => ({ ...s, title: e.target.value }))}
+                required
+              />
+            </label>
+            <label className="form-field">
+              <span>Rôle</span>
+              <input
+                type="text"
+                value={editStep.role}
+                onChange={(e) => setEditStep((s) => ({ ...s, role: e.target.value }))}
+              />
+            </label>
+            <label className="form-field">
+              <span>Durée estimée (min)</span>
+              <input
+                type="number"
+                min={0}
+                value={editStep.estimatedDurationMinutes}
+                onChange={(e) =>
+                  setEditStep((s) => ({
+                    ...s,
+                    estimatedDurationMinutes: Number(e.target.value),
+                  }))
+                }
+              />
+            </label>
+            <label className="form-field checkbox">
+              <span>Bloquant ?</span>
+              <input
+                type="checkbox"
+                checked={editStep.blocking}
+                onChange={(e) => setEditStep((s) => ({ ...s, blocking: e.target.checked }))}
+              />
+            </label>
+            <label className="form-field" style={{ gridColumn: "span 2" }}>
+              <span>Description</span>
+              <input
+                type="text"
+                value={editStep.description}
+                onChange={(e) => setEditStep((s) => ({ ...s, description: e.target.value }))}
+              />
+            </label>
+          </div>
+          <div className="form-actions">
+            <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
+              <button className="btn" type="submit" disabled={updatingStep}>
+                {updatingStep ? "Mise à jour..." : "Enregistrer l'étape"}
+              </button>
+              <button
+                className="btn"
+                type="button"
+                onClick={() => setEditingStepId(null)}
+                disabled={updatingStep}
+              >
+                Annuler
+              </button>
+            </div>
+            {stepError && <p className="helper error">{stepError}</p>}
+          </div>
+        </form>
+      )}
 
       <form className="form-grid" onSubmit={handleAddStep}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
