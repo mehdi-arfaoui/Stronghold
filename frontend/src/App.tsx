@@ -4,6 +4,7 @@ import { MainLayout } from "./components/layout/MainLayout";
 import { TabNavigation } from "./components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
+import { AuthSection } from "./sections/AuthSection";
 import { ArchitectureSection } from "./sections/ArchitectureSection";
 import { DocumentsSection } from "./sections/DocumentsSection";
 import { GraphSection } from "./sections/GraphSection";
@@ -27,6 +28,7 @@ const tabs: TabDefinition[] = [
   { id: "architecture", label: "Architecture", description: "Vue d'ensemble" },
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
   { id: "scenarios", label: "Scénarios", description: "Runbooks" },
+  { id: "auth", label: "Auth (ADMIN)", description: "Gestion des clés API (ADMIN only)" },
 ];
 
 function App() {
@@ -53,6 +55,8 @@ function App() {
         return <RunbooksSection configVersion={configVersion} />;
       case "analysis":
         return <AnalysisSection configVersion={configVersion} />;
+      case "auth":
+        return <AuthSection configVersion={configVersion} />;
       case "graph":
         return <GraphSection configVersion={configVersion} />;
       case "architecture":
