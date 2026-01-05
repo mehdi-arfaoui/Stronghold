@@ -17,6 +17,7 @@ import runbookRoutes from "./routes/runbookRoutes";
 import webhookRoutes from "./routes/webhookRoutes";
 import authRoutes from "./routes/authRoutes";
 import auditRoutes from "./routes/auditRoutes";
+import biaRoutes from "./routes/biaRoutes";
 
 dotenv.config();
 
@@ -84,6 +85,7 @@ app.use("/runbooks", runbookRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/auth", authRoutes);
 app.use("/audit-logs", auditRoutes);
+app.use("/bia", biaRoutes);
 
 // Global error handler - ensure all errors return JSON
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
