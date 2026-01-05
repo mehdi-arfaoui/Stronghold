@@ -48,7 +48,6 @@ model Tenant {
   notificationChannels NotificationChannel[]
   risks           Risk[]
   riskMitigations RiskMitigation[]
-  exercises       Exercise[]
   exerciseRunbooks ExerciseRunbook[]
   exerciseChecklistItems ExerciseChecklistItem[]
   exerciseResults ExerciseResult[]
@@ -688,89 +687,6 @@ model IncidentAction {
   metadata   Json?
 
   createdAt DateTime @default(now())
-}
-
-model Exercise {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  scenarioId String
-  scenario   Scenario @relation(fields: [scenarioId], references: [id])
-
-  title       String
-  description String?
-  scheduledAt DateTime
-  status      String
-
-  runbooks       ExerciseRunbook[]
-  checklistItems ExerciseChecklistItem[]
-  results        ExerciseResult[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId, scheduledAt])
-}
-
-model ExerciseRunbook {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  exerciseId String
-  exercise   Exercise @relation(fields: [exerciseId], references: [id])
-
-  runbookId String
-  runbook   Runbook @relation(fields: [runbookId], references: [id])
-
-  createdAt DateTime @default(now())
-
-  @@index([tenantId, exerciseId])
-  @@index([tenantId, runbookId])
-}
-
-model ExerciseChecklistItem {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  exerciseId String
-  exercise   Exercise @relation(fields: [exerciseId], references: [id])
-
-  runbookStepId String
-  runbookStep   RunbookStep @relation(fields: [runbookStepId], references: [id])
-
-  order       Int
-  title       String
-  description String?
-  role        String?
-  blocking    Boolean @default(false)
-  status      String  @default("PENDING")
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@index([tenantId, exerciseId])
-  @@index([tenantId, runbookStepId])
-}
-
-model ExerciseResult {
-  id       String @id @default(cuid())
-  tenantId String
-  tenant   Tenant @relation(fields: [tenantId], references: [id])
-
-  exerciseId String
-  exercise   Exercise @relation(fields: [exerciseId], references: [id])
-
-  summary         String?
-  findings        String?
-  improvementPlan String?
-  analysis        Json?
-
-  createdAt DateTime @default(now())
-
-  @@index([tenantId, exerciseId])
 }
 
 model NotificationChannel {
