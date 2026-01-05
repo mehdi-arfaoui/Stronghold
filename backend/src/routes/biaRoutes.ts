@@ -62,6 +62,13 @@ const scoreCriticality = (impactScore: number, timeScore: number) => {
   return Number(((impactScore + timeScore) / 2).toFixed(2));
 };
 
+export const __test__ = {
+  scoreImpact,
+  scoreByThreshold,
+  scoreTimeSensitivity,
+  scoreCriticality,
+};
+
 router.post("/processes", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;

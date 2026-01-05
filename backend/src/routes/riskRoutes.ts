@@ -35,6 +35,11 @@ function riskLevel(score: number) {
   return "low";
 }
 
+export const __test__ = {
+  riskScore,
+  riskLevel,
+};
+
 function validateScale(value: number | null | undefined, field: string, issues: any[]) {
   if (value == null) return;
   if (value < 1 || value > 5) {

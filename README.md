@@ -14,3 +14,44 @@
 - **DOCX/PPTX** : extraction textuelle via décompression OpenXML (zip) et lecture XML interne.
 - **Excel** (`.xlsx/.xlsm/.xlsb`) et **fichiers texte** (`.txt/.md/.json/.csv/.log/.yml/.yaml`) : support inchangé.
 - **Images** (`image/*`) : toujours non supportées (OCR à activer ultérieurement).
+
+## Schémas de données (backend)
+Les modèles sont définis dans `backend/prisma/schema.prisma`. Les principaux objets utilisés par les endpoints récents :
+
+- **BusinessProcess (BIA)** : `name`, `description`, `owners`, `rtoHours`, `rpoMinutes`, `mtpdHours`, `financialImpactLevel`, `regulatoryImpactLevel`, `impactScore`, `criticalityScore`, et liens vers `Service` via `BusinessProcessService`.
+- **Risk** : `title`, `description`, `threatType`, `probability`, `impact`, `status`, `owner`, `processName`, lien optionnel vers `Service` et mitigations via `RiskMitigation`.
+- **Incident** : `title`, `description`, `status`, `detectedAt`, `responsibleTeam`, liens vers `Service` (`IncidentService`) et `Document` (`IncidentDocument`), actions via `IncidentAction`.
+- **Exercise** : `title`, `description`, `scheduledAt`, `status`, lien vers `Scenario`, runbooks via `ExerciseRunbook`, checklist via `ExerciseChecklistItem`, résultats via `ExerciseResult`, analyses via `ExerciseAnalysis`.
+
+## APIs REST (extrait)
+Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/tenantMiddleware.ts`.
+
+### BIA
+- `POST /bia/processes` : création d’un processus BIA (calcule `impactScore`, `criticalityScore`).
+- `GET /bia/processes` : liste des processus BIA.
+
+### Risques
+- `GET /risks` : liste des risques enrichis (score + niveau).
+- `GET /risks/matrix` : matrice de risque (probabilité x impact).
+- `POST /risks` : création d’un risque avec mitigations optionnelles.
+- `PUT /risks/:id` : mise à jour d’un risque.
+- `POST /risks/:id/mitigations` : ajout d’une mitigation.
+
+### Incidents
+- `GET /incidents` : liste des incidents.
+- `GET /incidents/:id` : détail d’un incident.
+- `POST /incidents` : création d’incident + action initiale.
+- `PATCH /incidents/:id` : mise à jour + traçabilité des changements.
+- `GET /incidents/dashboard` : résumé + incidents récents.
+- `GET/POST/PATCH /incidents/notification-channels` : gestion des canaux n8n.
+- `GET /incidents/:id/actions` / `POST /incidents/:id/actions` : suivi d’actions.
+
+### Exercices (planification de tests)
+- `POST /exercises` : planification d’un exercice avec checklist auto-générée.
+- `GET /exercises` : liste des exercices.
+- `GET /exercises/:id` : détail d’un exercice.
+- `PATCH /exercises/:id` : mise à jour d’un exercice.
+- `PATCH /exercises/:id/checklist/:itemId` : mise à jour d’un item de checklist.
+- `POST /exercises/:id/results` : saisie des résultats d’exercice.
+- `POST /exercises/:id/analysis` : génération d’analyse automatisée.
+- `GET /exercises/:id/report` : rapport synthétique.
