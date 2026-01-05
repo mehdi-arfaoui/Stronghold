@@ -74,6 +74,9 @@ function buildSummaryLabel(name: string, type: string | null): string {
   return combined.length > 32 ? `${combined.slice(0, 29)}…` : combined;
 }
 
+const LITE_NODE_LIMIT = 30;
+const LITE_EDGE_LIMIT = 80;
+
 const router = Router();
 
 router.get("/", async (req: TenantRequest, res) => {
@@ -151,7 +154,37 @@ router.get("/", async (req: TenantRequest, res) => {
       }));
     });
 
-    const categorySummary = nodes.reduce<Record<string, { count: number; scoreSum: number }>>(
+    const view = typeof req.query.view === "string" ? req.query.view : "";
+    const isLiteView = view === "architecture-lite";
+
+    let viewNodes = nodes;
+    let viewEdges = edges;
+
+    if (isLiteView) {
+      const nodeRank = nodes
+        .map((node) => {
+          const linkLoad = (node.dependsOnCount || 0) + (node.usedByCount || 0);
+          return {
+            node,
+            score: (criticalityScore[node.criticality as Criticality] || 1) * 10 + linkLoad,
+          };
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          return a.node.label.localeCompare(b.node.label);
+        });
+
+      viewNodes = nodeRank.slice(0, LITE_NODE_LIMIT).map((entry) => entry.node);
+
+      const allowed = new Set(viewNodes.map((node) => node.id));
+      viewEdges = edges.filter((edge) => allowed.has(edge.from) && allowed.has(edge.to));
+
+      viewEdges = viewEdges
+        .sort((a, b) => (b.edgeWeight || 0) - (a.edgeWeight || 0))
+        .slice(0, LITE_EDGE_LIMIT);
+    }
+
+    const categorySummary = viewNodes.reduce<Record<string, { count: number; scoreSum: number }>>(
       (acc, node) => {
         const current = acc[node.category] || { count: 0, scoreSum: 0 };
         current.count += 1;
@@ -162,12 +195,12 @@ router.get("/", async (req: TenantRequest, res) => {
       {}
     );
 
-    const nodeById = nodes.reduce<Record<string, (typeof nodes)[number]>>((acc, node) => {
+    const nodeById = viewNodes.reduce<Record<string, (typeof nodes)[number]>>((acc, node) => {
       acc[node.id] = node;
       return acc;
     }, {});
 
-    const categoryLinks = edges.reduce<Record<string, number>>((acc, edge) => {
+    const categoryLinks = viewEdges.reduce<Record<string, number>>((acc, edge) => {
       const sourceCategory = nodeById[edge.from]?.category;
       const targetCategory = nodeById[edge.to]?.category;
       if (!sourceCategory || !targetCategory) return acc;
@@ -196,8 +229,8 @@ router.get("/", async (req: TenantRequest, res) => {
     });
 
     return res.json({
-      nodes,
-      edges,
+      nodes: viewNodes,
+      edges: viewEdges,
       views: {
         categories: categoryBubbles,
       },
