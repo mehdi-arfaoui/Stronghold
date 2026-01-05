@@ -1,7 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
 import * as crypto from "crypto";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
@@ -21,15 +20,8 @@ const router = Router();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-async function computeFileHash(filePath: string): Promise<string> {
-  const hash = crypto.createHash("sha256");
-  const stream = fs.createReadStream(filePath);
-
-  return new Promise((resolve, reject) => {
-    stream.on("data", (data) => hash.update(data));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
+async function computeFileHash(buffer: Buffer): Promise<string> {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
 function computeRetentionDate(days: number): Date | null {
@@ -78,12 +70,11 @@ router.post(
         contentType: file.mimetype,
       });
 
-      const fileHash = await computeFileHash(file.path);
+      const fileHash = await computeFileHash(file.buffer);
       const duplicate = await prisma.document.findFirst({
         where: { tenantId, fileHash },
       });
       if (duplicate) {
-        await fs.promises.unlink(file.path).catch(() => undefined);
         return res.status(409).json({
           error: "Document déjà présent pour ce tenant (hash identique)",
           existingDocumentId: duplicate.id,
