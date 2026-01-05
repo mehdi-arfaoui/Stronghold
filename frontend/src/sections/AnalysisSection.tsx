@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { AppWarning, InfraFinding, PraDashboard, PraRagReport } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -103,6 +104,10 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
 
   const appWarnings: AppWarning[] = dashboard.warnings;
   const infraFindings: InfraFinding[] = dashboard.infraFindings;
+  const progressSteps = [Boolean(dashboard), Boolean(ragResult), Boolean(runbookDraft)];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
 
   return (
     <section id="analysis-panel" className="panel" aria-labelledby="analysis-title">
@@ -120,8 +125,32 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         </div>
       </div>
 
+      <PageIntro
+        title="Qualifier la posture PRA"
+        objective="Identifier les écarts RTO/RPO, prioriser les recommandations DR et interroger l'IA avec votre contexte."
+        steps={[
+          "Analyser les incohérences applicatives",
+          "Comparer les scénarios DR",
+          "Lancer un diagnostic IA contextualisé",
+        ]}
+        links={[
+          { label: "Voir les alertes", href: "#analysis-dashboard", description: "Anomalies" },
+          { label: "Comparer les scénarios", href: "#analysis-dr", description: "Recommandations" },
+          { label: "Interroger l'IA", href: "#analysis-ai", description: "RAG PRA" },
+        ]}
+        expectedData={[
+          "Services + objectifs RTO/RPO",
+          "Dépendances et criticités",
+          "Documents indexés pour le RAG",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
       <div className="panel-grid">
-        <div className="card">
+        <div id="analysis-dashboard" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Applicatif</p>
@@ -157,7 +186,7 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
           )}
         </div>
 
-        <div className="card">
+        <div id="analysis-dr" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Infrastructure</p>
@@ -270,7 +299,7 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         </div>
       </div>
 
-      <div className="card">
+      <div id="analysis-ai" className="card">
         <div className="card-header">
           <div>
             <p className="eyebrow">IA</p>

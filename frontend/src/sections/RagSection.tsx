@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { DocumentMetadata, DocumentRecord, ExtractedFactFront, RagResponse } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -130,6 +131,15 @@ export function RagSection({ configVersion }: RagSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {docsError}</div>;
   }
 
+  const progressSteps = [
+    documents.length > 0,
+    facts.length > 0,
+    Boolean(ragResult),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="rag-panel" className="panel" aria-labelledby="rag-title">
       <div className="panel-header">
@@ -143,8 +153,32 @@ export function RagSection({ configVersion }: RagSectionProps) {
         <div className="badge subtle">{documents.length} sources</div>
       </div>
 
+      <PageIntro
+        title="Exploiter les faits IA"
+        objective="Extraire les faits structurés des documents et interroger le corpus pour accélérer les décisions PRA."
+        steps={[
+          "Choisir un document et extraire les faits",
+          "Filtrer le contexte RAG",
+          "Valider la réponse proposée",
+        ]}
+        links={[
+          { label: "Extraire les faits", href: "#rag-facts", description: "Extraction" },
+          { label: "Poser une question", href: "#rag-query", description: "Formulaire RAG" },
+          { label: "Analyser la réponse", href: "#rag-results", description: "Résultats" },
+        ]}
+        expectedData={[
+          "Documents indexés + extraction disponible",
+          "Question claire et filtres (types, services)",
+          "Sélection de documents pour le contexte",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
       <div className="panel-grid">
-        <div className="card">
+        <div id="rag-facts" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Extraction</p>
@@ -219,7 +253,7 @@ export function RagSection({ configVersion }: RagSectionProps) {
           )}
         </div>
 
-        <div className="card">
+        <div id="rag-query" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Q&A</p>
@@ -286,7 +320,7 @@ export function RagSection({ configVersion }: RagSectionProps) {
           </form>
 
           {ragResult && (
-            <div className="stack" style={{ gap: "12px", marginTop: "12px" }}>
+            <div id="rag-results" className="stack" style={{ gap: "12px", marginTop: "12px" }}>
               <div className="alert success">
                 <strong>Réponse suggérée : </strong>
                 <div className="muted">{ragResult.draftAnswer}</div>

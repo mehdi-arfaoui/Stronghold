@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import ReactECharts from "echarts-for-react";
+import { PageIntro } from "../components/PageIntro";
 import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -289,6 +290,15 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
   if (error) return <div className="alert error">Erreur lors du chargement : {error}</div>;
   if (!graph) return null;
 
+  const progressSteps = [
+    graph.nodes.length > 0,
+    graph.edges.length > 0,
+    (graph.views?.categories ?? graph.categories ?? []).length > 0,
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="graph-panel" className="panel" aria-labelledby="graph-title">
       <div className="panel-header">
@@ -300,7 +310,7 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
             et bulles de catégories.
           </p>
         </div>
-        <div className="stack" style={{ alignItems: "flex-end", gap: "8px" }}>
+        <div id="graph-views" className="stack" style={{ alignItems: "flex-end", gap: "8px" }}>
           <div className="stack horizontal" style={{ gap: "8px" }}>
             {(Object.keys(VIEW_LABELS) as GraphView[]).map((key) => (
               <label key={key} className="chip">
@@ -328,7 +338,31 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         </div>
       </div>
 
-      <div className="graph-toolbar">
+      <PageIntro
+        title="Explorer les dépendances"
+        objective="Comprendre les liens entre services, applications et Landing Zone pour anticiper les impacts PRA."
+        steps={[
+          "Choisir une vue de graphe",
+          "Filtrer par criticité ou niveau d'information",
+          "Analyser les dépendances clés",
+        ]}
+        links={[
+          { label: "Changer de vue", href: "#graph-views", description: "Vues disponibles" },
+          { label: "Ajuster les filtres", href: "#graph-controls", description: "Toolbar" },
+          { label: "Lire les détails", href: "#graph-details", description: "Panneau latéral" },
+        ]}
+        expectedData={[
+          "Services et applications chargés",
+          "Relations et criticités renseignées",
+          "Catégories et vues disponibles",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <div id="graph-controls" className="graph-toolbar">
         <div className="legend">
           <span className="legend-title">Criticité</span>
           {CRIT_LEGEND.map((item) => (
@@ -408,7 +442,7 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
           )}
         </div>
 
-        <aside className="graph-side-panel card" aria-live="polite">
+        <aside id="graph-details" className="graph-side-panel card" aria-live="polite">
           <div className="card-header">
             <h3 className="section-title">Détails du nœud</h3>
             {selectedNode ? (

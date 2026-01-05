@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { DocumentMetadata, DocumentRecord } from "../types";
 import { apiFetch, apiFetchFormData } from "../utils/api";
 
@@ -198,6 +199,22 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    documents.length > 0,
+    documents.some((doc) => Boolean(doc.extractionStatus)),
+    documents.some((doc) => {
+      const metadata = parseMetadata(doc.detectedMetadata);
+      return (
+        (metadata.backupMentions?.length || 0) > 0 ||
+        (metadata.dependencies?.length || 0) > 0 ||
+        (metadata.slas?.length || 0) > 0
+      );
+    }),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="documents-panel" className="panel" aria-labelledby="documents-title">
       <div className="panel-header">
@@ -218,7 +235,32 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
         </div>
       </div>
 
+      <PageIntro
+        title="Structurer l'ingestion documentaire"
+        objective="Centraliser vos pièces PRA, suivre l'extraction et alimenter la base de faits exploitable par l'IA."
+        steps={[
+          "Uploader les documents sources",
+          "Lancer l'extraction / indexation",
+          "Contrôler les faits et dépendances détectés",
+        ]}
+        links={[
+          { label: "Charger un document", href: "#documents-upload", description: "Formulaire" },
+          { label: "Extraire en masse", href: "#documents-actions", description: "Actions rapides" },
+          { label: "Parcourir les documents", href: "#documents-table", description: "Table" },
+        ]}
+        expectedData={[
+          "Fichier source (PDF, DOCX, CSV...)",
+          "Type de document + description",
+          "Documents éligibles à l'extraction",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
       <form
+        id="documents-upload"
         className="card form-grid"
         onSubmit={(event) => {
           event.preventDefault();
@@ -250,7 +292,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
             />
           </label>
         </div>
-        <div className="form-actions">
+        <div id="documents-actions" className="form-actions">
           <div className="stack horizontal" style={{ gap: "12px", alignItems: "center" }}>
             <button className="btn primary" type="submit" disabled={uploading}>
               {uploading ? "Upload en cours..." : "Charger le document"}
@@ -278,7 +320,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
       {documents.length === 0 ? (
         <p className="empty-state">Aucun document importé pour ce tenant.</p>
       ) : (
-        <div className="card">
+        <div id="documents-table" className="card">
           <div className="table-wrapper">
             <table className="data-table">
               <thead>
