@@ -31,6 +31,73 @@ export type Service = {
   infraLinks: InfraLink[];
 };
 
+export type BackupStrategy = {
+  id: string;
+  serviceId: string | null;
+  service?: {
+    id: string;
+    name: string;
+    criticality: string;
+  } | null;
+  type: string;
+  frequencyMinutes: number;
+  retentionDays: number;
+  storageLocation?: string | null;
+  encryptionLevel?: string | null;
+  compression: boolean;
+  immutability: boolean;
+  rtoImpactHours?: number | null;
+  rpoImpactMinutes?: number | null;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SecurityPolicyServiceLink = {
+  id: string;
+  serviceId: string;
+  service: {
+    id: string;
+    name: string;
+    criticality: string;
+  };
+};
+
+export type SecurityPolicy = {
+  id: string;
+  name: string;
+  policyType: string;
+  classification?: string | null;
+  scope?: string | null;
+  controls?: string | null;
+  reviewFrequencyDays?: number | null;
+  owner?: string | null;
+  services: SecurityPolicyServiceLink[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type DependencyCycleServiceLink = {
+  id: string;
+  serviceId: string;
+  roleInCycle?: string | null;
+  service: {
+    id: string;
+    name: string;
+    criticality: string;
+  };
+};
+
+export type DependencyCycle = {
+  id: string;
+  label: string;
+  severity?: string | null;
+  notes?: string | null;
+  services: DependencyCycleServiceLink[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AppWarning = {
   type: string;
   service: string;
@@ -287,6 +354,7 @@ export type RunbookFront = {
 
 export type TabId =
   | "services"
+  | "continuity"
   | "analysis"
   | "graph"
   | "architecture"
