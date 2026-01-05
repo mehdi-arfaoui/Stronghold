@@ -15,43 +15,42 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  apiKeys          ApiKey[]
-  services          Service[]
-  infraComponents   InfraComponent[]
-  scenarios         Scenario[]
-  runbookSteps      RunbookStep[]
-  scenarioServices  ScenarioService[]
-  ServiceDependency ServiceDependency[]
-  ServiceInfraLink  ServiceInfraLink[]
-  documents         Document[]
-  extractedFacts    ExtractedFact[]
-  aiExtractionErrors AiExtractionError[]
+  apiKeys                       ApiKey[]
+  services                      Service[]
+  infraComponents               InfraComponent[]
+  scenarios                     Scenario[]
+  runbookSteps                  RunbookStep[]
+  scenarioServices              ScenarioService[]
+  ServiceDependency             ServiceDependency[]
+  ServiceInfraLink              ServiceInfraLink[]
+  documents                     Document[]
+  extractedFacts                ExtractedFact[]
+  aiExtractionErrors            AiExtractionError[]
   documentExtractionSuggestions DocumentExtractionSuggestion[]
-  backupStrategies  BackupStrategy[]
-  securityPolicies  SecurityPolicy[]
-  policyLinks       SecurityPolicyService[]
-  dependencyCycles  DependencyCycle[]
-  dependencyCycleLinks DependencyCycleService[]
-  runbooks          Runbook[]
-  auditLogs        AuditLog[]
-  businessProcesses BusinessProcess[]
-  businessProcessLinks BusinessProcessService[]
-  exerciseEvidence ExerciseEvidence[]
-  
+  backupStrategies              BackupStrategy[]
+  securityPolicies              SecurityPolicy[]
+  policyLinks                   SecurityPolicyService[]
+  dependencyCycles              DependencyCycle[]
+  dependencyCycleLinks          DependencyCycleService[]
+  runbooks                      Runbook[]
+  auditLogs                     AuditLog[]
+  businessProcesses             BusinessProcess[]
+  businessProcessLinks          BusinessProcessService[]
+  exerciseEvidence              ExerciseEvidence[]
 
-  RunbookTemplate RunbookTemplate[]
-  incidents        Incident[]
-  incidentActions  IncidentAction[]
-  incidentServices IncidentService[]
-  incidentDocuments IncidentDocument[]
-  exercises       Exercise[]
-  notificationChannels NotificationChannel[]
-  risks           Risk[]
-  riskMitigations RiskMitigation[]
-  exerciseRunbooks ExerciseRunbook[]
+  RunbookTemplate        RunbookTemplate[]
+  incidents              Incident[]
+  incidentActions        IncidentAction[]
+  incidentServices       IncidentService[]
+  incidentDocuments      IncidentDocument[]
+  exercises              Exercise[]
+  notificationChannels   NotificationChannel[]
+  risks                  Risk[]
+  riskMitigations        RiskMitigation[]
+  exerciseRunbooks       ExerciseRunbook[]
   exerciseChecklistItems ExerciseChecklistItem[]
-  exerciseResults ExerciseResult[]
-  exerciseAnalyses ExerciseAnalysis[]
+  exerciseResults        ExerciseResult[]
+  exerciseAnalyses       ExerciseAnalysis[]
 }
 
 model Service {
@@ -69,15 +68,17 @@ model Service {
   // Domaine fonctionnel : APP, DB, NETWORK, SECURITY, IAC, GOV, SAAS, DATA...
   domain String?
 
-  continuity       ServiceContinuity?
-  dependenciesFrom ServiceDependency[]      @relation("ServiceDependenciesFrom")
-  dependenciesTo   ServiceDependency[]      @relation("ServiceDependenciesTo")
-  infraLinks       ServiceInfraLink[]
-  scenarioLinks    ScenarioService[]
-  backupStrategies BackupStrategy[]
-  policyLinks      SecurityPolicyService[]
-  dependencyCycles DependencyCycleService[]
-  risks            Risk[]
+  continuity           ServiceContinuity?
+  dependenciesFrom     ServiceDependency[]      @relation("ServiceDependenciesFrom")
+  dependenciesTo       ServiceDependency[]      @relation("ServiceDependenciesTo")
+  infraLinks           ServiceInfraLink[]
+  scenarioLinks        ScenarioService[]
+  backupStrategies     BackupStrategy[]
+  policyLinks          SecurityPolicyService[]
+  dependencyCycles     DependencyCycleService[]
+  risks                Risk[]
+  businessProcessLinks BusinessProcessService[]
+  incidentServices     IncidentService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -112,13 +113,13 @@ model RiskMitigation {
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
   riskId String
-  risk   Risk @relation(fields: [riskId], references: [id])
+  risk   Risk   @relation(fields: [riskId], references: [id])
 
-  description String
-  owner       String?
-  status      String?
-  dueDate     DateTime?
-  businessProcessLinks BusinessProcessService[]
+  description          String
+  owner                String?
+  status               String?
+  dueDate              DateTime?
+  businessProcessLinks BusinessProcessService[] @relation("RiskMitigationBusinessProcess")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -159,6 +160,9 @@ model BusinessProcessService {
 
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id])
+
+  riskMitigationId String?
+  riskMitigation   RiskMitigation? @relation("RiskMitigationBusinessProcess", fields: [riskMitigationId], references: [id])
 
   createdAt DateTime @default(now())
 }
@@ -242,9 +246,10 @@ model Scenario {
   impactLevel    String? // low, medium, high
   rtoTargetHours Int? // tolérance globale de reprise pour ce scénario
 
-  services ScenarioService[]
-  steps    RunbookStep[]
-  runbooks Runbook[]
+  services  ScenarioService[]
+  steps     RunbookStep[]
+  runbooks  Runbook[]
+  exercises Exercise[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -264,6 +269,8 @@ model RunbookStep {
   estimatedDurationMinutes Int?
   role                     String? // ex: "Equipe Réseau", "Equipe AD"
   blocking                 Boolean @default(false)
+
+  exerciseChecklistItems ExerciseChecklistItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -293,17 +300,17 @@ model Document {
   storagePath  String // chemin relatif/absolu sur le serveur
   fileHash     String?
 
-  docType           String? // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
-  description       String?
-  detectedDocType   String?
-  detectedMetadata  String? // JSON stringified metadata for heuristiques
-  textHash          String?
-  vectorizedAt      DateTime?
-  textExtractedAt   DateTime?
-  ingestionStatus   String    @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
-  ingestionQueuedAt DateTime?
-  ingestionError String?
-  retentionUntil DateTime?
+  docType                 String? // ex: "ARCHI", "CMDB", "POLICY", "RUNBOOK", ...
+  description             String?
+  detectedDocType         String?
+  detectedMetadata        String? // JSON stringified metadata for heuristiques
+  textHash                String?
+  vectorizedAt            DateTime?
+  textExtractedAt         DateTime?
+  ingestionStatus         String    @default("FILE_STORED") // FILE_STORED, QUEUED, TEXT_EXTRACTED, VECTORIZED, ERROR
+  ingestionQueuedAt       DateTime?
+  ingestionError          String?
+  retentionUntil          DateTime?
   embeddingRetentionUntil DateTime?
 
   // Extraction de texte
@@ -314,9 +321,11 @@ model Document {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  extractedFacts ExtractedFact[]
-  aiExtractionErrors AiExtractionError[]
+  extractedFacts        ExtractedFact[]
+  aiExtractionErrors    AiExtractionError[]
   extractionSuggestions DocumentExtractionSuggestion[]
+  exerciseEvidence      ExerciseEvidence[]
+  incidentDocuments     IncidentDocument[]
 
   @@unique([tenantId, textHash])
   @@unique([tenantId, fileHash])
@@ -431,6 +440,8 @@ model Runbook {
   templateNameSnapshot String?
   generatedAt          DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
+
+  exerciseRunbooks ExerciseRunbook[]
 }
 
 model RunbookTemplate {
@@ -466,7 +477,7 @@ model Exercise {
   title       String
   description String?
   scheduledAt DateTime
-  status      String @default("PLANNED")
+  status      String   @default("PLANNED")
 
   runbooks       ExerciseRunbook[]
   checklistItems ExerciseChecklistItem[]
@@ -510,7 +521,7 @@ model ExerciseChecklistItem {
   role        String?
   blocking    Boolean @default(false)
 
-  isCompleted Boolean @default(false)
+  isCompleted Boolean   @default(false)
   notes       String?
   completedAt DateTime?
 
@@ -581,7 +592,7 @@ model DocumentExtractionSuggestion {
   suggestionType String
   label          String
   data           Json
-  status         String @default("PENDING")
+  status         String    @default("PENDING")
   reviewedAt     DateTime?
   reviewNotes    String?
 
@@ -610,6 +621,7 @@ model ExerciseEvidence {
 
   @@index([tenantId, documentId])
 }
+
 model AiExtractionError {
   id       String @id @default(cuid())
   tenantId String
@@ -682,9 +694,9 @@ model IncidentAction {
   incidentId String
   incident   Incident @relation(fields: [incidentId], references: [id])
 
-  actionType String
+  actionType  String
   description String?
-  metadata   Json?
+  metadata    Json?
 
   createdAt DateTime @default(now())
 }
@@ -694,11 +706,11 @@ model NotificationChannel {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  type           String
-  label          String?
-  isEnabled      Boolean @default(true)
-  n8nWebhookUrl  String
-  configuration  Json?
+  type          String
+  label         String?
+  isEnabled     Boolean @default(true)
+  n8nWebhookUrl String
+  configuration Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -711,19 +723,19 @@ enum ApiRole {
 }
 
 model ApiKey {
-  id       String   @id @default(cuid())
+  id       String @id @default(cuid())
   tenantId String
-  tenant   Tenant   @relation(fields: [tenantId], references: [id])
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  label    String?
-  keyHash  String   @unique
-  role     ApiRole  @default(OPERATOR)
-  lastUsedAt DateTime?
-  expiresAt DateTime?
-  revokedAt DateTime?
+  label         String?
+  keyHash       String    @unique
+  role          ApiRole   @default(OPERATOR)
+  lastUsedAt    DateTime?
+  expiresAt     DateTime?
+  revokedAt     DateTime?
   rotatedFromId String?
-  rotatedFrom   ApiKey?  @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
-  rotatedTo     ApiKey[] @relation("ApiKeyRotation")
+  rotatedFrom   ApiKey?   @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
+  rotatedTo     ApiKey[]  @relation("ApiKeyRotation")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -732,20 +744,20 @@ model ApiKey {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  tenantId  String
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  apiKeyId  String?
-  apiKey    ApiKey?  @relation(fields: [apiKeyId], references: [id])
-  path      String
-  method    String
-  statusCode Int
-  success    Boolean @default(false)
-  errorCode  String?
-  latencyMs  Int?
-  clientIp   String?
-  userAgent  String?
+  apiKeyId      String?
+  apiKey        ApiKey? @relation(fields: [apiKeyId], references: [id])
+  path          String
+  method        String
+  statusCode    Int
+  success       Boolean @default(false)
+  errorCode     String?
+  latencyMs     Int?
+  clientIp      String?
+  userAgent     String?
   correlationId String?
 
   createdAt DateTime @default(now())
