@@ -98,6 +98,34 @@ export type DependencyCycle = {
   updatedAt?: string;
 };
 
+export type BusinessProcessServiceLink = {
+  id: string;
+  serviceId: string;
+  service: {
+    id: string;
+    name: string;
+    criticality: string;
+  };
+};
+
+export type BusinessProcess = {
+  id: string;
+  name: string;
+  description?: string | null;
+  owners?: string | null;
+  financialImpactLevel: number;
+  regulatoryImpactLevel: number;
+  interdependencies?: string | null;
+  rtoHours: number;
+  rpoMinutes: number;
+  mtpdHours: number;
+  impactScore: number;
+  criticalityScore: number;
+  services: BusinessProcessServiceLink[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type AppWarning = {
   type: string;
   service: string;
@@ -452,6 +480,7 @@ export type RunbookTemplateFront = {
 export type TabId =
   | "services"
   | "continuity"
+  | "bia"
   | "analysis"
   | "graph"
   | "architecture"
