@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
-import type { AppWarning, InfraFinding, PraDashboard, PraRagReport, RiskHeatmap } from "../types";
+import type {
+  AppWarning,
+  InfraFinding,
+  MaturityScore,
+  PraDashboard,
+  PraRagReport,
+  RiskHeatmap,
+} from "../types";
 import { apiFetch } from "../utils/api";
 
 interface AnalysisSectionProps {
@@ -17,12 +24,28 @@ function MatchBadge({ level }: { level: "strong" | "medium" | "weak" }) {
   return <span className={`pill ${palette[level]}`}>{level}</span>;
 }
 
+function MaturityBadge({ level }: { level: "low" | "medium" | "high" }) {
+  const palette: Record<typeof level, string> = {
+    high: "success",
+    medium: "warning",
+    low: "error",
+  };
+  const labels: Record<typeof level, string> = {
+    high: "Élevée",
+    medium: "Moyenne",
+    low: "Faible",
+  };
+  return <span className={`pill ${palette[level]}`}>{labels[level]}</span>;
+}
+
 export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [dashboard, setDashboard] = useState<PraDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [heatmap, setHeatmap] = useState<RiskHeatmap | null>(null);
   const [heatmapError, setHeatmapError] = useState<string | null>(null);
+  const [maturity, setMaturity] = useState<MaturityScore | null>(null);
+  const [maturityError, setMaturityError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("Quels scénarios PRA recommander pour mes services critiques ?");
   const [docTypes, setDocTypes] = useState<string>("BACKUP_POLICY,ARCHI");
@@ -38,14 +61,29 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         setLoading(true);
         setError(null);
         setHeatmapError(null);
-        const data = await apiFetch("/analysis/pra-dashboard");
-        setDashboard(data);
-        setRagResult(data.rag);
-        try {
-          const heatmapData = await apiFetch("/analysis/risk-heatmap");
-          setHeatmap(heatmapData);
-        } catch (err: any) {
-          setHeatmapError(err.message || "Impossible de charger la heatmap");
+        setMaturityError(null);
+        const [dashboardResult, maturityResult] = await Promise.allSettled([
+          apiFetch("/analysis/pra-dashboard"),
+          apiFetch("/analysis/maturity-score"),
+        ]);
+
+        if (dashboardResult.status === "fulfilled") {
+          setDashboard(dashboardResult.value);
+          setRagResult(dashboardResult.value.rag);
+          try {
+            const heatmapData = await apiFetch("/analysis/risk-heatmap");
+            setHeatmap(heatmapData);
+          } catch (err: any) {
+            setHeatmapError(err.message || "Impossible de charger la heatmap");
+          }
+        } else {
+          setError(dashboardResult.reason?.message || "Erreur inconnue");
+        }
+
+        if (maturityResult.status === "fulfilled") {
+          setMaturity(maturityResult.value);
+        } else {
+          setMaturityError(maturityResult.reason?.message || "Impossible de calculer la maturité");
         }
       } catch (err: any) {
         setError(err.message || "Erreur inconnue");
@@ -247,6 +285,70 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
       />
+
+      <div className="panel-grid">
+        <div id="analysis-maturity" className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Maturité PRA</p>
+              <h3>Maturité PRA</h3>
+            </div>
+            {maturity && (
+              <span className="pill subtle">
+                Score {maturity.score}/{maturity.maxScore}
+              </span>
+            )}
+          </div>
+          {maturityError && <p className="helper error">{maturityError}</p>}
+          {!maturity && !maturityError && (
+            <p className="empty-state">Indicateur de maturité indisponible pour le moment.</p>
+          )}
+          {maturity && (
+            <div className="stack" style={{ gap: "12px" }}>
+              <div className="stack horizontal" style={{ gap: "12px", alignItems: "center" }}>
+                <div>
+                  <p className="muted small">Score global</p>
+                  <strong style={{ fontSize: "28px" }}>{maturity.score}</strong>
+                  <span className="muted small">/{maturity.maxScore}</span>
+                </div>
+                <MaturityBadge level={maturity.level} />
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Levier</th>
+                      <th>Couverture</th>
+                      <th>Score</th>
+                      <th>Détail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {maturity.breakdown.map((item) => (
+                      <tr key={item.key}>
+                        <td>{item.label}</td>
+                        <td>{Math.round(item.coverage * 100)}%</td>
+                        <td>
+                          {item.score}/{item.maxScore}
+                        </td>
+                        <td className="muted small">{item.details}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <div>
+                <p className="muted small">Recommandations concrètes</p>
+                <ul className="muted small">
+                  {maturity.recommendations.map((rec, idx) => (
+                    <li key={idx}>{rec}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
 
       <div className="panel-grid">
         <div id="analysis-dashboard" className="card">

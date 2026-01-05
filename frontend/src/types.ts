@@ -359,6 +359,34 @@ export type PraDashboard = {
   rag: PraRagReport;
 };
 
+export type MaturityScore = {
+  meta: {
+    tenantId: string;
+  };
+  score: number;
+  maxScore: number;
+  level: "low" | "medium" | "high";
+  breakdown: Array<{
+    key: "rto_rpo" | "dependencies" | "scenarios" | "runbooks" | "backups";
+    label: string;
+    score: number;
+    maxScore: number;
+    coverage: number;
+    details: string;
+  }>;
+  recommendations: string[];
+  metrics: {
+    totalServices: number;
+    servicesWithContinuity: number;
+    servicesWithDependencies: number;
+    dependencyLinks: number;
+    scenarioCount: number;
+    runbookCount: number;
+    servicesWithBackups: number;
+    backupStrategies: number;
+  };
+};
+
 export type RiskHeatmap = {
   meta: {
     tenantId: string;

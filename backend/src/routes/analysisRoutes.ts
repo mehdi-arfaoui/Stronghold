@@ -8,6 +8,7 @@ import {
   summarizeScenarioForTable,
 } from "../analysis/drStrategyEngine";
 import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
+import { buildMaturityScore } from "../analysis/maturityScore";
 import {
   DocumentNotFoundError,
   MissingExtractedTextError,
@@ -280,6 +281,69 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
     });
   } catch (error) {
     console.error("Error in /analysis/pra-dashboard:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/maturity-score", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const [
+      totalServices,
+      continuityCount,
+      dependencies,
+      scenarioCount,
+      runbookCount,
+      backupStrategies,
+    ] = await Promise.all([
+      prisma.service.count({ where: { tenantId } }),
+      prisma.serviceContinuity.count({ where: { service: { tenantId } } }),
+      prisma.serviceDependency.findMany({
+        where: { tenantId },
+        select: { fromServiceId: true, toServiceId: true },
+      }),
+      prisma.scenario.count({ where: { tenantId } }),
+      prisma.runbook.count({ where: { tenantId } }),
+      prisma.backupStrategy.findMany({
+        where: { tenantId, serviceId: { not: null } },
+        select: { serviceId: true },
+      }),
+    ]);
+
+    const dependencyServices = new Set<string>();
+    dependencies.forEach((dependency) => {
+      dependencyServices.add(dependency.fromServiceId);
+      dependencyServices.add(dependency.toServiceId);
+    });
+
+    const backupServiceIds = new Set<string>();
+    backupStrategies.forEach((backup) => {
+      if (backup.serviceId) {
+        backupServiceIds.add(backup.serviceId);
+      }
+    });
+
+    const maturityScore = buildMaturityScore({
+      totalServices,
+      servicesWithContinuity: continuityCount,
+      servicesWithDependencies: dependencyServices.size,
+      dependencyLinks: dependencies.length,
+      scenarioCount,
+      runbookCount,
+      servicesWithBackups: backupServiceIds.size,
+      backupStrategies: backupStrategies.length,
+    });
+
+    return res.json({
+      meta: { tenantId },
+      ...maturityScore,
+    });
+  } catch (error) {
+    console.error("Error in /analysis/maturity-score:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
