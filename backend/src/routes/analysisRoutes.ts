@@ -16,6 +16,11 @@ import {
   getOrCreateExtractedFacts,
 } from "../services/extractedFactService";
 import {
+  buildComplianceIndicators,
+  buildComplianceReport,
+  listComplianceTemplates,
+} from "../services/complianceReporting";
+import {
   buildRagPrompt,
   draftAnswerFromContext,
   generatePraReport,
@@ -209,6 +214,10 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
 
     const warnings = buildAppContinuityWarnings(services);
     const infraFindings = buildInfraFindings(infra);
+    const compliance = await buildComplianceIndicators(prisma, tenantId, {
+      totalServices: services.length,
+      serviceIds: services.map((service) => service.id),
+    });
 
     const drServices = services.map((s) => ({
       id: s.id,
@@ -273,6 +282,7 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       meta: { tenantId, targetRtoHours, targetRpoMinutes, globalCriticality },
       warnings,
       infraFindings,
+      compliance,
       dr: {
         recommendations: drRecommendations,
         comparison: scenarioComparison,
@@ -282,6 +292,30 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
     });
   } catch (error) {
     console.error("Error in /analysis/pra-dashboard:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/compliance/templates", requireRole("READER"), async (_req: TenantRequest, res) => {
+  return res.json(listComplianceTemplates());
+});
+
+router.get("/compliance/report", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const templateId =
+      req.query?.templateId && typeof req.query.templateId === "string"
+        ? req.query.templateId
+        : undefined;
+
+    const report = await buildComplianceReport(prisma, tenantId, templateId);
+    return res.json(report);
+  } catch (error) {
+    console.error("Error in /analysis/compliance/report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

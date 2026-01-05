@@ -42,6 +42,7 @@ model Tenant {
   incidentActions  IncidentAction[]
   incidentServices IncidentService[]
   incidentDocuments IncidentDocument[]
+  exercises       Exercise[]
   notificationChannels NotificationChannel[]
   risks           Risk[]
   riskMitigations RiskMitigation[]
@@ -543,6 +544,24 @@ model IncidentAction {
   metadata   Json?
 
   createdAt DateTime @default(now())
+}
+
+model Exercise {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  title   String
+  type    String
+  status  String
+  scope   String?
+  scenario String?
+  conductedAt DateTime?
+  findings    String?
+  improvementPlan String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model NotificationChannel {
