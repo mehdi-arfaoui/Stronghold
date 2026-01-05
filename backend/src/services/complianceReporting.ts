@@ -325,11 +325,13 @@ export async function buildComplianceIndicators(
   const risksWithMitigation = risks.filter((risk) => risk.mitigations.length > 0).length;
   const incidentsWithActions = incidents.filter((incident) => incident.actions.length > 0).length;
 
-  const completedExercises = exercises.filter((exercise) => exercise.status.toUpperCase() === "COMPLETED");
+  const completedExercises = exercises.filter(
+    (exercise) => exercise.status.toUpperCase() === "COMPLETED"
+  );
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   const exercisesLast12Months = exercises.filter((exercise) => {
-    const referenceDate = exercise.conductedAt ?? exercise.createdAt;
+    const referenceDate = exercise.scheduledAt ?? exercise.createdAt;
     return referenceDate >= twelveMonthsAgo;
   }).length;
 
@@ -400,7 +402,7 @@ export async function buildComplianceReport(
     : null;
 
   const exerciseLastDate = exercises.reduce<Date | null>((latest, exercise) => {
-    const referenceDate = exercise.conductedAt ?? exercise.createdAt;
+    const referenceDate = exercise.scheduledAt ?? exercise.createdAt;
     if (!latest || referenceDate > latest) return referenceDate;
     return latest;
   }, null);
@@ -410,7 +412,7 @@ export async function buildComplianceReport(
   const twelveMonthsAgo = new Date();
   twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
   const exercisesLast12Months = exercises.filter((exercise) => {
-    const referenceDate = exercise.conductedAt ?? exercise.createdAt;
+    const referenceDate = exercise.scheduledAt ?? exercise.createdAt;
     return referenceDate >= twelveMonthsAgo;
   }).length;
 

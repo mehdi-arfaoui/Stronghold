@@ -1,123 +1,140 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import { buildValidationError } from "../validation/common";
 import {
-  buildValidationError,
-  parseOptionalString,
-  parseRequiredString,
-  type ValidationIssue,
-} from "../validation/common";
+  parseChecklistUpdatePayload,
+  parseExerciseCreatePayload,
+  parseExerciseResultPayload,
+  parseExerciseUpdatePayload,
+} from "../validation/exerciseValidation";
+import { buildExerciseAnalysis } from "../services/exerciseAnalysisService";
 
 const router = Router();
 
-const EXERCISE_TYPES = ["TABLETOP", "SIMULATION", "RESTORATION_TEST", "CRISIS", "TECHNICAL"];
-const EXERCISE_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
-
-function parseEnum(
-  value: unknown,
-  field: string,
-  allowed: string[],
-  issues: ValidationIssue[],
-  required = false
-) {
-  const parsed = required
-    ? parseRequiredString(value, field, issues, { minLength: 2 })
-    : parseOptionalString(value, field, issues);
-  if (parsed === undefined || parsed === null) {
-    return parsed;
+function ensureTenant(req: TenantRequest, res: any) {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    res.status(500).json({ error: "Tenant not resolved" });
+    return null;
   }
-  const normalized = parsed.toUpperCase();
-  if (!allowed.includes(normalized)) {
-    issues.push({ field, message: `doit être parmi ${allowed.join(", ")}` });
-    return undefined;
-  }
-  return normalized;
+  return tenantId;
 }
-
-function parseOptionalDate(value: unknown, field: string, issues: ValidationIssue[]) {
-  const parsed = parseOptionalString(value, field, issues, { allowNull: true });
-  if (parsed === undefined || parsed === null) {
-    return parsed;
-  }
-  const dateValue = new Date(parsed);
-  if (Number.isNaN(dateValue.getTime())) {
-    issues.push({ field, message: "doit être une date ISO valide" });
-    return undefined;
-  }
-  return dateValue;
-}
-
-router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
-  try {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
-      return res.status(500).json({ error: "Tenant not resolved" });
-    }
-
-    const exercises = await prisma.exercise.findMany({
-      where: { tenantId },
-      orderBy: [{ conductedAt: "desc" }, { updatedAt: "desc" }],
-    });
-
-    return res.json(exercises);
-  } catch (error) {
-    console.error("Error fetching exercises", error);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-});
 
 router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
-      return res.status(500).json({ error: "Tenant not resolved" });
-    }
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
 
-    const payload = req.body || {};
-    const issues: ValidationIssue[] = [];
-
-    const title = parseRequiredString(payload.title, "title", issues, { minLength: 3 });
-    const type = parseEnum(payload.type, "type", EXERCISE_TYPES, issues, true);
-    const status = parseEnum(payload.status, "status", EXERCISE_STATUSES, issues, true);
-    const scope = parseOptionalString(payload.scope, "scope", issues, { allowNull: true });
-    const scenario = parseOptionalString(payload.scenario, "scenario", issues, { allowNull: true });
-    const findings = parseOptionalString(payload.findings, "findings", issues, { allowNull: true });
-    const improvementPlan = parseOptionalString(payload.improvementPlan, "improvementPlan", issues, {
-      allowNull: true,
-    });
-    const conductedAt = parseOptionalDate(payload.conductedAt, "conductedAt", issues);
-
+    const { issues, data } = parseExerciseCreatePayload(req.body || {});
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const exercise = await prisma.exercise.create({
-      data: {
-        tenantId,
-        title: title!,
-        type: type!,
-        status: status!,
-        scope: scope ?? null,
-        scenario: scenario ?? null,
-        findings: findings ?? null,
-        improvementPlan: improvementPlan ?? null,
-        conductedAt: conductedAt ?? null,
+    const scenario = await prisma.scenario.findFirst({
+      where: { id: data.scenarioId!, tenantId },
+    });
+    if (!scenario) {
+      return res.status(404).json({ error: "Scenario introuvable" });
+    }
+
+    if (data.runbookIds.length > 0) {
+      const runbooks = await prisma.runbook.findMany({
+        where: { tenantId, id: { in: data.runbookIds } },
+        select: { id: true },
+      });
+      if (runbooks.length !== data.runbookIds.length) {
+        return res.status(400).json({ error: "Runbooks invalides pour ce tenant" });
+      }
+    }
+
+    const steps = await prisma.runbookStep.findMany({
+      where: { tenantId, scenarioId: data.scenarioId! },
+      orderBy: { order: "asc" },
+    });
+
+    const exerciseId = await prisma.$transaction(async (tx) => {
+      const created = await tx.exercise.create({
+        data: {
+          tenantId,
+          scenarioId: data.scenarioId!,
+          title: data.title!,
+          description: data.description ?? null,
+          scheduledAt: data.scheduledAt!,
+          status: "PLANNED",
+        },
+      });
+
+      if (data.runbookIds.length > 0) {
+        await tx.exerciseRunbook.createMany({
+          data: data.runbookIds.map((runbookId) => ({
+            tenantId,
+            exerciseId: created.id,
+            runbookId,
+          })),
+        });
+      }
+
+      if (steps.length > 0) {
+        await tx.exerciseChecklistItem.createMany({
+          data: steps.map((step) => ({
+            tenantId,
+            exerciseId: created.id,
+            runbookStepId: step.id,
+            order: step.order,
+            title: step.title,
+            description: step.description,
+            role: step.role,
+            blocking: step.blocking,
+          })),
+        });
+      }
+
+      return created.id;
+    });
+
+    const exercise = await prisma.exercise.findFirst({
+      where: { id: exerciseId, tenantId },
+      include: {
+        scenario: true,
+        runbooks: { include: { runbook: true } },
+        checklistItems: { orderBy: { order: "asc" } },
       },
     });
 
     return res.status(201).json(exercise);
-  } catch (error) {
-    console.error("Error creating exercise", error);
+  } catch (error: any) {
+    console.error("Error creating exercise", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const exercises = await prisma.exercise.findMany({
+      where: { tenantId },
+      orderBy: { scheduledAt: "desc" },
+      include: {
+        scenario: true,
+        runbooks: { include: { runbook: true } },
+        results: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
+    });
+
+    return res.json(exercises);
+  } catch (error: any) {
+    console.error("Error listing exercises", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
 router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
-    const tenantId = req.tenantId;
-    if (!tenantId) {
-      return res.status(500).json({ error: "Tenant not resolved" });
-    }
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
 
     const { id } = req.params;
     const existing = await prisma.exercise.findFirst({ where: { id, tenantId } });
@@ -125,19 +142,7 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
       return res.status(404).json({ error: "Exercice introuvable" });
     }
 
-    const payload = req.body || {};
-    const issues: ValidationIssue[] = [];
-
-    const title = parseOptionalString(payload.title, "title", issues, { allowNull: true });
-    const type = parseEnum(payload.type, "type", EXERCISE_TYPES, issues);
-    const status = parseEnum(payload.status, "status", EXERCISE_STATUSES, issues);
-    const scope = parseOptionalString(payload.scope, "scope", issues, { allowNull: true });
-    const scenario = parseOptionalString(payload.scenario, "scenario", issues, { allowNull: true });
-    const findings = parseOptionalString(payload.findings, "findings", issues, { allowNull: true });
-    const improvementPlan = parseOptionalString(payload.improvementPlan, "improvementPlan", issues, {
-      allowNull: true,
-    });
-    const conductedAt = parseOptionalDate(payload.conductedAt, "conductedAt", issues);
+    const { issues, data } = parseExerciseUpdatePayload(req.body || {});
 
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
@@ -146,20 +151,97 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
     const updated = await prisma.exercise.update({
       where: { id },
       data: {
-        title: title !== undefined ? (title ?? null) : existing.title,
-        type: type !== undefined ? (type ?? null) : existing.type,
-        status: status !== undefined ? (status ?? null) : existing.status,
-        scope: scope !== undefined ? scope : existing.scope,
-        scenario: scenario !== undefined ? scenario : existing.scenario,
-        findings: findings !== undefined ? findings : existing.findings,
-        improvementPlan: improvementPlan !== undefined ? improvementPlan : existing.improvementPlan,
-        conductedAt: conductedAt !== undefined ? conductedAt : existing.conductedAt,
+        title: data.title !== undefined ? (data.title ?? null) : existing.title,
+        description: data.description !== undefined ? data.description : existing.description,
+        scheduledAt: data.scheduledAt !== undefined ? data.scheduledAt : existing.scheduledAt,
+        status: data.status !== undefined ? data.status : existing.status,
       },
     });
 
     return res.json(updated);
-  } catch (error) {
-    console.error("Error updating exercise", error);
+  } catch (error: any) {
+    console.error("Error updating exercise", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/:id/checklist", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const { id } = req.params;
+    const exercise = await prisma.exercise.findFirst({ where: { id, tenantId } });
+    if (!exercise) {
+      return res.status(404).json({ error: "Exercice introuvable" });
+    }
+
+    const { issues, data } = parseChecklistUpdatePayload(req.body || {});
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    await prisma.$transaction(
+      data.items.map((item) =>
+        prisma.exerciseChecklistItem.updateMany({
+          where: { id: item.id, tenantId, exerciseId: id },
+          data: { status: item.status },
+        })
+      )
+    );
+
+    const checklistItems = await prisma.exerciseChecklistItem.findMany({
+      where: { tenantId, exerciseId: id },
+      orderBy: { order: "asc" },
+    });
+
+    return res.json({ checklistItems });
+  } catch (error: any) {
+    console.error("Error updating exercise checklist", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/results", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const { id } = req.params;
+    const exercise = await prisma.exercise.findFirst({ where: { id, tenantId } });
+    if (!exercise) {
+      return res.status(404).json({ error: "Exercice introuvable" });
+    }
+
+    const { issues, data } = parseExerciseResultPayload(req.body || {});
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const checklistItems = await prisma.exerciseChecklistItem.findMany({
+      where: { tenantId, exerciseId: id },
+    });
+    const analysis = buildExerciseAnalysis(checklistItems);
+
+    const result = await prisma.exerciseResult.create({
+      data: {
+        tenantId,
+        exerciseId: id,
+        summary: data.summary ?? null,
+        findings: data.findings ?? null,
+        improvementPlan: data.improvementPlan ?? null,
+        analysis,
+      },
+    });
+
+    await prisma.exercise.update({
+      where: { id },
+      data: { status: "COMPLETED" },
+    });
+
+    return res.status(201).json(result);
+  } catch (error: any) {
+    console.error("Error creating exercise result", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
