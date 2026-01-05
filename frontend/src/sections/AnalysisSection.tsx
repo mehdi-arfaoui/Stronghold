@@ -286,6 +286,7 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
 
   const appWarnings: AppWarning[] = dashboard.warnings;
   const infraFindings: InfraFinding[] = dashboard.infraFindings;
+  const compliance = dashboard.compliance;
   const progressSteps = [Boolean(dashboard), Boolean(ragResult), Boolean(runbookDraft)];
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
@@ -436,6 +437,58 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
               })}
             </ul>
           )}
+        </div>
+        <div id="analysis-compliance" className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Conformité</p>
+              <h3>Couverture & conformité</h3>
+            </div>
+            <span className="pill subtle">Score {Math.round(compliance.overallScore * 100)}%</span>
+          </div>
+          <div className="stack" style={{ gap: "12px" }}>
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Module</th>
+                    <th>Couverture</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>BIA</td>
+                    <td>{Math.round(compliance.coverage.bia * 100)}%</td>
+                    <td>{compliance.totals.processes}</td>
+                  </tr>
+                  <tr>
+                    <td>Risques</td>
+                    <td>{Math.round(compliance.coverage.risks * 100)}%</td>
+                    <td>{compliance.totals.risks}</td>
+                  </tr>
+                  <tr>
+                    <td>Incidents</td>
+                    <td>{Math.round(compliance.coverage.incidents * 100)}%</td>
+                    <td>{compliance.totals.incidents}</td>
+                  </tr>
+                  <tr>
+                    <td>Exercices</td>
+                    <td>{Math.round(compliance.coverage.exercises * 100)}%</td>
+                    <td>{compliance.totals.exercises}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div>
+              <p className="muted small">Points d'attention</p>
+              <ul className="muted small">
+                {compliance.highlights.map((item, idx) => (
+                  <li key={idx}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
         </div>
       </div>
 

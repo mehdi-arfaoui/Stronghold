@@ -434,6 +434,23 @@ export type PraDashboard = {
   };
   warnings: AppWarning[];
   infraFindings: InfraFinding[];
+  compliance: {
+    coverage: {
+      bia: number;
+      risks: number;
+      incidents: number;
+      exercises: number;
+    };
+    overallScore: number;
+    totals: {
+      services: number;
+      processes: number;
+      risks: number;
+      incidents: number;
+      exercises: number;
+    };
+    highlights: string[];
+  };
   dr: {
     recommendations: DrRecommendationFront[];
     comparison: Array<{
