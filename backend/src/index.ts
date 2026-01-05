@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient";
 import { metricsConfig } from "./config/observability";
-import { getMetricsSnapshot } from "./observability/metrics";
+import { getMetricsSnapshot, getPrometheusMetrics } from "./observability/metrics";
 
 import serviceRoutes from "./routes/serviceRoutes";
 import graphRoutes from "./routes/graphRoutes";
@@ -63,6 +63,11 @@ app.get("/health", async (_req, res) => {
       llmFailureRate: metrics.llm.failureRate >= metricsConfig.llmFailureAlertThreshold,
     },
   });
+});
+
+app.get("/metrics", (_req, res) => {
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.status(200).send(getPrometheusMetrics());
 });
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
