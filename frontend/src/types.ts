@@ -105,6 +105,18 @@ export type AppWarning = {
   message: string;
 };
 
+export type NextActionItem = {
+  key: "services_without_rto" | "scenarios_without_steps" | "documents_without_extraction";
+  label: string;
+  count: number;
+  description: string;
+};
+
+export type NextActionsResponse = {
+  items: NextActionItem[];
+  totalPending: number;
+};
+
 export type InfraFinding = {
   type: string;
   infra: string;

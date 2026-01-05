@@ -9,6 +9,7 @@ import {
 } from "../analysis/drStrategyEngine";
 import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
 import { buildMaturityScore } from "../analysis/maturityScore";
+import { buildNextActions } from "../analysis/nextActions";
 import {
   DocumentNotFoundError,
   MissingExtractedTextError,
@@ -344,6 +345,25 @@ router.get("/maturity-score", requireRole("READER"), async (req: TenantRequest, 
     });
   } catch (error) {
     console.error("Error in /analysis/maturity-score:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/next-actions", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const nextActions = await buildNextActions(prisma, tenantId);
+
+    return res.json({
+      meta: { tenantId },
+      ...nextActions,
+    });
+  } catch (error) {
+    console.error("Error in /analysis/next-actions:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
