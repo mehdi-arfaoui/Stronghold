@@ -39,9 +39,21 @@ const CRIT_LEGEND = [
   { key: "low", label: "Faible" },
 ] as const;
 
+const EDGE_KIND_COLORS: Record<string, string> = {
+  CRITICAL: "#ef4444",
+  STRONG: "#f97316",
+  NORMAL: "#94a3b8",
+  default: "#94a3b8",
+};
+
 function colorFromCrit(crit?: string | null) {
   if (!crit) return CRIT_COLORS.default;
   return CRIT_COLORS[crit] || CRIT_COLORS.default;
+}
+
+function colorFromEdgeKind(edgeKind?: string | null) {
+  if (!edgeKind) return EDGE_KIND_COLORS.default;
+  return EDGE_KIND_COLORS[edgeKind] || EDGE_KIND_COLORS.default;
 }
 
 function shapeNode(
@@ -152,6 +164,9 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
   const [showDetails, setShowDetails] = useState(false);
   const [infoLevel, setInfoLevel] = useState<InfoLevel>("normal");
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
+  const [hoveredNode, setHoveredNode] = useState<GraphNode | null>(null);
+  const [highlightDependencies, setHighlightDependencies] = useState(true);
+  const [showDependencyType, setShowDependencyType] = useState(true);
 
   useEffect(() => {
     const fetchGraph = async () => {
@@ -192,6 +207,32 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
       filteredNodes
     );
   }, [graph, filteredNodes]);
+
+  const isEdgeConnected = (edge: GraphEdge, nodeId: string) => edge.from === nodeId || edge.to === nodeId;
+
+  const getLinkColor = (link: GraphEdge) => {
+    const baseColor = colorFromEdgeKind(link.edgeKind);
+    if (highlightDependencies && hoveredNode) {
+      return isEdgeConnected(link, hoveredNode.id) ? baseColor : "rgba(148, 163, 184, 0.25)";
+    }
+    return baseColor;
+  };
+
+  const getLinkWidth = (link: GraphEdge) => {
+    const baseWidth = Math.max(1, (link.edgeWeight ?? 1) * 0.6);
+    if (highlightDependencies && hoveredNode) {
+      return isEdgeConnected(link, hoveredNode.id) ? baseWidth + 1 : Math.max(0.5, baseWidth * 0.5);
+    }
+    return baseWidth;
+  };
+
+  const getLinkLabel = (link: GraphEdge) => {
+    if (!showDependencyType) return null;
+    if (infoLevel === "detailed") {
+      return link.edgeLabelLong || link.edgeLabelShort || link.type || "dépendance";
+    }
+    return link.edgeLabelShort || link.type || "dépendance";
+  };
 
   useEffect(() => {
     if (!selectedNode) return;
@@ -319,6 +360,22 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
             </select>
           </label>
           <label className="toggle">
+            <input
+              type="checkbox"
+              checked={highlightDependencies}
+              onChange={(e) => setHighlightDependencies(e.target.checked)}
+            />
+            <span>Highlight dépendances</span>
+          </label>
+          <label className="toggle">
+            <input
+              type="checkbox"
+              checked={showDependencyType}
+              onChange={(e) => setShowDependencyType(e.target.checked)}
+            />
+            <span>Type en tooltip</span>
+          </label>
+          <label className="toggle">
             <input type="checkbox" checked={showDetails} onChange={(e) => setShowDetails(e.target.checked)} />
             <span>Détails</span>
           </label>
@@ -334,15 +391,18 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
               graphData={{ nodes: filteredNodes, links: filteredEdges }}
               enableZoomInteraction
               nodeLabel={(node: any) => buildTooltip(node as GraphNode, infoLevel)}
-              linkDirectionalArrowLength={6}
+              linkDirectionalArrowLength={(link: any) => Math.max(6, (link.edgeWeight ?? 1) * 1.5)}
               linkDirectionalArrowRelPos={1}
-              linkLabel={(link: any) =>
-                infoLevel === "detailed"
-                  ? link.edgeLabelLong || link.edgeLabelShort || link.type || "dépendance"
-                  : link.edgeLabelShort || link.type || "dépendance"
-              }
+              linkLabel={(link: any) => getLinkLabel(link as GraphEdge)}
+              linkWidth={(link: any) => getLinkWidth(link as GraphEdge)}
+              linkColor={(link: any) => getLinkColor(link as GraphEdge)}
+              linkDirectionalArrowColor={(link: any) => getLinkColor(link as GraphEdge)}
               onNodeClick={(node: any) => setSelectedNode(node as GraphNode)}
-              onBackgroundClick={() => setSelectedNode(null)}
+              onNodeHover={(node: any) => setHoveredNode(node ? (node as GraphNode) : null)}
+              onBackgroundClick={() => {
+                setSelectedNode(null);
+                setHoveredNode(null);
+              }}
               nodeCanvasObject={(node: any, ctx, globalScale) => shapeNode(node as GraphNode, ctx, globalScale)}
             />
           )}
