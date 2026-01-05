@@ -359,6 +359,34 @@ export type PraDashboard = {
   rag: PraRagReport;
 };
 
+export type RiskHeatmap = {
+  meta: {
+    tenantId: string;
+    targetRtoHours: number;
+    targetRpoMinutes: number;
+    globalCriticality: string;
+  };
+  metrics: Array<{
+    key: "rto" | "rpo";
+    label: string;
+    unit: "hours" | "minutes";
+  }>;
+  services: Array<{
+    id: string;
+    name: string;
+    criticality: string;
+  }>;
+  data: Array<{
+    serviceId: string;
+    serviceName: string;
+    criticality: string;
+    metric: "rto" | "rpo";
+    gap: number | null;
+    gapRisk: number | null;
+    score: number;
+  }>;
+};
+
 export type RunbookFront = {
   id: string;
   scenarioId?: string | null;
