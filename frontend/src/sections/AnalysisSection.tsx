@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
+import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
-import type { AppWarning, InfraFinding, PraDashboard, PraRagReport } from "../types";
+import type { AppWarning, InfraFinding, PraDashboard, PraRagReport, RiskHeatmap } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface AnalysisSectionProps {
@@ -20,6 +21,8 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [dashboard, setDashboard] = useState<PraDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [heatmap, setHeatmap] = useState<RiskHeatmap | null>(null);
+  const [heatmapError, setHeatmapError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("Quels scénarios PRA recommander pour mes services critiques ?");
   const [docTypes, setDocTypes] = useState<string>("BACKUP_POLICY,ARCHI");
@@ -33,9 +36,17 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
     const fetchDashboard = async () => {
       try {
         setLoading(true);
+        setError(null);
+        setHeatmapError(null);
         const data = await apiFetch("/analysis/pra-dashboard");
         setDashboard(data);
         setRagResult(data.rag);
+        try {
+          const heatmapData = await apiFetch("/analysis/risk-heatmap");
+          setHeatmap(heatmapData);
+        } catch (err: any) {
+          setHeatmapError(err.message || "Impossible de charger la heatmap");
+        }
       } catch (err: any) {
         setError(err.message || "Erreur inconnue");
       } finally {
@@ -53,6 +64,92 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         .filter((t) => t.length > 0),
     [docTypes]
   );
+
+  const heatmapOptions = useMemo(() => {
+    if (!heatmap) return null;
+    const metricLabels = heatmap.metrics.map((metric) => metric.label);
+    const serviceLabels = heatmap.services.map((service) => service.name);
+    const metricIndex = new Map(heatmap.metrics.map((metric, index) => [metric.key, index]));
+    const serviceIndex = new Map(heatmap.services.map((service, index) => [service.id, index]));
+    const cellLookup = new Map<string, RiskHeatmap["data"][number]>();
+
+    const data = heatmap.data.map((cell) => {
+      const x = metricIndex.get(cell.metric) ?? 0;
+      const y = serviceIndex.get(cell.serviceId) ?? 0;
+      cellLookup.set(`${x}:${y}`, cell);
+      return [x, y, cell.score];
+    });
+
+    const maxScore = data.reduce((acc, value) => Math.max(acc, value[2] ?? 0), 0) || 1;
+
+    return {
+      tooltip: {
+        formatter: (params: any) => {
+          const cell = cellLookup.get(`${params.data[0]}:${params.data[1]}`);
+          if (!cell) return "";
+          const metric = heatmap.metrics.find((item) => item.key === cell.metric);
+          const gapValue =
+            cell.gap == null
+              ? "N/A"
+              : cell.metric === "rto"
+              ? `${cell.gap}h`
+              : `${cell.gap} min`;
+          const gapRisk =
+            cell.gapRisk == null
+              ? "N/A"
+              : cell.metric === "rto"
+              ? `${cell.gapRisk}h`
+              : `${cell.gapRisk} min`;
+
+          return `
+            <strong>${cell.serviceName}</strong><br/>
+            Criticité: ${cell.criticality.toUpperCase()}<br/>
+            ${metric?.label}: ${gapValue}<br/>
+            Gap retenu: ${gapRisk}
+          `;
+        },
+      },
+      grid: {
+        left: 120,
+        right: 24,
+        top: 40,
+        bottom: 20,
+        containLabel: true,
+      },
+      xAxis: {
+        type: "category",
+        data: metricLabels,
+        splitArea: { show: true },
+      },
+      yAxis: {
+        type: "category",
+        data: serviceLabels,
+        splitArea: { show: true },
+      },
+      visualMap: {
+        min: 0,
+        max: maxScore,
+        calculable: true,
+        orient: "horizontal",
+        left: "center",
+        bottom: 0,
+      },
+      series: [
+        {
+          name: "Risque",
+          type: "heatmap",
+          data,
+          label: { show: false },
+          emphasis: {
+            itemStyle: {
+              borderColor: "#ffffff",
+              borderWidth: 1,
+            },
+          },
+        },
+      ],
+    };
+  }, [heatmap]);
 
   const submitRag = async () => {
     if (!question || question.trim().length < 4) {
@@ -130,11 +227,13 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         objective="Identifier les écarts RTO/RPO, prioriser les recommandations DR et interroger l'IA avec votre contexte."
         steps={[
           "Analyser les incohérences applicatives",
+          "Évaluer les écarts RTO/RPO",
           "Comparer les scénarios DR",
           "Lancer un diagnostic IA contextualisé",
         ]}
         links={[
           { label: "Voir les alertes", href: "#analysis-dashboard", description: "Anomalies" },
+          { label: "Heatmap de risques", href: "#analysis-heatmap", description: "RTO/RPO" },
           { label: "Comparer les scénarios", href: "#analysis-dr", description: "Recommandations" },
           { label: "Interroger l'IA", href: "#analysis-ai", description: "RAG PRA" },
         ]}
@@ -221,6 +320,30 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      </div>
+
+      <div className="panel-grid">
+        <div id="analysis-heatmap" className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Risque</p>
+              <h3>Heatmap des écarts RTO/RPO</h3>
+            </div>
+            <span className="pill subtle">{heatmap?.services.length ?? 0}</span>
+          </div>
+          {heatmapError && <p className="helper error">{heatmapError}</p>}
+          {!heatmap && !heatmapError && (
+            <p className="empty-state">Heatmap non disponible pour le moment.</p>
+          )}
+          {heatmap && heatmapOptions && (
+            <>
+              <p className="muted small">
+                Les scores sont pondérés par la criticité pour souligner les services les plus sensibles.
+              </p>
+              <ReactECharts option={heatmapOptions as any} style={{ height: 420 }} />
+            </>
           )}
         </div>
       </div>

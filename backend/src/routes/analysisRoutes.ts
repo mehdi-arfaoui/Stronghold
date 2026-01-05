@@ -136,6 +136,29 @@ function normalizeCrit(value: string | null | undefined): "critical" | "high" | 
   return "low";
 }
 
+function computeTargetObjectives(services: any[]) {
+  const globalCriticality: "critical" | "high" | "medium" | "low" = (() => {
+    const critical = services.some((s) => normalizeCrit(s.criticality) === "critical");
+    if (critical) return "critical";
+    const high = services.some((s) => normalizeCrit(s.criticality) === "high");
+    if (high) return "high";
+    return "medium";
+  })();
+
+  const targetRtoHours =
+    services
+      .map((s) => s.continuity?.rtoHours)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 2 : 8);
+  const targetRpoMinutes =
+    services
+      .map((s) => s.continuity?.rpoMinutes)
+      .filter((v): v is number => v != null)
+      .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 15 : 120);
+
+  return { globalCriticality, targetRtoHours, targetRpoMinutes };
+}
+
 function resolveCategory(domain: string | null, type: string | null): string {
   const normalizedDomain = (domain || "").toUpperCase();
   const normalizedType = (type || "").toUpperCase();
@@ -202,24 +225,7 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       }))
     );
 
-    const globalCriticality: "critical" | "high" | "medium" | "low" = (() => {
-      const critical = services.some((s) => normalizeCrit(s.criticality) === "critical");
-      if (critical) return "critical";
-      const high = services.some((s) => normalizeCrit(s.criticality) === "high");
-      if (high) return "high";
-      return "medium";
-    })();
-
-    const targetRtoHours =
-      services
-        .map((s) => s.continuity?.rtoHours)
-        .filter((v): v is number => v != null)
-        .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 2 : 8);
-    const targetRpoMinutes =
-      services
-        .map((s) => s.continuity?.rpoMinutes)
-        .filter((v): v is number => v != null)
-        .sort((a, b) => a - b)[0] ?? (globalCriticality === "critical" ? 15 : 120);
+    const { globalCriticality, targetRtoHours, targetRpoMinutes } = computeTargetObjectives(services);
 
     const drRecommendations = getSuggestedDRStrategy(
       drServices,
@@ -274,6 +280,78 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
     });
   } catch (error) {
     console.error("Error in /analysis/pra-dashboard:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/risk-heatmap", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const services = await prisma.service.findMany({
+      where: { tenantId },
+      include: { continuity: true },
+    });
+
+    const { globalCriticality, targetRtoHours, targetRpoMinutes } = computeTargetObjectives(services);
+
+    const metrics = [
+      { key: "rto", label: "RTO gap (h)", unit: "hours" },
+      { key: "rpo", label: "RPO gap (min)", unit: "minutes" },
+    ] as const;
+
+    const criticalityWeights: Record<"critical" | "high" | "medium" | "low", number> = {
+      critical: 4,
+      high: 3,
+      medium: 2,
+      low: 1,
+    };
+
+    const data = services.flatMap((service) => {
+      const criticality = normalizeCrit(service.criticality);
+      const weight = criticalityWeights[criticality];
+      const rtoGapRaw = service.continuity ? service.continuity.rtoHours - targetRtoHours : null;
+      const rpoGapRaw = service.continuity ? service.continuity.rpoMinutes - targetRpoMinutes : null;
+      const rtoGap = rtoGapRaw == null ? null : Math.max(0, rtoGapRaw);
+      const rpoGap = rpoGapRaw == null ? null : Math.max(0, rpoGapRaw);
+
+      return [
+        {
+          serviceId: service.id,
+          serviceName: service.name,
+          criticality,
+          metric: "rto",
+          gap: rtoGapRaw,
+          gapRisk: rtoGap,
+          score: rtoGap == null ? 0 : rtoGap * weight,
+        },
+        {
+          serviceId: service.id,
+          serviceName: service.name,
+          criticality,
+          metric: "rpo",
+          gap: rpoGapRaw,
+          gapRisk: rpoGap,
+          score: rpoGap == null ? 0 : rpoGap * weight,
+        },
+      ];
+    });
+
+    return res.json({
+      meta: { tenantId, targetRtoHours, targetRpoMinutes, globalCriticality },
+      metrics,
+      services: services.map((service) => ({
+        id: service.id,
+        name: service.name,
+        criticality: normalizeCrit(service.criticality),
+      })),
+      data,
+    });
+  } catch (error) {
+    console.error("Error in /analysis/risk-heatmap:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
