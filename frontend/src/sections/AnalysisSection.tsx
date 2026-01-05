@@ -5,9 +5,12 @@ import type {
   AppWarning,
   InfraFinding,
   MaturityScore,
+  NextActionItem,
+  NextActionsResponse,
   PraDashboard,
   PraRagReport,
   RiskHeatmap,
+  TabId,
 } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -46,6 +49,8 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [heatmapError, setHeatmapError] = useState<string | null>(null);
   const [maturity, setMaturity] = useState<MaturityScore | null>(null);
   const [maturityError, setMaturityError] = useState<string | null>(null);
+  const [nextActions, setNextActions] = useState<NextActionsResponse | null>(null);
+  const [nextActionsError, setNextActionsError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("Quels scénarios PRA recommander pour mes services critiques ?");
   const [docTypes, setDocTypes] = useState<string>("BACKUP_POLICY,ARCHI");
@@ -62,9 +67,11 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         setError(null);
         setHeatmapError(null);
         setMaturityError(null);
-        const [dashboardResult, maturityResult] = await Promise.allSettled([
+        setNextActionsError(null);
+        const [dashboardResult, maturityResult, nextActionsResult] = await Promise.allSettled([
           apiFetch("/analysis/pra-dashboard"),
           apiFetch("/analysis/maturity-score"),
+          apiFetch("/analysis/next-actions"),
         ]);
 
         if (dashboardResult.status === "fulfilled") {
@@ -85,6 +92,12 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         } else {
           setMaturityError(maturityResult.reason?.message || "Impossible de calculer la maturité");
         }
+
+        if (nextActionsResult.status === "fulfilled") {
+          setNextActions(nextActionsResult.value);
+        } else {
+          setNextActionsError(nextActionsResult.reason?.message || "Impossible de charger les actions");
+        }
       } catch (err: any) {
         setError(err.message || "Erreur inconnue");
       } finally {
@@ -102,6 +115,40 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         .filter((t) => t.length > 0),
     [docTypes]
   );
+
+  const nextActionTargets: Record<
+    NextActionItem["key"],
+    { tabId: TabId; label: string; description: string; href: string }
+  > = {
+    services_without_rto: {
+      tabId: "services",
+      label: "Compléter les services",
+      description: "Renseigner les RTO/RPO dans le catalogue",
+      href: "#services-panel",
+    },
+    scenarios_without_steps: {
+      tabId: "scenarios",
+      label: "Structurer les scénarios",
+      description: "Ajouter des steps aux scénarios prioritaires",
+      href: "#scenarios-panel",
+    },
+    documents_without_extraction: {
+      tabId: "documents",
+      label: "Relancer l'extraction",
+      description: "Mettre à jour l'état d'ingestion documentaire",
+      href: "#documents-panel",
+    },
+  };
+
+  const handleQuickAction = (event: React.MouseEvent<HTMLAnchorElement>, tabId: TabId) => {
+    event.preventDefault();
+    const tabButton = document.getElementById(`${tabId}-tab`) as HTMLButtonElement | null;
+    tabButton?.click();
+    setTimeout(() => {
+      const panel = document.getElementById(`${tabId}-panel`);
+      panel?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  };
 
   const heatmapOptions = useMemo(() => {
     if (!heatmap) return null;
@@ -346,6 +393,48 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
                 </ul>
               </div>
             </div>
+          )}
+        </div>
+        <div id="analysis-next-actions" className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Checklist</p>
+              <h3>Prochaines actions</h3>
+            </div>
+            <span className="pill subtle">{nextActions?.totalPending ?? 0}</span>
+          </div>
+          {nextActionsError && <p className="helper error">{nextActionsError}</p>}
+          {!nextActions && !nextActionsError && (
+            <p className="empty-state">Checklist en cours de préparation.</p>
+          )}
+          {nextActions && (
+            <ul className="checklist">
+              {nextActions.items.map((item) => {
+                const target = nextActionTargets[item.key];
+                const isComplete = item.count === 0;
+                return (
+                  <li key={item.key}>
+                    <div className="stack" style={{ gap: "8px" }}>
+                      <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
+                        <span className={`pill ${isComplete ? "success" : "warning"}`}>
+                          {item.count}
+                        </span>
+                        <strong>{item.label}</strong>
+                      </div>
+                      <span className="muted small">{item.description}</span>
+                      <a
+                        className="quick-link"
+                        href={target.href}
+                        onClick={(event) => handleQuickAction(event, target.tabId)}
+                      >
+                        <span>{target.label}</span>
+                        <span className="muted small">{target.description}</span>
+                      </a>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </div>
       </div>
