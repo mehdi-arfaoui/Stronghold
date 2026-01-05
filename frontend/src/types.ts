@@ -373,7 +373,8 @@ export type TabId =
   | "documents"
   | "rag"
   | "runbooks"
-  | "auth";
+  | "auth"
+  | "audit";
 
 export type TabDefinition = {
   id: TabId;

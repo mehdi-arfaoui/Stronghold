@@ -111,6 +111,16 @@
   border: 1px solid #e2e8f0;
 }
 
+.badge.success {
+  background: #bbf7d0;
+  color: #14532d;
+}
+
+.badge.error {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
 .code-block {
   background: #0b1224;
   color: #f8fafc;
