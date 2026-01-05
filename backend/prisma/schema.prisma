@@ -25,6 +25,7 @@ model Tenant {
   ServiceInfraLink  ServiceInfraLink[]
   documents         Document[]
   extractedFacts    ExtractedFact[]
+  aiExtractionErrors AiExtractionError[]
   backupStrategies  BackupStrategy[]
   securityPolicies  SecurityPolicy[]
   policyLinks       SecurityPolicyService[]
@@ -217,6 +218,7 @@ model Document {
   updatedAt DateTime @updatedAt
 
   extractedFacts ExtractedFact[]
+  aiExtractionErrors AiExtractionError[]
 
   @@unique([tenantId, textHash])
   @@unique([tenantId, fileHash])
@@ -372,6 +374,23 @@ model ExtractedFact {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AiExtractionError {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+
+  cause         String
+  errorName     String?
+  correlationId String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, documentId])
 }
 
 enum ApiRole {

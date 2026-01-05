@@ -1,6 +1,6 @@
 import prisma from "../prismaClient";
 import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer";
-import { ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
+import { Document, ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
 import {
   EXTRACTED_FACT_CATEGORIES,
   ExtractedFactCategory,
@@ -76,6 +76,52 @@ function ensureDocumentHasText(textContent: string | null | undefined) {
   }
 }
 
+function buildMinimalFallbackFact(document: Document) {
+  return {
+    type: "MINIMAL_EXTRACTION",
+    category: normalizeCategory("OTHER"),
+    label: "Extraction minimale",
+    data: {
+      documentName: document.originalName,
+      docType: document.docType ?? "INCONNU",
+      note: "Extraction IA indisponible. Faits minimaux fournis.",
+    },
+    source: null,
+    confidence: null,
+  };
+}
+
+async function recordAiExtractionError(params: {
+  tenantId: string;
+  documentId: string;
+  correlationId: string;
+  error: unknown;
+  prismaClient: PrismaClientOrTx;
+}) {
+  const error = params.error as { message?: string; name?: string };
+  const cause = (error?.message || "Unknown AI extraction error").slice(0, 500);
+  const errorName = error?.name ? String(error.name).slice(0, 120) : null;
+
+  try {
+    await params.prismaClient.aiExtractionError.create({
+      data: {
+        tenantId: params.tenantId,
+        documentId: params.documentId,
+        cause,
+        errorName,
+        correlationId: params.correlationId,
+      },
+    });
+  } catch (storeErr) {
+    console.warn("[extractedFactService] unable to store AI extraction error", {
+      tenantId: params.tenantId,
+      documentId: params.documentId,
+      correlationId: params.correlationId,
+      errorName: (storeErr as Error)?.name,
+    });
+  }
+}
+
 export async function getOrCreateExtractedFacts(
   documentId: string,
   tenantId: string,
@@ -133,7 +179,14 @@ export async function getOrCreateExtractedFacts(
       errorName: err?.name,
       errorMessage: message.slice(0, 200),
     });
-    throw err;
+    await recordAiExtractionError({
+      tenantId,
+      documentId: document.id,
+      correlationId,
+      error: err,
+      prismaClient,
+    });
+    aiFacts = [buildMinimalFallbackFact(document)];
   }
 
   const createdFacts: ExtractedFactPayload[] = [];

@@ -92,6 +92,26 @@ const DEFAULT_RETRY_CONFIG: RetryConfig = {
   chunkTimeoutMs: 20_000,
 };
 
+type CircuitBreakerConfig = {
+  failureThreshold: number;
+  openDurationMs: number;
+};
+
+type CircuitBreakerState = {
+  failures: number;
+  openedAt: number | null;
+};
+
+const DEFAULT_CIRCUIT_CONFIG: CircuitBreakerConfig = {
+  failureThreshold: 3,
+  openDurationMs: 60_000,
+};
+
+const circuitBreakerState: CircuitBreakerState = {
+  failures: 0,
+  openedAt: null,
+};
+
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 
 interface AnalyzeParams {
@@ -152,6 +172,47 @@ function resolveRetryConfig(overrides?: PartialRetryConfig): RetryConfig {
   };
 }
 
+function resolveCircuitConfig(): CircuitBreakerConfig {
+  const thresholdEnv = Number(process.env.OPENAI_CIRCUIT_BREAKER_THRESHOLD ?? "");
+  const openDurationEnv = Number(process.env.OPENAI_CIRCUIT_BREAKER_OPEN_MS ?? "");
+  return {
+    failureThreshold: Number.isFinite(thresholdEnv) && thresholdEnv > 0 ? thresholdEnv : DEFAULT_CIRCUIT_CONFIG.failureThreshold,
+    openDurationMs: Number.isFinite(openDurationEnv) && openDurationEnv > 0 ? openDurationEnv : DEFAULT_CIRCUIT_CONFIG.openDurationMs,
+  };
+}
+
+function ensureCircuitOpen(correlationId: string) {
+  const config = resolveCircuitConfig();
+  if (circuitBreakerState.openedAt === null) {
+    return;
+  }
+
+  const elapsed = Date.now() - circuitBreakerState.openedAt;
+  if (elapsed < config.openDurationMs) {
+    throw new OpenAiCallError(
+      `OpenAI circuit breaker open [correlationId=${correlationId}]`,
+      503,
+      correlationId
+    );
+  }
+
+  circuitBreakerState.failures = 0;
+  circuitBreakerState.openedAt = null;
+}
+
+function recordCircuitSuccess() {
+  circuitBreakerState.failures = 0;
+  circuitBreakerState.openedAt = null;
+}
+
+function recordCircuitFailure() {
+  const config = resolveCircuitConfig();
+  circuitBreakerState.failures += 1;
+  if (circuitBreakerState.failures >= config.failureThreshold) {
+    circuitBreakerState.openedAt = Date.now();
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -162,6 +223,7 @@ async function callOpenAiWithRetry(
   correlationId: string,
   retryOverrides?: PartialRetryConfig
 ) {
+  ensureCircuitOpen(correlationId);
   const config = resolveRetryConfig(retryOverrides);
   let attempt = 0;
   let delay = config.initialDelayMs;
@@ -188,11 +250,13 @@ async function callOpenAiWithRetry(
       }
 
       if (response.ok) {
+        recordCircuitSuccess();
         return response;
       }
 
       if (attempt >= config.maxAttempts) {
         const message = await response.text().catch(() => response.statusText);
+        recordCircuitFailure();
         throw new OpenAiCallError(
           `OpenAI request failed (${response.status}) [correlationId=${correlationId}]: ${message}`,
           response.status,
@@ -206,6 +270,7 @@ async function callOpenAiWithRetry(
 
       if (attempt >= config.maxAttempts) {
         const message = err?.message || "OpenAI request failed";
+        recordCircuitFailure();
         throw new OpenAiCallError(
           `${message} [correlationId=${correlationId}]`,
           err?.status ?? err?.code,
@@ -218,6 +283,7 @@ async function callOpenAiWithRetry(
     delay = Math.min(delay * 2, config.maxDelayMs);
   }
 
+  recordCircuitFailure();
   throw new OpenAiCallError(
     `OpenAI request failed [correlationId=${correlationId}]`,
     undefined,
