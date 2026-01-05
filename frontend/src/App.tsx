@@ -5,6 +5,7 @@ import { TabNavigation } from "./components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
 import { AuthSection } from "./sections/AuthSection";
+import { AuditLogsSection } from "./sections/AuditLogsSection";
 import { ArchitectureSection } from "./sections/ArchitectureSection";
 import { DocumentsSection } from "./sections/DocumentsSection";
 import { GraphSection } from "./sections/GraphSection";
@@ -29,6 +30,7 @@ const tabs: TabDefinition[] = [
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
   { id: "scenarios", label: "Scénarios", description: "Runbooks" },
   { id: "auth", label: "Auth (ADMIN)", description: "Gestion des clés API (ADMIN only)" },
+  { id: "audit", label: "Audit (ADMIN)", description: "Historique des appels API" },
 ];
 
 function App() {
@@ -57,6 +59,8 @@ function App() {
         return <AnalysisSection configVersion={configVersion} />;
       case "auth":
         return <AuthSection configVersion={configVersion} />;
+      case "audit":
+        return <AuditLogsSection configVersion={configVersion} />;
       case "graph":
         return <GraphSection configVersion={configVersion} />;
       case "architecture":
