@@ -34,7 +34,7 @@ model Tenant {
   runbooks          Runbook[]
   auditLogs        AuditLog[]
   businessProcesses BusinessProcess[]
-  businessProcessLinks BusinessProcessService[]
+  businessProcessLinks BusinessProcessService[] @relation("RiskMitigationBusinessProcessLinks")
   
 
   RunbookTemplate RunbookTemplate[]
@@ -75,6 +75,8 @@ model Service {
   backupStrategies BackupStrategy[]
   policyLinks      SecurityPolicyService[]
   dependencyCycles DependencyCycleService[]
+  businessProcessLinks BusinessProcessService[]
+  incidentServices IncidentService[]
   risks            Risk[]
 
   createdAt DateTime @default(now())
@@ -157,6 +159,8 @@ model BusinessProcessService {
 
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id])
+
+  riskMitigations RiskMitigation[] @relation("RiskMitigationBusinessProcessLinks")
 
   createdAt DateTime @default(now())
 }
@@ -243,6 +247,7 @@ model Scenario {
   services ScenarioService[]
   steps    RunbookStep[]
   runbooks Runbook[]
+  exercises Exercise[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,6 +270,8 @@ model RunbookStep {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  exerciseChecklistItems ExerciseChecklistItem[]
 }
 
 model ScenarioService {
@@ -314,6 +321,7 @@ model Document {
 
   extractedFacts ExtractedFact[]
   aiExtractionErrors AiExtractionError[]
+  incidentDocuments IncidentDocument[]
 
   @@unique([tenantId, textHash])
   @@unique([tenantId, fileHash])
@@ -428,6 +436,8 @@ model Runbook {
   templateNameSnapshot String?
   generatedAt          DateTime         @default(now())
   updatedAt            DateTime         @updatedAt
+
+  exerciseRunbooks ExerciseRunbook[]
 }
 
 model RunbookTemplate {
