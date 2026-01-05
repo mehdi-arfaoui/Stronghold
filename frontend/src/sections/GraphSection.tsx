@@ -7,7 +7,7 @@ import { InlineHelp } from "../components/ui/InlineHelp";
 import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
-type GraphView = "landing" | "applications" | "mixed" | "bubbles";
+type GraphView = "landing" | "applications" | "mixed" | "dependencyMap" | "bubbles";
 type InfoLevel = "compact" | "normal" | "detailed";
 
 interface GraphSectionProps {
@@ -26,6 +26,7 @@ const VIEW_LABELS: Record<GraphView, string> = {
   landing: "Service Landing Zone",
   applications: "Application",
   mixed: "Service ↔ Application",
+  dependencyMap: "Dependency Map (services)",
   bubbles: "Bulles de criticité",
 };
 
@@ -92,6 +93,9 @@ function filterNodesByView(nodes: GraphNode[], view: GraphView) {
   }
   if (view === "applications") {
     return nodes.filter((n) => n.nodeKind === "application");
+  }
+  if (view === "dependencyMap") {
+    return nodes.filter((n) => n.nodeKind !== "application");
   }
   return nodes;
 }
@@ -160,8 +164,11 @@ function buildTooltip(node: GraphNode, infoLevel: InfoLevel) {
 
 export function GraphSection({ configVersion }: GraphSectionProps) {
   const [graph, setGraph] = useState<GraphApiResponse | null>(null);
+  const [dependencyGraph, setDependencyGraph] = useState<GraphApiResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dependencyLoading, setDependencyLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dependencyError, setDependencyError] = useState<string | null>(null);
   const [view, setView] = useState<GraphView>("landing");
   const [critFilter, setCritFilter] = useState<string>("all");
   const [showDetails, setShowDetails] = useState(false);
@@ -185,11 +192,37 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
     fetchGraph();
   }, [configVersion]);
 
+  useEffect(() => {
+    setDependencyGraph(null);
+    setDependencyError(null);
+  }, [configVersion]);
+
+  useEffect(() => {
+    if (view !== "dependencyMap" || dependencyGraph || dependencyLoading) return;
+    const fetchDependencyGraph = async () => {
+      setDependencyLoading(true);
+      setDependencyError(null);
+      try {
+        const data: GraphApiResponse = await apiFetch("/graph/dependencies-only");
+        setDependencyGraph(data);
+      } catch (err: any) {
+        setDependencyError(err.message || "Erreur inconnue");
+      } finally {
+        setDependencyLoading(false);
+      }
+    };
+    fetchDependencyGraph();
+  }, [view, dependencyGraph, dependencyLoading, configVersion]);
+
+  const activeGraph = view === "dependencyMap" ? dependencyGraph : graph;
+  const activeLoading = view === "dependencyMap" ? dependencyLoading : loading;
+  const activeError = view === "dependencyMap" ? dependencyError : error;
+
   const filteredNodes = useMemo(() => {
-    if (!graph) return [];
+    if (!activeGraph) return [];
     const critAllowed = critFilter === "all" ? null : critFilter;
     const base = filterNodesByView(
-      graph.nodes.map((n) => ({
+      activeGraph.nodes.map((n) => ({
         ...n,
         label: n.summaryLabel || n.label || n.id,
       })),
@@ -201,15 +234,15 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
       : base;
 
     return showDetails ? filteredByCrit : filteredByCrit.filter((n) => isEssentialNode(n));
-  }, [graph, view, critFilter, showDetails]);
+  }, [activeGraph, view, critFilter, showDetails]);
 
   const filteredEdges = useMemo(() => {
-    if (!graph) return [];
+    if (!activeGraph) return [];
     return filterEdges(
-      graph.edges.map((e) => ({ ...e })),
+      activeGraph.edges.map((e) => ({ ...e })),
       filteredNodes
     );
-  }, [graph, filteredNodes]);
+  }, [activeGraph, filteredNodes]);
 
   const isEdgeConnected = (edge: GraphEdge, nodeId: string) => edge.from === nodeId || edge.to === nodeId;
 
@@ -288,15 +321,18 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
     };
   }, [graph]);
 
-  if (loading) return <div className="skeleton">Chargement du graphe...</div>;
-  if (error) return <div className="alert error">Erreur lors du chargement : {error}</div>;
-  if (!graph) return null;
+  if (activeLoading) return <div className="skeleton">Chargement du graphe...</div>;
+  if (activeError) return <div className="alert error">Erreur lors du chargement : {activeError}</div>;
+  if (!activeGraph) return null;
 
-  const progressSteps = [
-    graph.nodes.length > 0,
-    graph.edges.length > 0,
-    (graph.views?.categories ?? graph.categories ?? []).length > 0,
-  ];
+  const progressSteps =
+    view === "dependencyMap"
+      ? [activeGraph.nodes.length > 0, activeGraph.edges.length > 0]
+      : [
+          (graph?.nodes.length ?? 0) > 0,
+          (graph?.edges.length ?? 0) > 0,
+          (graph?.views?.categories ?? graph?.categories ?? []).length > 0,
+        ];
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
@@ -382,6 +418,24 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
           <span className="legend-item">
             <span className="legend-shape legend-shape-app" />
             Application
+          </span>
+          <span className="legend-divider" />
+          <span className="legend-title">Dépendances</span>
+          <span className="legend-item">
+            <span className="legend-edge" style={{ color: EDGE_KIND_COLORS.CRITICAL }} />
+            Critique
+          </span>
+          <span className="legend-item">
+            <span className="legend-edge" style={{ color: EDGE_KIND_COLORS.STRONG }} />
+            Forte
+          </span>
+          <span className="legend-item">
+            <span className="legend-edge" style={{ color: EDGE_KIND_COLORS.NORMAL }} />
+            Normale
+          </span>
+          <span className="legend-item">
+            <span className="legend-edge" style={{ color: "var(--color-neutral-400)" }} />
+            Sens : source → cible
           </span>
         </div>
         <div className="stack horizontal" style={{ gap: "12px" }}>

@@ -125,6 +125,25 @@
   border-radius: 50%;
 }
 
+.legend-edge {
+  position: relative;
+  width: 22px;
+  height: 2px;
+  background: currentColor;
+  border-radius: 999px;
+}
+
+.legend-edge::after {
+  content: "";
+  position: absolute;
+  right: -2px;
+  top: 50%;
+  transform: translateY(-50%);
+  border-left: 6px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+}
+
 .graph-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
