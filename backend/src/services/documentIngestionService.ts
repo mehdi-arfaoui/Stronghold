@@ -555,10 +555,12 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   } catch (e: any) {
     const message = e?.message || String(e);
     console.error("[documentIngestion] extraction error", {
+      event: "extraction_error",
       correlationId,
       tenantId,
       documentId: doc.id,
-      message: message.slice(0, 300),
+      errorName: e?.name,
+      errorMessage: message.slice(0, 200),
     });
     const errMessage = e?.message || String(e);
     const isOcrDisabled = errMessage.toLowerCase().includes("ocr") &&
@@ -678,7 +680,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     });
   }
 
-  recordExtractionResult(status === "SUCCESS");
+  recordExtractionResult(status === "SUCCESS", tenantId);
   return prisma.document.findFirstOrThrow({ where: { id: doc.id, tenantId: doc.tenantId } });
 }
 
