@@ -33,6 +33,8 @@ model Tenant {
   dependencyCycleLinks DependencyCycleService[]
   runbooks          Runbook[]
   auditLogs        AuditLog[]
+  businessProcesses BusinessProcess[]
+  businessProcessLinks BusinessProcessService[]
   
 
   RunbookTemplate RunbookTemplate[]
@@ -104,9 +106,49 @@ model RiskMitigation {
   owner       String?
   status      String?
   dueDate     DateTime?
+  businessProcessLinks BusinessProcessService[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model BusinessProcess {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name                  String
+  description           String?
+  owners                String?
+  financialImpactLevel  Int
+  regulatoryImpactLevel Int
+  interdependencies     String?
+
+  rtoHours   Int
+  rpoMinutes Int
+  mtpdHours  Int
+
+  impactScore      Float
+  criticalityScore Float
+
+  services BusinessProcessService[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessProcessService {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  processId String
+  process   BusinessProcess @relation(fields: [processId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  createdAt DateTime @default(now())
 }
 
 model ServiceContinuity {
