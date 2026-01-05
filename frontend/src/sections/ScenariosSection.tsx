@@ -119,6 +119,11 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
           "Associer les services concernés",
           "Décrire les étapes de reprise",
         ]}
+        tips={[
+          "Indiquez la cible RTO pour prioriser les scénarios.",
+          "Ajoutez les services critiques dès la création.",
+          "Ordonnez les étapes pour guider la génération des runbooks.",
+        ]}
         links={[
           { label: "Créer un scénario", href: "#scenarios-create", description: "Formulaire" },
           { label: "Sélectionner les services", href: "#scenarios-services", description: "Checklist" },

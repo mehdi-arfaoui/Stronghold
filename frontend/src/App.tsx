@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { ConfigBanner } from "./components/config/ConfigBanner";
 import { MainLayout } from "./components/layout/MainLayout";
 import { TabNavigation } from "./components/navigation/TabNavigation";
@@ -45,6 +45,7 @@ function App() {
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
   const [activeTab, setActiveTab] = useState<TabId>("services");
+  const [tabQuery, setTabQuery] = useState("");
 
   const handleConfigSave = (config: ApiConfig) => {
     setApiConfig(config);
@@ -88,6 +89,23 @@ function App() {
     }
   }, [activeTab, configVersion]);
 
+  const filteredTabs = useMemo(() => {
+    const query = tabQuery.trim().toLowerCase();
+    if (!query) return tabs;
+    return tabs.filter(
+      (tab) =>
+        tab.label.toLowerCase().includes(query) ||
+        tab.description.toLowerCase().includes(query)
+    );
+  }, [tabQuery]);
+
+  useEffect(() => {
+    if (filteredTabs.length === 0) return;
+    if (!filteredTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(filteredTabs[0].id);
+    }
+  }, [filteredTabs, activeTab]);
+
   return (
     <MainLayout
       title="Stronghold PRA/PCA"
@@ -99,9 +117,29 @@ function App() {
         eyebrow="Navigation"
         title="Vue d'ensemble"
         description="Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides."
-        actions={<InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>}
+        actions={
+          <div className="tab-controls">
+            <InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>
+            <div className="tab-search">
+              <input
+                type="search"
+                value={tabQuery}
+                onChange={(event) => setTabQuery(event.target.value)}
+                placeholder="Rechercher un module"
+                aria-label="Rechercher un module"
+              />
+              <span className="muted small">
+                {filteredTabs.length}/{tabs.length}
+              </span>
+            </div>
+          </div>
+        }
       >
-        <TabNavigation tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
+        {filteredTabs.length ? (
+          <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
+        ) : (
+          <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
+        )}
       </SectionCard>
 
       <div

@@ -220,6 +220,11 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
           "Renseigner criticité et objectifs RTO/RPO",
           "Lier les services aux composants Landing Zone",
         ]}
+        tips={[
+          "Priorisez les services à criticité haute ou critique.",
+          "Renseignez le domaine pour faciliter les filtres transverses.",
+          "Ajoutez les dépendances pour enrichir le graphe.",
+        ]}
         links={[
           { label: "Ajouter un service", href: "#services-create", description: "Formulaire" },
           { label: "Associer à l'infra", href: "#services-link", description: "Lien service ↔ infra" },

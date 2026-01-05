@@ -10,6 +10,7 @@ interface PageIntroProps {
   steps: string[];
   links: QuickLink[];
   expectedData: string[];
+  tips?: string[];
   progress: {
     value: number;
     label: string;
@@ -22,6 +23,7 @@ export function PageIntro({
   steps,
   links,
   expectedData,
+  tips,
   progress,
 }: PageIntroProps) {
   return (
@@ -67,6 +69,16 @@ export function PageIntro({
           </div>
         </div>
       </div>
+      {tips && tips.length > 0 ? (
+        <div className="page-intro-tips">
+          <p className="eyebrow">Aides contextuelles</p>
+          <ul className="tips-list">
+            {tips.map((tip) => (
+              <li key={tip}>{tip}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
       <div className="page-intro-callout">
         <p className="eyebrow">Données attendues</p>
         <ul className="callout-list">

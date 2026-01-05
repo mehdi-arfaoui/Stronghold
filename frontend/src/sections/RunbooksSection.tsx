@@ -169,10 +169,14 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
     }
   };
 
-  const downloadReport = async (format: "text" | "json") => {
+  const downloadReport = async (format: "text" | "json" | "pdf") => {
     try {
       if (format === "text") {
         await apiDownload("/analysis/report", "rapport-pra.txt", "text");
+        return;
+      }
+      if (format === "pdf") {
+        await apiDownload("/analysis/report/pdf", "rapport-pra.pdf", "blob");
         return;
       }
       await apiDownload("/analysis/full-report-json", "rapport-pra.json", "json");
@@ -353,7 +357,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           <p className="eyebrow">PRA</p>
           <h2 id="runbooks-title">Runbooks & rapports</h2>
           <p className="muted">
-            Génération de runbooks, sélection de templates et téléchargement des rapports PRA (texte ou JSON).
+            Génération de runbooks, sélection de templates et téléchargement des rapports PRA (texte, PDF ou JSON).
           </p>
         </div>
         <div className="badge subtle">{runbooks.length} runbooks</div>
@@ -366,6 +370,11 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           "Sélectionner un template",
           "Associer un scénario si nécessaire",
           "Exporter le runbook final",
+        ]}
+        tips={[
+          "Choisissez un template cohérent avec vos exigences d'audit.",
+          "Associez un scénario pour enrichir les étapes.",
+          "Exportez le PDF pour diffusion opérationnelle.",
         ]}
         links={[
           { label: "Générer un runbook", href: "#runbooks-generate", description: "Formulaire" },
@@ -489,12 +498,15 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           </div>
           <div className="stack" style={{ gap: "12px" }}>
             <p className="muted">
-              Téléchargez le rapport PRA consolidé ou son équivalent JSON (services, dépendances,
+              Téléchargez le rapport PRA consolidé (texte ou PDF) ou son équivalent JSON (services, dépendances,
               backups, politiques et recommandations).
             </p>
             <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
               <button className="btn" onClick={() => downloadReport("text")}>
                 Rapport texte
+              </button>
+              <button className="btn" onClick={() => downloadReport("pdf")}>
+                Rapport PDF
               </button>
               <button className="btn" onClick={() => downloadReport("json")}>
                 Rapport JSON

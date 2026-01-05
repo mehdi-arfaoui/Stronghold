@@ -15,7 +15,7 @@ interface IncidentsSectionProps {
 }
 
 const INCIDENT_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] as const;
-const CHANNEL_TYPES = ["EMAIL", "SLACK", "TEAMS"] as const;
+const CHANNEL_TYPES = ["EMAIL", "SLACK", "TEAMS", "SIEM", "TICKETING", "CHATOPS"] as const;
 
 const buildLocalDateTime = () => {
   const now = new Date();
@@ -218,6 +218,11 @@ export function IncidentsSection({ configVersion }: IncidentsSectionProps) {
           "Configurer les canaux de notification n8n",
           "Mettre à jour le statut et consigner les actions",
         ]}
+        tips={[
+          "Préparez un webhook vers votre SIEM ou outil de ticketing.",
+          "Activez les canaux critiques pour les crises prioritaires.",
+          "Consignez les actions pour faciliter le post-mortem.",
+        ]}
         links={[
           { label: "Créer un incident", href: "#incidents-create", description: "Formulaire" },
           { label: "Suivi temps réel", href: "#incidents-dashboard", description: "Tableau de bord" },
@@ -407,7 +412,7 @@ export function IncidentsSection({ configVersion }: IncidentsSectionProps) {
             <div>
               <h3 className="section-title">Canaux de notification</h3>
               <p className="muted small">
-                Configurez n8n pour envoyer des messages sur e-mail, Slack ou Teams.
+                Configurez n8n ou vos webhooks pour envoyer vers SIEM, ticketing, e-mail, Slack ou Teams.
               </p>
             </div>
             <span className="pill subtle">{channels.length} canaux</span>

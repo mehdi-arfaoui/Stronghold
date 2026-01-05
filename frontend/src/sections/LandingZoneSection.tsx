@@ -167,6 +167,11 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
           "Renseigner la criticité et la localisation",
           "Associer les services hébergés",
         ]}
+        tips={[
+          "Taguez la localisation (région, AZ) pour faciliter les vues PRA.",
+          "Signalez les Single-AZ pour repérer les risques.",
+          "Liez les services critiques pour enrichir l'architecture.",
+        ]}
         links={[
           { label: "Ajouter un composant", href: "#landing-create", description: "Formulaire" },
           { label: "Consulter l'inventaire", href: "#landing-table", description: "Liste" },

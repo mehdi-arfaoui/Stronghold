@@ -175,6 +175,11 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
           "Évaluer la matrice et prioriser",
           "Suivre les mitigations associées",
         ]}
+        tips={[
+          "Utilisez une probabilité réaliste basée sur l'historique d'incidents.",
+          "Assignez un owner pour chaque risque critique.",
+          "Consignez les mitigations dès la création du risque.",
+        ]}
         links={[
           { label: "Catalogue des services", href: "#services-panel" },
           { label: "Analyse PRA", href: "#analysis-panel" },

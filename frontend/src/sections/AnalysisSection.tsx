@@ -317,6 +317,11 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
           "Comparer les scénarios DR",
           "Lancer un diagnostic IA contextualisé",
         ]}
+        tips={[
+          "Vérifiez les objectifs RTO/RPO avant de lancer l'analyse.",
+          "Utilisez la heatmap pour prioriser les écarts critiques.",
+          "Interrogez l'IA après avoir indexé vos documents clés.",
+        ]}
         links={[
           { label: "Voir les alertes", href: "#analysis-dashboard", description: "Anomalies" },
           { label: "Heatmap de risques", href: "#analysis-heatmap", description: "RTO/RPO" },

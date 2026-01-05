@@ -4,6 +4,55 @@ import { ingestDocumentText } from "../services/documentIngestionService";
 
 const router = Router();
 
+router.get("/catalog", requireRole("READER"), async (req: TenantRequest, res) => {
+  const tenantId = req.tenantId;
+  if (!tenantId) {
+    return res.status(500).json({ error: "Tenant not resolved" });
+  }
+
+  return res.json({
+    tenantId,
+    events: [
+      {
+        key: "incident.created",
+        description: "Déclenché lors de la création d'un incident.",
+        payloadExample: {
+          event: "incident.created",
+          tenantId,
+          incident: {
+            id: "inc_123",
+            title: "Perte d'une AZ",
+            status: "OPEN",
+          },
+          changeSummary: ["Incident créé"],
+        },
+      },
+      {
+        key: "incident.updated",
+        description: "Déclenché lors d'une mise à jour d'incident.",
+        payloadExample: {
+          event: "incident.updated",
+          tenantId,
+          incident: {
+            id: "inc_123",
+            title: "Perte d'une AZ",
+            status: "IN_PROGRESS",
+          },
+          changeSummary: ["Statut: OPEN → IN_PROGRESS"],
+        },
+      },
+    ],
+    delivery: {
+      headers: ["Content-Type: application/json"],
+      authentication: "Webhook URL protégée par vos mécanismes (secret/token).",
+    },
+    notes: [
+      "Utilisez les canaux de notification pour intégrer SIEM, ticketing ou chatops.",
+      "Personnalisez les payloads via l'objet configuration des canaux.",
+    ],
+  });
+});
+
 router.post(
   "/n8n/document-ingestion",
   requireRole("OPERATOR"),

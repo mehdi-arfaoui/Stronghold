@@ -161,6 +161,11 @@ export function RagSection({ configVersion }: RagSectionProps) {
           "Filtrer le contexte RAG",
           "Valider la réponse proposée",
         ]}
+        tips={[
+          "Commencez par les documents avec extraction complète.",
+          "Utilisez les filtres pour limiter le bruit dans le contexte.",
+          "Validez les faits avant d'alimenter les analyses.",
+        ]}
         links={[
           { label: "Extraire les faits", href: "#rag-facts", description: "Extraction" },
           { label: "Poser une question", href: "#rag-query", description: "Formulaire RAG" },

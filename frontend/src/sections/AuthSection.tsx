@@ -191,6 +191,11 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
           "Planifier la rotation et l'expiration",
           "Suivre l'usage et la révocation",
         ]}
+        tips={[
+          "Limitez les clés ADMIN aux comptes de confiance.",
+          "Programmez une rotation régulière des clés sensibles.",
+          "Vérifiez le dernier usage avant révocation.",
+        ]}
         links={[
           { label: "Créer une clé", href: "#auth-create", description: "Formulaire" },
           { label: "Rotater une clé", href: "#auth-rotate", description: "Rotation" },

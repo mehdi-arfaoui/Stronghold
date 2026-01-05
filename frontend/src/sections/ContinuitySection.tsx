@@ -263,6 +263,11 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
           "Rattacher les politiques de sécurité",
           "Qualifier les cycles de dépendance",
         ]}
+        tips={[
+          "Renseignez RTO/RPO pour mesurer l'impact des sauvegardes.",
+          "Associez chaque politique aux services critiques.",
+          "Identifiez les cycles critiques avant les exercices PRA.",
+        ]}
         links={[
           { label: "Créer une stratégie", href: "#continuity-backup", description: "Backup" },
           { label: "Ajouter une politique", href: "#continuity-policy", description: "Sécurité" },
