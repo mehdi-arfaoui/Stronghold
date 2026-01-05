@@ -362,7 +362,8 @@ export type TabId =
   | "scenarios"
   | "documents"
   | "rag"
-  | "runbooks";
+  | "runbooks"
+  | "auth";
 
 export type TabDefinition = {
   id: TabId;
