@@ -6,7 +6,7 @@ import { notifyIncidentEvent } from "../services/incidentNotificationService";
 const router = Router();
 
 const INCIDENT_STATUSES = ["OPEN", "IN_PROGRESS", "RESOLVED", "CLOSED"] as const;
-const CHANNEL_TYPES = ["EMAIL", "SLACK", "TEAMS"] as const;
+const CHANNEL_TYPES = ["EMAIL", "SLACK", "TEAMS", "SIEM", "TICKETING", "CHATOPS"] as const;
 
 function normalizeStatus(value: string) {
   return value.trim().toUpperCase();

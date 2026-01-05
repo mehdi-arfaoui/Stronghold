@@ -252,6 +252,11 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
           "Analyser les dépendances critiques",
           "Exporter le diagramme pour les rapports",
         ]}
+        tips={[
+          "Filtrez par domaine pour présenter une vue ciblée.",
+          "Utilisez les exports PNG/SVG pour vos supports de comité.",
+          "Survolez les nœuds pour lire les métriques clés.",
+        ]}
         links={[
           { label: "Visualiser le schéma", href: "#architecture-chart", description: "Graphique" },
           { label: "Exporter l'image", href: "#architecture-export-png", description: "PNG" },

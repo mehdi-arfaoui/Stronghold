@@ -384,6 +384,11 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
           "Filtrer par criticité ou niveau d'information",
           "Analyser les dépendances clés",
         ]}
+        tips={[
+          "Passez en vue bulles pour comparer les criticités.",
+          "Utilisez le filtre de criticité pour isoler les impacts majeurs.",
+          "Activez le niveau détaillé pour enrichir les tooltips.",
+        ]}
         links={[
           { label: "Changer de vue", href: "#graph-views", description: "Vues disponibles" },
           { label: "Ajuster les filtres", href: "#graph-controls", description: "Toolbar" },

@@ -130,6 +130,11 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
           "Analyser les statuts et latences",
           "Exporter ou corriger les anomalies",
         ]}
+        tips={[
+          "Filtrez par statut pour isoler les erreurs 4xx/5xx.",
+          "Utilisez l'ID de corrélation pour relier plusieurs appels.",
+          "Surveillez les latences élevées pour détecter les goulots.",
+        ]}
         links={[
           { label: "Filtrer les logs", href: "#audit-filters", description: "Formulaire" },
           { label: "Consulter les résultats", href: "#audit-results", description: "Table" },

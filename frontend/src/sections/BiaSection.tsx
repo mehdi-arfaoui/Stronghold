@@ -219,6 +219,11 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           "Associer les services critiques",
           "Analyser la matrice d'impact",
         ]}
+        tips={[
+          "Documentez les impacts financiers et réglementaires pour affiner la criticité.",
+          "Associez les services principaux dès la création du processus.",
+          "Utilisez la matrice pour prioriser les plans d'action.",
+        ]}
         links={[
           { label: "Créer un processus", href: "#bia-form", description: "Formulaire" },
           { label: "Consulter le tableau", href: "#bia-table", description: "Table" },

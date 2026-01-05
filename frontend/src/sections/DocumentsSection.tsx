@@ -243,6 +243,11 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
           "Lancer l'extraction / indexation",
           "Contrôler les faits et dépendances détectés",
         ]}
+        tips={[
+          "Renseignez le type de document pour améliorer l'extraction.",
+          "Utilisez l'extraction en masse pour accélérer l'indexation.",
+          "Validez les faits détectés avant exploitation IA.",
+        ]}
         links={[
           { label: "Charger un document", href: "#documents-upload", description: "Formulaire" },
           { label: "Extraire en masse", href: "#documents-actions", description: "Actions rapides" },

@@ -28,6 +28,7 @@ import {
   recommendScenariosWithRag,
   retrieveRagContext,
 } from "../ai/ragService";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const router = Router();
 
@@ -90,6 +91,156 @@ function buildAppContinuityWarnings(services: any[]) {
   }
 
   return warnings;
+}
+
+async function buildPraReportText(tenantId: string) {
+  const [services, infra] = await Promise.all([
+    prisma.service.findMany({
+      where: { tenantId },
+      include: {
+        continuity: true,
+        dependenciesFrom: {
+          include: {
+            toService: {
+              include: { continuity: true },
+            },
+          },
+        },
+        dependenciesTo: true,
+      },
+    }),
+    prisma.infraComponent.findMany({
+      where: { tenantId },
+      include: {
+        services: {
+          include: { service: true },
+        },
+      },
+    }),
+  ]);
+
+  const depsWarnings = buildAppContinuityWarnings(services);
+  const infraFindings = buildInfraFindings(infra);
+
+  let text = "=== Rapport PRA/PCA – Synthèse technique ===\n\n";
+
+  text += `Nombre de services recensés : ${services.length}\n`;
+  const depCount = services.reduce((sum, s) => sum + s.dependenciesFrom.length, 0);
+  text += `Nombre de dépendances : ${depCount}\n\n`;
+
+  text += "1. Catalogue des services\n";
+  text += "-------------------------\n";
+  for (const s of services) {
+    text += `- ${s.name} [${s.type}] (criticité : ${s.criticality}`;
+    if (s.businessPriority) {
+      text += ` | priorité métier : ${s.businessPriority}`;
+    }
+    text += ")\n";
+    if (s.continuity) {
+      text += `  RTO : ${s.continuity.rtoHours} h | RPO : ${s.continuity.rpoMinutes} min | MTPD : ${s.continuity.mtpdHours} h\n`;
+    }
+    if (s.description) {
+      text += `  Description : ${s.description}\n`;
+    }
+    text += "\n";
+  }
+
+  text += "\n2. Chaînes de dépendances\n";
+  text += "-------------------------\n";
+  for (const s of services) {
+    for (const dep of s.dependenciesFrom) {
+      const target = dep.toService;
+      if (!target) continue;
+      text += `- ${s.name} dépend de ${target.name} (type de dépendance : ${dep.dependencyType}) \n`;
+    }
+  }
+
+  text += "\n3. Analyse de cohérence PRA\n";
+  text += "---------------------------\n";
+  if (depsWarnings.length === 0) {
+    text += "Aucune incohérence PRA détectée.\n";
+  } else {
+    text += "Les incohérences suivantes ont été détectées :\n\n";
+    for (const w of depsWarnings) {
+      text += `- ${w.message}\n`;
+    }
+  }
+
+  text += "\n4. Synthèse Landing Zone / Infra\n";
+  text += "--------------------------------\n";
+  for (const f of infraFindings) {
+    text += `- ${f.message}\n`;
+  }
+
+  return text;
+}
+
+function wrapPdfLines(
+  text: string,
+  font: any,
+  fontSize: number,
+  maxWidth: number
+) {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const wrapped: string[] = [];
+
+  for (const line of lines) {
+    if (!line.trim()) {
+      wrapped.push("");
+      continue;
+    }
+    const words = line.split(" ");
+    let current = "";
+    for (const word of words) {
+      const candidate = current ? `${current} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+        current = candidate;
+      } else {
+        if (current) {
+          wrapped.push(current);
+        }
+        current = word;
+      }
+    }
+    if (current) {
+      wrapped.push(current);
+    }
+  }
+
+  return wrapped;
+}
+
+async function renderReportPdf(text: string) {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const fontSize = 11;
+  const margin = 40;
+  const lineHeight = fontSize * 1.4;
+
+  let page = pdfDoc.addPage();
+  let y = page.getHeight() - margin;
+
+  const maxWidth = page.getWidth() - margin * 2;
+  const lines = wrapPdfLines(text, font, fontSize, maxWidth);
+
+  for (const line of lines) {
+    if (y <= margin) {
+      page = pdfDoc.addPage();
+      y = page.getHeight() - margin;
+    }
+
+    page.drawText(line, {
+      x: margin,
+      y,
+      size: fontSize,
+      font,
+      color: rgb(0, 0, 0),
+    });
+    y -= lineHeight;
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
 }
 
 /* ========= Helpers d'analyse infra ========= */
@@ -635,91 +786,27 @@ router.get("/report", async (req: TenantRequest, res) => {
     if (!tenantId) {
       return res.status(500).send("Tenant not resolved");
     }
-
-    const [services, infra] = await Promise.all([
-      prisma.service.findMany({
-        where: { tenantId },
-        include: {
-          continuity: true,
-          dependenciesFrom: {
-            include: {
-              toService: {
-                include: { continuity: true },
-              },
-            },
-          },
-          dependenciesTo: true,
-        },
-      }),
-      prisma.infraComponent.findMany({
-        where: { tenantId },
-        include: {
-          services: {
-            include: { service: true },
-          },
-        },
-      }),
-    ]);
-
-    const depsWarnings = buildAppContinuityWarnings(services);
-    const infraFindings = buildInfraFindings(infra);
-
-    let text = "=== Rapport PRA/PCA – Synthèse technique ===\n\n";
-
-    text += `Nombre de services recensés : ${services.length}\n`;
-    const depCount = services.reduce(
-      (sum, s) => sum + s.dependenciesFrom.length,
-      0
-    );
-    text += `Nombre de dépendances : ${depCount}\n\n`;
-
-    text += "1. Catalogue des services\n";
-    text += "-------------------------\n";
-    for (const s of services) {
-      text += `- ${s.name} [${s.type}] (criticité : ${s.criticality}`;
-      if (s.businessPriority) {
-        text += ` | priorité métier : ${s.businessPriority}`;
-      }
-      text += ")\n";
-      if (s.continuity) {
-        text += `  RTO : ${s.continuity.rtoHours} h | RPO : ${s.continuity.rpoMinutes} min | MTPD : ${s.continuity.mtpdHours} h\n`;
-      }
-      if (s.description) {
-        text += `  Description : ${s.description}\n`;
-      }
-      text += "\n";
-    }
-
-    text += "\n2. Chaînes de dépendances\n";
-    text += "-------------------------\n";
-    for (const s of services) {
-      for (const dep of s.dependenciesFrom) {
-        const target = dep.toService;
-        if (!target) continue;
-        text += `- ${s.name} dépend de ${target.name} (type de dépendance : ${dep.dependencyType}) \n`;
-      }
-    }
-
-    text += "\n3. Analyse de cohérence PRA\n";
-    text += "---------------------------\n";
-    if (depsWarnings.length === 0) {
-      text += "Aucune incohérence PRA détectée.\n";
-    } else {
-      text += "Les incohérences suivantes ont été détectées :\n\n";
-      for (const w of depsWarnings) {
-        text += `- ${w.message}\n`;
-      }
-    }
-
-    text += "\n4. Synthèse Landing Zone / Infra\n";
-    text += "--------------------------------\n";
-    for (const f of infraFindings) {
-      text += `- ${f.message}\n`;
-    }
-
+    const text = await buildPraReportText(tenantId);
     res.type("text/plain").send(text);
   } catch (error) {
     console.error("Error in /analysis/report:", error);
+    return res.status(500).send("Internal server error");
+  }
+});
+
+router.get("/report/pdf", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).send("Tenant not resolved");
+    }
+    const text = await buildPraReportText(tenantId);
+    const pdfBuffer = await renderReportPdf(text);
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", "attachment; filename=\"rapport-pra.pdf\"");
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.error("Error in /analysis/report/pdf:", error);
     return res.status(500).send("Internal server error");
   }
 });
