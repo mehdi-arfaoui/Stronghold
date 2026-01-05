@@ -39,7 +39,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
-const fs_1 = __importDefault(require("fs"));
 const crypto = __importStar(require("crypto"));
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const tenantMiddleware_1 = require("../middleware/tenantMiddleware");
@@ -49,14 +48,8 @@ const observability_1 = require("../config/observability");
 const s3Client_1 = require("../clients/s3Client");
 const router = (0, express_1.Router)();
 const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
-async function computeFileHash(filePath) {
-    const hash = crypto.createHash("sha256");
-    const stream = fs_1.default.createReadStream(filePath);
-    return new Promise((resolve, reject) => {
-        stream.on("data", (data) => hash.update(data));
-        stream.on("end", () => resolve(hash.digest("hex")));
-        stream.on("error", reject);
-    });
+async function computeFileHash(buffer) {
+    return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 function computeRetentionDate(days) {
     if (!Number.isFinite(days) || days <= 0)
@@ -96,12 +89,11 @@ router.post("/", (0, tenantMiddleware_1.requireRole)("OPERATOR"), upload.single(
             body: file.buffer,
             contentType: file.mimetype,
         });
-        const fileHash = await computeFileHash(file.path);
+        const fileHash = await computeFileHash(file.buffer);
         const duplicate = await prismaClient_1.default.document.findFirst({
             where: { tenantId, fileHash },
         });
         if (duplicate) {
-            await fs_1.default.promises.unlink(file.path).catch(() => undefined);
             return res.status(409).json({
                 error: "Document déjà présent pour ce tenant (hash identique)",
                 existingDocumentId: duplicate.id,

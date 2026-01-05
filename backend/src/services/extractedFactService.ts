@@ -121,14 +121,17 @@ export async function getOrCreateExtractedFacts(
       documentName: document.originalName,
       docType: document.docType,
       correlationId,
+      tenantId,
     });
   } catch (err: any) {
     const message = err?.message || "Unknown OpenAI analysis error";
     console.error("[extractedFactService] analysis failed", {
+      event: "ai_extraction_error",
       correlationId,
       tenantId,
       documentId: document.id,
-      message: message.slice(0, 300),
+      errorName: err?.name,
+      errorMessage: message.slice(0, 200),
     });
     throw err;
   }

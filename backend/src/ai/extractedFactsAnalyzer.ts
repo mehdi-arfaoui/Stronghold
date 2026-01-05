@@ -99,6 +99,7 @@ interface AnalyzeParams {
   documentName?: string | null;
   docType?: string | null;
   correlationId?: string | null;
+  tenantId?: string | null;
   retryConfig?: PartialRetryConfig;
 }
 
@@ -278,17 +279,17 @@ export async function analyzeExtractedFacts(
       params.retryConfig
     );
   } catch (err) {
-    recordLlmCall(false);
+    recordLlmCall(false, params.tenantId ?? undefined);
     throw err;
   }
 
   try {
     const payload = await response.json();
     const parsed = extractJsonFromResponse(payload);
-    recordLlmCall(true);
+    recordLlmCall(true, params.tenantId ?? undefined);
     return parsed.facts;
   } catch (err: any) {
-    recordLlmCall(false);
+    recordLlmCall(false, params.tenantId ?? undefined);
     const message = err?.message || "Failed to parse OpenAI response";
     throw new OpenAiCallError(
       `${message} [correlationId=${correlationId}]`,

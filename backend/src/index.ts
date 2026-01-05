@@ -3,7 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient";
 import { metricsConfig } from "./config/observability";
-import { getMetricsSnapshot } from "./observability/metrics";
+import { getMetricsSnapshot, getPrometheusMetrics } from "./observability/metrics";
 
 import serviceRoutes from "./routes/serviceRoutes";
 import graphRoutes from "./routes/graphRoutes";
@@ -16,6 +16,7 @@ import continuityRoutes from "./routes/continuityRoutes";
 import runbookRoutes from "./routes/runbookRoutes";
 import webhookRoutes from "./routes/webhookRoutes";
 import authRoutes from "./routes/authRoutes";
+import auditRoutes from "./routes/auditRoutes";
 
 dotenv.config();
 
@@ -64,6 +65,11 @@ app.get("/health", async (_req, res) => {
   });
 });
 
+app.get("/metrics", (_req, res) => {
+  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.status(200).send(getPrometheusMetrics());
+});
+
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
 app.use(tenantMiddleware as any);
 
@@ -77,6 +83,7 @@ app.use("/continuity", continuityRoutes);
 app.use("/runbooks", runbookRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/auth", authRoutes);
+app.use("/audit-logs", auditRoutes);
 
 // Global error handler - ensure all errors return JSON
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {

@@ -1,7 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
 import path from "path";
-import fs from "fs";
 import * as crypto from "crypto";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
@@ -21,15 +20,8 @@ const router = Router();
 
 const upload = multer({ storage: multer.memoryStorage() });
 
-async function computeFileHash(filePath: string): Promise<string> {
-  const hash = crypto.createHash("sha256");
-  const stream = fs.createReadStream(filePath);
-
-  return new Promise((resolve, reject) => {
-    stream.on("data", (data) => hash.update(data));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
+async function computeFileHash(buffer: Buffer): Promise<string> {
+  return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
 function computeRetentionDate(days: number): Date | null {
@@ -78,12 +70,11 @@ router.post(
         contentType: file.mimetype,
       });
 
-      const fileHash = await computeFileHash(file.path);
+      const fileHash = await computeFileHash(file.buffer);
       const duplicate = await prisma.document.findFirst({
         where: { tenantId, fileHash },
       });
       if (duplicate) {
-        await fs.promises.unlink(file.path).catch(() => undefined);
         return res.status(409).json({
           error: "Document déjà présent pour ce tenant (hash identique)",
           existingDocumentId: duplicate.id,
@@ -158,6 +149,74 @@ router.get("/", async (req: TenantRequest, res) => {
     return res.json(docsWithSignedPaths);
   } catch (error) {
     console.error("Error in GET /documents:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * PUT /documents/:id
+ * Met à jour les métadonnées (docType, description) d'un document.
+ */
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const docId = req.params.id;
+    const { docType, description } = req.body || {};
+
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    const data: any = {};
+    if (docType !== undefined) {
+      data.docType = docType ? String(docType).toUpperCase() : null;
+    }
+    if (description !== undefined) {
+      data.description = description ? String(description).trim() : null;
+    }
+
+    const updated = await prisma.document.update({
+      where: { id: docId },
+      data,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error in PUT /documents/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * DELETE /documents/:id
+ * Supprime un document et ses faits extraits.
+ */
+router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const docId = req.params.id;
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    await prisma.$transaction([
+      prisma.extractedFact.deleteMany({ where: { tenantId, documentId: docId } }),
+      prisma.document.deleteMany({ where: { id: docId, tenantId } }),
+    ]);
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error in DELETE /documents/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

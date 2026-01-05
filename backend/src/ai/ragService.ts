@@ -1,6 +1,8 @@
 import prisma from "../prismaClient";
 import { ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
 import { DR_SCENARIOS, DrScenario } from "../analysis/drStrategyEngine";
+import { queryChromaCollection } from "../clients/chromaClient";
+import { buildChromaCollectionName } from "../services/documentIntelligenceService";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
@@ -51,6 +53,7 @@ const MAX_CHARS_PER_FACT = 320;
 const DEFAULT_MAX_CHUNKS = 6;
 const DEFAULT_MAX_FACTS = 8;
 const PROMPT_MAX_TOTAL = 4_000;
+const DEFAULT_VECTOR_SCORE = 0.1;
 
 function sanitizeText(text: string | null | undefined): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
@@ -87,6 +90,22 @@ function similarityScore(queryTokens: Set<string>, targetText: string): number {
   const precision = overlap / queryTokens.size;
   const coverage = overlap / targetTokens.size;
   return Number((precision * 0.6 + coverage * 0.4).toFixed(4));
+}
+
+function toOptionalString(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+  return null;
+}
+
+function normalizeDocType(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.toUpperCase();
 }
 
 function splitIntoChunks(text: string, maxChunks: number): string[] {
@@ -136,7 +155,33 @@ function buildFactPreview(fact: ExtractedFact): RagFact {
   };
 }
 
-export async function retrieveRagContext(options: RagQueryOptions): Promise<{
+async function fetchFactCandidates(params: {
+  tenantId: string;
+  questionTokens: Set<string>;
+  documentIds?: string[] | null;
+  maxFacts: number;
+  prismaClient: PrismaClientOrTx;
+}): Promise<RagFact[]> {
+  const facts = await params.prismaClient.extractedFact.findMany({
+    where: {
+      tenantId: params.tenantId,
+      ...(params.documentIds && params.documentIds.length > 0 ? { documentId: { in: params.documentIds } } : {}),
+    },
+    orderBy: { createdAt: "desc" },
+    take: 120,
+  });
+
+  return facts
+    .map(buildFactPreview)
+    .map((fact) => {
+      const basis = `${fact.label} ${fact.dataPreview} ${fact.category}`;
+      return { ...fact, score: similarityScore(params.questionTokens, basis) };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, params.maxFacts);
+}
+
+async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
   context: RagContext;
   usedDocumentIds: string[];
   questionTokens: Set<string>;
@@ -168,13 +213,12 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       },
       take: 25,
     }),
-    prismaClient.extractedFact.findMany({
-      where: {
-        tenantId: options.tenantId,
-        ...(docFilter.id ? { documentId: docFilter.id.in } : {}),
-      },
-      orderBy: { createdAt: "desc" },
-      take: 120,
+    fetchFactCandidates({
+      tenantId: options.tenantId,
+      questionTokens,
+      documentIds: docFilter.id ? docFilter.id.in : null,
+      maxFacts,
+      prismaClient,
     }),
   ]);
 
@@ -194,16 +238,8 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
 
   const allowedDocIds = new Set(documents.map((d) => d.id));
 
-  const factCandidates = facts
-    .filter((fact) => allowedDocIds.has(fact.documentId))
-    .map(buildFactPreview)
-    .map((fact) => {
-      const basis = `${fact.label} ${fact.dataPreview} ${fact.category}`;
-      return { ...fact, score: similarityScore(questionTokens, basis) };
-    });
-
   const sortedChunks = chunkCandidates.sort((a, b) => b.score - a.score).slice(0, maxChunks);
-  const sortedFacts = factCandidates.sort((a, b) => b.score - a.score).slice(0, maxFacts);
+  const sortedFacts = facts.filter((fact) => allowedDocIds.has(fact.documentId));
 
   return {
     context: {
@@ -213,6 +249,159 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     usedDocumentIds: documents.map((d) => d.id),
     questionTokens,
   };
+}
+
+async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
+  context: RagContext;
+  usedDocumentIds: string[];
+  questionTokens: Set<string>;
+} | null> {
+  const prismaClient = options.prismaClient ?? prisma;
+  const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  const maxFacts = options.maxFacts ?? DEFAULT_MAX_FACTS;
+
+  const questionTokens = buildTokenSet(`${options.question} ${options.serviceFilter || ""}`);
+  const baseQuestion = `${options.question} ${options.serviceFilter || ""}`.trim();
+  if (!baseQuestion) {
+    return null;
+  }
+
+  const collection = buildChromaCollectionName(
+    process.env.CHROMADB_COLLECTION || "pra-documents",
+    options.tenantId
+  );
+
+  const response = await queryChromaCollection({
+    collection,
+    queryTexts: [baseQuestion],
+    tenantId: options.tenantId,
+    documentIds: options.documentIds ?? null,
+    nResults: maxChunks,
+  });
+
+  if (!response || !response.documents || !response.metadatas) {
+    return null;
+  }
+
+  const documents = response.documents[0] || [];
+  const metadatas = response.metadatas[0] || [];
+  const distances = response.distances?.[0] || [];
+
+  const chunkCandidates: RagChunk[] = [];
+  for (let index = 0; index < documents.length; index += 1) {
+    const text = documents[index];
+    const metadata = metadatas[index] || {};
+    const documentId = toOptionalString(metadata.documentId);
+    if (!documentId) continue;
+    const rawDocName =
+      toOptionalString(metadata.originalName) ?? toOptionalString(metadata.documentName) ?? "Document";
+    const rawDocType =
+      toOptionalString(metadata.normalizedDocType) ??
+      toOptionalString(metadata.declaredDocType) ??
+      toOptionalString(metadata.classification);
+    const distance = typeof distances[index] === "number" ? distances[index] : null;
+    const score = distance !== null ? Number((1 / (1 + distance)).toFixed(4)) : DEFAULT_VECTOR_SCORE;
+
+    chunkCandidates.push({
+      documentId,
+      documentName: rawDocName,
+      documentType: normalizeDocType(rawDocType),
+      text: clampText(text, MAX_CHARS_PER_CHUNK),
+      score,
+    });
+  }
+
+  if (chunkCandidates.length === 0) {
+    return null;
+  }
+
+  const uniqueDocIds = Array.from(new Set(chunkCandidates.map((chunk) => chunk.documentId)));
+  const documentRecords = await prismaClient.document.findMany({
+    where: {
+      tenantId: options.tenantId,
+      id: { in: uniqueDocIds },
+    },
+    select: {
+      id: true,
+      originalName: true,
+      docType: true,
+    },
+  });
+
+  const docMap = new Map(documentRecords.map((doc) => [doc.id, doc]));
+  const allowedDocTypes = options.documentTypes?.map((d) => d.toUpperCase());
+
+  const filteredChunks = chunkCandidates
+    .map((chunk) => {
+      const doc = docMap.get(chunk.documentId);
+      return {
+        ...chunk,
+        documentName: doc?.originalName || chunk.documentName,
+        documentType: normalizeDocType(chunk.documentType || doc?.docType || null),
+      };
+    })
+    .filter((chunk) => {
+      if (!allowedDocTypes || allowedDocTypes.length === 0) return true;
+      return chunk.documentType ? allowedDocTypes.includes(chunk.documentType) : false;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxChunks);
+
+  const usedDocumentIds = Array.from(new Set(filteredChunks.map((chunk) => chunk.documentId)));
+  let factDocumentIds: string[] | null = null;
+  if (options.documentIds && options.documentIds.length > 0) {
+    factDocumentIds = options.documentIds;
+  } else if (usedDocumentIds.length > 0) {
+    factDocumentIds = usedDocumentIds;
+  } else if (options.documentTypes && options.documentTypes.length > 0) {
+    const docsByType = await prismaClient.document.findMany({
+      where: {
+        tenantId: options.tenantId,
+        docType: { in: options.documentTypes.map((d) => d.toUpperCase()) },
+      },
+      select: { id: true },
+      take: 50,
+    });
+    factDocumentIds = docsByType.map((doc) => doc.id);
+  }
+
+  const facts = await fetchFactCandidates({
+    tenantId: options.tenantId,
+    questionTokens,
+    documentIds: factDocumentIds,
+    maxFacts,
+    prismaClient,
+  });
+
+  return {
+    context: {
+      chunks: filteredChunks,
+      extractedFacts: facts,
+    },
+    usedDocumentIds: usedDocumentIds.length > 0 ? usedDocumentIds : factDocumentIds ?? [],
+    questionTokens,
+  };
+}
+
+export async function retrieveRagContext(options: RagQueryOptions): Promise<{
+  context: RagContext;
+  usedDocumentIds: string[];
+  questionTokens: Set<string>;
+}> {
+  try {
+    const vectorResult = await retrieveVectorRagContext(options);
+    if (vectorResult) {
+      return vectorResult;
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
+      tenantId: options.tenantId,
+      message: message.slice(0, 300),
+    });
+  }
+
+  return retrieveLexicalRagContext(options);
 }
 
 export function draftAnswerFromContext(question: string, context: RagContext): string {

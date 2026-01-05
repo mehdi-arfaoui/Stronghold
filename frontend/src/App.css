@@ -111,6 +111,42 @@
   border: 1px solid #e2e8f0;
 }
 
+.badge.success {
+  background: #bbf7d0;
+  color: #14532d;
+}
+
+.badge.error {
+  background: #fecaca;
+  color: #7f1d1d;
+}
+
+.code-block {
+  background: #0b1224;
+  color: #f8fafc;
+  padding: 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  word-break: break-all;
+}
+
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #f8fafc;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
