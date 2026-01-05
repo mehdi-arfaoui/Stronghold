@@ -20,6 +20,7 @@ import auditRoutes from "./routes/auditRoutes";
 import riskRoutes from "./routes/riskRoutes";
 import biaRoutes from "./routes/biaRoutes";
 import incidentRoutes from "./routes/incidentRoutes";
+import exerciseRoutes from "./routes/exerciseRoutes";
 
 dotenv.config();
 
@@ -90,6 +91,7 @@ app.use("/audit-logs", auditRoutes);
 app.use("/risks", riskRoutes);
 app.use("/bia", biaRoutes);
 app.use("/incidents", incidentRoutes);
+app.use("/exercises", exerciseRoutes);
 
 // Global error handler - ensure all errors return JSON
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
