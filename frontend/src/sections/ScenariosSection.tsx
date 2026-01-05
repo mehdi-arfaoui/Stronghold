@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { ScenarioFront, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -88,6 +89,15 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    scenarios.length > 0,
+    scenarios.some((scenario) => scenario.services.length > 0),
+    scenarios.some((scenario) => scenario.steps.length > 0),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="scenarios-panel" className="panel" aria-labelledby="scenarios-title">
       <div className="panel-header">
@@ -101,7 +111,31 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
         <div className="badge subtle">{scenarios.length} scénarios</div>
       </div>
 
-      <form className="card form-grid" onSubmit={handleCreate}>
+      <PageIntro
+        title="Construire les scénarios PRA"
+        objective="Structurer les scénarios de sinistre pour guider la génération de runbooks et la priorisation."
+        steps={[
+          "Créer un scénario et définir l'impact",
+          "Associer les services concernés",
+          "Décrire les étapes de reprise",
+        ]}
+        links={[
+          { label: "Créer un scénario", href: "#scenarios-create", description: "Formulaire" },
+          { label: "Sélectionner les services", href: "#scenarios-services", description: "Checklist" },
+          { label: "Consulter les scénarios", href: "#scenarios-list", description: "Historique" },
+        ]}
+        expectedData={[
+          "Nom + type de scénario",
+          "Services impactés et cible RTO",
+          "Étapes de runbook associées",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <form id="scenarios-create" className="card form-grid" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <label className="form-field">
             <span>Nom du scénario</span>
@@ -151,7 +185,7 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
               }
             />
           </label>
-          <div className="form-field" style={{ gridColumn: "span 2" }}>
+          <div id="scenarios-services" className="form-field" style={{ gridColumn: "span 2" }}>
             <span>Services impactés</span>
             <div className="service-selector">
               {services.length === 0 ? (
@@ -184,7 +218,7 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
       {scenarios.length === 0 ? (
         <p className="empty-state">Aucun scénario défini pour le moment.</p>
       ) : (
-        <div className="stack" style={{ gap: "16px" }}>
+        <div id="scenarios-list" className="stack" style={{ gap: "16px" }}>
           {scenarios.map((scenario) => (
             <ScenarioCard
               key={scenario.id}

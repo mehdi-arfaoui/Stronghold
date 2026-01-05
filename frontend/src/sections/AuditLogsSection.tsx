@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import { apiFetch } from "../utils/api";
 
 interface AuditLogsSectionProps {
@@ -99,6 +100,15 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    logs.length > 0,
+    Boolean(date || statusCode || path),
+    logs.some((log) => !log.success),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="audit-logs" className="panel" aria-labelledby="audit-logs-title">
       <div className="panel-header">
@@ -112,7 +122,31 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
         <div className="badge subtle">ADMIN only</div>
       </div>
 
-      <form className="card form-grid" onSubmit={handleFilter}>
+      <PageIntro
+        title="Suivre l'audit API"
+        objective="Inspecter les appels API pour tracer les erreurs, mesurer les latences et vérifier la conformité."
+        steps={[
+          "Appliquer des filtres ciblés",
+          "Analyser les statuts et latences",
+          "Exporter ou corriger les anomalies",
+        ]}
+        links={[
+          { label: "Filtrer les logs", href: "#audit-filters", description: "Formulaire" },
+          { label: "Consulter les résultats", href: "#audit-results", description: "Table" },
+          { label: "Réinitialiser", href: "#audit-filters", description: "Reset" },
+        ]}
+        expectedData={[
+          "Date, statut HTTP ou chemin",
+          "Corrélation et identifiant de clé",
+          "Latence et statut de succès",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <form id="audit-filters" className="card form-grid" onSubmit={handleFilter}>
         <div className="card-header" style={{ gridColumn: "1 / -1" }}>
           <div>
             <p className="eyebrow">Filtres</p>
@@ -162,7 +196,7 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
         </div>
       </form>
 
-      <div className="card" style={{ marginTop: "1.5rem" }}>
+      <div id="audit-results" className="card" style={{ marginTop: "1.5rem" }}>
         <div className="card-header">
           <div>
             <p className="eyebrow">Résultats</p>

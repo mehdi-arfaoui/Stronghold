@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import { apiFetch } from "../utils/api";
 
 interface AuthSectionProps {
@@ -160,6 +161,15 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    keys.length > 0,
+    keys.some((key) => !key.revokedAt),
+    keys.some((key) => Boolean(key.expiresAt)),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="auth-panel" className="panel" aria-labelledby="auth-title">
       <div className="panel-header">
@@ -172,6 +182,30 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
         </div>
         <div className="badge subtle">ADMIN only</div>
       </div>
+
+      <PageIntro
+        title="Gérer les accès API"
+        objective="Créer, faire tourner et suivre les clés API pour sécuriser l'accès aux modules PRA."
+        steps={[
+          "Créer une clé avec le bon rôle",
+          "Planifier la rotation et l'expiration",
+          "Suivre l'usage et la révocation",
+        ]}
+        links={[
+          { label: "Créer une clé", href: "#auth-create", description: "Formulaire" },
+          { label: "Rotater une clé", href: "#auth-rotate", description: "Rotation" },
+          { label: "Consulter l'inventaire", href: "#auth-list", description: "Liste" },
+        ]}
+        expectedData={[
+          "Libellé + rôle (ADMIN/OPERATOR/READER)",
+          "Durée d'expiration souhaitée",
+          "Clé à tourner ou à révoquer",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
 
       {createdKey && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
@@ -204,7 +238,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
       )}
 
       <div className="panel-grid">
-        <form className="card form-grid" onSubmit={handleCreate}>
+        <form id="auth-create" className="card form-grid" onSubmit={handleCreate}>
           <div className="card-header" style={{ gridColumn: "1 / -1" }}>
             <div>
               <p className="eyebrow">Nouvelle clé</p>
@@ -247,7 +281,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
           </div>
         </form>
 
-        <form className="card form-grid" onSubmit={handleRotate}>
+        <form id="auth-rotate" className="card form-grid" onSubmit={handleRotate}>
           <div className="card-header" style={{ gridColumn: "1 / -1" }}>
             <div>
               <p className="eyebrow">Rotation</p>
@@ -293,7 +327,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
 
       {actionError && <div className="alert error">{actionError}</div>}
 
-      <div className="card" style={{ marginTop: "1.5rem" }}>
+      <div id="auth-list" className="card" style={{ marginTop: "1.5rem" }}>
         <div className="card-header">
           <div>
             <p className="eyebrow">Suivi</p>

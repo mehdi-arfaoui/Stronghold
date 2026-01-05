@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
+import { PageIntro } from "../components/PageIntro";
 import type { GraphApiResponse, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -111,6 +112,15 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
   if (error) return <div className="alert error">Erreur lors du chargement : {error}</div>;
   if (!options) return null;
 
+  const progressSteps = [
+    (graph?.nodes.length ?? 0) > 0,
+    (graph?.edges.length ?? 0) > 0,
+    (graph?.nodes ?? []).some((node) => Boolean(node.category)),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="architecture-panel" className="panel" aria-labelledby="architecture-title">
       <div className="panel-header">
@@ -121,15 +131,39 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
             Diagramme lisible par catégorie avec annotations et interactions détaillées pour le rapport final.
           </p>
         </div>
-        <button className="btn" type="button" onClick={handleExport}>
+        <button id="architecture-export" className="btn" type="button" onClick={handleExport}>
           Exporter le diagramme
         </button>
       </div>
 
-      <div className="card">
+      <PageIntro
+        title="Synthétiser l'architecture"
+        objective="Offrir une vue globale des composants et dépendances pour alimenter les audits et comités PRA."
+        steps={[
+          "Charger les composants et catégories",
+          "Analyser les dépendances critiques",
+          "Exporter le diagramme pour les rapports",
+        ]}
+        links={[
+          { label: "Visualiser le schéma", href: "#architecture-chart", description: "Graphique" },
+          { label: "Exporter l'image", href: "#architecture-export", description: "PNG" },
+          { label: "Relire les annotations", href: "#architecture-notes", description: "Astuce" },
+        ]}
+        expectedData={[
+          "Catégories d'architecture et criticités",
+          "Liens entre applications et infra",
+          "Niveaux de priorité métier",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <div id="architecture-chart" className="card">
         <ReactECharts ref={chartRef} option={options as any} style={{ height: 600 }} />
       </div>
-      <div className="muted small">
+      <div id="architecture-notes" className="muted small">
         Astuce : utilisez le zoom et le déplacement pour annoter les interactions clés avant export.
       </div>
     </section>

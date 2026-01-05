@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { RunbookFront, RunbookTemplateFront, ScenarioFront } from "../types";
 import { apiDownload, apiFetch, apiFetchFormData } from "../utils/api";
 
@@ -336,6 +337,15 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    templates.length > 0,
+    scenarios.length > 0,
+    runbooks.length > 0,
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="runbooks-panel" className="panel" aria-labelledby="runbooks-title">
       <div className="panel-header">
@@ -349,8 +359,32 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
         <div className="badge subtle">{runbooks.length} runbooks</div>
       </div>
 
+      <PageIntro
+        title="Générer et versionner les runbooks"
+        objective="Assembler les scénarios PRA, templates et synthèses pour obtenir des runbooks prêts à diffuser."
+        steps={[
+          "Sélectionner un template",
+          "Associer un scénario si nécessaire",
+          "Exporter le runbook final",
+        ]}
+        links={[
+          { label: "Générer un runbook", href: "#runbooks-generate", description: "Formulaire" },
+          { label: "Gérer les templates", href: "#runbooks-templates", description: "Bibliothèque" },
+          { label: "Consulter les runbooks", href: "#runbooks-list", description: "Historique" },
+        ]}
+        expectedData={[
+          "Template (générique, scénario, audit)",
+          "Scénario PRA à inclure",
+          "Titre, résumé et propriétaire",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
       <div className="panel-grid">
-        <form className="card form-grid" onSubmit={handleGenerate}>
+        <form id="runbooks-generate" className="card form-grid" onSubmit={handleGenerate}>
           <div className="card-header" style={{ gridColumn: "1 / -1" }}>
             <div>
               <p className="eyebrow">Génération</p>
@@ -446,7 +480,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           </div>
         </form>
 
-        <div className="card">
+        <div id="runbooks-templates" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Rapports</p>
@@ -470,7 +504,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
         </div>
       </div>
 
-      <div className="card">
+      <div id="runbooks-list" className="card">
         <div className="card-header">
           <div>
             <p className="eyebrow">Templates</p>

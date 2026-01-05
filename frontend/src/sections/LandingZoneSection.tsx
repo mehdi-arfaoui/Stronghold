@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type { InfraComponent } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -136,6 +137,15 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    components.length > 0,
+    components.some((component) => Boolean(component.provider) && Boolean(component.location)),
+    components.some((component) => (component.services?.length ?? 0) > 0),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="landing-panel" className="panel" aria-labelledby="landing-title">
       <div className="panel-header">
@@ -149,7 +159,31 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
         <div className="badge subtle">{components.length} composants</div>
       </div>
 
-      <form className="form-grid card" onSubmit={handleCreate}>
+      <PageIntro
+        title="Structurer la Landing Zone"
+        objective="Inventorier les composants d'infrastructure pour relier les services critiques et leurs dépendances."
+        steps={[
+          "Créer les composants d'infra",
+          "Renseigner la criticité et la localisation",
+          "Associer les services hébergés",
+        ]}
+        links={[
+          { label: "Ajouter un composant", href: "#landing-create", description: "Formulaire" },
+          { label: "Consulter l'inventaire", href: "#landing-table", description: "Liste" },
+          { label: "Mettre à jour un composant", href: "#landing-edit", description: "Edition" },
+        ]}
+        expectedData={[
+          "Nom, type, provider et localisation",
+          "Criticité + statut Single-AZ",
+          "Services liés et notes contextuelles",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <form id="landing-create" className="form-grid card" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
           <label className="form-field">
             <span>Nom</span>
@@ -232,7 +266,7 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
         </div>
       </form>
 
-      <div className="card">
+      <div id="landing-table" className="card">
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
@@ -283,7 +317,7 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
       {deleteError && !editingId && <p className="helper error">{deleteError}</p>}
 
       {editingId && (
-        <form className="form-grid card" onSubmit={handleUpdate}>
+        <form id="landing-edit" className="form-grid card" onSubmit={handleUpdate}>
           <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
             <label className="form-field">
               <span>Nom</span>

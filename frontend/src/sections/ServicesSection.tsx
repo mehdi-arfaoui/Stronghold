@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import { SERVICE_DOMAINS, domainMetaByValue } from "../constants/domains";
 import type { InfraComponent, Service } from "../types";
 import { apiFetch } from "../utils/api";
@@ -189,6 +190,15 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    services.length > 0,
+    services.some((service) => Boolean(service.continuity)),
+    services.some((service) => (service.infraLinks?.length ?? 0) > 0),
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="services-panel" className="panel" aria-labelledby="services-title">
       <div className="panel-header">
@@ -202,7 +212,31 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
         <div className="badge subtle">{services.length} services</div>
       </div>
 
-      <form className="form-grid card" onSubmit={handleCreate}>
+      <PageIntro
+        title="Piloter les services critiques"
+        objective="Centraliser la cartographie des services, prioriser les besoins PRA et préparer les liaisons infra."
+        steps={[
+          "Créer les services critiques",
+          "Renseigner criticité et objectifs RTO/RPO",
+          "Lier les services aux composants Landing Zone",
+        ]}
+        links={[
+          { label: "Ajouter un service", href: "#services-create", description: "Formulaire" },
+          { label: "Associer à l'infra", href: "#services-link", description: "Lien service ↔ infra" },
+          { label: "Voir le catalogue", href: "#services-table", description: "Table des services" },
+        ]}
+        expectedData={[
+          "Nom du service + domaine fonctionnel",
+          "Criticité, priorité et objectifs de continuité",
+          "Composants infra associés (Landing Zone)",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
+      <form id="services-create" className="form-grid card" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
           <label className="form-field">
             <span>Domaine</span>
@@ -316,7 +350,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
         </div>
       </form>
 
-      <form className="form-grid card" onSubmit={handleLink}>
+      <form id="services-link" className="form-grid card" onSubmit={handleLink}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <label className="form-field">
             <span>Service</span>
@@ -368,7 +402,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
         </div>
       </form>
 
-      <div className="card">
+      <div id="services-table" className="card">
         <div className="table-wrapper">
           <table className="data-table">
             <thead>

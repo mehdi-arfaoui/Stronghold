@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import { PageIntro } from "../components/PageIntro";
 import type {
   BackupStrategy,
   DependencyCycle,
@@ -229,6 +230,15 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const progressSteps = [
+    backupStrategies.length > 0,
+    securityPolicies.length > 0,
+    dependencyCycles.length > 0,
+  ];
+  const progressValue = Math.round(
+    (progressSteps.filter(Boolean).length / progressSteps.length) * 100
+  );
+
   return (
     <section id="continuity-panel" className="panel" aria-labelledby="continuity-title">
       <div className="panel-header">
@@ -245,8 +255,32 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
         </div>
       </div>
 
+      <PageIntro
+        title="Aligner sauvegardes et politiques"
+        objective="Définir les stratégies de sauvegarde, les politiques de sécurité et les cycles critiques pour éviter les angles morts PRA."
+        steps={[
+          "Documenter les stratégies de sauvegarde",
+          "Rattacher les politiques de sécurité",
+          "Qualifier les cycles de dépendance",
+        ]}
+        links={[
+          { label: "Créer une stratégie", href: "#continuity-backup", description: "Backup" },
+          { label: "Ajouter une politique", href: "#continuity-policy", description: "Sécurité" },
+          { label: "Définir un cycle", href: "#continuity-cycle", description: "Dépendances" },
+        ]}
+        expectedData={[
+          "Service cible, fréquence et rétention",
+          "Politique, classification et contrôle",
+          "Services en dépendance + niveau de sévérité",
+        ]}
+        progress={{
+          value: progressValue,
+          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+        }}
+      />
+
       <div className="panel-stack">
-        <div className="card">
+        <div id="continuity-backup" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Backup</p>
@@ -446,7 +480,7 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
           </div>
         </div>
 
-        <div className="card">
+        <div id="continuity-policy" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Sécurité</p>
@@ -599,7 +633,7 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
           </div>
         </div>
 
-        <div className="card">
+        <div id="continuity-cycle" className="card">
           <div className="card-header">
             <div>
               <p className="eyebrow">Dépendances</p>
