@@ -79,6 +79,118 @@ const LITE_EDGE_LIMIT = 80;
 
 const router = Router();
 
+router.get("/dependencies-only", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const services = await prisma.service.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        criticality: true,
+        businessPriority: true,
+        domain: true,
+      },
+    });
+
+    const dependencies = await prisma.serviceDependency.findMany({
+      where: { tenantId },
+      select: {
+        id: true,
+        fromServiceId: true,
+        toServiceId: true,
+        dependencyType: true,
+      },
+    });
+
+    const serviceNameById = services.reduce<Record<string, string>>((acc, service) => {
+      acc[service.id] = service.name;
+      return acc;
+    }, {});
+
+    const serviceCritById = services.reduce<Record<string, string>>((acc, service) => {
+      acc[service.id] = service.criticality;
+      return acc;
+    }, {});
+
+    const dependsOnCountById = dependencies.reduce<Record<string, number>>((acc, dep) => {
+      acc[dep.fromServiceId] = (acc[dep.fromServiceId] || 0) + 1;
+      return acc;
+    }, {});
+
+    const usedByCountById = dependencies.reduce<Record<string, number>>((acc, dep) => {
+      acc[dep.toServiceId] = (acc[dep.toServiceId] || 0) + 1;
+      return acc;
+    }, {});
+
+    const nodes = services.map((service) => {
+      const category = resolveCategory(service.domain, service.type);
+      const crit = normalizeCriticality(service.criticality);
+      const summaryLabel = buildSummaryLabel(service.name, service.type);
+      const dependsOnCount = dependsOnCountById[service.id] || 0;
+      const usedByCount = usedByCountById[service.id] || 0;
+      return {
+        id: service.id,
+        label: service.name,
+        summaryLabel,
+        detailPayload: {
+          name: service.name,
+          type: service.type,
+          category,
+          criticality: crit,
+          businessPriority: service.businessPriority,
+          domain: service.domain,
+          isLandingZone: category === "Foundation" || category === "Network" || category === "Platform",
+          rtoHours: null,
+          rpoMinutes: null,
+          mtpdHours: null,
+          dependsOnCount,
+          usedByCount,
+        },
+        type: service.type,
+        nodeKind: "service",
+        category,
+        criticality: crit,
+        businessPriority: service.businessPriority,
+        domain: service.domain,
+        isLandingZone: category === "Foundation" || category === "Network" || category === "Platform",
+        rtoHours: null,
+        rpoMinutes: null,
+        mtpdHours: null,
+        dependsOnCount,
+        usedByCount,
+      };
+    });
+
+    const edges = dependencies.map((dep) => {
+      const sourceCrit = normalizeCriticality(serviceCritById[dep.fromServiceId]);
+      return {
+        id: dep.id,
+        from: dep.fromServiceId,
+        to: dep.toServiceId,
+        type: dep.dependencyType,
+        edgeLabelShort: dep.dependencyType || "dépendance",
+        edgeLabelLong: `${serviceNameById[dep.fromServiceId] || dep.fromServiceId} → ${
+          serviceNameById[dep.toServiceId] || dep.toServiceId
+        } (${dep.dependencyType || "dépendance"})`,
+        strength: isStrongDependency(dep.dependencyType) ? "strong" : "normal",
+        edgeWeight: resolveEdgeWeight(sourceCrit, dep.dependencyType),
+        edgeKind: resolveEdgeKind(sourceCrit, dep.dependencyType),
+      };
+    });
+
+    return res.json({ nodes, edges });
+  } catch (error) {
+    console.error("Error building dependency graph:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 router.get("/", async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
