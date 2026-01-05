@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import type { RunbookFront, ScenarioFront } from "../types";
-import { apiDownload, apiFetch } from "../utils/api";
+import type { RunbookFront, RunbookTemplateFront, ScenarioFront } from "../types";
+import { apiDownload, apiFetch, apiFetchFormData } from "../utils/api";
 
 interface RunbooksSectionProps {
   configVersion: number;
@@ -34,16 +34,27 @@ const RUNBOOK_TEMPLATES: Record<
 export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
   const [runbooks, setRunbooks] = useState<RunbookFront[]>([]);
   const [scenarios, setScenarios] = useState<ScenarioFront[]>([]);
+  const [templates, setTemplates] = useState<RunbookTemplateFront[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [templateLoading, setTemplateLoading] = useState(true);
+  const [templateError, setTemplateError] = useState<string | null>(null);
 
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateId>("generic");
   const [scenarioId, setScenarioId] = useState<string>("");
+  const [templateId, setTemplateId] = useState<string>("");
+  const [selectedTemplateInfo, setSelectedTemplateInfo] = useState<RunbookTemplateFront | null>(
+    null
+  );
   const [title, setTitle] = useState(RUNBOOK_TEMPLATES.generic.title);
   const [summary, setSummary] = useState(RUNBOOK_TEMPLATES.generic.summary);
   const [owner, setOwner] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generationError, setGenerationError] = useState<string | null>(null);
+  const [uploadingTemplate, setUploadingTemplate] = useState(false);
+  const [templateDescription, setTemplateDescription] = useState("");
+  const [templateFile, setTemplateFile] = useState<File | null>(null);
+  const [templateSuccess, setTemplateSuccess] = useState<string | null>(null);
 
   const loadData = async () => {
     try {
@@ -62,8 +73,26 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
     }
   };
 
+  const loadTemplates = async () => {
+    try {
+      setTemplateLoading(true);
+      setTemplateError(null);
+      const templateData = await apiFetch("/runbooks/templates");
+      setTemplates(templateData);
+      if (templateId) {
+        const match = templateData.find((tpl: RunbookTemplateFront) => tpl.id === templateId);
+        setSelectedTemplateInfo(match || null);
+      }
+    } catch (err: any) {
+      setTemplateError(err.message || "Erreur de chargement des templates");
+    } finally {
+      setTemplateLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
+    loadTemplates();
   }, [configVersion]);
 
   const scenarioMap = useMemo(() => {
@@ -82,6 +111,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
     event.preventDefault();
     setGenerating(true);
     setGenerationError(null);
+    setTemplateSuccess(null);
 
     const template = RUNBOOK_TEMPLATES[selectedTemplate];
     if (template.requiresScenario && !scenarioId) {
@@ -98,6 +128,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           title,
           summary,
           owner: owner || undefined,
+          templateId: templateId || null,
         }),
       });
       await loadData();
@@ -132,6 +163,70 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
       await apiDownload("/analysis/full-report-json", "rapport-pra.json", "json");
     } catch (err: any) {
       setGenerationError(err?.message || "Téléchargement du rapport impossible");
+    }
+  };
+
+  const handleTemplateSelection = async (nextId: string) => {
+    setTemplateId(nextId);
+    if (!nextId) {
+      setSelectedTemplateInfo(null);
+      return;
+    }
+    try {
+      const tpl = await apiFetch(`/runbooks/templates/${nextId}`);
+      setSelectedTemplateInfo(tpl);
+    } catch (err: any) {
+      setSelectedTemplateInfo(null);
+      setTemplateError(err.message || "Impossible de récupérer le template");
+    }
+  };
+
+  const handleTemplateUpload = async (event: FormEvent) => {
+    event.preventDefault();
+    setTemplateError(null);
+    setTemplateSuccess(null);
+
+    if (!templateFile) {
+      setTemplateError("Sélectionnez un fichier de template.");
+      return;
+    }
+
+    try {
+      setUploadingTemplate(true);
+      const formData = new FormData();
+      formData.append("file", templateFile);
+      if (templateDescription.trim()) {
+        formData.append("description", templateDescription.trim());
+      }
+      const created = await apiFetchFormData("/runbooks/templates", formData);
+      setTemplateSuccess(`Template importé : ${created.originalName}`);
+      setTemplateDescription("");
+      setTemplateFile(null);
+      await loadTemplates();
+    } catch (err: any) {
+      setTemplateError(err.message || "Échec de l'import du template");
+    } finally {
+      setUploadingTemplate(false);
+    }
+  };
+
+  const downloadTemplate = async (tpl: RunbookTemplateFront) => {
+    try {
+      const latest = await apiFetch(`/runbooks/templates/${tpl.id}`);
+      if (!latest.signedUrl) {
+        setTemplateError("Lien de téléchargement indisponible.");
+        return;
+      }
+      const link = document.createElement("a");
+      link.href = latest.signedUrl;
+      link.download = latest.originalName || "template";
+      link.target = "_blank";
+      link.rel = "noopener";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (err: any) {
+      setTemplateError(err.message || "Téléchargement du template impossible");
     }
   };
 
@@ -195,6 +290,29 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           </label>
 
           <label className="form-field">
+            <span>Template importé (optionnel)</span>
+            <select
+              value={templateId}
+              onChange={(e) => handleTemplateSelection(e.target.value)}
+              disabled={templateLoading}
+            >
+              <option value="">Aucun (template standard)</option>
+              {templates.map((tpl) => (
+                <option key={tpl.id} value={tpl.id}>
+                  {tpl.originalName}
+                </option>
+              ))}
+            </select>
+            <p className="helper">
+              {selectedTemplateInfo
+                ? `${selectedTemplateInfo.format.toUpperCase()} • ${
+                    selectedTemplateInfo.description || "Sans description"
+                  }`
+                : "Importez un template personnalisé (DOCX, ODT, Markdown) pour l'utiliser ici."}
+            </p>
+          </label>
+
+          <label className="form-field">
             <span>Titre</span>
             <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} required />
           </label>
@@ -224,6 +342,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
               {generating ? "Génération..." : "Générer le runbook"}
             </button>
             {generationError && <p className="helper error">{generationError}</p>}
+            {templateSuccess && <p className="helper success">{templateSuccess}</p>}
           </div>
         </form>
 
@@ -249,6 +368,79 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Templates</p>
+            <h3>Bibliothèque de templates</h3>
+          </div>
+        </div>
+        <form className="stack" onSubmit={handleTemplateUpload} style={{ gap: "12px" }}>
+          <label className="form-field">
+            <span>Fichier template</span>
+            <input
+              type="file"
+              accept=".docx,.odt,.md,.markdown"
+              onChange={(e) => setTemplateFile(e.target.files?.[0] || null)}
+            />
+          </label>
+          <label className="form-field">
+            <span>Description (optionnel)</span>
+            <input
+              type="text"
+              value={templateDescription}
+              onChange={(e) => setTemplateDescription(e.target.value)}
+              placeholder="Ex: format audit, version client"
+            />
+          </label>
+          <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+            <button className="btn" type="submit" disabled={uploadingTemplate}>
+              {uploadingTemplate ? "Import..." : "Importer le template"}
+            </button>
+            {templateError && <p className="helper error">{templateError}</p>}
+            {templateSuccess && <p className="helper success">{templateSuccess}</p>}
+          </div>
+        </form>
+        {templateLoading ? (
+          <p className="skeleton" style={{ marginTop: "16px" }}>
+            Chargement des templates...
+          </p>
+        ) : templates.length === 0 ? (
+          <p className="empty-state" style={{ marginTop: "16px" }}>
+            Aucun template importé pour ce tenant.
+          </p>
+        ) : (
+          <div className="table-wrapper" style={{ marginTop: "16px" }}>
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th>Nom</th>
+                  <th>Format</th>
+                  <th>Description</th>
+                  <th>Upload</th>
+                  <th>Téléchargement</th>
+                </tr>
+              </thead>
+              <tbody>
+                {templates.map((tpl) => (
+                  <tr key={tpl.id}>
+                    <td>{tpl.originalName}</td>
+                    <td>{tpl.format?.toUpperCase()}</td>
+                    <td>{tpl.description || "—"}</td>
+                    <td>{tpl.createdAt ? new Date(tpl.createdAt).toLocaleDateString() : "-"}</td>
+                    <td>
+                      <button className="btn ghost" onClick={() => downloadTemplate(tpl)}>
+                        Télécharger
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <div className="card">

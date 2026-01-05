@@ -352,6 +352,16 @@ export type RunbookFront = {
   updatedAt?: string;
 };
 
+export type RunbookTemplateFront = {
+  id: string;
+  originalName: string;
+  format: string;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  signedUrl?: string | null;
+};
+
 export type TabId =
   | "services"
   | "continuity"
