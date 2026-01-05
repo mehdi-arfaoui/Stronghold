@@ -17,6 +17,7 @@ import { RunbooksSection } from "./sections/RunbooksSection";
 import { ScenariosSection } from "./sections/ScenariosSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { ContinuitySection } from "./sections/ContinuitySection";
+import { RisksSection } from "./sections/RisksSection";
 import { BiaSection } from "./sections/BiaSection";
 import type { ApiConfig, TabDefinition, TabId } from "./types";
 import { loadApiConfig } from "./utils/api";
@@ -29,6 +30,7 @@ const tabs: TabDefinition[] = [
   { id: "rag", label: "Faits IA / RAG", description: "Questions & contexte" },
   { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
   { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
+  { id: "risks", label: "Risques", description: "Menaces & matrices" },
   { id: "graph", label: "Graphe", description: "Dépendances" },
   { id: "architecture", label: "Architecture", description: "Vue d'ensemble" },
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
@@ -63,6 +65,8 @@ function App() {
         return <RunbooksSection configVersion={configVersion} />;
       case "analysis":
         return <AnalysisSection configVersion={configVersion} />;
+      case "risks":
+        return <RisksSection configVersion={configVersion} />;
       case "auth":
         return <AuthSection configVersion={configVersion} />;
       case "audit":

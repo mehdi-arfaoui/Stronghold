@@ -98,6 +98,35 @@ export type DependencyCycle = {
   updatedAt?: string;
 };
 
+export type RiskMitigation = {
+  id: string;
+  description: string;
+  owner?: string | null;
+  status?: string | null;
+  dueDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type Risk = {
+  id: string;
+  title: string;
+  description?: string | null;
+  threatType: string;
+  probability: number;
+  impact: number;
+  score: number;
+  level: string;
+  status?: string | null;
+  owner?: string | null;
+  processName?: string | null;
+  serviceId?: string | null;
+  service?: {
+    id: string;
+    name: string;
+    criticality: string;
+  } | null;
+  mitigations: RiskMitigation[];
 export type BusinessProcessServiceLink = {
   id: string;
   serviceId: string;
@@ -124,6 +153,29 @@ export type BusinessProcess = {
   services: BusinessProcessServiceLink[];
   createdAt?: string;
   updatedAt?: string;
+};
+
+export type RiskMatrixCell = {
+  probability: number;
+  impact: number;
+  score: number;
+  level: string;
+  count: number;
+  risks: Array<{
+    id: string;
+    title: string;
+    score: number;
+    level: string;
+    serviceName?: string | null;
+    processName?: string | null;
+  }>;
+};
+
+export type RiskMatrixResponse = {
+  meta: { tenantId: string };
+  scale: { probability: number[]; impact: number[] };
+  cells: RiskMatrixCell[];
+  totalRisks: number;
 };
 
 export type AppWarning = {
@@ -489,6 +541,7 @@ export type TabId =
   | "documents"
   | "rag"
   | "runbooks"
+  | "risks"
   | "auth"
   | "audit";
 
