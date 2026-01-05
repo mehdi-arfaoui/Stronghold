@@ -133,7 +133,6 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
   }
 });
 
-router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = ensureTenant(req, res);
