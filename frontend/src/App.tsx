@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { ConfigBanner } from "./components/config/ConfigBanner";
 import { MainLayout } from "./components/layout/MainLayout";
 import { TabNavigation } from "./components/navigation/TabNavigation";
+import { InfoBadge } from "./components/ui/InfoBadge";
+import { SectionCard } from "./components/ui/SectionCard";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
 import { AuthSection } from "./sections/AuthSection";
@@ -81,19 +83,14 @@ function App() {
     >
       <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
 
-      <section className="panel">
-        <div className="panel-header">
-          <div>
-            <p className="eyebrow">Navigation</p>
-            <h2>Vue d'ensemble</h2>
-            <p className="muted">
-              Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides.
-            </p>
-          </div>
-          <div className="badge subtle">{SERVICE_DOMAINS.length} domaines suivis</div>
-        </div>
+      <SectionCard
+        eyebrow="Navigation"
+        title="Vue d'ensemble"
+        description="Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides."
+        actions={<InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>}
+      >
         <TabNavigation tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
-      </section>
+      </SectionCard>
 
       <div
         id={`${activeTab}-panel`}
