@@ -153,6 +153,8 @@ export type GraphEdge = {
   edgeLabelShort?: string;
   edgeLabelLong?: string;
   strength?: string;
+  edgeWeight?: number;
+  edgeKind?: string;
 };
 
 export type GraphApiResponse = {

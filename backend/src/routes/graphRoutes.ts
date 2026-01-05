@@ -3,6 +3,7 @@ import prisma from "../prismaClient";
 import { TenantRequest } from "../middleware/tenantMiddleware";
 
 type Criticality = "critical" | "high" | "medium" | "low";
+type EdgeKind = "CRITICAL" | "STRONG" | "NORMAL";
 
 const criticalityScore: Record<Criticality, number> = {
   critical: 4,
@@ -45,6 +46,24 @@ function resolveNodeKind(type: string | null): "service" | "application" {
   const normalizedType = (type || "").toLowerCase();
   if (normalizedType.includes("app")) return "application";
   return "service";
+}
+
+function isStrongDependency(dependencyType: string | null | undefined) {
+  const normalized = (dependencyType || "").toLowerCase();
+  return normalized.includes("fort") || normalized.includes("strong");
+}
+
+function resolveEdgeKind(criticality: Criticality, dependencyType: string | null | undefined): EdgeKind {
+  const strong = isStrongDependency(dependencyType);
+  if (criticality === "critical") return "CRITICAL";
+  if (criticality === "high" && strong) return "CRITICAL";
+  if (strong) return "STRONG";
+  return "NORMAL";
+}
+
+function resolveEdgeWeight(criticality: Criticality, dependencyType: string | null | undefined): number {
+  const base = criticalityScore[criticality] ?? 1;
+  return base + (isStrongDependency(dependencyType) ? 1 : 0);
 }
 
 function buildSummaryLabel(name: string, type: string | null): string {
@@ -115,8 +134,9 @@ router.get("/", async (req: TenantRequest, res) => {
       return acc;
     }, {});
 
-    const edges = services.flatMap((s) =>
-      s.dependenciesFrom.map((d) => ({
+    const edges = services.flatMap((s) => {
+      const sourceCrit = normalizeCriticality(s.criticality);
+      return s.dependenciesFrom.map((d) => ({
         id: d.id,
         from: d.fromServiceId,
         to: d.toServiceId,
@@ -125,9 +145,11 @@ router.get("/", async (req: TenantRequest, res) => {
         edgeLabelLong: `${serviceNameById[d.fromServiceId] || d.fromServiceId} → ${
           serviceNameById[d.toServiceId] || d.toServiceId
         } (${d.dependencyType || "dépendance"})`,
-        strength: (d.dependencyType || "").toLowerCase().includes("fort") ? "strong" : "normal",
-      }))
-    );
+        strength: isStrongDependency(d.dependencyType) ? "strong" : "normal",
+        edgeWeight: resolveEdgeWeight(sourceCrit, d.dependencyType),
+        edgeKind: resolveEdgeKind(sourceCrit, d.dependencyType),
+      }));
+    });
 
     const categorySummary = nodes.reduce<Record<string, { count: number; scoreSum: number }>>(
       (acc, node) => {
