@@ -1,151 +1,108 @@
 import {
+  ValidationIssue,
+  parseOptionalEnum,
+  parseOptionalNumber,
   parseOptionalString,
   parseRequiredString,
   parseStringArray,
-  type ValidationIssue,
 } from "./common";
 
-type ExerciseCreatePayload = {
-  scenarioId: string | undefined;
-  title: string | undefined;
-  description: string | null | undefined;
-  scheduledAt: Date | undefined;
-  runbookIds: string[];
-};
+export const EXERCISE_STATUSES = ["planned", "in_progress", "completed", "canceled"] as const;
+export const EXERCISE_RESULT_STATUSES = ["success", "failure", "partial"] as const;
 
-type ExerciseUpdatePayload = {
-  title?: string | null;
-  description?: string | null;
-  scheduledAt?: Date | null;
-  status?: string | null;
-};
+export type ExerciseStatus = (typeof EXERCISE_STATUSES)[number];
+export type ExerciseResultStatus = (typeof EXERCISE_RESULT_STATUSES)[number];
 
-type ExerciseResultPayload = {
-  summary?: string | null;
-  findings?: string | null;
-  improvementPlan?: string | null;
-};
-
-type ChecklistUpdatePayload = {
-  items: Array<{ id: string; status: string }>;
-};
-
-const EXERCISE_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"];
-const CHECKLIST_STATUSES = ["PENDING", "DONE"];
-
-function normalizeEnum(
-  value: unknown,
-  field: string,
-  allowed: string[],
-  issues: ValidationIssue[],
-  required = false
-) {
-  const parsed = required
-    ? parseRequiredString(value, field, issues, { minLength: 2 })
-    : parseOptionalString(value, field, issues, { allowNull: true });
-  if (parsed === undefined || parsed === null) {
-    return parsed;
-  }
-  const normalized = parsed.toUpperCase();
-  if (!allowed.includes(normalized)) {
-    issues.push({ field, message: `doit être parmi ${allowed.join(", ")}` });
+function parseRequiredDate(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === null || value === undefined) {
+    issues.push({ field, message: "champ requis" });
     return undefined;
   }
-  return normalized;
+  const date = new Date(value as any);
+  if (Number.isNaN(date.getTime())) {
+    issues.push({ field, message: "doit être une date valide" });
+    return undefined;
+  }
+  return date;
 }
 
-function parseDate(value: unknown, field: string, issues: ValidationIssue[], required = false) {
-  const parsed = required
-    ? parseRequiredString(value, field, issues, { minLength: 6 })
-    : parseOptionalString(value, field, issues, { allowNull: true });
-  if (parsed === undefined || parsed === null) {
-    return parsed;
-  }
-  const dateValue = new Date(parsed);
-  if (Number.isNaN(dateValue.getTime())) {
-    issues.push({ field, message: "doit être une date ISO valide" });
+function parseOptionalDate(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const date = new Date(value as any);
+  if (Number.isNaN(date.getTime())) {
+    issues.push({ field, message: "doit être une date valide" });
     return undefined;
   }
-  return dateValue;
+  return date;
 }
 
 export function parseExerciseCreatePayload(payload: any) {
   const issues: ValidationIssue[] = [];
-  const scenarioId = parseRequiredString(payload.scenarioId, "scenarioId", issues, { minLength: 3 });
-  const title = parseRequiredString(payload.title, "title", issues, { minLength: 3 });
-  const description = parseOptionalString(payload.description, "description", issues, { allowNull: true });
-  const scheduledAt = parseDate(payload.scheduledAt, "scheduledAt", issues, true) as Date | undefined;
-  const runbookIds = parseStringArray(payload.runbookIds, "runbookIds", issues) ?? [];
+  const title = parseRequiredString(payload?.title, "title", issues, { minLength: 3 });
+  const description = parseOptionalString(payload?.description, "description", issues, {
+    allowNull: true,
+  });
+  const scenarioId = parseRequiredString(payload?.scenarioId, "scenarioId", issues);
+  const scheduledAt = parseRequiredDate(payload?.scheduledAt, "scheduledAt", issues);
+  const runbookIds = parseStringArray(payload?.runbookIds, "runbookIds", issues) ?? [];
 
-  return {
-    issues,
-    data: {
-      scenarioId,
-      title,
-      description: description ?? null,
-      scheduledAt,
-      runbookIds,
-    } as ExerciseCreatePayload,
-  };
+  return { issues, data: { title, description, scenarioId, scheduledAt, runbookIds } };
 }
 
 export function parseExerciseUpdatePayload(payload: any) {
   const issues: ValidationIssue[] = [];
-  const title = parseOptionalString(payload.title, "title", issues, { allowNull: true });
-  const description = parseOptionalString(payload.description, "description", issues, { allowNull: true });
-  const scheduledAt = parseDate(payload.scheduledAt, "scheduledAt", issues) as Date | null | undefined;
-  const status = normalizeEnum(payload.status, "status", EXERCISE_STATUSES, issues);
-
-  return {
-    issues,
-    data: {
-      title,
-      description,
-      scheduledAt,
-      status: status ?? undefined,
-    } as ExerciseUpdatePayload,
-  };
-}
-
-export function parseExerciseResultPayload(payload: any) {
-  const issues: ValidationIssue[] = [];
-  const summary = parseOptionalString(payload.summary, "summary", issues, { allowNull: true });
-  const findings = parseOptionalString(payload.findings, "findings", issues, { allowNull: true });
-  const improvementPlan = parseOptionalString(payload.improvementPlan, "improvementPlan", issues, {
+  const title = parseOptionalString(payload?.title, "title", issues, { minLength: 3 });
+  const description = parseOptionalString(payload?.description, "description", issues, {
     allowNull: true,
   });
+  const scheduledAt = parseOptionalDate(payload?.scheduledAt, "scheduledAt", issues);
+  const status = parseOptionalEnum(payload?.status, "status", issues, [...EXERCISE_STATUSES]);
+  const runbookIds = parseStringArray(payload?.runbookIds, "runbookIds", issues);
 
-  return {
-    issues,
-    data: {
-      summary,
-      findings,
-      improvementPlan,
-    } as ExerciseResultPayload,
-  };
+  return { issues, data: { title, description, scheduledAt, status, runbookIds } };
 }
 
 export function parseChecklistUpdatePayload(payload: any) {
   const issues: ValidationIssue[] = [];
-  if (!Array.isArray(payload?.items)) {
-    issues.push({ field: "items", message: "doit être un tableau" });
-    return { issues, data: { items: [] } as ChecklistUpdatePayload };
+  const notes = parseOptionalString(payload?.notes, "notes", issues, { allowNull: true });
+  const isCompletedValue = payload?.isCompleted;
+  let isCompleted: boolean | undefined = undefined;
+  if (isCompletedValue !== undefined) {
+    if (typeof isCompletedValue === "boolean") {
+      isCompleted = isCompletedValue;
+    } else if (isCompletedValue === "true" || isCompletedValue === "false") {
+      isCompleted = isCompletedValue === "true";
+    } else {
+      issues.push({ field: "isCompleted", message: "doit être un booléen" });
+    }
   }
+  return { issues, data: { notes, isCompleted } };
+}
 
-  const items = payload.items
-    .map((item: any, index: number) => {
-      const id = parseRequiredString(item?.id, `items[${index}].id`, issues, { minLength: 3 });
-      const status = normalizeEnum(item?.status, `items[${index}].status`, CHECKLIST_STATUSES, issues, true);
-      if (!id || !status) return null;
-      return { id, status };
-    })
-    .filter((item): item is { id: string; status: string } => item !== null);
+export function parseExerciseResultPayload(payload: any) {
+  const issues: ValidationIssue[] = [];
+  const status = parseRequiredString(payload?.status, "status", issues);
+  const normalizedStatus = status ? status.toLowerCase() : undefined;
+  if (normalizedStatus && !EXERCISE_RESULT_STATUSES.includes(normalizedStatus as any)) {
+    issues.push({ field: "status", message: `doit être l'une des valeurs: ${EXERCISE_RESULT_STATUSES.join("|")}` });
+  }
+  const rtoObservedHours = parseOptionalNumber(payload?.rtoObservedHours, "rtoObservedHours", issues, {
+    min: 0,
+    allowNull: true,
+  });
+  const comments = parseOptionalString(payload?.comments, "comments", issues, { allowNull: true });
+  const startedAt = parseOptionalDate(payload?.startedAt, "startedAt", issues);
+  const completedAt = parseOptionalDate(payload?.completedAt, "completedAt", issues);
 
   return {
     issues,
-    data: { items } as ChecklistUpdatePayload,
+    data: {
+      status: normalizedStatus,
+      rtoObservedHours,
+      comments,
+      startedAt,
+      completedAt,
+    },
   };
 }
-
-export const EXERCISE_STATUS_VALUES = EXERCISE_STATUSES;
-export const CHECKLIST_STATUS_VALUES = CHECKLIST_STATUSES;
