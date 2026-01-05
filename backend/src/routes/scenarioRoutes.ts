@@ -1,6 +1,16 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import {
+  buildValidationError,
+  parseOptionalBoolean,
+  parseOptionalEnum,
+  parseOptionalNumber,
+  parseOptionalString,
+  parseRequiredNumber,
+  parseRequiredString,
+  parseStringArray,
+} from "../validation/common";
 
 const router = Router();
 
@@ -52,54 +62,37 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const {
-      name,
-      type,
-      description,
-      impactLevel,
-      rtoTargetHours,
-      serviceIds,
-    } = req.body;
-
-    if (!name || typeof name !== "string" || name.trim().length < 3) {
-      return res
-        .status(400)
-        .json({ error: "name is required and must be at least 3 characters" });
-    }
-
-    if (!type || typeof type !== "string") {
-      return res.status(400).json({ error: "type is required" });
-    }
-
-    let impact: string | null = null;
-    if (impactLevel) {
-      const lvl = String(impactLevel).toLowerCase();
-      const allowed = ["low", "medium", "high"];
-      if (!allowed.includes(lvl)) {
-        return res.status(400).json({
-          error: "impactLevel must be one of low|medium|high when provided",
-        });
-      }
-      impact = lvl;
-    }
-
-    let rtoHours: number | null = null;
-    if (rtoTargetHours !== undefined && rtoTargetHours !== null) {
-      const parsed = Number(rtoTargetHours);
-      if (isNaN(parsed) || parsed < 0) {
-        return res
-          .status(400)
-          .json({ error: "rtoTargetHours must be a number >= 0 when provided" });
-      }
-      rtoHours = parsed;
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name = parseRequiredString(payload.name, "name", issues, { minLength: 3 });
+    const type = parseRequiredString(payload.type, "type", issues);
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const impact = parseOptionalEnum(
+      payload.impactLevel,
+      "impactLevel",
+      issues,
+      ["low", "medium", "high"],
+      { allowNull: true }
+    );
+    const rtoHours = parseOptionalNumber(
+      payload.rtoTargetHours,
+      "rtoTargetHours",
+      issues,
+      { allowNull: true, min: 0 }
+    );
+    const serviceIds = parseStringArray(payload.serviceIds, "serviceIds", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
     }
 
     const scenario = await prisma.scenario.create({
       data: {
         tenantId,
-        name: name.trim(),
-        type: type.trim(),
-        description: description ? String(description).trim() : null,
+        name,
+        type,
+        description,
         impactLevel: impact,
         rtoTargetHours: rtoHours,
       },
@@ -164,14 +157,36 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const scenarioId = req.params.id;
-    const {
-      name,
-      type,
-      description,
-      impactLevel,
-      rtoTargetHours,
-      serviceIds,
-    } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name =
+      payload.name !== undefined
+        ? parseRequiredString(payload.name, "name", issues, { minLength: 3 })
+        : undefined;
+    const type =
+      payload.type !== undefined
+        ? parseRequiredString(payload.type, "type", issues)
+        : undefined;
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const impactLevel = parseOptionalEnum(
+      payload.impactLevel,
+      "impactLevel",
+      issues,
+      ["low", "medium", "high"],
+      { allowNull: true }
+    );
+    const rtoTargetHours = parseOptionalNumber(
+      payload.rtoTargetHours,
+      "rtoTargetHours",
+      issues,
+      { allowNull: true, min: 0 }
+    );
+    const serviceIds = parseStringArray(payload.serviceIds, "serviceIds", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, tenantId } });
     if (!scenario) {
@@ -181,52 +196,23 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     const data: any = {};
 
     if (name !== undefined) {
-      if (!name || typeof name !== "string" || name.trim().length < 3) {
-        return res
-          .status(400)
-          .json({ error: "name is required and must be at least 3 characters" });
-      }
-      data.name = name.trim();
+      data.name = name;
     }
 
     if (type !== undefined) {
-      if (!type || typeof type !== "string") {
-        return res.status(400).json({ error: "type is required" });
-      }
-      data.type = type.trim();
+      data.type = type;
     }
 
     if (description !== undefined) {
-      data.description = description ? String(description).trim() : null;
+      data.description = description;
     }
 
     if (impactLevel !== undefined) {
-      if (!impactLevel) {
-        data.impactLevel = null;
-      } else {
-        const lvl = String(impactLevel).toLowerCase();
-        const allowed = ["low", "medium", "high"];
-        if (!allowed.includes(lvl)) {
-          return res.status(400).json({
-            error: "impactLevel must be one of low|medium|high when provided",
-          });
-        }
-        data.impactLevel = lvl;
-      }
+      data.impactLevel = impactLevel;
     }
 
     if (rtoTargetHours !== undefined) {
-      if (rtoTargetHours === null) {
-        data.rtoTargetHours = null;
-      } else {
-        const parsed = Number(rtoTargetHours);
-        if (isNaN(parsed) || parsed < 0) {
-          return res
-            .status(400)
-            .json({ error: "rtoTargetHours must be a number >= 0 when provided" });
-        }
-        data.rtoTargetHours = parsed;
-      }
+      data.rtoTargetHours = rtoTargetHours;
     }
 
     const updates: Promise<any>[] = [];
@@ -333,8 +319,25 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
     }
 
     const scenarioId = req.params.id;
-    const { order, title, description, estimatedDurationMinutes, role, blocking } =
-      req.body;
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const order = parseRequiredNumber(payload.order, "order", issues);
+    const title = parseRequiredString(payload.title, "title", issues, { minLength: 3 });
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const estimatedDurationMinutes = parseOptionalNumber(
+      payload.estimatedDurationMinutes,
+      "estimatedDurationMinutes",
+      issues,
+      { allowNull: true, min: 0 }
+    );
+    const role = parseOptionalString(payload.role, "role", issues, { allowNull: true });
+    const blocking = parseOptionalBoolean(payload.blocking, "blocking", issues);
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const scenario = await prisma.scenario.findFirst({
       where: { id: scenarioId, tenantId },
@@ -353,25 +356,9 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
         .json({ error: "order must be an integer >= 1" });
     }
 
-    if (!title || typeof title !== "string" || title.trim().length < 3) {
-      return res.status(400).json({
-        error: "title is required and must be at least 3 characters",
-      });
-    }
-
     let estMinutes: number | null = null;
-    if (
-      estimatedDurationMinutes !== undefined &&
-      estimatedDurationMinutes !== null
-    ) {
-      const parsed = Number(estimatedDurationMinutes);
-      if (isNaN(parsed) || parsed < 0) {
-        return res.status(400).json({
-          error:
-            "estimatedDurationMinutes must be a number >= 0 when provided",
-        });
-      }
-      estMinutes = parsed;
+    if (estimatedDurationMinutes !== undefined) {
+      estMinutes = estimatedDurationMinutes === null ? null : estimatedDurationMinutes;
     }
 
     const step = await prisma.runbookStep.create({
@@ -379,10 +366,10 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
         tenantId,
         scenarioId: scenario.id,
         order: ord,
-        title: title.trim(),
-        description: description ? String(description).trim() : null,
+        title,
+        description,
         estimatedDurationMinutes: estMinutes,
-        role: role ? String(role).trim() : null,
+        role,
         blocking: Boolean(blocking),
       },
     });
@@ -406,7 +393,30 @@ router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequ
 
     const scenarioId = req.params.id;
     const stepId = req.params.stepId;
-    const { order, title, description, estimatedDurationMinutes, role, blocking } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const order =
+      payload.order !== undefined
+        ? parseRequiredNumber(payload.order, "order", issues)
+        : undefined;
+    const title =
+      payload.title !== undefined
+        ? parseRequiredString(payload.title, "title", issues, { minLength: 3 })
+        : undefined;
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const estimatedDurationMinutes = parseOptionalNumber(
+      payload.estimatedDurationMinutes,
+      "estimatedDurationMinutes",
+      issues,
+      { allowNull: true, min: 0 }
+    );
+    const role = parseOptionalString(payload.role, "role", issues, { allowNull: true });
+    const blocking = parseOptionalBoolean(payload.blocking, "blocking", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const step = await prisma.runbookStep.findFirst({
       where: { id: stepId, scenarioId, tenantId },
@@ -427,34 +437,19 @@ router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequ
     }
 
     if (title !== undefined) {
-      if (!title || typeof title !== "string" || title.trim().length < 3) {
-        return res.status(400).json({
-          error: "title is required and must be at least 3 characters",
-        });
-      }
-      data.title = title.trim();
+      data.title = title;
     }
 
     if (description !== undefined) {
-      data.description = description ? String(description).trim() : null;
+      data.description = description;
     }
 
     if (estimatedDurationMinutes !== undefined) {
-      if (estimatedDurationMinutes === null) {
-        data.estimatedDurationMinutes = null;
-      } else {
-        const parsed = Number(estimatedDurationMinutes);
-        if (isNaN(parsed) || parsed < 0) {
-          return res.status(400).json({
-            error: "estimatedDurationMinutes must be a number >= 0 when provided",
-          });
-        }
-        data.estimatedDurationMinutes = parsed;
-      }
+      data.estimatedDurationMinutes = estimatedDurationMinutes;
     }
 
     if (role !== undefined) {
-      data.role = role ? String(role).trim() : null;
+      data.role = role;
     }
 
     if (blocking !== undefined) {
