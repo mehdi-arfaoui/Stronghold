@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
+import { ActionToolbar } from "../components/ui/ActionToolbar";
+import { InlineHelp } from "../components/ui/InlineHelp";
 import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -362,7 +364,7 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         }}
       />
 
-      <div id="graph-controls" className="graph-toolbar">
+      <ActionToolbar id="graph-controls">
         <div className="legend">
           <span className="legend-title">Criticité</span>
           {CRIT_LEGEND.map((item) => (
@@ -414,7 +416,10 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
             <span>Détails</span>
           </label>
         </div>
-      </div>
+        <InlineHelp>
+          <strong>Astuce :</strong> combinez les filtres pour isoler les dépendances critiques.
+        </InlineHelp>
+      </ActionToolbar>
 
       <div className="graph-layout">
         <div className="card graph-card">
