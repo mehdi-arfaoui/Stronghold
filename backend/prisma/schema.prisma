@@ -43,6 +43,8 @@ model Tenant {
   incidentServices IncidentService[]
   incidentDocuments IncidentDocument[]
   notificationChannels NotificationChannel[]
+  risks           Risk[]
+  riskMitigations RiskMitigation[]
 }
 
 model Service {
@@ -68,6 +70,47 @@ model Service {
   backupStrategies BackupStrategy[]
   policyLinks      SecurityPolicyService[]
   dependencyCycles DependencyCycleService[]
+  risks            Risk[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Risk {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  title       String
+  description String?
+  threatType  String
+  probability Int
+  impact      Int
+  status      String?
+  owner       String?
+  processName String?
+
+  serviceId String?
+  service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
+
+  mitigations RiskMitigation[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model RiskMitigation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  riskId String
+  risk   Risk @relation(fields: [riskId], references: [id])
+
+  description String
+  owner       String?
+  status      String?
+  dueDate     DateTime?
   businessProcessLinks BusinessProcessService[]
 
   createdAt DateTime @default(now())

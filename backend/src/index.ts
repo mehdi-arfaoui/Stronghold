@@ -17,6 +17,7 @@ import runbookRoutes from "./routes/runbookRoutes";
 import webhookRoutes from "./routes/webhookRoutes";
 import authRoutes from "./routes/authRoutes";
 import auditRoutes from "./routes/auditRoutes";
+import riskRoutes from "./routes/riskRoutes";
 import biaRoutes from "./routes/biaRoutes";
 import incidentRoutes from "./routes/incidentRoutes";
 
@@ -86,6 +87,7 @@ app.use("/runbooks", runbookRoutes);
 app.use("/webhooks", webhookRoutes);
 app.use("/auth", authRoutes);
 app.use("/audit-logs", auditRoutes);
+app.use("/risks", riskRoutes);
 app.use("/bia", biaRoutes);
 app.use("/incidents", incidentRoutes);
 
