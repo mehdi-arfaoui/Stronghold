@@ -26,6 +26,7 @@ model Tenant {
   documents         Document[]
   extractedFacts    ExtractedFact[]
   aiExtractionErrors AiExtractionError[]
+  documentExtractionSuggestions DocumentExtractionSuggestion[]
   backupStrategies  BackupStrategy[]
   securityPolicies  SecurityPolicy[]
   policyLinks       SecurityPolicyService[]
@@ -35,6 +36,7 @@ model Tenant {
   auditLogs        AuditLog[]
   businessProcesses BusinessProcess[]
   businessProcessLinks BusinessProcessService[]
+  exerciseEvidence ExerciseEvidence[]
   
 
   RunbookTemplate RunbookTemplate[]
@@ -315,6 +317,7 @@ model Document {
 
   extractedFacts ExtractedFact[]
   aiExtractionErrors AiExtractionError[]
+  extractionSuggestions DocumentExtractionSuggestion[]
 
   @@unique([tenantId, textHash])
   @@unique([tenantId, fileHash])
@@ -568,6 +571,46 @@ model ExtractedFact {
   updatedAt DateTime @updatedAt
 }
 
+model DocumentExtractionSuggestion {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  suggestionType String
+  label          String
+  data           Json
+  status         String @default("PENDING")
+  reviewedAt     DateTime?
+  reviewNotes    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, documentId])
+  @@index([tenantId, status])
+}
+
+model ExerciseEvidence {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  documentId String?
+  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+
+  title        String
+  description  String?
+  exerciseType String?
+  occurredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, documentId])
+}
 model AiExtractionError {
   id       String @id @default(cuid())
   tenantId String

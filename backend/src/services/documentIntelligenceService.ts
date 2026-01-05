@@ -24,6 +24,10 @@ export interface DetectedMetadata {
   mtpdHours?: number;
   backupMentions?: string[];
   dependencies?: string[];
+  criticalProcesses?: string[];
+  regulations?: string[];
+  risks?: string[];
+  testsExercises?: string[];
   structuredSummary?: string;
 }
 
@@ -246,6 +250,47 @@ export function extractDocumentMetadata(text: string): DetectedMetadata {
     .filter((v): v is string => typeof v === "string")
     .map((s) => s.trim());
 
+  const criticalProcesses = Array.from(
+    normalized.matchAll(
+      /(?:processus|process)\s*(?:critique|vital|cl[ée]|core)\s*[:\-]\s*([^\n\r]{3,120})/gi
+    )
+  )
+    .map((m) => m[1])
+    .filter((v): v is string => typeof v === "string")
+    .map((s) => s.trim());
+
+  const regulationMatches = Array.from(
+    normalized.matchAll(
+      /(?:r[ée]glementation|r[èe]glement|conformit[ée]|norme|standard)\s*[:\-]\s*([^\n\r]{3,120})/gi
+    )
+  )
+    .map((m) => m[1])
+    .filter((v): v is string => typeof v === "string")
+    .map((s) => s.trim());
+
+  const regulationKeywords = Array.from(
+    normalized.matchAll(
+      /\b(rgpd|gdpr|dora|nis2|iso\s*22301|pci[- ]?dss|soc\s*2|sox|hipaa)\b/gi
+    )
+  )
+    .map((m) => m[1])
+    .filter((v): v is string => typeof v === "string")
+    .map((s) => s.toUpperCase());
+
+  const risks = Array.from(
+    normalized.matchAll(/(?:risque|menace|risk)\s*[:\-]\s*([^\n\r]{3,120})/gi)
+  )
+    .map((m) => m[1])
+    .filter((v): v is string => typeof v === "string")
+    .map((s) => s.trim());
+
+  const testsExercises = Array.from(
+    normalized.matchAll(/(?:test|exercice|simulation|drill|table[- ]?top)\s*[:\-]\s*([^\n\r]{3,120})/gi)
+  )
+    .map((m) => m[1])
+    .filter((v): v is string => typeof v === "string")
+    .map((s) => s.trim());
+
   const meta: DetectedMetadata = {
     services,
     slas: slaMatches,
@@ -259,6 +304,13 @@ export function extractDocumentMetadata(text: string): DetectedMetadata {
   if (mtpdHours != null) meta.mtpdHours = mtpdHours;
   if (backupMentions.length > 0) meta.backupMentions = backupMentions;
   if (dependencies.length > 0) meta.dependencies = dependencies;
+  if (criticalProcesses.length > 0) meta.criticalProcesses = criticalProcesses;
+  if (regulationMatches.length > 0 || regulationKeywords.length > 0) {
+    const combined = Array.from(new Set([...regulationMatches, ...regulationKeywords]));
+    if (combined.length > 0) meta.regulations = combined;
+  }
+  if (risks.length > 0) meta.risks = risks;
+  if (testsExercises.length > 0) meta.testsExercises = testsExercises;
   return meta;
 }
 
@@ -285,6 +337,32 @@ export function extractStructuredMetadata(structuredPayload: unknown): DetectedM
   if (asAny.rtoHours) metadata.rtoHours = Number(asAny.rtoHours);
   if (asAny.rpoMinutes) metadata.rpoMinutes = Number(asAny.rpoMinutes);
   if (asAny.mtpdHours) metadata.mtpdHours = Number(asAny.mtpdHours);
+  if (Array.isArray(asAny.criticalProcesses)) {
+    metadata.criticalProcesses = asAny.criticalProcesses
+      .map((v: any) => (typeof v === "string" ? v : v?.name))
+      .filter((v: any): v is string => typeof v === "string")
+      .map((s: string) => s.trim());
+  }
+  if (Array.isArray(asAny.regulations)) {
+    metadata.regulations = asAny.regulations
+      .map((v: any) => (typeof v === "string" ? v : v?.label))
+      .filter((v: any): v is string => typeof v === "string")
+      .map((s: string) => s.trim());
+  }
+  if (Array.isArray(asAny.risks)) {
+    metadata.risks = asAny.risks
+      .map((v: any) => (typeof v === "string" ? v : v?.title))
+      .filter((v: any): v is string => typeof v === "string")
+      .map((s: string) => s.trim());
+  }
+  if (Array.isArray(asAny.tests) || Array.isArray(asAny.exercises)) {
+    const tests = Array.isArray(asAny.tests) ? asAny.tests : [];
+    const exercises = Array.isArray(asAny.exercises) ? asAny.exercises : [];
+    metadata.testsExercises = [...tests, ...exercises]
+      .map((v: any) => (typeof v === "string" ? v : v?.title))
+      .filter((v: any): v is string => typeof v === "string")
+      .map((s: string) => s.trim());
+  }
 
   metadata.structuredSummary = JSON.stringify(asAny, null, 2).slice(0, 4000);
   return metadata;

@@ -12,6 +12,11 @@ import {
   parseOptionalString,
   parseRequiredString,
 } from "../validation/common";
+import {
+  approveExtractionSuggestions,
+  listExtractionSuggestions,
+  rejectExtractionSuggestions,
+} from "../services/extractionSuggestionService";
 
 import {
   buildObjectKey,
@@ -247,6 +252,129 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
 });
 
 
+
+router.get("/:id/extraction-suggestions", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: { field: string; message: string }[] = [];
+    const docId = parseRequiredString(req.params.id, "id", issues);
+    const status = parseOptionalString(req.query.status, "status", issues, {
+      allowNull: true,
+    });
+    if (status && !["PENDING", "APPROVED", "REJECTED"].includes(status.toUpperCase())) {
+      issues.push({ field: "status", message: "Statut invalide" });
+    }
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    const suggestions = await listExtractionSuggestions({
+      tenantId,
+      documentId: docId,
+      status: status ? (status.toUpperCase() as any) : null,
+    });
+
+    return res.json({ documentId: docId, suggestions });
+  } catch (error) {
+    console.error("Error in GET /documents/:id/extraction-suggestions:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post(
+  "/:id/extraction-suggestions/approve",
+  requireRole("OPERATOR"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const issues: { field: string; message: string }[] = [];
+      const docId = parseRequiredString(req.params.id, "id", issues);
+      const reviewNotes = parseOptionalString(req.body?.reviewNotes, "reviewNotes", issues, {
+        allowNull: true,
+      });
+      if (issues.length > 0) {
+        return res.status(400).json(buildValidationError(issues));
+      }
+
+      const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+      if (!doc) {
+        return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+      }
+
+      const suggestionIds = Array.isArray(req.body?.suggestionIds)
+        ? req.body.suggestionIds.filter((id: any) => typeof id === "string")
+        : [];
+
+      const result = await approveExtractionSuggestions({
+        tenantId,
+        documentId: docId,
+        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
+        reviewNotes,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      console.error("Error in POST /documents/:id/extraction-suggestions/approve:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/:id/extraction-suggestions/reject",
+  requireRole("OPERATOR"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const issues: { field: string; message: string }[] = [];
+      const docId = parseRequiredString(req.params.id, "id", issues);
+      const reviewNotes = parseOptionalString(req.body?.reviewNotes, "reviewNotes", issues, {
+        allowNull: true,
+      });
+      if (issues.length > 0) {
+        return res.status(400).json(buildValidationError(issues));
+      }
+
+      const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+      if (!doc) {
+        return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+      }
+
+      const suggestionIds = Array.isArray(req.body?.suggestionIds)
+        ? req.body.suggestionIds.filter((id: any) => typeof id === "string")
+        : [];
+
+      const result = await rejectExtractionSuggestions({
+        tenantId,
+        documentId: docId,
+        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
+        reviewNotes,
+      });
+
+      return res.json(result);
+    } catch (error) {
+      console.error("Error in POST /documents/:id/extraction-suggestions/reject:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {

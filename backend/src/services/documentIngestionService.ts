@@ -16,6 +16,7 @@ import {
   pushChunksToChroma,
   serializeMetadata,
 } from "./documentIntelligenceService";
+import { createExtractionSuggestions } from "./extractionSuggestionService";
 import {
   downloadObjectToTempFile,
   resolveBucketAndKey,
@@ -234,6 +235,16 @@ function mergeMetadata(primary: any, secondary: any) {
   );
   merged.dependencies = Array.from(
     new Set([...(primary.dependencies || []), ...(secondary.dependencies || [])])
+  );
+  merged.criticalProcesses = Array.from(
+    new Set([...(primary.criticalProcesses || []), ...(secondary.criticalProcesses || [])])
+  );
+  merged.regulations = Array.from(
+    new Set([...(primary.regulations || []), ...(secondary.regulations || [])])
+  );
+  merged.risks = Array.from(new Set([...(primary.risks || []), ...(secondary.risks || [])]));
+  merged.testsExercises = Array.from(
+    new Set([...(primary.testsExercises || []), ...(secondary.testsExercises || [])])
   );
   merged.structuredSummary = primary.structuredSummary || secondary.structuredSummary;
   return merged;
@@ -572,31 +583,26 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     await resolvedFile.cleanup().catch(() => undefined);
   }
 
-  const mapping = mergedMetadata ? deriveMetadataMappings(mergedMetadata) : { services: [], dependencies: [], infra: [] };
+  const mapping = mergedMetadata
+    ? deriveMetadataMappings(mergedMetadata)
+    : { services: [], dependencies: [], infra: [] };
   const anchoredDependencies = expandDependencies(mapping.dependencies, mapping.services);
 
   const updatedAfterExtraction = await prisma.$transaction(async (tx) => {
-    const services = await ensureServices(tx, tenantId, mapping.services);
-    const infraComponents = await ensureInfraComponents(tx, tenantId, mapping.infra);
-
-    await ensureServiceDependencies(
-      tx,
-      tenantId,
-      anchoredDependencies.filter((d) => !d.targetIsInfra),
-      services
-    );
-
-    await ensureServiceInfraLinks(
-      tx,
-      tenantId,
-      anchoredDependencies
-        .filter((d) => d.targetIsInfra)
-        .map((d) => ({ serviceName: d.from, infraName: d.to })),
-      services,
-      infraComponents
-    );
-
-    await ensureContinuityFromMetadata(tx, tenantId, services, mergedMetadata || {});
+    if (status === "SUCCESS" && mergedMetadata) {
+      await createExtractionSuggestions({
+        tenantId,
+        documentId: doc.id,
+        metadata: mergedMetadata,
+        mapping,
+        anchoredDependencies,
+        prismaClient: tx,
+      });
+    } else {
+      await tx.documentExtractionSuggestion.deleteMany({
+        where: { tenantId, documentId: doc.id },
+      });
+    }
 
     const ingestionStatusValue =
       status === "SUCCESS" ? "TEXT_EXTRACTED" : status === "UNSUPPORTED" ? "UNSUPPORTED" : "ERROR";
