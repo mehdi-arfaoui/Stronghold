@@ -1,6 +1,14 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import {
+  buildValidationError,
+  parseOptionalEnum,
+  parseOptionalNumber,
+  parseOptionalString,
+  parseRequiredNumber,
+  parseRequiredString,
+} from "../validation/common";
 
 const router = Router();
 
@@ -88,19 +96,50 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const serviceId = req.params.id;
-    const {
-      name,
-      type,
-      description,
-      criticality,
-      businessPriority,
-      recoveryPriority,
-      domain,
-      rtoHours,
-      rpoMinutes,
-      mtpdHours,
-      notes,
-    } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name =
+      payload.name !== undefined
+        ? parseRequiredString(payload.name, "name", issues)
+        : undefined;
+    const type =
+      payload.type !== undefined
+        ? parseRequiredString(payload.type, "type", issues)
+        : undefined;
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const criticality = parseOptionalEnum(
+      payload.criticality,
+      "criticality",
+      issues,
+      ["low", "medium", "high"]
+    );
+    const businessPriority = parseOptionalString(
+      payload.businessPriority,
+      "businessPriority",
+      issues,
+      { allowNull: true }
+    );
+    const recoveryPriority = parseOptionalNumber(
+      payload.recoveryPriority,
+      "recoveryPriority",
+      issues,
+      { allowNull: true }
+    );
+    const domain = parseOptionalString(payload.domain, "domain", issues, {
+      allowNull: true,
+    });
+    const rtoHours = parseOptionalNumber(payload.rtoHours, "rtoHours", issues);
+    const rpoMinutes = parseOptionalNumber(payload.rpoMinutes, "rpoMinutes", issues);
+    const mtpdHours = parseOptionalNumber(payload.mtpdHours, "mtpdHours", issues);
+    const notes = parseOptionalString(payload.notes, "notes", issues, {
+      allowNull: true,
+    });
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const service = await prisma.service.findFirst({
       where: { id: serviceId, tenantId },
@@ -114,72 +153,45 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     const data: any = {};
 
     if (name !== undefined) {
-      if (!name || typeof name !== "string" || !name.trim()) {
-        return res.status(400).json({ error: "name est requis" });
-      }
-      data.name = name.trim();
+      data.name = name;
     }
 
     if (type !== undefined) {
-      if (!type || typeof type !== "string") {
-        return res.status(400).json({ error: "type est requis" });
-      }
-      data.type = type.trim();
+      data.type = type;
     }
 
     if (description !== undefined) {
-      data.description = description ? String(description).trim() : null;
+      data.description = description;
     }
 
     if (criticality !== undefined) {
-      const crit = String(criticality).toLowerCase();
-      if (!["low", "medium", "high"].includes(crit)) {
-        return res.status(400).json({ error: "criticality doit être low|medium|high" });
-      }
-      data.criticality = crit;
+      data.criticality = criticality;
     }
 
     if (businessPriority !== undefined) {
-      data.businessPriority = businessPriority ? String(businessPriority).trim() : null;
+      data.businessPriority = businessPriority;
     }
 
     if (recoveryPriority !== undefined) {
-      if (recoveryPriority === null) {
-        data.recoveryPriority = null;
-      } else {
-        const parsed = Number(recoveryPriority);
-        if (isNaN(parsed)) {
-          return res.status(400).json({ error: "recoveryPriority doit être un nombre" });
-        }
-        data.recoveryPriority = parsed;
-      }
+      data.recoveryPriority = recoveryPriority;
     }
 
     if (domain !== undefined) {
-      data.domain = domain ? String(domain).toUpperCase() : null;
+      data.domain = domain ? domain.toUpperCase() : null;
     }
 
     const continuityPayload: any = {};
     if (rtoHours !== undefined) {
-      if (rtoHours === null || isNaN(Number(rtoHours))) {
-        return res.status(400).json({ error: "rtoHours doit être un nombre" });
-      }
-      continuityPayload.rtoHours = Number(rtoHours);
+      continuityPayload.rtoHours = rtoHours;
     }
     if (rpoMinutes !== undefined) {
-      if (rpoMinutes === null || isNaN(Number(rpoMinutes))) {
-        return res.status(400).json({ error: "rpoMinutes doit être un nombre" });
-      }
-      continuityPayload.rpoMinutes = Number(rpoMinutes);
+      continuityPayload.rpoMinutes = rpoMinutes;
     }
     if (mtpdHours !== undefined) {
-      if (mtpdHours === null || isNaN(Number(mtpdHours))) {
-        return res.status(400).json({ error: "mtpdHours doit être un nombre" });
-      }
-      continuityPayload.mtpdHours = Number(mtpdHours);
+      continuityPayload.mtpdHours = mtpdHours;
     }
     if (notes !== undefined) {
-      continuityPayload.notes = notes ? String(notes).trim() : null;
+      continuityPayload.notes = notes;
     }
 
     if (Object.keys(continuityPayload).length > 0) {
@@ -283,63 +295,72 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const {
-      name,
-      type,
-      description,
-      criticality,
-      businessPriority,
-      recoveryPriority,
-      domain,
-      rtoHours,
-      rpoMinutes,
-      mtpdHours,
-      notes,
-    } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name = parseRequiredString(payload.name, "name", issues);
+    const type = parseRequiredString(payload.type, "type", issues);
+    const criticalityRaw = parseRequiredString(
+      payload.criticality,
+      "criticality",
+      issues
+    );
+    const criticality = criticalityRaw ? criticalityRaw.toLowerCase() : criticalityRaw;
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    const businessPriority = parseOptionalString(
+      payload.businessPriority,
+      "businessPriority",
+      issues,
+      { allowNull: true }
+    );
+    const recoveryPriority = parseOptionalNumber(
+      payload.recoveryPriority,
+      "recoveryPriority",
+      issues,
+      { allowNull: true }
+    );
+    const domain = parseOptionalString(payload.domain, "domain", issues, {
+      allowNull: true,
+    });
+    const rtoHours = parseRequiredNumber(payload.rtoHours, "rtoHours", issues);
+    const rpoMinutes = parseRequiredNumber(payload.rpoMinutes, "rpoMinutes", issues);
+    const mtpdHours = parseRequiredNumber(payload.mtpdHours, "mtpdHours", issues);
+    const notes = parseOptionalString(payload.notes, "notes", issues, {
+      allowNull: true,
+    });
 
-    // Champs obligatoires minimum pour créer un service
-    if (!name || !type || !criticality) {
-      return res.status(400).json({
-        error: "name, type et criticality sont obligatoires pour créer un service",
+    if (criticality && !["low", "medium", "high"].includes(criticality)) {
+      issues.push({
+        field: "criticality",
+        message: "doit être l'une des valeurs: low|medium|high",
       });
     }
 
-    if (
-      rtoHours == null ||
-      rpoMinutes == null ||
-      mtpdHours == null ||
-      isNaN(Number(rtoHours)) ||
-      isNaN(Number(rpoMinutes)) ||
-      isNaN(Number(mtpdHours))
-    ) {
-      return res.status(400).json({
-        error: "rtoHours, rpoMinutes et mtpdHours doivent être renseignés",
-      });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
     }
 
     const service = await prisma.service.create({
       data: {
         tenantId,
-        name: String(name).trim(),
-        type: String(type).trim(),
-        description: description ? String(description).trim() : null,
-        criticality: String(criticality).toLowerCase(),
-        businessPriority: businessPriority
-          ? String(businessPriority).trim()
-          : null,
-        recoveryPriority:
-          recoveryPriority != null ? Number(recoveryPriority) : null,
-        domain: domain ? String(domain).toUpperCase() : null,
+        name,
+        type,
+        description,
+        criticality,
+        businessPriority,
+        recoveryPriority,
+        domain: domain ? domain.toUpperCase() : null,
         continuity: {
           create: {
-            rtoHours: Number(rtoHours),
-            rpoMinutes: Number(rpoMinutes),
-            mtpdHours: Number(mtpdHours),
-            notes: notes ? String(notes).trim() : null,
+            rtoHours,
+            rpoMinutes,
+            mtpdHours,
+            notes,
             advisoryNotes: buildContinuityAdvisory(
-              Number(rtoHours),
-              Number(rpoMinutes),
-              Number(mtpdHours)
+              rtoHours,
+              rpoMinutes,
+              mtpdHours
             ),
           },
         },
@@ -381,12 +402,16 @@ router.post(
     }
 
     const fromServiceId = req.params.id;
-    const { toServiceId, dependencyType } = req.body || {};
-
-    if (!toServiceId || !dependencyType) {
-      return res.status(400).json({
-        error: "toServiceId et dependencyType sont obligatoires",
-      });
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const toServiceId = parseRequiredString(payload.toServiceId, "toServiceId", issues);
+    const dependencyType = parseRequiredString(
+      payload.dependencyType,
+      "dependencyType",
+      issues
+    );
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
     }
 
     // Vérifier que les deux services appartiennent bien au même tenant
@@ -406,7 +431,7 @@ router.post(
         tenantId,
         fromServiceId,
         toServiceId,
-        dependencyType: String(dependencyType).trim(),
+        dependencyType,
       },
     });
 

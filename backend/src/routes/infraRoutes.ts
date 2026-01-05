@@ -1,6 +1,13 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import {
+  buildValidationError,
+  parseOptionalBoolean,
+  parseOptionalEnum,
+  parseOptionalString,
+  parseRequiredString,
+} from "../validation/common";
 
 const router = Router();
 
@@ -12,44 +19,42 @@ router.post("/components", requireRole("OPERATOR"), async (req: TenantRequest, r
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const {
-      name,
-      type,
-      provider,
-      location,
-      criticality,
-      isSingleAz,
-      notes,
-    } = req.body;
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name = parseRequiredString(payload.name, "name", issues, { minLength: 2 });
+    const type = parseRequiredString(payload.type, "type", issues);
+    const provider = parseOptionalString(payload.provider, "provider", issues, {
+      allowNull: true,
+    });
+    const location = parseOptionalString(payload.location, "location", issues, {
+      allowNull: true,
+    });
+    const criticality = parseOptionalEnum(
+      payload.criticality,
+      "criticality",
+      issues,
+      ["low", "medium", "high"],
+      { allowNull: true }
+    );
+    const isSingleAz = parseOptionalBoolean(payload.isSingleAz, "isSingleAz", issues);
+    const notes = parseOptionalString(payload.notes, "notes", issues, {
+      allowNull: true,
+    });
 
-    if (!name || typeof name !== "string" || name.trim().length < 2) {
-      return res
-        .status(400)
-        .json({ error: "name is required and must be at least 2 characters" });
-    }
-
-    if (!type || typeof type !== "string") {
-      return res.status(400).json({ error: "type is required" });
-    }
-
-    const allowedCrit = ["low", "medium", "high", "", null, undefined];
-    const critNorm = criticality ? String(criticality).toLowerCase() : null;
-    if (critNorm && !["low", "medium", "high"].includes(critNorm)) {
-      return res.status(400).json({
-        error: "criticality must be one of low|medium|high when provided",
-      });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
     }
 
     const infra = await prisma.infraComponent.create({
       data: {
         tenantId,
-        name: name.trim(),
-        type: type.trim(),
-        provider: provider ? String(provider).trim() : null,
-        location: location ? String(location).trim() : null,
-        criticality: critNorm,
+        name,
+        type,
+        provider,
+        location,
+        criticality,
         isSingleAz: Boolean(isSingleAz),
-        notes: notes ? String(notes).trim() : null,
+        notes,
       },
     });
 
@@ -69,15 +74,37 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     }
 
     const infraId = req.params.id;
-    const {
-      name,
-      type,
-      provider,
-      location,
-      criticality,
-      isSingleAz,
-      notes,
-    } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name =
+      payload.name !== undefined
+        ? parseRequiredString(payload.name, "name", issues, { minLength: 2 })
+        : undefined;
+    const type =
+      payload.type !== undefined
+        ? parseRequiredString(payload.type, "type", issues)
+        : undefined;
+    const provider = parseOptionalString(payload.provider, "provider", issues, {
+      allowNull: true,
+    });
+    const location = parseOptionalString(payload.location, "location", issues, {
+      allowNull: true,
+    });
+    const criticality = parseOptionalEnum(
+      payload.criticality,
+      "criticality",
+      issues,
+      ["low", "medium", "high"],
+      { allowNull: true }
+    );
+    const isSingleAz = parseOptionalBoolean(payload.isSingleAz, "isSingleAz", issues);
+    const notes = parseOptionalString(payload.notes, "notes", issues, {
+      allowNull: true,
+    });
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const infra = await prisma.infraComponent.findFirst({ where: { id: infraId, tenantId } });
     if (!infra) {
@@ -87,37 +114,23 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     const data: any = {};
 
     if (name !== undefined) {
-      if (!name || typeof name !== "string" || name.trim().length < 2) {
-        return res
-          .status(400)
-          .json({ error: "name is required and must be at least 2 characters" });
-      }
-      data.name = name.trim();
+      data.name = name;
     }
 
     if (type !== undefined) {
-      if (!type || typeof type !== "string") {
-        return res.status(400).json({ error: "type is required" });
-      }
-      data.type = type.trim();
+      data.type = type;
     }
 
     if (provider !== undefined) {
-      data.provider = provider ? String(provider).trim() : null;
+      data.provider = provider;
     }
 
     if (location !== undefined) {
-      data.location = location ? String(location).trim() : null;
+      data.location = location;
     }
 
     if (criticality !== undefined) {
-      const critNorm = criticality ? String(criticality).toLowerCase() : null;
-      if (critNorm && !["low", "medium", "high"].includes(critNorm)) {
-        return res.status(400).json({
-          error: "criticality must be one of low|medium|high when provided",
-        });
-      }
-      data.criticality = critNorm;
+      data.criticality = criticality;
     }
 
     if (isSingleAz !== undefined) {
@@ -125,7 +138,7 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     }
 
     if (notes !== undefined) {
-      data.notes = notes ? String(notes).trim() : null;
+      data.notes = notes;
     }
 
     const updated = await prisma.infraComponent.update({
@@ -176,10 +189,12 @@ router.post("/link", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const { serviceId, infraId } = req.body;
-
-    if (!serviceId || !infraId) {
-      return res.status(400).json({ error: "serviceId and infraId are required" });
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const serviceId = parseRequiredString(payload.serviceId, "serviceId", issues);
+    const infraId = parseRequiredString(payload.infraId, "infraId", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
     }
 
     const [service, infra] = await Promise.all([

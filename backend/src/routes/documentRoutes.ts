@@ -7,6 +7,11 @@ import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService";
 import { ingestDocumentText } from "../services/documentIngestionService";
 import { retentionConfig } from "../config/observability";
+import {
+  buildValidationError,
+  parseOptionalString,
+  parseRequiredString,
+} from "../validation/common";
 
 import {
   buildObjectKey,
@@ -55,7 +60,17 @@ router.post(
         return res.status(400).json({ error: "Aucun fichier fourni" });
       }
 
-      const { docType, description } = req.body || {};
+      const payload = req.body || {};
+      const issues: { field: string; message: string }[] = [];
+      const docType = parseOptionalString(payload.docType, "docType", issues, {
+        allowNull: true,
+      });
+      const description = parseOptionalString(payload.description, "description", issues, {
+        allowNull: true,
+      });
+      if (issues.length > 0) {
+        return res.status(400).json(buildValidationError(issues));
+      }
       const file = req.file;
       const objectKey = buildObjectKey(tenantId, file.originalname);
       const bucketAndKey = {
@@ -89,8 +104,8 @@ router.post(
           mimeType: file.mimetype,
           size: file.size,
           storagePath: `s3://${bucketAndKey.bucket}/${bucketAndKey.key}`,
-          docType: docType ? String(docType).toUpperCase() : null,
-          description: description ? String(description).trim() : null,
+          docType: docType ? docType.toUpperCase() : null,
+          description,
           fileHash,
           ingestionStatus: "FILE_STORED",
           retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
@@ -165,7 +180,17 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const docId = req.params.id;
-    const { docType, description } = req.body || {};
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const docType = parseOptionalString(payload.docType, "docType", issues, {
+      allowNull: true,
+    });
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
     if (!doc) {
@@ -174,10 +199,10 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     const data: any = {};
     if (docType !== undefined) {
-      data.docType = docType ? String(docType).toUpperCase() : null;
+      data.docType = docType ? docType.toUpperCase() : null;
     }
     if (description !== undefined) {
-      data.description = description ? String(description).trim() : null;
+      data.description = description;
     }
 
     const updated = await prisma.document.update({
@@ -230,7 +255,11 @@ router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, 
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const docId = req.params.id;
+    const issues: { field: string; message: string }[] = [];
+    const docId = parseRequiredString(req.params.id, "id", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
 
     const updated = await enqueueDocumentIngestion(docId, tenantId);
     return res.json(updated);
