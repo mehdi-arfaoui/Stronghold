@@ -116,6 +116,21 @@ export type InfraFinding = {
 export type GraphNode = {
   id: string;
   label: string;
+  summaryLabel?: string;
+  detailPayload?: {
+    name: string;
+    type: string | null;
+    category: string;
+    criticality: string;
+    businessPriority: number | null;
+    domain: string | null;
+    isLandingZone: boolean;
+    rtoHours: number | null;
+    rpoMinutes: number | null;
+    mtpdHours: number | null;
+    dependsOnCount: number;
+    usedByCount: number;
+  };
   type: string;
   nodeKind?: "service" | "application";
   category?: string;
@@ -135,6 +150,8 @@ export type GraphEdge = {
   from: string;
   to: string;
   type: string;
+  edgeLabelShort?: string;
+  edgeLabelLong?: string;
   strength?: string;
 };
 
