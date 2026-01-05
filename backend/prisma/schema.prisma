@@ -38,6 +38,11 @@ model Tenant {
   
 
   RunbookTemplate RunbookTemplate[]
+  incidents        Incident[]
+  incidentActions  IncidentAction[]
+  incidentServices IncidentService[]
+  incidentDocuments IncidentDocument[]
+  notificationChannels NotificationChannel[]
   risks           Risk[]
   riskMitigations RiskMitigation[]
 }
@@ -476,6 +481,83 @@ model AiExtractionError {
   createdAt DateTime @default(now())
 
   @@index([tenantId, documentId])
+}
+
+model Incident {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  title           String
+  description     String?
+  status          String
+  detectedAt      DateTime
+  responsibleTeam String?
+
+  services  IncidentService[]
+  documents IncidentDocument[]
+  actions   IncidentAction[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model IncidentService {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model IncidentDocument {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id])
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+model IncidentAction {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  incidentId String
+  incident   Incident @relation(fields: [incidentId], references: [id])
+
+  actionType String
+  description String?
+  metadata   Json?
+
+  createdAt DateTime @default(now())
+}
+
+model NotificationChannel {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  type           String
+  label          String?
+  isEnabled      Boolean @default(true)
+  n8nWebhookUrl  String
+  configuration  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 enum ApiRole {

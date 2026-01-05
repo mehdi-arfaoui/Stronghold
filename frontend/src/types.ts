@@ -529,10 +529,77 @@ export type RunbookTemplateFront = {
   signedUrl?: string | null;
 };
 
+export type IncidentServiceLink = {
+  service: {
+    id: string;
+    name: string;
+    criticality: string;
+    type: string;
+  };
+};
+
+export type IncidentDocumentLink = {
+  document: {
+    id: string;
+    originalName: string;
+    docType?: string | null;
+  };
+};
+
+export type IncidentAction = {
+  id: string;
+  actionType: string;
+  description?: string | null;
+  createdAt: string;
+  incident?: {
+    id: string;
+    title: string;
+    status: string;
+  };
+};
+
+export type Incident = {
+  id: string;
+  title: string;
+  description?: string | null;
+  status: string;
+  detectedAt: string;
+  responsibleTeam?: string | null;
+  services: IncidentServiceLink[];
+  documents: IncidentDocumentLink[];
+  actions: IncidentAction[];
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationChannel = {
+  id: string;
+  type: string;
+  label?: string | null;
+  isEnabled: boolean;
+  n8nWebhookUrl: string;
+  configuration?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type IncidentDashboard = {
+  summary: {
+    total: number;
+    open: number;
+    inProgress: number;
+    resolved: number;
+    closed: number;
+  };
+  recentIncidents: Incident[];
+  recentActions: IncidentAction[];
+};
+
 export type TabId =
   | "services"
   | "continuity"
   | "bia"
+  | "incidents"
   | "analysis"
   | "graph"
   | "architecture"
