@@ -18,6 +18,7 @@ import { ScenariosSection } from "./sections/ScenariosSection";
 import { ServicesSection } from "./sections/ServicesSection";
 import { ContinuitySection } from "./sections/ContinuitySection";
 import { BiaSection } from "./sections/BiaSection";
+import { IncidentsSection } from "./sections/IncidentsSection";
 import type { ApiConfig, TabDefinition, TabId } from "./types";
 import { loadApiConfig } from "./utils/api";
 
@@ -25,6 +26,7 @@ const tabs: TabDefinition[] = [
   { id: "services", label: "Services", description: "Catalogue et criticité" },
   { id: "continuity", label: "Continuité", description: "Sauvegardes & politiques" },
   { id: "bia", label: "BIA", description: "Processus & impacts" },
+  { id: "incidents", label: "Incidents", description: "Crises & notifications" },
   { id: "documents", label: "Documents", description: "Upload & extraction" },
   { id: "rag", label: "Faits IA / RAG", description: "Questions & contexte" },
   { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
@@ -55,6 +57,8 @@ function App() {
         return <ContinuitySection configVersion={configVersion} />;
       case "bia":
         return <BiaSection configVersion={configVersion} />;
+      case "incidents":
+        return <IncidentsSection configVersion={configVersion} />;
       case "documents":
         return <DocumentsSection configVersion={configVersion} />;
       case "rag":

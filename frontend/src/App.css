@@ -352,6 +352,30 @@
   border-color: #fecaca;
 }
 
+.pill.status-open {
+  background: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+.pill.status-in_progress {
+  background: #fffbeb;
+  color: #92400e;
+  border-color: #fde68a;
+}
+
+.pill.status-resolved {
+  background: #ecfdf3;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.pill.status-closed {
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-600);
+  border-color: var(--color-neutral-200);
+}
+
 .tab-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
