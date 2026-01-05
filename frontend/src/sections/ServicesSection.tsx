@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { SERVICE_DOMAINS, domainMetaByValue } from "../constants/domains";
-import type { Service } from "../types";
+import type { InfraComponent, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface ServicesSectionProps {
@@ -21,18 +21,26 @@ const defaultServicePayload = {
 
 export function ServicesSection({ configVersion }: ServicesSectionProps) {
   const [services, setServices] = useState<Service[]>([]);
+  const [infraComponents, setInfraComponents] = useState<InfraComponent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
+  const [linkError, setLinkError] = useState<string | null>(null);
   const [newService, setNewService] = useState({ ...defaultServicePayload });
+  const [newLink, setNewLink] = useState({ serviceId: "", infraId: "" });
 
-  const loadServices = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const data = await apiFetch("/services");
-      setServices(data);
+      const [servicesData, infraData] = await Promise.all([
+        apiFetch("/services"),
+        apiFetch("/infra/components"),
+      ]);
+      setServices(servicesData);
+      setInfraComponents(infraData);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
     } finally {
@@ -41,8 +49,21 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
   };
 
   useEffect(() => {
-    loadServices();
+    loadData();
   }, [configVersion]);
+
+  useEffect(() => {
+    setNewLink((current) => {
+      const next = { ...current };
+      if (!next.serviceId && services.length > 0) {
+        next.serviceId = services[0].id;
+      }
+      if (!next.infraId && infraComponents.length > 0) {
+        next.infraId = infraComponents[0].id;
+      }
+      return next;
+    });
+  }, [services, infraComponents]);
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -64,12 +85,32 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
           domain: newService.domain,
         }),
       });
-      await loadServices();
+      await loadData();
       setNewService({ ...defaultServicePayload });
     } catch (err: any) {
       setCreateError(err.message || "Erreur lors de la création");
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleLink = async (e: FormEvent) => {
+    e.preventDefault();
+    setLinking(true);
+    setLinkError(null);
+    try {
+      await apiFetch("/infra/link", {
+        method: "POST",
+        body: JSON.stringify({
+          serviceId: newLink.serviceId,
+          infraId: newLink.infraId,
+        }),
+      });
+      await loadData();
+    } catch (err: any) {
+      setLinkError(err.message || "Erreur lors de l'association");
+    } finally {
+      setLinking(false);
     }
   };
 
@@ -203,6 +244,58 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
             {creating ? "Création..." : "Ajouter le service"}
           </button>
           {createError && <p className="helper error">{createError}</p>}
+        </div>
+      </form>
+
+      <form className="form-grid card" onSubmit={handleLink}>
+        <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+          <label className="form-field">
+            <span>Service</span>
+            <select
+              value={newLink.serviceId}
+              onChange={(e) => setNewLink((s) => ({ ...s, serviceId: e.target.value }))}
+              required
+            >
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span>Composant infra</span>
+            <select
+              value={newLink.infraId}
+              onChange={(e) => setNewLink((s) => ({ ...s, infraId: e.target.value }))}
+              required
+            >
+              {infraComponents.map((infra) => (
+                <option key={infra.id} value={infra.id}>
+                  {infra.name} ({infra.type})
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
+            <span className="muted">Association</span>
+            <button
+              className="btn primary"
+              type="submit"
+              disabled={linking || !newLink.serviceId || !newLink.infraId}
+            >
+              {linking ? "Association..." : "Associer"}
+            </button>
+          </label>
+        </div>
+        <div className="form-actions">
+          {linkError && <p className="helper error">{linkError}</p>}
+          {!services.length && (
+            <p className="helper">Ajoutez un service avant de créer un lien.</p>
+          )}
+          {!infraComponents.length && (
+            <p className="helper">Ajoutez un composant infra pour créer un lien.</p>
+          )}
         </div>
       </form>
 
