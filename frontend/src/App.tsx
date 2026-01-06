@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConfigBanner } from "./components/config/ConfigBanner";
 import { MainLayout } from "./components/layout/MainLayout";
+import { Header } from "./components/navigation/Header";
 import { TabNavigation } from "./components/navigation/TabNavigation";
 import { InfoBadge } from "./components/ui/InfoBadge";
 import { SectionCard } from "./components/ui/SectionCard";
@@ -107,50 +108,63 @@ function App() {
   }, [filteredTabs, activeTab]);
 
   return (
-    <MainLayout
-      title="Stronghold PRA/PCA"
-      description="Noyau multi-tenant : services, Landing Zone, scénarios & runbooks, analyses et graphe."
-    >
-      <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
+    <div className="page-wrapper">
+      <section className="hero-banner">
+        <Header />
+        <div className="hero-content">
+          <p className="hero-eyebrow">Plan de continuité</p>
+          <h1 className="hero-title">Stronghold PRA/PCA</h1>
+          <p className="hero-subtitle">
+            Tableau de bord pour piloter la résilience, la gouvernance et les scénarios critiques.
+          </p>
+        </div>
+      </section>
 
-      <SectionCard
-        eyebrow="Navigation"
-        title="Vue d'ensemble"
-        description="Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides."
-        actions={
-          <div className="tab-controls">
-            <InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>
-            <div className="tab-search">
-              <input
-                type="search"
-                value={tabQuery}
-                onChange={(event) => setTabQuery(event.target.value)}
-                placeholder="Rechercher un module"
-                aria-label="Rechercher un module"
-              />
-              <span className="muted small">
-                {filteredTabs.length}/{tabs.length}
-              </span>
+      <MainLayout
+        title="Stronghold PRA/PCA"
+        description="Noyau multi-tenant : services, Landing Zone, scénarios & runbooks, analyses et graphe."
+      >
+        <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
+
+        <SectionCard
+          eyebrow="Navigation"
+          title="Vue d'ensemble"
+          description="Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides."
+          actions={
+            <div className="tab-controls">
+              <InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>
+              <div className="tab-search">
+                <input
+                  type="search"
+                  value={tabQuery}
+                  onChange={(event) => setTabQuery(event.target.value)}
+                  placeholder="Rechercher un module"
+                  aria-label="Rechercher un module"
+                />
+                <span className="muted small">
+                  {filteredTabs.length}/{tabs.length}
+                </span>
+              </div>
             </div>
-          </div>
-        }
-      >
-        {filteredTabs.length ? (
-          <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
-        ) : (
-          <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
-        )}
-      </SectionCard>
+          }
+        >
+          {filteredTabs.length ? (
+            <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
+          ) : (
+            <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
+          )}
+        </SectionCard>
 
-      <div
-        id={`${activeTab}-panel`}
-        className="panel-stack"
-        role="tabpanel"
-        aria-labelledby={`${activeTab}-tab`}
-      >
-        {currentPanel}
-      </div>
-    </MainLayout>
+        <div
+          id={`${activeTab}-panel`}
+          className="panel-stack"
+          role="tabpanel"
+          aria-labelledby={`${activeTab}-tab`}
+        >
+          {currentPanel}
+        </div>
+      </MainLayout>
+    </div>
   );
 }
 
