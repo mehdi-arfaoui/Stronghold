@@ -1,0 +1,13 @@
+:root {
+  --primary-color: #f8f3ea;
+  --accent-color: #e5b76a;
+  --text-color: #fdf6ee;
+  --background-overlay: rgba(6, 6, 8, 0.55);
+  --sidebar-background: rgba(12, 12, 16, 0.96);
+  --header-font-family: "Montserrat", "Futura", "Inter", sans-serif;
+  --header-padding-x: clamp(24px, 6vw, 64px);
+  --header-padding-y: clamp(18px, 3vw, 28px);
+  --header-gap: clamp(16px, 4vw, 48px);
+  --header-max-width: 1280px;
+  --hero-height: clamp(240px, 40vh, 420px);
+}
