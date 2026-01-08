@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
 import type {
@@ -42,6 +43,7 @@ function MaturityBadge({ level }: { level: "low" | "medium" | "high" }) {
 }
 
 export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<PraDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -118,36 +120,26 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
 
   const nextActionTargets: Record<
     NextActionItem["key"],
-    { tabId: TabId; label: string; description: string; href: string }
+    { tabId: TabId; label: string; description: string; path: string }
   > = {
     services_without_rto: {
       tabId: "services",
       label: "Compléter les services",
       description: "Renseigner les RTO/RPO dans le catalogue",
-      href: "#services-panel",
+      path: "/services",
     },
     scenarios_without_steps: {
       tabId: "scenarios",
       label: "Structurer les scénarios",
       description: "Ajouter des steps aux scénarios prioritaires",
-      href: "#scenarios-panel",
+      path: "/scenarios",
     },
     documents_without_extraction: {
       tabId: "documents",
       label: "Relancer l'extraction",
       description: "Mettre à jour l'état d'ingestion documentaire",
-      href: "#documents-panel",
+      path: "/documents",
     },
-  };
-
-  const handleQuickAction = (event: React.MouseEvent<HTMLAnchorElement>, tabId: TabId) => {
-    event.preventDefault();
-    const tabButton = document.getElementById(`${tabId}-tab`) as HTMLButtonElement | null;
-    tabButton?.click();
-    setTimeout(() => {
-      const panel = document.getElementById(`${tabId}-panel`);
-      panel?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
   };
 
   const heatmapOptions = useMemo(() => {
@@ -428,14 +420,10 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
                         <strong>{item.label}</strong>
                       </div>
                       <span className="muted small">{item.description}</span>
-                      <a
-                        className="quick-link"
-                        href={target.href}
-                        onClick={(event) => handleQuickAction(event, target.tabId)}
-                      >
+                      <Link className="quick-link" to={target.path}>
                         <span>{target.label}</span>
                         <span className="muted small">{target.description}</span>
-                      </a>
+                      </Link>
                     </div>
                   </li>
                 );

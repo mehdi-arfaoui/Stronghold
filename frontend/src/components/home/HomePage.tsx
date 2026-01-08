@@ -1,6 +1,6 @@
 import { ProgressStep } from "./ProgressStep";
 
-type StepId = "services" | "documents" | "rag" | "runbooks";
+export type HomeStepId = "services" | "documents" | "rag" | "runbooks";
 
 const steps = [
   {
@@ -36,9 +36,9 @@ const steps = [
 interface HomePageProps {
   title: string;
   subtitle: string;
-  activeStepId: StepId;
-  completedSteps: StepId[];
-  onStepAction: (stepId: StepId) => void;
+  activeStepId: HomeStepId;
+  completedSteps: HomeStepId[];
+  onStepAction: (stepId: HomeStepId) => void;
 }
 
 export function HomePage({

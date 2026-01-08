@@ -1,18 +1,17 @@
+import { Link } from "react-router-dom";
 import { NavMenu, type NavLink } from "./NavMenu";
 import "./Header.css";
 
 interface HeaderProps {
   links: NavLink[];
-  activeId: string;
   isMenuOpen: boolean;
   onMenuToggle: () => void;
-  onNavigate: (id: string) => void;
+  onNavigate: () => void;
   onQuickAction: () => void;
 }
 
 export function Header({
   links,
-  activeId,
   isMenuOpen,
   onMenuToggle,
   onNavigate,
@@ -21,20 +20,15 @@ export function Header({
   return (
     <header className="site-header">
       <div className="header-inner">
-        <a
-          className="header-logo"
-          href="#home"
-          aria-label="Stronghold"
-          onClick={() => onNavigate("home")}
-        >
+        <Link className="header-logo" to="/" aria-label="Stronghold" onClick={onNavigate}>
           <span className="logo-mark" aria-hidden="true">
             SH
           </span>
           <span className="logo-text">Stronghold</span>
-        </a>
+        </Link>
 
         <div className="header-nav-desktop">
-          <NavMenu links={links} activeId={activeId} onNavigate={onNavigate} />
+          <NavMenu links={links} onNavigate={onNavigate} />
         </div>
 
         <div className="header-actions">
@@ -75,12 +69,7 @@ export function Header({
             Fermer
           </button>
         </div>
-        <NavMenu
-          links={links}
-          activeId={activeId}
-          onNavigate={onNavigate}
-          variant="vertical"
-        />
+        <NavMenu links={links} onNavigate={onNavigate} variant="vertical" />
         <button type="button" className="btn primary" onClick={onQuickAction}>
           Démarrer un PRA
         </button>
