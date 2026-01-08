@@ -433,6 +433,7 @@ export function buildJobResponse(job: any) {
     status: job.status,
     jobType: job.jobType,
     progress: job.progress,
+    step: job.step,
     parameters: parse(job.parameters),
     resultSummary: parse(job.resultSummary),
     errorMessage: job.errorMessage,

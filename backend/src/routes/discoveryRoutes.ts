@@ -9,6 +9,7 @@ import {
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
 } from "../services/discoveryService";
+import { discoveryQueue } from "../queues/discoveryQueue";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -67,9 +68,10 @@ router.post("/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => 
     const job = await prisma.discoveryJob.create({
       data: {
         tenantId,
-        status: "RUNNING",
+        status: "QUEUED",
         jobType: "RUN",
-        progress: 10,
+        progress: 0,
+        step: "QUEUED",
         parameters: JSON.stringify({
           ipRanges,
           cloudProviders,
@@ -79,7 +81,6 @@ router.post("/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => 
         credentialsIv: encryptedCredentials?.iv,
         credentialsTag: encryptedCredentials?.tag,
         requestedByApiKeyId: req.apiKeyId ?? null,
-        startedAt: new Date(),
       },
     });
 
@@ -94,23 +95,36 @@ router.post("/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => 
       });
     }
 
-    const completed = await prisma.discoveryJob.update({
-      where: { id: job.id },
-      data: {
-        status: "COMPLETED",
-        progress: 100,
-        completedAt: new Date(),
-        resultSummary: JSON.stringify({
-          discoveredHosts: 0,
-          createdServices: 0,
-          createdInfra: 0,
-          createdDependencies: 0,
-          createdInfraLinks: 0,
-        }),
-      },
+    try {
+      await discoveryQueue.add("discovery-run", {
+        jobId: job.id,
+        tenantId,
+        ipRanges,
+        cloudProviders,
+        requestedBy: requestedBy || req.apiKeyId || null,
+      });
+    } catch (queueError) {
+      const message = queueError instanceof Error ? queueError.message : "Queue enqueue failed";
+      await prisma.discoveryJob.updateMany({
+        where: { id: job.id, tenantId },
+        data: {
+          status: "FAILED",
+          step: "FAILED",
+          errorMessage: message,
+          completedAt: new Date(),
+        },
+      });
+    }
+
+    const queuedJob = await prisma.discoveryJob.findFirst({
+      where: { id: job.id, tenantId },
     });
 
-    return res.status(201).json(buildJobResponse(completed));
+    if (!queuedJob) {
+      return res.status(404).json({ error: "Job de découverte introuvable" });
+    }
+
+    return res.status(201).json(buildJobResponse(queuedJob));
   } catch (error) {
     console.error("Error in POST /discovery/run:", error);
     return res.status(500).json({ error: "Internal server error" });
