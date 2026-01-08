@@ -1,35 +1,70 @@
 import { ProgressStep } from "./ProgressStep";
 
-export type HomeStepId = "services" | "documents" | "rag" | "runbooks";
+export type HomeStepId =
+  | "services"
+  | "documents"
+  | "bia"
+  | "risks"
+  | "scenarios"
+  | "analysis"
+  | "runbooks";
 
-const steps = [
+export type HomeStep = {
+  id: HomeStepId;
+  title: string;
+  description: string;
+  actionLabel: string;
+};
+
+export const HOME_STEPS: HomeStep[] = [
   {
     id: "services" as const,
-    title: "Créer les services",
+    title: "Cartographier les services",
     description:
-      "Construisez votre catalogue applicatif avec criticité, dépendances et propriétaires.",
-    actionLabel: "Ajouter un service",
+      "Structurez le catalogue applicatif, les dépendances et la criticité métier.",
+    actionLabel: "Créer un service",
   },
   {
     id: "documents" as const,
-    title: "Importer des documents",
+    title: "Centraliser les documents",
     description:
-      "Centralisez les procédures, contrats et schémas afin d'alimenter l'intelligence RAG.",
+      "Importez procédures et schémas pour alimenter les analyses BIA et risques.",
     actionLabel: "Importer un document",
   },
   {
-    id: "rag" as const,
-    title: "Lancer l'analyse RAG/PRA",
+    id: "bia" as const,
+    title: "Conduire le BIA",
     description:
-      "Activez les analyses IA pour extraire les faits clés et préparer les scénarios PRA.",
-    actionLabel: "Lancer l'analyse",
+      "Définissez les processus critiques et mesurez les impacts métier.",
+    actionLabel: "Accéder au BIA",
+  },
+  {
+    id: "risks" as const,
+    title: "Qualifier les risques",
+    description:
+      "Analysez les menaces, probabilités et impacts pour chaque processus.",
+    actionLabel: "Ouvrir les risques",
+  },
+  {
+    id: "scenarios" as const,
+    title: "Construire les scénarios",
+    description:
+      "Planifiez les stratégies de reprise et les étapes de crise.",
+    actionLabel: "Créer un scénario",
+  },
+  {
+    id: "analysis" as const,
+    title: "Produire le rapport PRA",
+    description:
+      "Générez les analyses consolidées et les synthèses décisionnelles.",
+    actionLabel: "Voir le rapport",
   },
   {
     id: "runbooks" as const,
-    title: "Consulter les recommandations",
+    title: "Finaliser les runbooks",
     description:
-      "Accédez aux runbooks générés et ajustez les stratégies de reprise.",
-    actionLabel: "Voir les runbooks",
+      "Publiez les procédures opérationnelles et partagez-les aux équipes.",
+    actionLabel: "Accéder aux runbooks",
   },
 ];
 
@@ -59,7 +94,7 @@ export function HomePage({
       </header>
 
       <div className="home-grid">
-        {steps.map((step, index) => (
+        {HOME_STEPS.map((step, index) => (
           <ProgressStep
             key={step.id}
             stepId={step.id}

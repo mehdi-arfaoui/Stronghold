@@ -1,11 +1,11 @@
 import { NavLink as RouterNavLink } from "react-router-dom";
-import type { NavLink } from "../navigation/NavMenu";
+import type { NavGroup } from "../navigation/NavMenu";
 
 interface FooterProps {
-  links: NavLink[];
+  groups: NavGroup[];
 }
 
-export function Footer({ links }: FooterProps) {
+export function Footer({ groups }: FooterProps) {
   return (
     <footer className="site-footer" aria-labelledby="footer-title">
       <div className="footer-inner">
@@ -18,13 +18,20 @@ export function Footer({ links }: FooterProps) {
           </p>
         </div>
         <nav className="footer-nav" aria-label="Navigation secondaire">
-          <ul>
-            {links.map((link) => (
-              <li key={link.id}>
-                <RouterNavLink to={link.to}>{link.label}</RouterNavLink>
-              </li>
+          <div className="footer-nav-groups">
+            {groups.map((group) => (
+              <div key={group.id} className="footer-nav-group">
+                <p className="footer-nav-title">{group.label}</p>
+                <ul>
+                  {group.links.map((link) => (
+                    <li key={link.id}>
+                      <RouterNavLink to={link.to}>{link.label}</RouterNavLink>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </nav>
       </div>
     </footer>
