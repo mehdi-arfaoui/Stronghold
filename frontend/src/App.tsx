@@ -136,7 +136,6 @@ function App() {
 
   const handleQuickAction = useCallback(() => {
     navigate(MODULE_PATHS.analysis);
-    setMenuOpen(false);
   }, [navigate]);
 
   return (
