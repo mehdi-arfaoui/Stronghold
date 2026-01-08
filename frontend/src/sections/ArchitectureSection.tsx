@@ -55,17 +55,6 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
     fetchGraph();
   }, [configVersion]);
 
-  const domains = useMemo(() => {
-    if (!graph) return [];
-    return Array.from(
-      new Set(
-        graph.nodes
-          .map((node) => node.domain || "")
-          .filter((domain) => domain.trim().length > 0)
-      )
-    ).sort((a, b) => a.localeCompare(b));
-  }, [graph, filteredNodes, filteredEdges]);
-
   const filteredNodes = useMemo(() => {
     if (!graph) return [];
     return graph.nodes.filter((node) => {
@@ -82,6 +71,17 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
     const allowed = new Set(filteredNodes.map((node) => node.id));
     return graph.edges.filter((edge) => allowed.has(edge.from) && allowed.has(edge.to));
   }, [graph, filteredNodes]);
+
+  const domains = useMemo(() => {
+    if (!graph) return [];
+    return Array.from(
+      new Set(
+        graph.nodes
+          .map((node) => node.domain || "")
+          .filter((domain) => domain.trim().length > 0)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [graph]);
 
   const categorySummary = useMemo(() => {
     if (!graph) return [];

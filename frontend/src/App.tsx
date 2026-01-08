@@ -1,172 +1,143 @@
-import { useEffect, useMemo, useState } from "react";
-import { ConfigBanner } from "./components/config/ConfigBanner";
+import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import type { ComponentType } from "react";
+import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Footer } from "./components/layout/Footer";
 import { Header } from "./components/navigation/Header";
-import type { NavLink } from "./components/navigation/NavMenu";
-import { SectionCard } from "./components/ui/SectionCard";
-import { HomePage } from "./components/home/HomePage";
-import { InfoBadge } from "./components/ui/InfoBadge";
-import { TabNavigation } from "./components/navigation/TabNavigation";
-import { SERVICE_DOMAINS } from "./constants/domains";
-import { AnalysisSection } from "./sections/AnalysisSection";
-import { AuthSection } from "./sections/AuthSection";
-import { AuditLogsSection } from "./sections/AuditLogsSection";
-import { ArchitectureSection } from "./sections/ArchitectureSection";
-import { DocumentsSection } from "./sections/DocumentsSection";
-import { DiscoverySection } from "./sections/DiscoverySection";
-import { GraphSection } from "./sections/GraphSection";
-import { LandingZoneSection } from "./sections/LandingZoneSection";
-import { RagSection } from "./sections/RagSection";
-import { RunbooksSection } from "./sections/RunbooksSection";
-import { ScenariosSection } from "./sections/ScenariosSection";
-import { ServicesSection } from "./sections/ServicesSection";
-import { ContinuitySection } from "./sections/ContinuitySection";
-import { RisksSection } from "./sections/RisksSection";
-import { BiaSection } from "./sections/BiaSection";
-import { IncidentsSection } from "./sections/IncidentsSection";
-import type { ApiConfig, TabDefinition, TabId } from "./types";
+import type { HomeStepId } from "./components/home/HomePage";
+import { ConfigurationPage } from "./routes/ConfigurationPage";
+import { HomeRoute } from "./routes/HomeRoute";
+import { NavigationPage } from "./routes/NavigationPage";
+import { MAIN_NAV_LINKS, MODULE_PATH_TO_ID, MODULE_ROUTES, MODULE_PATHS } from "./constants/navigation";
+import type { ApiConfig, TabId } from "./types";
 import { loadApiConfig } from "./utils/api";
 
-const tabs: TabDefinition[] = [
-  { id: "services", label: "Services", description: "Catalogue et criticité" },
-  { id: "continuity", label: "Continuité", description: "Sauvegardes & politiques" },
-  { id: "bia", label: "BIA", description: "Processus & impacts" },
-  { id: "incidents", label: "Incidents", description: "Crises & notifications" },
-  { id: "documents", label: "Documents", description: "Upload & extraction" },
-  { id: "discovery", label: "Découverte", description: "Scan réseau & imports" },
-  { id: "rag", label: "RAG/PRA", description: "Questions & contexte" },
-  { id: "runbooks", label: "Runbooks", description: "Génération & exports" },
-  { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
-  { id: "risks", label: "Risques", description: "Menaces & matrices" },
-  { id: "graph", label: "Graphes", description: "Dépendances" },
-  { id: "architecture", label: "Architecture", description: "Vue d'ensemble" },
-  { id: "landing", label: "Landing Zone", description: "Infrastructure" },
-  { id: "scenarios", label: "Scénarios", description: "Runbooks" },
-  { id: "auth", label: "Auth (ADMIN)", description: "Gestion des clés API (ADMIN only)" },
-  { id: "audit", label: "Audit (ADMIN)", description: "Historique des appels API" },
-];
+// Lazy-load module panels to reduce the initial bundle footprint.
+const ServicesSection = lazy(() =>
+  import("./sections/ServicesSection").then((module) => ({ default: module.ServicesSection }))
+);
+const ContinuitySection = lazy(() =>
+  import("./sections/ContinuitySection").then((module) => ({ default: module.ContinuitySection }))
+);
+const BiaSection = lazy(() =>
+  import("./sections/BiaSection").then((module) => ({ default: module.BiaSection }))
+);
+const IncidentsSection = lazy(() =>
+  import("./sections/IncidentsSection").then((module) => ({ default: module.IncidentsSection }))
+);
+const DocumentsSection = lazy(() =>
+  import("./sections/DocumentsSection").then((module) => ({ default: module.DocumentsSection }))
+);
+const DiscoverySection = lazy(() =>
+  import("./sections/DiscoverySection").then((module) => ({ default: module.DiscoverySection }))
+);
+const RagSection = lazy(() =>
+  import("./sections/RagSection").then((module) => ({ default: module.RagSection }))
+);
+const RunbooksSection = lazy(() =>
+  import("./sections/RunbooksSection").then((module) => ({ default: module.RunbooksSection }))
+);
+const AnalysisSection = lazy(() =>
+  import("./sections/AnalysisSection").then((module) => ({ default: module.AnalysisSection }))
+);
+const RisksSection = lazy(() =>
+  import("./sections/RisksSection").then((module) => ({ default: module.RisksSection }))
+);
+const GraphSection = lazy(() =>
+  import("./sections/GraphSection").then((module) => ({ default: module.GraphSection }))
+);
+const ArchitectureSection = lazy(() =>
+  import("./sections/ArchitectureSection").then((module) => ({
+    default: module.ArchitectureSection,
+  }))
+);
+const LandingZoneSection = lazy(() =>
+  import("./sections/LandingZoneSection").then((module) => ({
+    default: module.LandingZoneSection,
+  }))
+);
+const ScenariosSection = lazy(() =>
+  import("./sections/ScenariosSection").then((module) => ({ default: module.ScenariosSection }))
+);
+const AuthSection = lazy(() =>
+  import("./sections/AuthSection").then((module) => ({ default: module.AuthSection }))
+);
+const AuditLogsSection = lazy(() =>
+  import("./sections/AuditLogsSection").then((module) => ({ default: module.AuditLogsSection }))
+);
 
-const navLinks: NavLink[] = [
-  { id: "home", label: "Accueil", href: "#home" },
-  { id: "services", label: "Services", href: "#services" },
-  { id: "documents", label: "Documents", href: "#documents" },
-  { id: "rag", label: "RAG/PRA", href: "#rag" },
-  { id: "runbooks", label: "Runbooks", href: "#runbooks" },
-  { id: "analysis", label: "Analyse", href: "#analysis" },
-  { id: "graph", label: "Graphes", href: "#graph" },
-  { id: "architecture", label: "Architecture", href: "#architecture" },
-  { id: "scenarios", label: "Scénarios", href: "#scenarios" },
-];
-
-const tabNavigationMap: Record<string, TabId> = {
-  services: "services",
-  documents: "documents",
-  rag: "rag",
-  runbooks: "runbooks",
-  analysis: "analysis",
-  graph: "graph",
-  architecture: "architecture",
-  scenarios: "scenarios",
+const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> = {
+  services: ServicesSection,
+  continuity: ContinuitySection,
+  bia: BiaSection,
+  incidents: IncidentsSection,
+  documents: DocumentsSection,
+  discovery: DiscoverySection,
+  rag: RagSection,
+  runbooks: RunbooksSection,
+  analysis: AnalysisSection,
+  risks: RisksSection,
+  graph: GraphSection,
+  architecture: ArchitectureSection,
+  landing: LandingZoneSection,
+  scenarios: ScenariosSection,
+  auth: AuthSection,
+  audit: AuditLogsSection,
 };
 
-type StepId = "services" | "documents" | "rag" | "runbooks";
+function ModuleRoute({ tabId, configVersion }: { tabId: TabId; configVersion: number }) {
+  const Panel = moduleComponents[tabId];
 
-const stepIds: StepId[] = ["services", "documents", "rag", "runbooks"];
+  return (
+    <Suspense fallback={<div className="skeleton">Chargement du module...</div>}>
+      <Panel configVersion={configVersion} />
+    </Suspense>
+  );
+}
 
 function App() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
-  const [activeTab, setActiveTab] = useState<TabId>("services");
-  const [tabQuery, setTabQuery] = useState("");
-  const [activeNav, setActiveNav] = useState<string>("home");
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeStep, setActiveStep] = useState<StepId>("services");
-  const [completedSteps, setCompletedSteps] = useState<StepId[]>([]);
+  const [activeStep, setActiveStep] = useState<HomeStepId>("services");
+  const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
+
+  const activeTab = useMemo<TabId>(() => {
+    const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
+    return tabFromPath ?? "services";
+  }, [location.pathname]);
 
   const handleConfigSave = (config: ApiConfig) => {
     setApiConfig(config);
     setConfigVersion((version) => version + 1);
   };
 
-  const handleNavigate = (id: string) => {
-    setActiveNav(id);
-    const mappedTab = tabNavigationMap[id];
-    if (mappedTab) {
-      setActiveTab(mappedTab);
-      if (stepIds.includes(mappedTab as StepId)) {
-        setActiveStep(mappedTab as StepId);
-      }
-    }
+  const handleNavigate = useCallback(() => {
     setMenuOpen(false);
-  };
+  }, []);
 
-  const handleStepAction = (stepId: StepId) => {
-    setActiveStep(stepId);
-    setActiveTab(stepId);
-    setActiveNav(stepId);
-    setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
-  };
+  const handleTabNavigation = useCallback(
+    (tabId: TabId) => {
+      navigate(MODULE_PATHS[tabId]);
+      setMenuOpen(false);
+    },
+    [navigate]
+  );
 
-  const handleQuickAction = () => {
-    setActiveNav("analysis");
-    setActiveTab("analysis");
-  };
+  const handleStepAction = useCallback(
+    (stepId: HomeStepId) => {
+      setActiveStep(stepId);
+      setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
+      navigate(MODULE_PATHS[stepId]);
+    },
+    [navigate]
+  );
 
-  const currentPanel = useMemo(() => {
-    switch (activeTab) {
-      case "services":
-        return <ServicesSection configVersion={configVersion} />;
-      case "continuity":
-        return <ContinuitySection configVersion={configVersion} />;
-      case "bia":
-        return <BiaSection configVersion={configVersion} />;
-      case "incidents":
-        return <IncidentsSection configVersion={configVersion} />;
-      case "documents":
-        return <DocumentsSection configVersion={configVersion} />;
-      case "discovery":
-        return <DiscoverySection configVersion={configVersion} />;
-      case "rag":
-        return <RagSection configVersion={configVersion} />;
-      case "runbooks":
-        return <RunbooksSection configVersion={configVersion} />;
-      case "analysis":
-        return <AnalysisSection configVersion={configVersion} />;
-      case "risks":
-        return <RisksSection configVersion={configVersion} />;
-      case "auth":
-        return <AuthSection configVersion={configVersion} />;
-      case "audit":
-        return <AuditLogsSection configVersion={configVersion} />;
-      case "graph":
-        return <GraphSection configVersion={configVersion} />;
-      case "architecture":
-        return <ArchitectureSection configVersion={configVersion} />;
-      case "landing":
-        return <LandingZoneSection configVersion={configVersion} />;
-      case "scenarios":
-        return <ScenariosSection configVersion={configVersion} />;
-      default:
-        return null;
-    }
-  }, [activeTab, configVersion]);
-
-  const filteredTabs = useMemo(() => {
-    const query = tabQuery.trim().toLowerCase();
-    if (!query) return tabs;
-    return tabs.filter(
-      (tab) =>
-        tab.label.toLowerCase().includes(query) ||
-        tab.description.toLowerCase().includes(query)
-    );
-  }, [tabQuery]);
-
-  useEffect(() => {
-    if (filteredTabs.length === 0) return;
-    if (!filteredTabs.some((tab) => tab.id === activeTab)) {
-      setActiveTab(filteredTabs[0].id);
-    }
-  }, [filteredTabs, activeTab]);
+  const handleQuickAction = useCallback(() => {
+    navigate(MODULE_PATHS.analysis);
+    setMenuOpen(false);
+  }, [navigate]);
 
   return (
     <div className="app-shell">
@@ -174,8 +145,7 @@ function App() {
         Aller au contenu principal
       </a>
       <Header
-        links={navLinks}
-        activeId={activeNav}
+        links={MAIN_NAV_LINKS}
         isMenuOpen={menuOpen}
         onMenuToggle={() => setMenuOpen((open) => !open)}
         onNavigate={handleNavigate}
@@ -183,95 +153,42 @@ function App() {
       />
 
       <main id="main-content" className="main-content">
-        <section id="home" className="home-section" aria-labelledby="home-title">
-          <HomePage
-            title="Premiers pas vers la résilience"
-            subtitle="Suivez ces étapes guidées pour structurer vos services, alimenter le moteur RAG/PRA et générer des recommandations actionnables."
-            activeStepId={activeStep}
-            completedSteps={completedSteps}
-            onStepAction={handleStepAction}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <HomeRoute
+                activeStepId={activeStep}
+                completedSteps={completedSteps}
+                onStepAction={handleStepAction}
+              />
+            }
           />
-        </section>
-
-        <section className="workspace-section" aria-labelledby="workspace-title">
-          <div className="section-heading">
-            <div>
-              <p className="eyebrow">Espace opérationnel</p>
-              <h2 id="workspace-title">Modules et analyses stratégiques</h2>
-              <p className="muted">
-                Pilotez vos services, analyses, runbooks et dépendances via des modules
-                intelligents.
-              </p>
-            </div>
-            <button type="button" className="btn primary" onClick={handleQuickAction}>
-              Démarrer un PRA
-            </button>
-          </div>
-
-          <div className="workspace-grid">
-            <SectionCard
-              eyebrow="Configuration"
-              title="Connexion API"
-              description="Renseignez l'URL et la clé API pour activer les workflows Stronghold."
-            >
-              <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
-            </SectionCard>
-
-            <SectionCard
-              eyebrow="Navigation"
-              title="Vue d'ensemble"
-              description="Accédez rapidement à chaque module pour orchestrer la continuité."
-              actions={
-                <div className="tab-controls">
-                  <InfoBadge variant="subtle">
-                    {SERVICE_DOMAINS.length} domaines suivis
-                  </InfoBadge>
-                  <div className="tab-search">
-                    <label className="sr-only" htmlFor="tab-search">
-                      Rechercher un module
-                    </label>
-                    <input
-                      id="tab-search"
-                      type="search"
-                      value={tabQuery}
-                      onChange={(event) => setTabQuery(event.target.value)}
-                      placeholder="Rechercher un module"
-                    />
-                    <span className="muted small">
-                      {filteredTabs.length}/{tabs.length}
-                    </span>
-                  </div>
-                </div>
-              }
-            >
-              {filteredTabs.length ? (
-                <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
-              ) : (
-                <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
-              )}
-            </SectionCard>
-          </div>
-
-          <div className="anchor-targets" aria-hidden="true">
-            {navLinks
-              .filter((link) => link.id !== "home")
-              .map((link) => (
-                <span key={link.id} id={link.id} className="anchor-target" />
-              ))}
-          </div>
-
-          <div
-            id={`${activeTab}-panel`}
-            className="panel-stack"
-            role="tabpanel"
-            aria-labelledby={`${activeTab}-tab`}
-          >
-            {currentPanel}
-          </div>
-        </section>
+          <Route
+            path="/configuration"
+            element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} />}
+          />
+          <Route
+            path="/navigation"
+            element={<NavigationPage activeTab={activeTab} onNavigateTab={handleTabNavigation} />}
+          />
+          {MODULE_ROUTES.map((module) => (
+            <Route
+              key={module.id}
+              path={module.path}
+              element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
+            />
+          ))}
+          <Route
+            path="*"
+            element={
+              <NavigationPage activeTab={activeTab} onNavigateTab={handleTabNavigation} />
+            }
+          />
+        </Routes>
       </main>
 
-      <Footer links={navLinks} onNavigate={handleNavigate} />
+      <Footer links={MAIN_NAV_LINKS} />
     </div>
   );
 }
