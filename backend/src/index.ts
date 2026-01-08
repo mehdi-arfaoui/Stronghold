@@ -23,6 +23,7 @@ import biaRoutes from "./routes/biaRoutes";
 import incidentRoutes from "./routes/incidentRoutes";
 import exerciseRoutes from "./routes/exerciseRoutes";
 import discoveryRoutes from "./routes/discoveryRoutes";
+import pricingRoutes from "./routes/pricingRoutes";
 import { startDiscoveryWorker } from "./workers/discoveryWorker";
 
 dotenv.config();
@@ -97,6 +98,7 @@ app.use("/bia", biaRoutes);
 app.use("/incidents", incidentRoutes);
 app.use("/exercises", exerciseRoutes);
 app.use("/discovery", discoveryRoutes);
+app.use("/pricing", pricingRoutes);
 
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
   startDiscoveryWorker();

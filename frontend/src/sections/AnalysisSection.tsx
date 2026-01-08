@@ -5,6 +5,7 @@ import { PageIntro } from "../components/PageIntro";
 import type {
   AppWarning,
   BiaSummary,
+  CostEstimate,
   InfraFinding,
   MaturityScore,
   NextActionItem,
@@ -45,6 +46,43 @@ function MaturityBadge({ level }: { level: "low" | "medium" | "high" }) {
   return <span className={`pill ${palette[level]}`}>{labels[level]}</span>;
 }
 
+function formatMoney(value: number, currency: string) {
+  return new Intl.NumberFormat("fr-FR", {
+    style: "currency",
+    currency,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+function clampPercent(value: number) {
+  if (Number.isNaN(value)) return 0;
+  return Math.min(100, Math.max(0, value));
+}
+
+function applyFinancialAdjustments(
+  cost: CostEstimate,
+  {
+    exchangeRate,
+    discountPercent,
+    humanCostMonthly,
+    currency,
+  }: {
+    exchangeRate: number;
+    discountPercent: number;
+    humanCostMonthly: number;
+    currency: string;
+  }
+) {
+  const discountRate = clampPercent(discountPercent) / 100;
+  const capex = cost.capex * exchangeRate * (1 - discountRate);
+  const opexMonthly = cost.opexMonthly * exchangeRate * (1 - discountRate) + humanCostMonthly;
+  return {
+    capex,
+    opexMonthly,
+    currency,
+  };
+}
+
 export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [dashboard, setDashboard] = useState<PraDashboard | null>(null);
   const [loading, setLoading] = useState(true);
@@ -69,6 +107,10 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [ragLoading, setRagLoading] = useState(false);
   const [ragError, setRagError] = useState<string | null>(null);
   const [runbookDraft, setRunbookDraft] = useState<string | null>(null);
+  const [exchangeRate, setExchangeRate] = useState(1);
+  const [discountPercent, setDiscountPercent] = useState(0);
+  const [humanCostMonthly, setHumanCostMonthly] = useState(0);
+  const [displayCurrency, setDisplayCurrency] = useState("EUR");
 
   useEffect(() => {
     const fetchDashboard = async () => {
@@ -182,6 +224,28 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         .filter((t) => t.length > 0),
     [docTypes]
   );
+
+  const financialAssumptions = useMemo(
+    () => ({
+      exchangeRate: exchangeRate || 1,
+      discountPercent,
+      humanCostMonthly,
+      currency: displayCurrency,
+    }),
+    [exchangeRate, discountPercent, humanCostMonthly, displayCurrency]
+  );
+
+  const drCostSummary = useMemo(() => {
+    if (!dashboard) return [];
+    return dashboard.dr.recommendations.map((rec) => {
+      const adjusted = applyFinancialAdjustments(rec.scenario.cost, financialAssumptions);
+      return {
+        id: rec.scenario.id,
+        label: rec.scenario.label,
+        adjusted,
+      };
+    });
+  }, [dashboard, financialAssumptions]);
 
   const nextActionTargets: Record<
     NextActionItem["key"],
@@ -868,31 +932,37 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
             <span className="pill subtle">{dashboard.dr.recommendations.length}</span>
           </div>
           <div className="stack" style={{ gap: "12px" }}>
-            {dashboard.dr.recommendations.map((rec) => (
-              <div key={rec.scenario.id} className="stack" style={{ gap: "6px" }}>
-                <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
-                  <strong className="service-name">{rec.scenario.label}</strong>
-                  <MatchBadge level={rec.matchLevel} />
-                  <span className="pill subtle">
-                    RTO {rec.scenario.rtoRangeHours[0]}-{rec.scenario.rtoRangeHours[1]}h
-                  </span>
-                  <span className="pill subtle">
-                    RPO {rec.scenario.rpoRangeMinutes[0]}-{rec.scenario.rpoRangeMinutes[1]} min
-                  </span>
-                  <span className="pill subtle">Coût: {rec.scenario.cost}</span>
-                  <span className="pill subtle">Cx: {rec.scenario.complexity}</span>
+            {dashboard.dr.recommendations.map((rec) => {
+              const adjusted = applyFinancialAdjustments(rec.scenario.cost, financialAssumptions);
+              return (
+                <div key={rec.scenario.id} className="stack" style={{ gap: "6px" }}>
+                  <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
+                    <strong className="service-name">{rec.scenario.label}</strong>
+                    <MatchBadge level={rec.matchLevel} />
+                    <span className="pill subtle">
+                      RTO {rec.scenario.rtoRangeHours[0]}-{rec.scenario.rtoRangeHours[1]}h
+                    </span>
+                    <span className="pill subtle">
+                      RPO {rec.scenario.rpoRangeMinutes[0]}-{rec.scenario.rpoRangeMinutes[1]} min
+                    </span>
+                    <span className="pill subtle">
+                      Coût: {formatMoney(adjusted.capex, adjusted.currency)} CAPEX /{" "}
+                      {formatMoney(adjusted.opexMonthly, adjusted.currency)} OPEX/mois
+                    </span>
+                    <span className="pill subtle">Cx: {rec.scenario.complexity}</span>
+                  </div>
+                  <p className="muted small">{rec.justification}</p>
+                  <details>
+                    <summary>Raisons détaillées</summary>
+                    <ul className="muted small">
+                      {rec.rationale.map((r, idx) => (
+                        <li key={idx}>{r}</li>
+                      ))}
+                    </ul>
+                  </details>
                 </div>
-                <p className="muted small">{rec.justification}</p>
-                <details>
-                  <summary>Raisons détaillées</summary>
-                  <ul className="muted small">
-                    {rec.rationale.map((r, idx) => (
-                      <li key={idx}>{r}</li>
-                    ))}
-                  </ul>
-                </details>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -916,19 +986,93 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
                 </tr>
               </thead>
               <tbody>
-                {dashboard.dr.comparison.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.label}</td>
-                    <td>{row.rto}</td>
-                    <td>{row.rpo}</td>
-                    <td>{row.cost}</td>
-                    <td>{row.complexity}</td>
-                    <td>{row.notes}</td>
-                  </tr>
-                ))}
+                {dashboard.dr.comparison.map((row) => {
+                  const adjusted = applyFinancialAdjustments(row.cost, financialAssumptions);
+                  return (
+                    <tr key={row.id}>
+                      <td>{row.label}</td>
+                      <td>{row.rto}</td>
+                      <td>{row.rpo}</td>
+                      <td>
+                        {formatMoney(adjusted.capex, adjusted.currency)} CAPEX /{" "}
+                        {formatMoney(adjusted.opexMonthly, adjusted.currency)} OPEX/mois
+                      </td>
+                      <td>{row.complexity}</td>
+                      <td>{row.notes}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="panel-grid">
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Finance</p>
+              <h3>Paramètres financiers</h3>
+            </div>
+            <span className="pill subtle">Ajustements</span>
+          </div>
+          <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+            <label className="form-field">
+              <span>Taux de change</span>
+              <input
+                type="number"
+                min="0.1"
+                step="0.01"
+                value={exchangeRate}
+                onChange={(event) => setExchangeRate(Number(event.target.value))}
+              />
+            </label>
+            <label className="form-field">
+              <span>Remise (%)</span>
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={discountPercent}
+                onChange={(event) => setDiscountPercent(Number(event.target.value))}
+              />
+            </label>
+            <label className="form-field">
+              <span>Coûts humains mensuels</span>
+              <input
+                type="number"
+                min="0"
+                step="100"
+                value={humanCostMonthly}
+                onChange={(event) => setHumanCostMonthly(Number(event.target.value))}
+              />
+            </label>
+            <label className="form-field">
+              <span>Devise d'affichage</span>
+              <select value={displayCurrency} onChange={(event) => setDisplayCurrency(event.target.value)}>
+                <option value="EUR">EUR</option>
+                <option value="USD">USD</option>
+                <option value="GBP">GBP</option>
+              </select>
+            </label>
+          </div>
+          {dashboard && (
+            <div className="stack" style={{ gap: "8px" }}>
+              <p className="muted small">
+                Estimations ajustées (remise + taux de change + coûts humains) pour les scénarios DR prioritaires.
+              </p>
+              <ul className="muted small">
+                {drCostSummary.slice(0, 3).map((item) => (
+                  <li key={item.id}>
+                    {item.label}: {formatMoney(item.adjusted.capex, item.adjusted.currency)} CAPEX /{" "}
+                    {formatMoney(item.adjusted.opexMonthly, item.adjusted.currency)} OPEX/mois
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
 
