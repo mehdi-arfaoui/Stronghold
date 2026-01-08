@@ -775,6 +775,7 @@ model DiscoveryJob {
   status   String
   jobType  String
   progress Int    @default(0)
+  step     String?
 
   parameters     String?
   resultSummary  String?
