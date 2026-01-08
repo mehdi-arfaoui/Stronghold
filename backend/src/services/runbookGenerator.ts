@@ -8,6 +8,7 @@ import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService";
 import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client";
 import { buildBiaSummary } from "./biaSummary";
 import { buildRiskSummary } from "./riskSummary";
+import { defaultBudgetForCriticality, formatCostEstimate } from "../analysis/financialModels";
 
 export interface RunbookGenerationOptions {
   scenarioId?: string | null;
@@ -174,6 +175,7 @@ function buildPlaceholderValues(params: {
   ragFindings: string;
   biaSummary: string;
   riskSummary: string;
+  financialSummary: string;
 }) {
   const depsCombined = [params.depsList || "", params.cycleList ? `Cycles critiques:\n${params.cycleList}` : ""]
     .filter((part) => part && part.trim().length > 0)
@@ -190,6 +192,7 @@ function buildPlaceholderValues(params: {
     FINDINGS: params.ragFindings || "Aucun élément RAG disponible.",
     BIA: params.biaSummary || "Aucune synthèse BIA disponible.",
     RISQUES: params.riskSummary || "Aucune synthèse des risques disponible.",
+    FINANCES: params.financialSummary || "Aucune estimation financière disponible.",
   };
 }
 
@@ -237,12 +240,15 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
   const highCrit = services.filter((s) => s.criticality === "high" && s.continuity);
   const targetRto = Math.min(...highCrit.map((s) => s.continuity?.rtoHours || 24), 24);
   const targetRpo = Math.min(...highCrit.map((s) => s.continuity?.rpoMinutes || 60), 60);
+  const budget = defaultBudgetForCriticality(highCrit.length > 0 ? "high" : "medium");
   const praRecs = recommendPraOptions({
     environment: "cloud",
     maxRtoHours: Number.isFinite(targetRto) ? targetRto : 4,
     maxRpoMinutes: Number.isFinite(targetRpo) ? targetRpo : 60,
     criticality: highCrit.length > 0 ? "high" : "medium",
-    budgetLevel: "medium",
+    budgetCapex: budget.capex,
+    budgetOpexMonthly: budget.opexMonthly,
+    budgetCurrency: budget.currency,
     complexityTolerance: "medium",
   });
 
@@ -328,6 +334,12 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
           )
           .join("\n")
       : "- Aucun risque prioritaire identifié.";
+  const financialSummary = [
+    `Budget de référence : ${formatCostEstimate(budget)}`,
+    topRec
+      ? `Option prioritaire : ${topRec.name} — ${formatCostEstimate(topRec.pattern.costEstimate)}`
+      : "Option prioritaire : aucune recommandation calculée.",
+  ].join("\n");
 
   const placeholderValues = buildPlaceholderValues({
     servicesList,
@@ -351,6 +363,7 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
       "Priorités risques :",
       riskSummaryLines,
     ].join("\n"),
+    financialSummary,
   });
 
   const baseMarkdown = [
@@ -379,6 +392,9 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     "",
     "## Synthèse des risques",
     placeholderValues.RISQUES,
+    "",
+    "## Volet financier (estimations)",
+    placeholderValues.FINANCES,
     "",
     "## Recommandation PRA priorisée",
     topRec

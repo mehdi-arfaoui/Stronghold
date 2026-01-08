@@ -1,3 +1,9 @@
+import {
+  CostEstimate,
+  defaultBudgetForCriticality,
+  formatCostEstimate,
+} from "./financialModels";
+
 export type CriticalityLevel = "critical" | "high" | "medium" | "low";
 
 export type DependencyEdge = {
@@ -22,7 +28,7 @@ export type DrScenario = {
   description: string;
   rtoRangeHours: [number, number];
   rpoRangeMinutes: [number, number];
-  cost: "low" | "medium" | "high";
+  cost: CostEstimate;
   complexity: "low" | "medium" | "high";
   suitableFor: CriticalityLevel[];
   notes: string;
@@ -45,7 +51,7 @@ const SCENARIOS: DrScenario[] = [
       "Sauvegardes complètes ou incrémentales avec restauration après sinistre. RTO/RPO plus longs mais coût réduit.",
     rtoRangeHours: [24, 72],
     rpoRangeMinutes: [60, 1440],
-    cost: "low",
+    cost: { capex: 8000, opexMonthly: 700, currency: "EUR" },
     complexity: "low",
     suitableFor: ["low", "medium"],
     notes: "Adapté aux services non critiques avec tolérance aux interruptions.",
@@ -58,7 +64,7 @@ const SCENARIOS: DrScenario[] = [
       "Composants critiques (bases, config) toujours prêts sur le site de secours, montée en charge lors de l'incident.",
     rtoRangeHours: [4, 24],
     rpoRangeMinutes: [15, 120],
-    cost: "medium",
+    cost: { capex: 18000, opexMonthly: 1800, currency: "EUR" },
     complexity: "medium",
     suitableFor: ["medium", "high", "critical"],
     notes: "Compromis coût/rapidité, bonne base pour workloads critiques modérées.",
@@ -71,7 +77,7 @@ const SCENARIOS: DrScenario[] = [
       "Environnement partiel actif avec capacité réduite, bascule rapide et scale-out durant le sinistre.",
     rtoRangeHours: [1, 4],
     rpoRangeMinutes: [5, 60],
-    cost: "high",
+    cost: { capex: 42000, opexMonthly: 5200, currency: "EUR" },
     complexity: "medium",
     suitableFor: ["high", "critical"],
     notes: "Restauration rapide pour services critiques avec budget significatif.",
@@ -84,7 +90,7 @@ const SCENARIOS: DrScenario[] = [
       "Sites ou régions servent le trafic simultanément avec réplication synchrone ou quasi temps réel.",
     rtoRangeHours: [0, 1],
     rpoRangeMinutes: [0, 5],
-    cost: "high",
+    cost: { capex: 120000, opexMonthly: 15000, currency: "EUR" },
     complexity: "high",
     suitableFor: ["critical"],
     notes: "Résilience maximale, nécessite budget et expertise élevés.",
@@ -97,7 +103,7 @@ const SCENARIOS: DrScenario[] = [
       "Environnement secondaire passif répliqué en continu (bases, stockage) avec bascule orchestrée.",
     rtoRangeHours: [1, 6],
     rpoRangeMinutes: [1, 30],
-    cost: "medium",
+    cost: { capex: 32000, opexMonthly: 3400, currency: "EUR" },
     complexity: "medium",
     suitableFor: ["high", "critical"],
     notes: "Bon compromis pour workloads critiques sans aller jusqu'à l'active-active.",
@@ -111,7 +117,7 @@ const SCENARIOS: DrScenario[] = [
       "Déploiement multi-zone avec réplication synchronisée ou quasi temps réel, bascule orchestrée (active/passive).",
     rtoRangeHours: [0.25, 2],
     rpoRangeMinutes: [1, 30],
-    cost: "medium",
+    cost: { capex: 26000, opexMonthly: 2800, currency: "EUR" },
     complexity: "medium",
     suitableFor: ["high", "critical"],
     notes:
@@ -126,7 +132,7 @@ const SCENARIOS: DrScenario[] = [
       "Capture et réplication continue des journaux/transactions pour limiter la perte de données.",
     rtoRangeHours: [1, 8],
     rpoRangeMinutes: [0, 10],
-    cost: "medium",
+    cost: { capex: 22000, opexMonthly: 4100, currency: "EUR" },
     complexity: "high",
     suitableFor: ["high", "critical"],
     notes: "Approprié quand le RPO doit être quasi nul sur des données sensibles.",
@@ -155,8 +161,17 @@ function scoreRtoRpo(targetRto: number, targetRpo: number, scenario: DrScenario)
   return score;
 }
 
-function costPenalty(criticity: CriticalityLevel, cost: DrScenario["cost"]): number {
-  if ((criticity === "low" || criticity === "medium") && cost === "high") return 2;
+function costPenalty(
+  criticity: CriticalityLevel,
+  cost: DrScenario["cost"],
+  budget?: CostEstimate
+): number {
+  const target = budget ?? defaultBudgetForCriticality(criticity);
+  const capexRatio = target.capex > 0 ? cost.capex / target.capex : 0;
+  const opexRatio = target.opexMonthly > 0 ? cost.opexMonthly / target.opexMonthly : 0;
+
+  if (capexRatio > 1.6 || opexRatio > 1.6) return 4;
+  if (capexRatio > 1.3 || opexRatio > 1.3) return 2;
   return 0;
 }
 
@@ -165,10 +180,17 @@ function complexityPenalty(complexity: DrScenario["complexity"]): number {
   return complexity === "medium" ? 1 : 0;
 }
 
-function formatRationaleSummary(scenario: DrScenario, rationale: string[], targetRto: number, targetRpo: number) {
+function formatRationaleSummary(
+  scenario: DrScenario,
+  rationale: string[],
+  targetRto: number,
+  targetRpo: number
+) {
   const base = `${scenario.label} (${scenario.rtoRangeHours[0]}-${scenario.rtoRangeHours[1]}h / ${scenario.rpoRangeMinutes[0]}-${scenario.rpoRangeMinutes[1]}min)`;
   if (rationale.length === 0) {
-    return `${base} correspond aux objectifs ${targetRto}h/${targetRpo}min avec un coût ${scenario.cost} et une complexité ${scenario.complexity}.`;
+    return `${base} correspond aux objectifs ${targetRto}h/${targetRpo}min avec un coût ${formatCostEstimate(
+      scenario.cost
+    )} et une complexité ${scenario.complexity}.`;
   }
   return `${base} : ${rationale.join("; ")}`;
 }
@@ -184,7 +206,8 @@ export function getSuggestedDRStrategy(
   dependencies: DependencyEdge[],
   targetRtoHours: number,
   targetRpoMinutes: number,
-  globalCriticality: CriticalityLevel
+  globalCriticality: CriticalityLevel,
+  budget?: CostEstimate
 ): DrRecommendation[] {
   const critCounts: Record<CriticalityLevel, number> = { critical: 0, high: 0, medium: 0, low: 0 };
   services.forEach((s) => {
@@ -211,9 +234,9 @@ export function getSuggestedDRStrategy(
       score += 2;
     }
 
-    const costScore = costPenalty(globalCriticality, scenario.cost);
+    const costScore = costPenalty(globalCriticality, scenario.cost, budget);
     if (costScore > 0) {
-      rationale.push(`Coût ${scenario.cost} potentiellement surdimensionné.`);
+      rationale.push(`Coût ${formatCostEstimate(scenario.cost)} potentiellement surdimensionné.`);
       score += costScore;
     }
 
@@ -257,12 +280,12 @@ export function getSuggestedDRStrategy(
 
 export function summarizeScenarioForTable(rec: DrRecommendation) {
   const { scenario } = rec;
-  return {
-    id: scenario.id,
-    label: scenario.label,
-    rto: `${scenario.rtoRangeHours[0]}-${scenario.rtoRangeHours[1]} h`,
-    rpo: `${scenario.rpoRangeMinutes[0]}-${scenario.rpoRangeMinutes[1]} min`,
-    cost: scenario.cost,
+    return {
+      id: scenario.id,
+      label: scenario.label,
+      rto: `${scenario.rtoRangeHours[0]}-${scenario.rtoRangeHours[1]} h`,
+      rpo: `${scenario.rpoRangeMinutes[0]}-${scenario.rpoRangeMinutes[1]} min`,
+      cost: scenario.cost,
     complexity: scenario.complexity,
     description: scenario.description,
     notes: scenario.notes,

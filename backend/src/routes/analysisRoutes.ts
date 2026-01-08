@@ -7,6 +7,11 @@ import {
   getSuggestedDRStrategy,
   summarizeScenarioForTable,
 } from "../analysis/drStrategyEngine";
+import {
+  budgetFromLevel,
+  defaultBudgetForCriticality,
+  formatCostEstimate,
+} from "../analysis/financialModels";
 import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
 import { buildMaturityScore } from "../analysis/maturityScore";
 import { buildNextActions } from "../analysis/nextActions";
@@ -206,6 +211,45 @@ async function buildPraReportText(tenantId: string) {
     for (const risk of riskSummary.priorities) {
       text += `- ${risk.title} (score ${risk.score}, niveau ${risk.level})\n`;
     }
+  }
+
+  const drServices = services.map((s) => ({
+    id: s.id,
+    name: s.name,
+    type: s.type,
+    domain: s.domain,
+    criticality: s.criticality,
+    rtoHours: s.continuity?.rtoHours ?? undefined,
+    rpoMinutes: s.continuity?.rpoMinutes ?? undefined,
+  }));
+  const dependencies = services.flatMap((s) =>
+    s.dependenciesFrom.map((d: any) => ({
+      from: d.fromServiceId,
+      to: d.toServiceId,
+      type: d.dependencyType,
+    }))
+  );
+  const { globalCriticality, targetRtoHours, targetRpoMinutes } = computeTargetObjectives(services);
+  const budget = defaultBudgetForCriticality(globalCriticality);
+  const drRecommendations = getSuggestedDRStrategy(
+    drServices,
+    dependencies,
+    targetRtoHours,
+    targetRpoMinutes,
+    globalCriticality,
+    budget
+  );
+
+  text += "\n7. Volet financier (estimations)\n";
+  text += "--------------------------------\n";
+  text += `Budget de référence : ${formatCostEstimate(budget)}\n`;
+  if (drRecommendations.length === 0) {
+    text += "Aucune stratégie DR évaluée.\n";
+  } else {
+    text += "Scénarios DR prioritaires :\n";
+    drRecommendations.slice(0, 3).forEach((rec) => {
+      text += `- ${rec.scenario.label} : ${formatCostEstimate(rec.scenario.cost)}\n`;
+    });
   }
 
   return text;
@@ -862,6 +906,9 @@ router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, re
       maxRpoMinutes,
       criticality,
       budgetLevel,
+      budgetCapex,
+      budgetOpexMonthly,
+      budgetCurrency,
       complexityTolerance,
     } = req.body || {};
 
@@ -873,11 +920,6 @@ router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, re
         ? criticality
         : "high";
 
-    const budget: "low" | "medium" | "high" =
-      budgetLevel === "low" || budgetLevel === "medium" || budgetLevel === "high"
-        ? budgetLevel
-        : "medium";
-
     const cxTol: "low" | "medium" | "high" =
       complexityTolerance === "low" ||
       complexityTolerance === "medium" ||
@@ -887,13 +929,29 @@ router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, re
 
     const rto = maxRtoHours != null ? Number(maxRtoHours) : 4;
     const rpo = maxRpoMinutes != null ? Number(maxRpoMinutes) : 60;
+    const resolvedBudget =
+      budgetLevel === "low" || budgetLevel === "medium" || budgetLevel === "high"
+        ? budgetFromLevel(budgetLevel)
+        : defaultBudgetForCriticality(crit);
+    const resolvedBudgetCapex = Number.isFinite(Number(budgetCapex))
+      ? Number(budgetCapex)
+      : resolvedBudget.capex;
+    const resolvedBudgetOpex = Number.isFinite(Number(budgetOpexMonthly))
+      ? Number(budgetOpexMonthly)
+      : resolvedBudget.opexMonthly;
+    const resolvedBudgetCurrency =
+      typeof budgetCurrency === "string" && budgetCurrency.trim().length > 0
+        ? budgetCurrency
+        : resolvedBudget.currency;
 
     const input = {
       environment: env,
       maxRtoHours: rto,
       maxRpoMinutes: rpo,
       criticality: crit,
-      budgetLevel: budget,
+      budgetCapex: resolvedBudgetCapex,
+      budgetOpexMonthly: resolvedBudgetOpex,
+      budgetCurrency: resolvedBudgetCurrency,
       complexityTolerance: cxTol,
     } as const;
 
@@ -1025,12 +1083,15 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
     if (hasCloud && hasOnPrem) env = "hybrid";
     else if (!hasCloud && hasOnPrem) env = "onprem";
 
+    const defaultBudget = budgetFromLevel("medium");
     const praInput = {
       environment: env,
       maxRtoHours: effectiveRto,
       maxRpoMinutes: effectiveRpo,
       criticality: highCritServices.length > 0 ? "high" : "medium",
-      budgetLevel: "medium",
+      budgetCapex: defaultBudget.capex,
+      budgetOpexMonthly: defaultBudget.opexMonthly,
+      budgetCurrency: defaultBudget.currency,
       complexityTolerance: "medium",
     } as const;
 
@@ -1059,7 +1120,12 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
       drStrategyDeps,
       praInput.maxRtoHours,
       praInput.maxRpoMinutes,
-      praInput.criticality
+      praInput.criticality,
+      {
+        capex: praInput.budgetCapex,
+        opexMonthly: praInput.budgetOpexMonthly,
+        currency: praInput.budgetCurrency || "EUR",
+      }
     );
 
     const ragQuestion =
@@ -1204,6 +1270,28 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
             summary: summarizeScenarioForTable(rec),
           })),
         },
+      },
+      financials: {
+        budget: {
+          capex: praInput.budgetCapex,
+          opexMonthly: praInput.budgetOpexMonthly,
+          currency: praInput.budgetCurrency || "EUR",
+        },
+        drScenarios: drSuggestions.map((rec) => ({
+          id: rec.scenario.id,
+          label: rec.scenario.label,
+          cost: rec.scenario.cost,
+          costLabel: formatCostEstimate(rec.scenario.cost),
+          score: rec.score,
+        })),
+        praPatterns: praRecs.slice(0, 5).map((rec) => ({
+          id: rec.pattern.id,
+          name: rec.pattern.name,
+          cost: rec.pattern.costEstimate,
+          costLabel: formatCostEstimate(rec.pattern.costEstimate),
+          score: rec.score,
+          suitability: rec.suitability,
+        })),
       },
       ragSupport: {
         question: ragQuestion,

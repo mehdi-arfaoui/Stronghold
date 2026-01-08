@@ -1,3 +1,5 @@
+import { CostEstimate, formatCostEstimate } from "./financialModels";
+
 export type EnvironmentType = "cloud" | "onprem" | "hybrid";
 export type Level = "low" | "medium" | "high";
 
@@ -6,7 +8,9 @@ export interface PRARecommendationInput {
   maxRtoHours: number;      // RTO cible max (plus petit = plus ambitieux)
   maxRpoMinutes: number;    // RPO cible max
   criticality: Level;       // criticité globale de la charge
-  budgetLevel: Level;       // ce que le client est prêt à investir
+  budgetCapex: number;      // budget capex disponible
+  budgetOpexMonthly: number; // budget opex mensuel
+  budgetCurrency?: string;
   complexityTolerance: Level; // capacité à gérer une archi complexe
 }
 
@@ -17,7 +21,7 @@ export interface PRAOptionPattern {
   typicalRtoRangeHours: [number, number];   // [min, max]
   typicalRpoRangeMinutes: [number, number]; // [min, max]
   suitableCriticality: Level[];            // criticité pour laquelle c'est pertinent
-  costLevel: Level;                        // coût global (infra + ops)
+  costEstimate: CostEstimate;              // coût global (infra + ops)
   complexityLevel: Level;                  // complexité d'implémentation
   bestForEnvironments: EnvironmentType[];  // où ce pattern est le plus naturel
   pros: string[];
@@ -46,7 +50,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [24, 72],
     typicalRpoRangeMinutes: [60, 1440],
     suitableCriticality: ["low", "medium"],
-    costLevel: "low",
+    costEstimate: { capex: 9000, opexMonthly: 900, currency: "EUR" },
     complexityLevel: "low",
     bestForEnvironments: ["onprem", "cloud", "hybrid"],
     pros: [
@@ -77,7 +81,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [0.1, 4],
     typicalRpoRangeMinutes: [1, 60],
     suitableCriticality: ["medium", "high"],
-    costLevel: "medium",
+    costEstimate: { capex: 20000, opexMonthly: 2200, currency: "EUR" },
     complexityLevel: "medium",
     bestForEnvironments: ["onprem", "cloud"],
     pros: [
@@ -104,7 +108,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [4, 24],
     typicalRpoRangeMinutes: [15, 120],
     suitableCriticality: ["medium", "high"],
-    costLevel: "medium",
+    costEstimate: { capex: 18000, opexMonthly: 1900, currency: "EUR" },
     complexityLevel: "medium",
     bestForEnvironments: ["cloud", "hybrid"],
     pros: [
@@ -132,7 +136,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [1, 4],
     typicalRpoRangeMinutes: [5, 60],
     suitableCriticality: ["high"],
-    costLevel: "high",
+    costEstimate: { capex: 48000, opexMonthly: 5200, currency: "EUR" },
     complexityLevel: "medium",
     bestForEnvironments: ["cloud", "hybrid", "onprem"],
     pros: [
@@ -148,7 +152,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
       "Portails clients critiques avec charge modérée",
     ],
     notRecommendedWhen: [
-      "Budget limité (budgetLevel = low)",
+      "Budget CAPEX/OPEX limité",
     ],
   },
   {
@@ -159,7 +163,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [0, 1],
     typicalRpoRangeMinutes: [0, 5],
     suitableCriticality: ["high"],
-    costLevel: "high",
+    costEstimate: { capex: 120000, opexMonthly: 15000, currency: "EUR" },
     complexityLevel: "high",
     bestForEnvironments: ["cloud", "hybrid", "onprem"],
     pros: [
@@ -176,7 +180,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
       "Plateformes e-commerce mondiales",
     ],
     notRecommendedWhen: [
-      "BudgetLevel = low ou medium sans justification très forte",
+      "Budget CAPEX/OPEX low ou medium sans justification forte",
       "Données difficiles à répliquer en temps réel",
     ],
   },
@@ -188,7 +192,7 @@ export const PRA_PATTERNS: PRAOptionPattern[] = [
     typicalRtoRangeHours: [24, 168],
     typicalRpoRangeMinutes: [1440, 10080],
     suitableCriticality: ["low"],
-    costLevel: "low",
+    costEstimate: { capex: 7000, opexMonthly: 1100, currency: "EUR" },
     complexityLevel: "medium",
     bestForEnvironments: ["onprem", "hybrid"],
     pros: [
@@ -273,22 +277,25 @@ export function recommendPraOptions(
     );
 
     // Budget
-    const cost = pattern.costLevel;
-    if (input.budgetLevel === "low" && cost === "high") {
-      score += penalty(
-        true,
-        4,
-        reasons,
-        `Coût estimé du pattern (${cost}) trop élevé pour un budget LOW.`
-      );
-    } else if (input.budgetLevel === "medium" && cost === "high") {
-      score += penalty(
-        true,
-        2,
-        reasons,
-        `Coût estimé du pattern (${cost}) potentiellement élevé pour un budget MEDIUM.`
-      );
-    }
+    const cost = pattern.costEstimate;
+    const budgetCapex = input.budgetCapex;
+    const budgetOpex = input.budgetOpexMonthly;
+    const capexRatio = budgetCapex > 0 ? cost.capex / budgetCapex : 0;
+    const opexRatio = budgetOpex > 0 ? cost.opexMonthly / budgetOpex : 0;
+    const costLabel = formatCostEstimate(cost);
+
+    score += penalty(
+      capexRatio > 1.5 || opexRatio > 1.5,
+      4,
+      reasons,
+      `Coût estimé du pattern (${costLabel}) très élevé vs budget (CAPEX ${budgetCapex} / OPEX ${budgetOpex}).`
+    );
+    score += penalty(
+      (capexRatio > 1.2 && capexRatio <= 1.5) || (opexRatio > 1.2 && opexRatio <= 1.5),
+      2,
+      reasons,
+      `Coût estimé du pattern (${costLabel}) potentiellement élevé vs budget CAPEX/OPEX.`
+    );
 
     // Complexité
     const complexity = pattern.complexityLevel;

@@ -510,6 +510,12 @@ export type RagScenarioFront = {
   matchedServices: string[];
 };
 
+export type CostEstimate = {
+  capex: number;
+  opexMonthly: number;
+  currency: string;
+};
+
 export type PraRagReport = {
   prompt: string;
   promptSize: number;
@@ -526,7 +532,7 @@ export type DrRecommendationFront = {
     description: string;
     rtoRangeHours: [number, number];
     rpoRangeMinutes: [number, number];
-    cost: string;
+    cost: CostEstimate;
     complexity: string;
     suitableFor: string[];
     notes: string;
@@ -570,7 +576,7 @@ export type PraDashboard = {
       label: string;
       rto: string;
       rpo: string;
-      cost: string;
+      cost: CostEstimate;
       complexity: string;
       description: string;
       notes: string;
