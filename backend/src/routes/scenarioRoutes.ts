@@ -25,25 +25,49 @@ router.get("/", async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const scenarios = await prisma.scenario.findMany({
-      where: { tenantId },
-      include: {
-        services: {
-          include: {
-            service: true,
+    const issues: { field: string; message: string }[] = [];
+    const limit = parseOptionalNumber(req.query.limit, "limit", issues, { min: 1 });
+    const offset = parseOptionalNumber(req.query.offset, "offset", issues, { min: 0 });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const shouldPaginate = limit !== undefined || offset !== undefined;
+    const take = limit ?? 10;
+    const skip = offset ?? 0;
+
+    const [scenarios, total] = await Promise.all([
+      prisma.scenario.findMany({
+        where: { tenantId },
+        include: {
+          services: {
+            include: {
+              service: true,
+            },
+          },
+          catalogScenario: true,
+          steps: {
+            orderBy: {
+              order: "asc",
+            },
           },
         },
-        catalogScenario: true,
-        steps: {
-          orderBy: {
-            order: "asc",
-          },
+        orderBy: {
+          createdAt: "desc",
         },
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+        ...(shouldPaginate ? { take, skip } : {}),
+      }),
+      shouldPaginate ? prisma.scenario.count({ where: { tenantId } }) : Promise.resolve(0),
+    ]);
+
+    if (shouldPaginate) {
+      return res.json({
+        items: scenarios,
+        total,
+        limit: take,
+        offset: skip,
+      });
+    }
 
     return res.json(scenarios);
   } catch (error) {

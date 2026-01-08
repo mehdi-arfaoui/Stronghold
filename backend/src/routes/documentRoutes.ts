@@ -9,6 +9,7 @@ import { ingestDocumentText } from "../services/documentIngestionService";
 import { retentionConfig } from "../config/observability";
 import {
   buildValidationError,
+  parseOptionalNumber,
   parseOptionalString,
   parseRequiredString,
 } from "../validation/common";
@@ -139,10 +140,25 @@ router.get("/", async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const docs = await prisma.document.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: "desc" },
-    });
+    const issues: { field: string; message: string }[] = [];
+    const limit = parseOptionalNumber(req.query.limit, "limit", issues, { min: 1 });
+    const offset = parseOptionalNumber(req.query.offset, "offset", issues, { min: 0 });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const shouldPaginate = limit !== undefined || offset !== undefined;
+    const take = limit ?? 25;
+    const skip = offset ?? 0;
+
+    const [docs, total] = await Promise.all([
+      prisma.document.findMany({
+        where: { tenantId },
+        orderBy: { createdAt: "desc" },
+        ...(shouldPaginate ? { take, skip } : {}),
+      }),
+      shouldPaginate ? prisma.document.count({ where: { tenantId } }) : Promise.resolve(0),
+    ]);
 
     const docsWithSignedPaths = await Promise.all(
       docs.map(async (doc) => {
@@ -165,6 +181,15 @@ router.get("/", async (req: TenantRequest, res) => {
         }
       })
     );
+
+    if (shouldPaginate) {
+      return res.json({
+        items: docsWithSignedPaths,
+        total,
+        limit: take,
+        offset: skip,
+      });
+    }
 
     return res.json(docsWithSignedPaths);
   } catch (error) {

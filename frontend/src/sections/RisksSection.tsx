@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { Risk, RiskMatrixResponse, Service } from "../types";
+import type { PaginatedResponse, Risk, RiskMatrixResponse, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface RisksSectionProps {
@@ -25,6 +25,8 @@ const STATUS_VALUES = [
   { value: "closed", label: "Clos" },
 ];
 
+const PAGE_SIZE = 20;
+
 const defaultRiskDraft = {
   title: "",
   threatType: "cyber",
@@ -41,27 +43,40 @@ const defaultRiskDraft = {
 export function RisksSection({ configVersion }: RisksSectionProps) {
   const [services, setServices] = useState<Service[]>([]);
   const [risks, setRisks] = useState<Risk[]>([]);
+  const [totalRisks, setTotalRisks] = useState(0);
   const [matrix, setMatrix] = useState<RiskMatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [draft, setDraft] = useState({ ...defaultRiskDraft });
   const [mitigationDrafts, setMitigationDrafts] = useState<Record<string, string>>({});
   const [mitigationError, setMitigationError] = useState<string | null>(null);
 
+  const loadRisks = async (offset = 0, append = false) => {
+    const data = (await apiFetch(
+      `/risks?limit=${PAGE_SIZE}&offset=${offset}`
+    )) as PaginatedResponse<Risk> | Risk[];
+    const items = Array.isArray(data) ? data : data.items;
+    const total = Array.isArray(data) ? data.length : data.total;
+    setRisks((current) => (append ? [...current, ...items] : items));
+    setTotalRisks(total);
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [servicesData, risksData, matrixData] = await Promise.all([
+      setLoadMoreError(null);
+      const [servicesData, matrixData] = await Promise.all([
         apiFetch("/services"),
-        apiFetch("/risks"),
         apiFetch("/risks/matrix"),
       ]);
       setServices(servicesData);
-      setRisks(risksData);
       setMatrix(matrixData);
+      await loadRisks(0, false);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
     } finally {
@@ -154,7 +169,7 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
     return Array.from(groups.entries());
   }, [risks]);
 
-  const progressValue = Math.min(100, risks.length * 10);
+  const progressValue = Math.min(100, totalRisks * 10);
 
   if (loading) {
     return <div className="panel">Chargement des risques...</div>;
@@ -192,7 +207,7 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
         ]}
         progress={{
           value: progressValue,
-          label: `${risks.length} risques recensés`,
+          label: `${totalRisks} risques recensés`,
         }}
       />
 
@@ -393,68 +408,98 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
         {groupedRisks.length === 0 ? (
           <p className="muted">Aucun risque enregistré.</p>
         ) : (
-          groupedRisks.map(([groupLabel, groupRisks]) => (
-            <div key={groupLabel} className="risk-group">
-              <h4>{groupLabel}</h4>
-              <div className="table-wrapper">
-                <table className="data-table">
-                  <thead>
-                    <tr>
-                      <th>Risque</th>
-                      <th>Type</th>
-                      <th>Score</th>
-                      <th>Statut</th>
-                      <th>Mitigations</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {groupRisks.map((risk) => (
-                      <tr key={risk.id}>
-                        <td>
-                          <div className="risk-title">{risk.title}</div>
-                          {risk.description && <div className="muted small">{risk.description}</div>}
-                        </td>
-                        <td>{risk.threatType}</td>
-                        <td>
-                          <span className={`pill ${risk.level}`}>{risk.score}</span>
-                        </td>
-                        <td>{risk.status || "--"}</td>
-                        <td>
-                          {risk.mitigations.length > 0 ? (
-                            <ul className="risk-mitigations">
-                              {risk.mitigations.map((mitigation) => (
-                                <li key={mitigation.id}>{mitigation.description}</li>
-                              ))}
-                            </ul>
-                          ) : (
-                            <span className="muted">Aucune mitigation</span>
-                          )}
-                          <form
-                            className="risk-mitigation-form"
-                            onSubmit={(event) => handleMitigationSubmit(risk.id, event)}
-                          >
-                            <input
-                              value={mitigationDrafts[risk.id] || ""}
-                              onChange={(event) =>
-                                setMitigationDrafts((current) => ({
-                                  ...current,
-                                  [risk.id]: event.target.value,
-                                }))
-                              }
-                              placeholder="Ajouter une mitigation"
-                            />
-                            <button className="btn subtle" type="submit">
-                              Ajouter
-                            </button>
-                          </form>
-                        </td>
+          <>
+            {groupedRisks.map(([groupLabel, groupRisks]) => (
+              <div key={groupLabel} className="risk-group">
+                <h4>{groupLabel}</h4>
+                <div className="table-wrapper">
+                  <table className="data-table">
+                    <thead>
+                      <tr>
+                        <th>Risque</th>
+                        <th>Type</th>
+                        <th>Score</th>
+                        <th>Statut</th>
+                        <th>Mitigations</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {groupRisks.map((risk) => (
+                        <tr key={risk.id}>
+                          <td>
+                            <div className="risk-title">{risk.title}</div>
+                            {risk.description && (
+                              <div className="muted small">{risk.description}</div>
+                            )}
+                          </td>
+                          <td>{risk.threatType}</td>
+                          <td>
+                            <span className={`pill ${risk.level}`}>{risk.score}</span>
+                          </td>
+                          <td>{risk.status || "--"}</td>
+                          <td>
+                            {risk.mitigations.length > 0 ? (
+                              <ul className="risk-mitigations">
+                                {risk.mitigations.map((mitigation) => (
+                                  <li key={mitigation.id}>{mitigation.description}</li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <span className="muted">Aucune mitigation</span>
+                            )}
+                            <form
+                              className="risk-mitigation-form"
+                              onSubmit={(event) => handleMitigationSubmit(risk.id, event)}
+                            >
+                              <input
+                                value={mitigationDrafts[risk.id] || ""}
+                                onChange={(event) =>
+                                  setMitigationDrafts((current) => ({
+                                    ...current,
+                                    [risk.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder="Ajouter une mitigation"
+                              />
+                              <button className="btn subtle" type="submit">
+                                Ajouter
+                              </button>
+                            </form>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
-          ))
+            ))}
+            {totalRisks > risks.length && (
+              <div className="form-actions" style={{ justifyContent: "center" }}>
+                <button
+                  className="btn"
+                  type="button"
+                  disabled={loadingMore}
+                  onClick={async () => {
+                    setLoadingMore(true);
+                    setLoadMoreError(null);
+                    try {
+                      await loadRisks(risks.length, true);
+                    } catch (err: any) {
+                      setLoadMoreError(err.message || "Erreur lors du chargement");
+                    } finally {
+                      setLoadingMore(false);
+                    }
+                  }}
+                >
+                  {loadingMore ? "Chargement..." : "Charger plus de risques"}
+                </button>
+                <span className="helper muted">
+                  Affichés {risks.length} sur {totalRisks}
+                </span>
+                {loadMoreError && <span className="helper error">{loadMoreError}</span>}
+              </div>
+            )}
+          </>
         )}
       </section>
     </>
