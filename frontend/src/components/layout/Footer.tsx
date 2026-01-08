@@ -1,11 +1,11 @@
+import { NavLink as RouterNavLink } from "react-router-dom";
 import type { NavLink } from "../navigation/NavMenu";
 
 interface FooterProps {
   links: NavLink[];
-  onNavigate: (id: string) => void;
 }
 
-export function Footer({ links, onNavigate }: FooterProps) {
+export function Footer({ links }: FooterProps) {
   return (
     <footer className="site-footer" aria-labelledby="footer-title">
       <div className="footer-inner">
@@ -21,9 +21,7 @@ export function Footer({ links, onNavigate }: FooterProps) {
           <ul>
             {links.map((link) => (
               <li key={link.id}>
-                <a href={link.href} onClick={() => onNavigate(link.id)}>
-                  {link.label}
-                </a>
+                <RouterNavLink to={link.to}>{link.label}</RouterNavLink>
               </li>
             ))}
           </ul>

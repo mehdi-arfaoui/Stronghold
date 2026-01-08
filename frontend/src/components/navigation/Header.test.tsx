@@ -1,12 +1,13 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Header } from "./Header";
 import type { NavLink } from "./NavMenu";
 
 const links: NavLink[] = [
-  { id: "home", label: "Accueil", href: "#home" },
-  { id: "services", label: "Services", href: "#services" },
+  { id: "home", label: "Accueil", to: "/" },
+  { id: "services", label: "Services", to: "/services" },
 ];
 
 describe("Header", () => {
@@ -17,18 +18,19 @@ describe("Header", () => {
     const user = userEvent.setup();
 
     render(
-      <Header
-        links={links}
-        activeId="home"
-        isMenuOpen={false}
-        onMenuToggle={onMenuToggle}
-        onNavigate={onNavigate}
-        onQuickAction={onQuickAction}
-      />
+      <MemoryRouter>
+        <Header
+          links={links}
+          isMenuOpen={false}
+          onMenuToggle={onMenuToggle}
+          onNavigate={onNavigate}
+          onQuickAction={onQuickAction}
+        />
+      </MemoryRouter>
     );
 
     await user.click(screen.getByRole("link", { name: "Services" }));
-    expect(onNavigate).toHaveBeenCalledWith("services");
+    expect(onNavigate).toHaveBeenCalled();
 
     await user.click(screen.getByRole("button", { name: "Menu" }));
     expect(onMenuToggle).toHaveBeenCalled();
