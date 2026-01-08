@@ -127,6 +127,34 @@ export type Risk = {
     criticality: string;
   } | null;
   mitigations: RiskMitigation[];
+};
+
+export type RiskSummary = {
+  meta: { tenantId: string };
+  totals: {
+    count: number;
+    byLevel: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+    };
+    mitigationCoverage: number;
+  };
+  priorities: Array<{
+    id: string;
+    title: string;
+    score: number;
+    level: string;
+    probability: number;
+    impact: number;
+    status?: string | null;
+    owner?: string | null;
+    serviceName?: string | null;
+    processName?: string | null;
+    mitigations: number;
+  }>;
+};
 export type BusinessProcessServiceLink = {
   id: string;
   serviceId: string;
@@ -176,6 +204,40 @@ export type RiskMatrixResponse = {
   scale: { probability: number[]; impact: number[] };
   cells: RiskMatrixCell[];
   totalRisks: number;
+};
+
+export type BiaSummary = {
+  meta: { tenantId: string };
+  totals: {
+    processes: number;
+    linkedServices: number;
+  };
+  averages: {
+    impactScore: number;
+    timeScore: number;
+    criticalityScore: number;
+  };
+  priorities: Array<{
+    id: string;
+    name: string;
+    impactScore: number;
+    timeScore: number;
+    criticalityScore: number;
+    rtoHours: number;
+    rpoMinutes: number;
+    mtpdHours: number;
+    services: string[];
+  }>;
+  matrix: {
+    impactScale: number[];
+    timeScale: number[];
+    cells: Array<{
+      impact: number;
+      time: number;
+      count: number;
+      processes: Array<{ id: string; name: string; criticalityScore: number }>;
+    }>;
+  };
 };
 
 export type AppWarning = {

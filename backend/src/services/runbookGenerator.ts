@@ -6,6 +6,8 @@ import type { RunbookTemplate } from "@prisma/client";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService";
 import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client";
+import { buildBiaSummary } from "./biaSummary";
+import { buildRiskSummary } from "./riskSummary";
 
 export interface RunbookGenerationOptions {
   scenarioId?: string | null;
@@ -170,6 +172,8 @@ function buildPlaceholderValues(params: {
   policiesList: string;
   scenarioSteps: string;
   ragFindings: string;
+  biaSummary: string;
+  riskSummary: string;
 }) {
   const depsCombined = [params.depsList || "", params.cycleList ? `Cycles critiques:\n${params.cycleList}` : ""]
     .filter((part) => part && part.trim().length > 0)
@@ -184,6 +188,8 @@ function buildPlaceholderValues(params: {
     POLITIQUES: params.policiesList || "Aucune politique de sécurité liée.",
     ETAPES: params.scenarioSteps || "Pas d'étapes spécifiques.",
     FINDINGS: params.ragFindings || "Aucun élément RAG disponible.",
+    BIA: params.biaSummary || "Aucune synthèse BIA disponible.",
+    RISQUES: params.riskSummary || "Aucune synthèse des risques disponible.",
   };
 }
 
@@ -200,7 +206,8 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
       })
     : null;
 
-  const [tenant, services, dependencies, backupStrategies, policies, cycles, template] = await Promise.all([
+  const [tenant, services, dependencies, backupStrategies, policies, cycles, template, biaSummary, riskSummary] =
+    await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),
     prisma.service.findMany({
       where: { tenantId },
@@ -223,6 +230,8 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     options.templateId
       ? prisma.runbookTemplate.findFirst({ where: { id: options.templateId, tenantId } })
       : null,
+    buildBiaSummary(prisma, tenantId),
+    buildRiskSummary(prisma, tenantId),
   ]);
 
   const highCrit = services.filter((s) => s.criticality === "high" && s.continuity);
@@ -300,6 +309,26 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
       : "";
 
   const ragFindings = buildFindingsSummary(ragContextResult.context);
+  const biaSummaryLines =
+    biaSummary.priorities.length > 0
+      ? biaSummary.priorities
+          .map(
+            (process) =>
+              `- ${process.name} (score ${process.criticalityScore}) — RTO ${process.rtoHours}h / RPO ${process.rpoMinutes}min`
+          )
+          .join("\n")
+      : "- Aucun processus prioritaire identifié.";
+  const riskSummaryLines =
+    riskSummary.priorities.length > 0
+      ? riskSummary.priorities
+          .map(
+            (risk) =>
+              `- ${risk.title} (score ${risk.score}, niveau ${risk.level})` +
+              `${risk.serviceName ? ` — service ${risk.serviceName}` : ""}`
+          )
+          .join("\n")
+      : "- Aucun risque prioritaire identifié.";
+
   const placeholderValues = buildPlaceholderValues({
     servicesList,
     depsList,
@@ -310,6 +339,18 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     policiesList,
     scenarioSteps,
     ragFindings,
+    biaSummary: [
+      `Processus recensés : ${biaSummary.totals.processes}`,
+      `Score criticité moyen : ${biaSummary.averages.criticalityScore}`,
+      "Priorités BIA :",
+      biaSummaryLines,
+    ].join("\n"),
+    riskSummary: [
+      `Risques recensés : ${riskSummary.totals.count}`,
+      `Couverture mitigation : ${Math.round(riskSummary.totals.mitigationCoverage * 100)}%`,
+      "Priorités risques :",
+      riskSummaryLines,
+    ].join("\n"),
   });
 
   const baseMarkdown = [
@@ -332,6 +373,12 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     "",
     "## Politiques de sécurité associées",
     placeholderValues.POLITIQUES,
+    "",
+    "## Synthèse BIA",
+    placeholderValues.BIA,
+    "",
+    "## Synthèse des risques",
+    placeholderValues.RISQUES,
     "",
     "## Recommandation PRA priorisée",
     topRec

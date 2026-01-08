@@ -9,6 +9,12 @@ import {
   parseStringArray,
   type ValidationIssue,
 } from "../validation/common";
+import {
+  buildBiaSummary,
+  scoreCriticality,
+  scoreImpact,
+  scoreTimeSensitivity,
+} from "../services/biaSummary";
 
 const router = Router();
 
@@ -36,38 +42,26 @@ const ensureImpactLevel = (
   return parsed;
 };
 
-const scoreImpact = (financial: number, regulatory: number) => {
-  const weighted = financial * 0.6 + regulatory * 0.4;
-  return Number(weighted.toFixed(2));
-};
-
-const scoreByThreshold = (value: number, thresholds: number[]) => {
-  for (let i = 0; i < thresholds.length; i += 1) {
-    if (value <= thresholds[i]) {
-      return thresholds.length - i;
-    }
-  }
-  return 1;
-};
-
-const scoreTimeSensitivity = (rtoHours: number, rpoMinutes: number, mtpdHours: number) => {
-  const rtoScore = scoreByThreshold(rtoHours, [4, 8, 24, 72]);
-  const rpoScore = scoreByThreshold(rpoMinutes, [30, 120, 480, 1440]);
-  const mtpdScore = scoreByThreshold(mtpdHours, [8, 24, 72, 168]);
-  const average = (rtoScore + rpoScore + mtpdScore) / 3;
-  return Number(average.toFixed(2));
-};
-
-const scoreCriticality = (impactScore: number, timeScore: number) => {
-  return Number(((impactScore + timeScore) / 2).toFixed(2));
-};
-
 export const __test__ = {
   scoreImpact,
-  scoreByThreshold,
   scoreTimeSensitivity,
   scoreCriticality,
 };
+
+router.get("/summary", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const summary = await buildBiaSummary(prisma, tenantId);
+    return res.json(summary);
+  } catch (error) {
+    console.error("Error fetching BIA summary", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.post("/processes", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
