@@ -227,8 +227,8 @@ router.post(
       );
       const summary = await applyDiscoveryImport(tenantId, payload);
 
-      const completed = await prisma.discoveryJob.update({
-        where: { id: job.id },
+      await prisma.discoveryJob.updateMany({
+        where: { id: job.id, tenantId },
         data: {
           status: "COMPLETED",
           progress: 100,
@@ -236,6 +236,14 @@ router.post(
           resultSummary: JSON.stringify({ ...summary, importReport: report }),
         },
       });
+
+      const completed = await prisma.discoveryJob.findFirst({
+        where: { id: job.id, tenantId },
+      });
+
+      if (!completed) {
+        return res.status(404).json({ error: "Job de découverte introuvable" });
+      }
 
       return res.status(201).json(buildJobResponse(completed));
     } catch (error) {

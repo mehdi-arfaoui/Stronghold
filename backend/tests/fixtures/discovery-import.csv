@@ -1,0 +1,4 @@
+record_type,id,name,type,source,target,dependency_type
+node,svc-1,Service API,service,,,
+node,db-1,Database,postgres,,,
+edge,,,,svc-1,db-1,connexion

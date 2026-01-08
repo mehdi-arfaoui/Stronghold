@@ -1,0 +1,21 @@
+{
+  "nodes": [
+    {
+      "id": "svc-1",
+      "name": "Service API",
+      "type": "service"
+    },
+    {
+      "id": "db-1",
+      "name": "Database",
+      "type": "postgres"
+    }
+  ],
+  "edges": [
+    {
+      "source": "svc-1",
+      "target": "db-1",
+      "dependency_type": "connexion"
+    }
+  ]
+}
