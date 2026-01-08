@@ -655,6 +655,12 @@ ol {
   border: 1px solid var(--color-neutral-200);
 }
 
+.tag.warning {
+  background: #fff7ed;
+  color: #9a3412;
+  border-color: #fdba74;
+}
+
 .pill {
   display: inline-flex;
   align-items: center;
