@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "analyze": "ANALYZE=true vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest"
@@ -17,8 +18,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-force-graph-2d": "^1.29.0",
-    "react-router-dom": "^6.30.3",
-    "tslib": "^2.8.1"
+    "react-router-dom": "^6.30.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
@@ -37,7 +37,8 @@
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.46.4",
     "vite": "npm:rolldown-vite@7.2.5",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "rollup-plugin-visualizer": "^6.0.3"
   },
   "overrides": {
     "vite": "npm:rolldown-vite@7.2.5"

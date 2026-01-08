@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { DocumentMetadata, DocumentRecord } from "../types";
+import type { DocumentMetadata, DocumentRecord, PaginatedResponse } from "../types";
 import { apiFetch, apiFetchFormData } from "../utils/api";
 
 interface DocumentsSectionProps {
@@ -9,6 +9,7 @@ interface DocumentsSectionProps {
 }
 
 const DOC_TYPES = ["ARCHI", "CMDB", "POLICY", "RUNBOOK", "BACKUP_POLICY", "RISK", "OTHER"];
+const PAGE_SIZE = 12;
 
 function parseMetadata(raw: DocumentRecord["detectedMetadata"]): DocumentMetadata {
   const base: DocumentMetadata = { services: [], slas: [] };
@@ -43,8 +44,11 @@ function formatBytes(size?: number | null) {
 
 export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [totalDocuments, setTotalDocuments] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [file, setFile] = useState<File | null>(null);
@@ -60,21 +64,40 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
   const [deletingDocId, setDeletingDocId] = useState<string | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const loadDocuments = async () => {
+  const loadDocuments = async (offset = 0, append = false) => {
     try {
-      setLoading(true);
-      setError(null);
-      const data = await apiFetch("/documents");
-      setDocuments(data);
+      if (append) {
+        setLoadingMore(true);
+        setLoadMoreError(null);
+      } else {
+        setLoading(true);
+        setError(null);
+        setLoadMoreError(null);
+      }
+      const data = (await apiFetch(
+        `/documents?limit=${PAGE_SIZE}&offset=${offset}`
+      )) as PaginatedResponse<DocumentRecord> | DocumentRecord[];
+      const items = Array.isArray(data) ? data : data.items;
+      const total = Array.isArray(data) ? data.length : data.total;
+      setDocuments((current) => (append ? [...current, ...items] : items));
+      setTotalDocuments(total);
     } catch (err: any) {
-      setError(err.message || "Erreur inconnue");
+      if (append) {
+        setLoadMoreError(err.message || "Erreur inconnue");
+      } else {
+        setError(err.message || "Erreur inconnue");
+      }
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
   useEffect(() => {
-    loadDocuments();
+    loadDocuments(0, false);
   }, [configVersion]);
 
   const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -109,7 +132,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
       }
       setDescription("");
       setFile(null);
-      await loadDocuments();
+      await loadDocuments(0, false);
     } catch (err: any) {
       setUploadError(err.message || "Échec de l'upload");
     } finally {
@@ -122,7 +145,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     setActionMessage(null);
     try {
       await apiFetch(`/documents/${documentId}/extract`, { method: "POST" });
-      await loadDocuments();
+      await loadDocuments(0, false);
       setActionMessage("Extraction lancée pour le document sélectionné.");
     } catch (err: any) {
       setUploadError(err.message || "Impossible de lancer l'extraction");
@@ -133,7 +156,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     setActionMessage(null);
     try {
       const result = await apiFetch("/documents/extract-all-pending", { method: "POST" });
-      await loadDocuments();
+      await loadDocuments(0, false);
       const count = result?.count ?? 0;
       setActionMessage(`${count} document(s) en attente envoyés en extraction.`);
     } catch (err: any) {
@@ -156,7 +179,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
         method: "PUT",
         body: JSON.stringify({ docType: editDocType, description: editDescription }),
       });
-      await loadDocuments();
+      await loadDocuments(0, false);
       setEditingDocId(null);
     } catch (err: any) {
       setUpdateError(err.message || "Erreur lors de la mise à jour");
@@ -199,6 +222,8 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
+  const hasMore = documents.length < totalDocuments;
+
   const progressSteps = [
     documents.length > 0,
     documents.some((doc) => Boolean(doc.extractionStatus)),
@@ -214,6 +239,10 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
+  const documentCountLabel =
+    totalDocuments > documents.length
+      ? `${documents.length}/${totalDocuments}`
+      : `${documents.length}`;
 
   return (
     <section id="documents-panel" className="panel" aria-labelledby="documents-title">
@@ -226,7 +255,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
           </p>
         </div>
         <div className="stack" style={{ gap: "8px", alignItems: "flex-end" }}>
-          <div className="badge subtle">{documents.length} documents</div>
+          <div className="badge subtle">{documentCountLabel} documents</div>
           <div className="stack horizontal" style={{ gap: "8px" }}>
             <span className="pill subtle">Backups détectés : {metadataTotals.backups}</span>
             <span className="pill subtle">Politiques/SLA : {metadataTotals.policies}</span>
@@ -486,6 +515,22 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
               {deleteError && <p className="helper error">{deleteError}</p>}
             </div>
           )}
+        </div>
+      )}
+      {hasMore && (
+        <div className="form-actions" style={{ justifyContent: "center" }}>
+          <button
+            className="btn"
+            type="button"
+            onClick={() => loadDocuments(documents.length, true)}
+            disabled={loadingMore}
+          >
+            {loadingMore ? "Chargement..." : "Charger plus de documents"}
+          </button>
+          <span className="helper muted">
+            Affichés {documents.length} sur {totalDocuments}
+          </span>
+          {loadMoreError && <span className="helper error">{loadMoreError}</span>}
         </div>
       )}
     </section>

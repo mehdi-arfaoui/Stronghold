@@ -62,20 +62,37 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     const { serviceId, processName, threatType, status } = req.query;
 
-    const risks = await prisma.risk.findMany({
-      where: {
-        tenantId,
-        ...(serviceId ? { serviceId: String(serviceId) } : {}),
-        ...(processName ? { processName: String(processName) } : {}),
-        ...(threatType ? { threatType: String(threatType) } : {}),
-        ...(status ? { status: String(status) } : {}),
-      },
-      include: {
-        service: true,
-        mitigations: true,
-      },
-      orderBy: [{ createdAt: "desc" }],
-    });
+    const issues: { field: string; message: string }[] = [];
+    const limit = parseOptionalNumber(req.query.limit, "limit", issues, { min: 1 });
+    const offset = parseOptionalNumber(req.query.offset, "offset", issues, { min: 0 });
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const shouldPaginate = limit !== undefined || offset !== undefined;
+    const take = limit ?? 25;
+    const skip = offset ?? 0;
+
+    const where = {
+      tenantId,
+      ...(serviceId ? { serviceId: String(serviceId) } : {}),
+      ...(processName ? { processName: String(processName) } : {}),
+      ...(threatType ? { threatType: String(threatType) } : {}),
+      ...(status ? { status: String(status) } : {}),
+    };
+
+    const [risks, total] = await Promise.all([
+      prisma.risk.findMany({
+        where,
+        include: {
+          service: true,
+          mitigations: true,
+        },
+        orderBy: [{ createdAt: "desc" }],
+        ...(shouldPaginate ? { take, skip } : {}),
+      }),
+      shouldPaginate ? prisma.risk.count({ where }) : Promise.resolve(0),
+    ]);
 
     const enriched = risks.map((risk) => {
       const score = riskScore(risk.probability, risk.impact);
@@ -85,6 +102,15 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
         level: riskLevel(score),
       };
     });
+
+    if (shouldPaginate) {
+      return res.json({
+        items: enriched,
+        total,
+        limit: take,
+        offset: skip,
+      });
+    }
 
     return res.json(enriched);
   } catch (error) {

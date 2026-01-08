@@ -80,7 +80,7 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
         apiFetch("/scenarios"),
       ]);
       setRunbooks(runbookData);
-      setScenarios(scenarioData);
+      setScenarios(Array.isArray(scenarioData) ? scenarioData : scenarioData.items || []);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
     } finally {

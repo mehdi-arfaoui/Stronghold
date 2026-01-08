@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
 import type { BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
@@ -29,6 +28,8 @@ const impactLevels = [
   { value: 4, label: "4 - Élevé" },
   { value: 5, label: "5 - Critique" },
 ];
+
+const ReactECharts = lazy(() => import("echarts-for-react"));
 
 const defaultDraft: ProcessDraft = {
   name: "",
@@ -466,7 +467,9 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           <div className="badge subtle">{criticalProcesses.length} points critiques</div>
         </div>
         {impactMatrix ? (
-          <ReactECharts option={impactMatrix} style={{ height: 360 }} />
+          <Suspense fallback={<div className="skeleton">Chargement du graphique...</div>}>
+            <ReactECharts option={impactMatrix} style={{ height: 360 }} />
+          </Suspense>
         ) : (
           <p className="muted">La matrice s'affichera dès qu'un processus sera créé.</p>
         )}

@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { ScenarioCatalogFront, ScenarioFront, Service } from "../types";
+import type {
+  PaginatedResponse,
+  ScenarioCatalogFront,
+  ScenarioFront,
+  Service,
+} from "../types";
 import { apiFetch } from "../utils/api";
 
 interface ScenariosSectionProps {
@@ -18,30 +23,45 @@ const defaultScenarioPayload = {
   selectedServiceIds: [] as string[],
 };
 
+const PAGE_SIZE = 6;
+
 export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
   const [scenarios, setScenarios] = useState<ScenarioFront[]>([]);
+  const [totalScenarios, setTotalScenarios] = useState(0);
   const [services, setServices] = useState<Service[]>([]);
   const [catalog, setCatalog] = useState<ScenarioCatalogFront[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [syncingCatalog, setSyncingCatalog] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
   const [newScenario, setNewScenario] = useState({ ...defaultScenarioPayload });
 
+  const loadScenarios = async (offset = 0, append = false) => {
+    const data = (await apiFetch(
+      `/scenarios?limit=${PAGE_SIZE}&offset=${offset}`
+    )) as PaginatedResponse<ScenarioFront> | ScenarioFront[];
+    const items = Array.isArray(data) ? data : data.items;
+    const total = Array.isArray(data) ? data.length : data.total;
+    setScenarios((current) => (append ? [...current, ...items] : items));
+    setTotalScenarios(total);
+  };
+
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [scData, svcData, catalogData] = await Promise.all([
-        apiFetch("/scenarios"),
+      setLoadMoreError(null);
+      const [svcData, catalogData] = await Promise.all([
         apiFetch("/services"),
         apiFetch("/scenario-catalog"),
       ]);
-      setScenarios(scData);
       setServices(svcData);
       setCatalog(catalogData);
+      await loadScenarios(0, false);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
     } finally {
@@ -141,6 +161,10 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
+  const scenarioCountLabel =
+    totalScenarios > scenarios.length
+      ? `${scenarios.length}/${totalScenarios}`
+      : `${scenarios.length}`;
   const selectedCatalog = catalog.find(
     (item) => item.id === newScenario.catalogScenarioId
   );
@@ -159,7 +183,7 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
           </p>
         </div>
         <div className="stack" style={{ alignItems: "flex-end", gap: "8px" }}>
-          <div className="badge subtle">{scenarios.length} scénarios</div>
+          <div className="badge subtle">{scenarioCountLabel} scénarios</div>
           <button
             className="btn subtle"
             type="button"
@@ -334,16 +358,44 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
       {scenarios.length === 0 ? (
         <p className="empty-state">Aucun scénario défini pour le moment.</p>
       ) : (
-        <div id="scenarios-list" className="stack" style={{ gap: "16px" }}>
-          {scenarios.map((scenario) => (
-            <ScenarioCard
-              key={scenario.id}
-              scenario={scenario}
-              services={services}
-              onUpdated={loadData}
-            />
-          ))}
-        </div>
+        <>
+          <div id="scenarios-list" className="stack" style={{ gap: "16px" }}>
+            {scenarios.map((scenario) => (
+              <ScenarioCard
+                key={scenario.id}
+                scenario={scenario}
+                services={services}
+                onUpdated={loadData}
+              />
+            ))}
+          </div>
+          {totalScenarios > scenarios.length && (
+            <div className="form-actions" style={{ justifyContent: "center" }}>
+              <button
+                className="btn"
+                type="button"
+                disabled={loadingMore}
+                onClick={async () => {
+                  setLoadingMore(true);
+                  setLoadMoreError(null);
+                  try {
+                    await loadScenarios(scenarios.length, true);
+                  } catch (err: any) {
+                    setLoadMoreError(err.message || "Erreur lors du chargement");
+                  } finally {
+                    setLoadingMore(false);
+                  }
+                }}
+              >
+                {loadingMore ? "Chargement..." : "Charger plus de scénarios"}
+              </button>
+              <span className="helper muted">
+                Affichés {scenarios.length} sur {totalScenarios}
+              </span>
+              {loadMoreError && <span className="helper error">{loadMoreError}</span>}
+            </div>
+          )}
+        </>
       )}
     </section>
   );
