@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { TabDefinition, TabId } from "../../types";
 
 interface TabNavigationProps {
@@ -7,7 +8,7 @@ interface TabNavigationProps {
 }
 
 export function TabNavigation({ tabs, activeTab, onChange }: TabNavigationProps) {
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const currentIndex = tabs.findIndex((tab) => tab.id === activeTab);
     if (currentIndex === -1) return;
 
