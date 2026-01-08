@@ -205,6 +205,32 @@ export type InfraFinding = {
   message: string;
 };
 
+export type DiscoveryJob = {
+  id: string;
+  status: string;
+  jobType: string;
+  progress: number;
+  parameters?: {
+    ipRanges?: string[];
+    cloudProviders?: string[];
+    filename?: string;
+    contentType?: string;
+  } | null;
+  resultSummary?: {
+    discoveredHosts?: number;
+    createdServices?: number;
+    createdInfra?: number;
+    createdDependencies?: number;
+    createdInfraLinks?: number;
+    ignoredEdges?: number;
+  } | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  startedAt?: string | null;
+  completedAt?: string | null;
+};
+
 export type GraphNode = {
   id: string;
   label: string;
@@ -617,6 +643,7 @@ export type TabId =
   | "continuity"
   | "bia"
   | "incidents"
+  | "discovery"
   | "analysis"
   | "graph"
   | "architecture"
