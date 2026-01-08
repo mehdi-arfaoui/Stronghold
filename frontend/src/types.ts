@@ -223,6 +223,14 @@ export type DiscoveryJob = {
     createdDependencies?: number;
     createdInfraLinks?: number;
     ignoredEdges?: number;
+    importReport?: {
+      rejectedRows: number;
+      rejectedEntries: {
+        line: number;
+        recordType: "node" | "edge" | "unknown";
+        reasons: string[];
+      }[];
+    };
   } | null;
   errorMessage?: string | null;
   createdAt: string;

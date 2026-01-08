@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { z, ZodError } from "zod";
 import prisma from "../prismaClient";
 
 type DiscoveryNodeKind = "service" | "infra";
@@ -34,6 +35,114 @@ type DiscoveryImportSummary = {
   createdInfraLinks: number;
   ignoredEdges: number;
 };
+
+type DiscoveryImportRejectedRow = {
+  line: number;
+  recordType: "node" | "edge" | "unknown";
+  reasons: string[];
+};
+
+type DiscoveryImportReport = {
+  rejectedRows: number;
+  rejectedEntries: DiscoveryImportRejectedRow[];
+};
+
+type DiscoveryImportResult = {
+  payload: DiscoveryImportPayload;
+  report: DiscoveryImportReport;
+};
+
+type DiscoveryImportErrorDetail = {
+  field: string;
+  message: string;
+};
+
+export class DiscoveryImportError extends Error {
+  details: DiscoveryImportErrorDetail[];
+
+  constructor(message: string, details: DiscoveryImportErrorDetail[]) {
+    super(message);
+    this.name = "DiscoveryImportError";
+    this.details = details;
+  }
+}
+
+const expectedCsvHeaders = [
+  "record_type",
+  "id",
+  "name",
+  "type",
+  "source",
+  "target",
+  "dependency_type",
+];
+
+const discoveryNodeSchema = z
+  .object({
+    externalId: z.string().min(1),
+    name: z.string().min(1),
+    kind: z.enum(["service", "infra"]),
+    type: z.string().min(1),
+    criticality: z.string().nullable().optional(),
+    provider: z.string().nullable().optional(),
+    location: z.string().nullable().optional(),
+    ip: z.string().nullable().optional(),
+    hostname: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .strict();
+
+const discoveryEdgeSchema = z
+  .object({
+    source: z.string().min(1),
+    target: z.string().min(1),
+    dependencyType: z.string().nullable().optional(),
+  })
+  .strict();
+
+const discoveryImportSchema = z
+  .object({
+    nodes: z.array(discoveryNodeSchema),
+    edges: z.array(discoveryEdgeSchema),
+  })
+  .strict();
+
+const discoveryJsonNodeSchema = z
+  .object({
+    id: z.string().min(1),
+    name: z.string().min(1),
+    type: z.string().min(1),
+    kind: z.enum(["service", "infra"]).optional(),
+    criticality: z.string().nullable().optional(),
+    provider: z.string().nullable().optional(),
+    location: z.string().nullable().optional(),
+    ip: z.string().nullable().optional(),
+    hostname: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+  })
+  .strict();
+
+const discoveryJsonEdgeSchema = z
+  .object({
+    source: z.string().min(1),
+    target: z.string().min(1),
+    dependency_type: z.string().nullable().optional(),
+  })
+  .strict();
+
+function formatZodError(error: ZodError, prefix = ""): DiscoveryImportErrorDetail[] {
+  return error.issues.map((issue) => ({
+    field: `${prefix}${issue.path.join(".") || "payload"}`,
+    message: issue.message,
+  }));
+}
+
+function ensurePayloadSchema(payload: DiscoveryImportPayload) {
+  const result = discoveryImportSchema.safeParse(payload);
+  if (!result.success) {
+    throw new DiscoveryImportError("Schéma import invalide", formatZodError(result.error));
+  }
+}
 
 function normalizeCriticality(value?: string | null) {
   const normalized = (value || "").trim().toLowerCase();
@@ -139,108 +248,175 @@ function parseCsv(content: string): string[][] {
   return rows;
 }
 
-function parseCsvPayload(content: string): DiscoveryImportPayload {
+function parseCsvPayload(content: string): DiscoveryImportResult {
   const rows = parseCsv(content);
   if (rows.length < 2) {
-    return { nodes: [], edges: [] };
+    return {
+      payload: { nodes: [], edges: [] },
+      report: { rejectedRows: 0, rejectedEntries: [] },
+    };
   }
   const headers = rows[0].map(toLowerHeader);
+  const missingHeaders = expectedCsvHeaders.filter((header) => !headers.includes(header));
+  if (missingHeaders.length > 0) {
+    throw new DiscoveryImportError("Header CSV invalide", [
+      {
+        field: "csv_headers",
+        message: `Colonnes manquantes: ${missingHeaders.join(", ")}`,
+      },
+    ]);
+  }
   const nodes: DiscoveryNode[] = [];
   const edges: DiscoveryEdge[] = [];
+  const rejectedEntries: DiscoveryImportRejectedRow[] = [];
 
-  for (const row of rows.slice(1)) {
+  for (const [index, row] of rows.slice(1).entries()) {
+    const lineNumber = index + 2;
     const record: Record<string, string> = {};
-    headers.forEach((header, index) => {
-      record[header] = (row[index] || "").trim();
+    headers.forEach((header, headerIndex) => {
+      record[header] = (row[headerIndex] || "").trim();
     });
-    const recordType = (record["record_type"] || record["kind"] || "").toLowerCase();
-    const hasEdgeFields = Boolean(record["source"] || record["from"] || record["target"] || record["to"]);
+    const recordType = (record["record_type"] || "").toLowerCase();
 
-    if (recordType === "edge" || hasEdgeFields) {
-      const source = normalizeExternalId(record["source"] || record["from"], "");
-      const target = normalizeExternalId(record["target"] || record["to"], "");
-      if (!source || !target) {
+    if (recordType === "edge") {
+      const source = normalizeExternalId(record["source"], "");
+      const target = normalizeExternalId(record["target"], "");
+      const reasons: string[] = [];
+      if (!source) reasons.push("source manquant");
+      if (!target) reasons.push("target manquant");
+      if (reasons.length > 0) {
+        rejectedEntries.push({ line: lineNumber, recordType: "edge", reasons });
         continue;
       }
       edges.push({
         source,
         target,
-        dependencyType: record["dependency_type"] || record["type"] || record["dependency"],
+        dependencyType: record["dependency_type"] || null,
       });
       continue;
     }
 
-    const name = record["name"] || record["nom"] || record["label"];
-    if (!name) {
-      continue;
-    }
-    const rawKind = record["node_type"] || record["type"] || record["kind"];
-    const kind = classifyNodeKind(rawKind);
-    const externalId = normalizeExternalId(record["id"] || record["node_id"], name);
-    const node: DiscoveryNode = {
-      externalId,
-      name,
-      kind,
-      type: normalizeNodeType(rawKind, kind),
-      criticality: normalizeCriticality(record["criticality"] || record["criticite"] || record["criticalite"]),
-      provider: record["provider"] || null,
-      location: record["location"] || null,
-      ip: record["ip"] || record["ip_address"] || null,
-      hostname: record["hostname"] || record["host"] || null,
-      description: record["description"] || null,
-    };
-    nodes.push(node);
-  }
-
-  return { nodes, edges };
-}
-
-function parseJsonPayload(content: string): DiscoveryImportPayload {
-  const parsed = JSON.parse(content) as any;
-  const rawNodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
-  const rawEdges = Array.isArray(parsed?.edges) ? parsed.edges : [];
-
-  const nodes: DiscoveryNode[] = rawNodes
-    .map((node: any) => {
-      if (!node) return null;
-      const name = node.name || node.nom || node.label;
-      if (!name) return null;
-      const rawKind = node.nodeType || node.kind || node.type;
+    if (recordType === "node") {
+      const externalId = normalizeExternalId(record["id"], "");
+      const name = record["name"];
+      const rawKind = record["type"];
+      const reasons: string[] = [];
+      if (!externalId) reasons.push("id manquant");
+      if (!name) reasons.push("name manquant");
+      if (!rawKind) reasons.push("type manquant");
+      if (reasons.length > 0) {
+        rejectedEntries.push({ line: lineNumber, recordType: "node", reasons });
+        continue;
+      }
       const kind = classifyNodeKind(rawKind);
-      const externalId = normalizeExternalId(node.id || node.externalId, name);
-      return {
+      const node: DiscoveryNode = {
         externalId,
         name,
         kind,
-        type: normalizeNodeType(node.serviceType || node.infraType || node.type, kind),
-        criticality: normalizeCriticality(node.criticality || node.criticite || node.criticalite),
-        provider: node.provider || null,
-        location: node.location || null,
-        ip: node.ip || node.ipAddress || null,
-        hostname: node.hostname || node.host || null,
-        description: node.description || null,
+        type: normalizeNodeType(rawKind, kind),
+        criticality: normalizeCriticality(record["criticality"]),
+        provider: record["provider"] || null,
+        location: record["location"] || null,
+        ip: record["ip"] || null,
+        hostname: record["hostname"] || null,
+        description: record["description"] || null,
+      };
+      nodes.push(node);
+      continue;
+    }
+
+    rejectedEntries.push({
+      line: lineNumber,
+      recordType: "unknown",
+      reasons: ["record_type invalide (attendu node ou edge)"],
+    });
+  }
+
+  const payload = { nodes, edges };
+  ensurePayloadSchema(payload);
+
+  return {
+    payload,
+    report: { rejectedRows: rejectedEntries.length, rejectedEntries },
+  };
+}
+
+function parseJsonPayload(content: string): DiscoveryImportResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(content);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "JSON invalide";
+    throw new DiscoveryImportError("JSON invalide", [{ field: "payload", message }]);
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new DiscoveryImportError("Schéma import invalide", [
+      { field: "payload", message: "Objet JSON attendu" },
+    ]);
+  }
+  const rawNodes = Array.isArray((parsed as any).nodes) ? (parsed as any).nodes : null;
+  const rawEdges = Array.isArray((parsed as any).edges) ? (parsed as any).edges : null;
+  if (!rawNodes || !rawEdges) {
+    throw new DiscoveryImportError("Schéma import invalide", [
+      { field: "payload", message: "nodes et edges doivent être des tableaux" },
+    ]);
+  }
+
+  const issues: DiscoveryImportErrorDetail[] = [];
+  const nodes: DiscoveryNode[] = rawNodes
+    .map((node: any, index: number) => {
+      const result = discoveryJsonNodeSchema.safeParse(node);
+      if (!result.success) {
+        issues.push(...formatZodError(result.error, `nodes.${index}.`));
+        return null;
+      }
+      const rawKind = result.data.kind || result.data.type;
+      const kind = classifyNodeKind(rawKind);
+      return {
+        externalId: result.data.id,
+        name: result.data.name,
+        kind,
+        type: normalizeNodeType(result.data.type, kind),
+        criticality: normalizeCriticality(result.data.criticality),
+        provider: result.data.provider || null,
+        location: result.data.location || null,
+        ip: result.data.ip || null,
+        hostname: result.data.hostname || null,
+        description: result.data.description || null,
       } as DiscoveryNode;
     })
     .filter(Boolean) as DiscoveryNode[];
 
   const edges: DiscoveryEdge[] = rawEdges
-    .map((edge: any) => {
-      if (!edge) return null;
-      const source = edge.source || edge.from;
-      const target = edge.target || edge.to;
-      if (!source || !target) return null;
+    .map((edge: any, index: number) => {
+      const result = discoveryJsonEdgeSchema.safeParse(edge);
+      if (!result.success) {
+        issues.push(...formatZodError(result.error, `edges.${index}.`));
+        return null;
+      }
       return {
-        source: String(source),
-        target: String(target),
-        dependencyType: edge.dependencyType || edge.type || edge.dependency,
+        source: result.data.source,
+        target: result.data.target,
+        dependencyType: result.data.dependency_type || null,
       } as DiscoveryEdge;
     })
     .filter(Boolean) as DiscoveryEdge[];
 
-  return { nodes, edges };
+  if (issues.length > 0) {
+    throw new DiscoveryImportError("Schéma import invalide", issues);
+  }
+
+  const payload = { nodes, edges };
+  ensurePayloadSchema(payload);
+
+  return { payload, report: { rejectedRows: 0, rejectedEntries: [] } };
 }
 
-export function parseDiscoveryImport(buffer: Buffer, filename: string, mimeType?: string | null) {
+export function parseDiscoveryImport(
+  buffer: Buffer,
+  filename: string,
+  mimeType?: string | null
+): DiscoveryImportResult {
   const content = buffer.toString("utf-8").trim();
   const lowerName = filename.toLowerCase();
   if (mimeType?.includes("json") || lowerName.endsWith(".json")) {
