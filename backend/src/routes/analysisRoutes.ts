@@ -15,6 +15,8 @@ import {
   MissingExtractedTextError,
   getOrCreateExtractedFacts,
 } from "../services/extractedFactService";
+import { buildBiaSummary } from "../services/biaSummary";
+import { buildRiskSummary } from "../services/riskSummary";
 import {
   buildComplianceIndicators,
   buildComplianceReport,
@@ -94,7 +96,7 @@ function buildAppContinuityWarnings(services: any[]) {
 }
 
 async function buildPraReportText(tenantId: string) {
-  const [services, infra] = await Promise.all([
+  const [services, infra, biaSummary, riskSummary] = await Promise.all([
     prisma.service.findMany({
       where: { tenantId },
       include: {
@@ -117,6 +119,8 @@ async function buildPraReportText(tenantId: string) {
         },
       },
     }),
+    buildBiaSummary(prisma, tenantId),
+    buildRiskSummary(prisma, tenantId),
   ]);
 
   const depsWarnings = buildAppContinuityWarnings(services);
@@ -170,6 +174,38 @@ async function buildPraReportText(tenantId: string) {
   text += "--------------------------------\n";
   for (const f of infraFindings) {
     text += `- ${f.message}\n`;
+  }
+
+  text += "\n5. Synthèse BIA\n";
+  text += "----------------\n";
+  text += `Processus recensés : ${biaSummary.totals.processes}\n`;
+  text += `Services rattachés : ${biaSummary.totals.linkedServices}\n`;
+  text += `Score impact moyen : ${biaSummary.averages.impactScore}\n`;
+  text += `Score temps moyen : ${biaSummary.averages.timeScore}\n`;
+  text += `Score criticité moyen : ${biaSummary.averages.criticalityScore}\n`;
+  if (biaSummary.priorities.length === 0) {
+    text += "Aucun processus critique identifié.\n";
+  } else {
+    text += "Processus prioritaires :\n";
+    for (const process of biaSummary.priorities) {
+      text += `- ${process.name} (score ${process.criticalityScore}) — RTO ${process.rtoHours}h / RPO ${process.rpoMinutes}min / MTPD ${process.mtpdHours}h\n`;
+    }
+  }
+
+  text += "\n6. Synthèse des risques\n";
+  text += "----------------------\n";
+  text += `Risques recensés : ${riskSummary.totals.count}\n`;
+  text += `Répartition : critical ${riskSummary.totals.byLevel.critical}, high ${riskSummary.totals.byLevel.high}, medium ${riskSummary.totals.byLevel.medium}, low ${riskSummary.totals.byLevel.low}\n`;
+  text += `Couverture des plans de mitigation : ${Math.round(
+    riskSummary.totals.mitigationCoverage * 100
+  )}%\n`;
+  if (riskSummary.priorities.length === 0) {
+    text += "Aucun risque prioritaire identifié.\n";
+  } else {
+    text += "Risques prioritaires :\n";
+    for (const risk of riskSummary.priorities) {
+      text += `- ${risk.title} (score ${risk.score}, niveau ${risk.level})\n`;
+    }
   }
 
   return text;
@@ -882,7 +918,7 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const [tenant, services, infra, scenarios] = await Promise.all([
+    const [tenant, services, infra, scenarios, biaSummary, riskSummary] = await Promise.all([
       prisma.tenant.findUnique({ where: { id: tenantId } }),
       prisma.service.findMany({
         where: { tenantId },
@@ -934,6 +970,8 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
           },
         },
       }),
+      buildBiaSummary(prisma, tenantId),
+      buildRiskSummary(prisma, tenantId),
     ]);
 
     const appWarnings = buildAppContinuityWarnings(services);
@@ -1174,6 +1212,8 @@ router.get("/full-report-json", async (req: TenantRequest, res) => {
         context: ragContextResult.context,
         scenarioRecommendations: ragScenarioRecs,
       },
+      biaSummary,
+      riskSummary,
     };
 
     return res.json(report);

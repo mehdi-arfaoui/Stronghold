@@ -9,6 +9,7 @@ import {
   parseRequiredNumber,
   parseRequiredString,
 } from "../validation/common";
+import { buildRiskSummary, riskLevel, riskScore } from "../services/riskSummary";
 
 const router = Router();
 
@@ -23,17 +24,6 @@ const THREAT_TYPES = [
 ];
 
 const STATUS_VALUES = ["open", "mitigating", "accepted", "closed"];
-
-function riskScore(probability: number, impact: number) {
-  return probability * impact;
-}
-
-function riskLevel(score: number) {
-  if (score >= 17) return "critical";
-  if (score >= 10) return "high";
-  if (score >= 5) return "medium";
-  return "low";
-}
 
 export const __test__ = {
   riskScore,
@@ -99,6 +89,21 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
     return res.json(enriched);
   } catch (error) {
     console.error("Error in GET /risks:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/summary", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const summary = await buildRiskSummary(prisma, tenantId);
+    return res.json(summary);
+  } catch (error) {
+    console.error("Error in GET /risks/summary:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

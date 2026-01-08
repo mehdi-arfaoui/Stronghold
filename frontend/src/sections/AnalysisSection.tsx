@@ -4,12 +4,15 @@ import ReactECharts from "echarts-for-react";
 import { PageIntro } from "../components/PageIntro";
 import type {
   AppWarning,
+  BiaSummary,
   InfraFinding,
   MaturityScore,
   NextActionItem,
   NextActionsResponse,
   PraDashboard,
   PraRagReport,
+  RiskMatrixResponse,
+  RiskSummary,
   RiskHeatmap,
   TabId,
 } from "../types";
@@ -43,7 +46,6 @@ function MaturityBadge({ level }: { level: "low" | "medium" | "high" }) {
 }
 
 export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
-  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<PraDashboard | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,6 +55,12 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   const [maturityError, setMaturityError] = useState<string | null>(null);
   const [nextActions, setNextActions] = useState<NextActionsResponse | null>(null);
   const [nextActionsError, setNextActionsError] = useState<string | null>(null);
+  const [biaSummary, setBiaSummary] = useState<BiaSummary | null>(null);
+  const [biaSummaryError, setBiaSummaryError] = useState<string | null>(null);
+  const [riskSummary, setRiskSummary] = useState<RiskSummary | null>(null);
+  const [riskSummaryError, setRiskSummaryError] = useState<string | null>(null);
+  const [riskMatrix, setRiskMatrix] = useState<RiskMatrixResponse | null>(null);
+  const [riskMatrixError, setRiskMatrixError] = useState<string | null>(null);
 
   const [question, setQuestion] = useState("Quels scénarios PRA recommander pour mes services critiques ?");
   const [docTypes, setDocTypes] = useState<string>("BACKUP_POLICY,ARCHI");
@@ -70,10 +78,23 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         setHeatmapError(null);
         setMaturityError(null);
         setNextActionsError(null);
-        const [dashboardResult, maturityResult, nextActionsResult] = await Promise.allSettled([
+        setBiaSummaryError(null);
+        setRiskSummaryError(null);
+        setRiskMatrixError(null);
+        const [
+          dashboardResult,
+          maturityResult,
+          nextActionsResult,
+          biaSummaryResult,
+          riskSummaryResult,
+          riskMatrixResult,
+        ] = await Promise.allSettled([
           apiFetch("/analysis/pra-dashboard"),
           apiFetch("/analysis/maturity-score"),
           apiFetch("/analysis/next-actions"),
+          apiFetch("/bia/summary"),
+          apiFetch("/risks/summary"),
+          apiFetch("/risks/matrix"),
         ]);
 
         if (dashboardResult.status === "fulfilled") {
@@ -100,6 +121,28 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
         } else {
           setNextActionsError(nextActionsResult.reason?.message || "Impossible de charger les actions");
         }
+
+        if (biaSummaryResult.status === "fulfilled") {
+          setBiaSummary(biaSummaryResult.value);
+        } else {
+          setBiaSummaryError(biaSummaryResult.reason?.message || "Impossible de charger la synthèse BIA");
+        }
+
+        if (riskSummaryResult.status === "fulfilled") {
+          setRiskSummary(riskSummaryResult.value);
+        } else {
+          setRiskSummaryError(
+            riskSummaryResult.reason?.message || "Impossible de charger la synthèse des risques"
+          );
+        }
+
+        if (riskMatrixResult.status === "fulfilled") {
+          setRiskMatrix(riskMatrixResult.value);
+        } else {
+          setRiskMatrixError(
+            riskMatrixResult.reason?.message || "Impossible de charger la matrice des risques"
+          );
+        }
       } catch (err: any) {
         setError(err.message || "Erreur inconnue");
       } finally {
@@ -108,6 +151,28 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
     };
     fetchDashboard();
   }, [configVersion]);
+
+  const biaMatrix = useMemo(() => {
+    if (!biaSummary) return null;
+    const cellMap = new Map<string, number>();
+    biaSummary.matrix.cells.forEach((cell) => {
+      cellMap.set(`${cell.impact}:${cell.time}`, cell.count);
+    });
+    const impactScale = [...biaSummary.matrix.impactScale].sort((a, b) => b - a);
+    const timeScale = [...biaSummary.matrix.timeScale].sort((a, b) => b - a);
+    return { cellMap, impactScale, timeScale };
+  }, [biaSummary]);
+
+  const riskMatrixView = useMemo(() => {
+    if (!riskMatrix) return null;
+    const cellMap = new Map<string, number>();
+    riskMatrix.cells.forEach((cell) => {
+      cellMap.set(`${cell.impact}:${cell.probability}`, cell.count);
+    });
+    const impactScale = [...riskMatrix.scale.impact].sort((a, b) => b - a);
+    const probabilityScale = [...riskMatrix.scale.probability].sort((a, b) => b - a);
+    return { cellMap, impactScale, probabilityScale };
+  }, [riskMatrix]);
 
   const filteredDocTypes = useMemo(
     () =>
@@ -318,6 +383,7 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
           { label: "Voir les alertes", href: "#analysis-dashboard", description: "Anomalies" },
           { label: "Heatmap de risques", href: "#analysis-heatmap", description: "RTO/RPO" },
           { label: "Comparer les scénarios", href: "#analysis-dr", description: "Recommandations" },
+          { label: "Synthèses BIA & risques", href: "#analysis-risk-summary", description: "Priorités" },
           { label: "Interroger l'IA", href: "#analysis-ai", description: "RAG PRA" },
         ]}
         expectedData={[
@@ -482,6 +548,213 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
               </ul>
             </div>
           </div>
+        </div>
+      </div>
+
+      <div className="panel-grid" id="analysis-risk-summary">
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">BIA</p>
+              <h3>Synthèse BIA</h3>
+            </div>
+            <span className="pill subtle">{biaSummary?.totals.processes ?? 0}</span>
+          </div>
+          {biaSummaryError && <p className="helper error">{biaSummaryError}</p>}
+          {!biaSummary && !biaSummaryError && (
+            <p className="empty-state">Synthèse BIA en cours de préparation.</p>
+          )}
+          {biaSummary && (
+            <div className="stack" style={{ gap: "12px" }}>
+              <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                <span className="pill subtle">Processus : {biaSummary.totals.processes}</span>
+                <span className="pill subtle">Services liés : {biaSummary.totals.linkedServices}</span>
+                <span className="pill subtle">
+                  Impact moyen : {biaSummary.averages.impactScore.toFixed(2)}
+                </span>
+                <span className="pill subtle">
+                  Temps moyen : {biaSummary.averages.timeScore.toFixed(2)}
+                </span>
+                <span className="pill subtle">
+                  Criticité moyenne : {biaSummary.averages.criticalityScore.toFixed(2)}
+                </span>
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Processus</th>
+                      <th>Score</th>
+                      <th>RTO / RPO / MTPD</th>
+                      <th>Services clés</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {biaSummary.priorities.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="muted small">
+                          Aucun processus prioritaire pour le moment.
+                        </td>
+                      </tr>
+                    ) : (
+                      biaSummary.priorities.map((process) => (
+                        <tr key={process.id}>
+                          <td>{process.name}</td>
+                          <td className="numeric">{process.criticalityScore.toFixed(2)}</td>
+                          <td className="muted small">
+                            {process.rtoHours}h / {process.rpoMinutes} min / {process.mtpdHours}h
+                          </td>
+                          <td className="muted small">
+                            {process.services.length > 0 ? process.services.join(", ") : "-"}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Risques</p>
+              <h3>Synthèse des risques</h3>
+            </div>
+            <span className="pill subtle">{riskSummary?.totals.count ?? 0}</span>
+          </div>
+          {riskSummaryError && <p className="helper error">{riskSummaryError}</p>}
+          {!riskSummary && !riskSummaryError && (
+            <p className="empty-state">Synthèse des risques en cours de préparation.</p>
+          )}
+          {riskSummary && (
+            <div className="stack" style={{ gap: "12px" }}>
+              <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                <span className="pill subtle">Critiques : {riskSummary.totals.byLevel.critical}</span>
+                <span className="pill subtle">Élevés : {riskSummary.totals.byLevel.high}</span>
+                <span className="pill subtle">Moyens : {riskSummary.totals.byLevel.medium}</span>
+                <span className="pill subtle">Faibles : {riskSummary.totals.byLevel.low}</span>
+                <span className="pill subtle">
+                  Couverture mitigation : {Math.round(riskSummary.totals.mitigationCoverage * 100)}%
+                </span>
+              </div>
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Risque</th>
+                      <th>Score</th>
+                      <th>Niveau</th>
+                      <th>Contexte</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {riskSummary.priorities.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="muted small">
+                          Aucun risque prioritaire pour le moment.
+                        </td>
+                      </tr>
+                    ) : (
+                      riskSummary.priorities.map((risk) => (
+                        <tr key={risk.id}>
+                          <td>{risk.title}</td>
+                          <td className="numeric">{risk.score.toFixed(2)}</td>
+                          <td>{risk.level}</td>
+                          <td className="muted small">
+                            {risk.serviceName ? `Service ${risk.serviceName}` : "Service N/A"}
+                            {risk.processName ? ` • Processus ${risk.processName}` : ""}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="panel-grid">
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">BIA</p>
+              <h3>Matrice impact / temps</h3>
+            </div>
+          </div>
+          {biaSummaryError && <p className="helper error">{biaSummaryError}</p>}
+          {!biaMatrix && !biaSummaryError && (
+            <p className="empty-state">Matrice BIA non disponible pour le moment.</p>
+          )}
+          {biaMatrix && (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Impact \\ Temps</th>
+                    {biaMatrix.timeScale.map((time) => (
+                      <th key={time}>T{time}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {biaMatrix.impactScale.map((impact) => (
+                    <tr key={impact}>
+                      <td>Impact {impact}</td>
+                      {biaMatrix.timeScale.map((time) => (
+                        <td key={`${impact}:${time}`} className="numeric">
+                          {biaMatrix.cellMap.get(`${impact}:${time}`) ?? 0}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="card-header">
+            <div>
+              <p className="eyebrow">Risques</p>
+              <h3>Matrice probabilité / impact</h3>
+            </div>
+          </div>
+          {riskMatrixError && <p className="helper error">{riskMatrixError}</p>}
+          {!riskMatrixView && !riskMatrixError && (
+            <p className="empty-state">Matrice des risques non disponible.</p>
+          )}
+          {riskMatrixView && (
+            <div className="table-wrapper">
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Impact \\ Probabilité</th>
+                    {riskMatrixView.probabilityScale.map((probability) => (
+                      <th key={probability}>P{probability}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {riskMatrixView.impactScale.map((impact) => (
+                    <tr key={impact}>
+                      <td>Impact {impact}</td>
+                      {riskMatrixView.probabilityScale.map((probability) => (
+                        <td key={`${impact}:${probability}`} className="numeric">
+                          {riskMatrixView.cellMap.get(`${impact}:${probability}`) ?? 0}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
