@@ -19,6 +19,7 @@ model Tenant {
   services                      Service[]
   infraComponents               InfraComponent[]
   scenarios                     Scenario[]
+  scenarioCatalogs              ScenarioCatalog[]
   runbookSteps                  RunbookStep[]
   scenarioServices              ScenarioService[]
   ServiceDependency             ServiceDependency[]
@@ -242,6 +243,9 @@ model Scenario {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
+  catalogScenarioId String?
+  catalogScenario   ScenarioCatalog? @relation(fields: [catalogScenarioId], references: [id], onDelete: SetNull)
+
   name           String
   type           String // ex: REGION_LOSS, AZ_LOSS, DB_CORRUPTION...
   description    String?
@@ -255,6 +259,32 @@ model Scenario {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model ScenarioCatalog {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  sourceKey String
+  name      String
+  type      String
+  description    String?
+  impactLevel    String?
+  rtoTargetHours Int?
+
+  recoveryStrategy     String
+  estimatedCostLevel   String?
+  estimatedCostMin     Float?
+  estimatedCostMax     Float?
+  estimatedCostCurrency String?
+
+  scenarios Scenario[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, sourceKey])
 }
 
 model RunbookStep {

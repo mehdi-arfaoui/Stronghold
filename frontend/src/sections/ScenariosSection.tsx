@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { ScenarioFront, Service } from "../types";
+import type { ScenarioCatalogFront, ScenarioFront, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface ScenariosSectionProps {
@@ -9,32 +9,39 @@ interface ScenariosSectionProps {
 }
 
 const defaultScenarioPayload = {
+  catalogScenarioId: "",
   name: "",
   type: "REGION_LOSS",
   impactLevel: "high",
   rtoTargetHours: 24,
+  description: "",
   selectedServiceIds: [] as string[],
 };
 
 export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
   const [scenarios, setScenarios] = useState<ScenarioFront[]>([]);
   const [services, setServices] = useState<Service[]>([]);
+  const [catalog, setCatalog] = useState<ScenarioCatalogFront[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [syncingCatalog, setSyncingCatalog] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [newScenario, setNewScenario] = useState({ ...defaultScenarioPayload });
 
   const loadData = async () => {
     try {
       setLoading(true);
       setError(null);
-      const [scData, svcData] = await Promise.all([
+      const [scData, svcData, catalogData] = await Promise.all([
         apiFetch("/scenarios"),
         apiFetch("/services"),
+        apiFetch("/scenario-catalog"),
       ]);
       setScenarios(scData);
       setServices(svcData);
+      setCatalog(catalogData);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
     } finally {
@@ -58,6 +65,42 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
     });
   };
 
+  const handleCatalogSelect = (catalogId: string) => {
+    if (!catalogId) {
+      setNewScenario((prev) => ({
+        ...prev,
+        catalogScenarioId: "",
+      }));
+      return;
+    }
+
+    const entry = catalog.find((item) => item.id === catalogId);
+    if (!entry) return;
+
+    setNewScenario((prev) => ({
+      ...prev,
+      catalogScenarioId: entry.id,
+      name: entry.name,
+      type: entry.type,
+      impactLevel: entry.impactLevel ?? prev.impactLevel,
+      rtoTargetHours: entry.rtoTargetHours ?? prev.rtoTargetHours,
+      description: entry.description ?? "",
+    }));
+  };
+
+  const handleCatalogSync = async () => {
+    setSyncingCatalog(true);
+    setCatalogError(null);
+    try {
+      await apiFetch("/scenario-catalog/sync", { method: "POST" });
+      await loadData();
+    } catch (err: any) {
+      setCatalogError(err.message || "Erreur lors de la synchronisation");
+    } finally {
+      setSyncingCatalog(false);
+    }
+  };
+
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -66,12 +109,13 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
       await apiFetch("/scenarios", {
         method: "POST",
         body: JSON.stringify({
+          catalogScenarioId: newScenario.catalogScenarioId || null,
           name: newScenario.name,
           type: newScenario.type,
           impactLevel: newScenario.impactLevel,
           rtoTargetHours: newScenario.rtoTargetHours,
           serviceIds: newScenario.selectedServiceIds,
-          description: "",
+          description: newScenario.description,
         }),
       });
       await loadData();
@@ -97,6 +141,12 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
+  const selectedCatalog = catalog.find(
+    (item) => item.id === newScenario.catalogScenarioId
+  );
+  const catalogTypes = Array.from(
+    new Set([...catalog.map((item) => item.type), newScenario.type])
+  ).sort();
 
   return (
     <section id="scenarios-panel" className="panel" aria-labelledby="scenarios-title">
@@ -108,7 +158,18 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
             Modélisation des scénarios de sinistre (perte AZ, région, corruption DB, perte AD...) et des étapes de reprise.
           </p>
         </div>
-        <div className="badge subtle">{scenarios.length} scénarios</div>
+        <div className="stack" style={{ alignItems: "flex-end", gap: "8px" }}>
+          <div className="badge subtle">{scenarios.length} scénarios</div>
+          <button
+            className="btn subtle"
+            type="button"
+            onClick={handleCatalogSync}
+            disabled={syncingCatalog}
+          >
+            {syncingCatalog ? "Synchronisation..." : "Synchroniser la bibliothèque"}
+          </button>
+          {catalogError && <span className="helper error">{catalogError}</span>}
+        </div>
       </div>
 
       <PageIntro
@@ -143,6 +204,20 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
       <form id="scenarios-create" className="card form-grid" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <label className="form-field">
+            <span>Bibliothèque de scénarios</span>
+            <select
+              value={newScenario.catalogScenarioId}
+              onChange={(e) => handleCatalogSelect(e.target.value)}
+            >
+              <option value="">Sélectionner un scénario</option>
+              {catalog.map((entry) => (
+                <option key={entry.id} value={entry.id}>
+                  {entry.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="form-field">
             <span>Nom du scénario</span>
             <input
               type="text"
@@ -157,12 +232,15 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
               value={newScenario.type}
               onChange={(e) => setNewScenario((s) => ({ ...s, type: e.target.value }))}
             >
-              <option value="REGION_LOSS">Perte région</option>
-              <option value="AZ_LOSS">Perte AZ</option>
-              <option value="DC_LOSS">Perte DC on-prem</option>
-              <option value="DB_CORRUPTION">Corruption base de données</option>
-              <option value="RANSOMWARE">Ransomware</option>
-              <option value="AD_FAILURE">Perte Active Directory</option>
+              {catalogTypes.length === 0 ? (
+                <option value={newScenario.type}>{newScenario.type}</option>
+              ) : (
+                catalogTypes.map((type) => (
+                  <option key={type} value={type}>
+                    {type}
+                  </option>
+                ))
+              )}
             </select>
           </label>
           <label className="form-field">
@@ -190,6 +268,19 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
               }
             />
           </label>
+          <label className="form-field">
+            <span>Description</span>
+            <input
+              type="text"
+              value={newScenario.description}
+              onChange={(e) =>
+                setNewScenario((s) => ({
+                  ...s,
+                  description: e.target.value,
+                }))
+              }
+            />
+          </label>
           <div id="scenarios-services" className="form-field" style={{ gridColumn: "span 2" }}>
             <span>Services impactés</span>
             <div className="service-selector">
@@ -212,6 +303,26 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
             </div>
           </div>
         </div>
+        {selectedCatalog && (
+          <div className="card subtle">
+            <h4>Stratégie &amp; coûts estimés</h4>
+            <p className="muted">{selectedCatalog.recoveryStrategy}</p>
+            <div className="stack" style={{ gap: "6px" }}>
+              <span>
+                Niveau de coût estimé :{" "}
+                <strong>{selectedCatalog.estimatedCostLevel ?? "Non défini"}</strong>
+              </span>
+              {selectedCatalog.estimatedCostMin !== null &&
+              selectedCatalog.estimatedCostMin !== undefined ? (
+                <span>
+                  Estimation : {selectedCatalog.estimatedCostMin} -{" "}
+                  {selectedCatalog.estimatedCostMax ?? "?"}{" "}
+                  {selectedCatalog.estimatedCostCurrency ?? ""}
+                </span>
+              ) : null}
+            </div>
+          </div>
+        )}
         <div className="form-actions">
           <button className="btn primary" type="submit" disabled={creating}>
             {creating ? "Création..." : "Créer le scénario"}
@@ -454,6 +565,12 @@ function ScenarioCard({ scenario, services, onUpdated }: ScenarioCardProps) {
                   .map((service) => `${service.service.name} (${service.service.criticality})`)
                   .join(", ")}`}
           </p>
+          {scenario.catalogScenario && (
+            <p className="muted small">
+              Stratégie : {scenario.catalogScenario.recoveryStrategy} • Coût estimé :{" "}
+              {scenario.catalogScenario.estimatedCostLevel ?? "N/A"}
+            </p>
+          )}
         </div>
         <div className="scenario-meta">
           <span className="pill subtle">Étapes : {scenario.steps.length}</span>
