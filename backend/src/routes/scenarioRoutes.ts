@@ -33,6 +33,7 @@ router.get("/", async (req: TenantRequest, res) => {
             service: true,
           },
         },
+        catalogScenario: true,
         steps: {
           orderBy: {
             order: "asc",
@@ -76,6 +77,12 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       ["low", "medium", "high"],
       { allowNull: true }
     );
+    const catalogScenarioId = parseOptionalString(
+      payload.catalogScenarioId,
+      "catalogScenarioId",
+      issues,
+      { allowNull: true }
+    );
     const rtoHours = parseOptionalNumber(
       payload.rtoTargetHours,
       "rtoTargetHours",
@@ -87,9 +94,22 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       return res.status(400).json(buildValidationError(issues));
     }
 
+    if (catalogScenarioId) {
+      const catalog = await prisma.scenarioCatalog.findFirst({
+        where: { id: catalogScenarioId, tenantId },
+        select: { id: true },
+      });
+      if (!catalog) {
+        return res
+          .status(400)
+          .json({ error: "catalogScenarioId does not belong to this tenant" });
+      }
+    }
+
     const scenario = await prisma.scenario.create({
       data: {
         tenantId,
+        catalogScenarioId: catalogScenarioId ?? null,
         name,
         type,
         description,
@@ -132,6 +152,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         services: {
           include: { service: true },
         },
+        catalogScenario: true,
         steps: {
           orderBy: { order: "asc" },
         },
@@ -177,6 +198,12 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       ["low", "medium", "high"],
       { allowNull: true }
     );
+    const catalogScenarioId = parseOptionalString(
+      payload.catalogScenarioId,
+      "catalogScenarioId",
+      issues,
+      { allowNull: true }
+    );
     const rtoTargetHours = parseOptionalNumber(
       payload.rtoTargetHours,
       "rtoTargetHours",
@@ -209,6 +236,21 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     if (impactLevel !== undefined) {
       data.impactLevel = impactLevel;
+    }
+
+    if (catalogScenarioId !== undefined) {
+      if (catalogScenarioId) {
+        const catalog = await prisma.scenarioCatalog.findFirst({
+          where: { id: catalogScenarioId, tenantId },
+          select: { id: true },
+        });
+        if (!catalog) {
+          return res
+            .status(400)
+            .json({ error: "catalogScenarioId does not belong to this tenant" });
+        }
+      }
+      data.catalogScenarioId = catalogScenarioId ?? null;
     }
 
     if (rtoTargetHours !== undefined) {
@@ -264,6 +306,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         services: {
           include: { service: true },
         },
+        catalogScenario: true,
         steps: {
           orderBy: { order: "asc" },
         },

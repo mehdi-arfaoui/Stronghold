@@ -391,6 +391,21 @@ export type ScenarioServiceLinkFront = {
   };
 };
 
+export type ScenarioCatalogFront = {
+  id: string;
+  sourceKey: string;
+  name: string;
+  type: string;
+  description?: string | null;
+  impactLevel?: string | null;
+  rtoTargetHours?: number | null;
+  recoveryStrategy: string;
+  estimatedCostLevel?: string | null;
+  estimatedCostMin?: number | null;
+  estimatedCostMax?: number | null;
+  estimatedCostCurrency?: string | null;
+};
+
 export type RunbookStepFront = {
   id: string;
   order: number;
@@ -410,6 +425,7 @@ export type ScenarioFront = {
   rtoTargetHours: number | null;
   services: ScenarioServiceLinkFront[];
   steps: RunbookStepFront[];
+  catalogScenario?: ScenarioCatalogFront | null;
 };
 
 export type DocumentMetadata = {
