@@ -5,9 +5,10 @@ interface TabNavigationProps {
   tabs: TabDefinition[];
   activeTab: TabId;
   onChange: (tab: TabId) => void;
+  showIndex?: boolean;
 }
 
-export function TabNavigation({ tabs, activeTab, onChange }: TabNavigationProps) {
+export function TabNavigation({ tabs, activeTab, onChange, showIndex = false }: TabNavigationProps) {
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const currentIndex = tabs.findIndex((tab) => tab.id === activeTab);
     if (currentIndex === -1) return;
@@ -30,8 +31,9 @@ export function TabNavigation({ tabs, activeTab, onChange }: TabNavigationProps)
       aria-label="Navigation principale"
       onKeyDown={handleKeyDown}
     >
-      {tabs.map((tab) => {
+      {tabs.map((tab, index) => {
         const isActive = tab.id === activeTab;
+        const label = showIndex ? `${index + 1}. ${tab.label}` : tab.label;
         return (
           <button
             key={tab.id}
@@ -43,7 +45,7 @@ export function TabNavigation({ tabs, activeTab, onChange }: TabNavigationProps)
             tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(tab.id)}
           >
-            <span className="tab-label">{tab.label}</span>
+            <span className="tab-label">{label}</span>
             <span className="tab-description">{tab.description}</span>
           </button>
         );

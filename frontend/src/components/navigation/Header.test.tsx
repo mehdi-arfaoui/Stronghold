@@ -3,11 +3,17 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Header } from "./Header";
-import type { NavLink } from "./NavMenu";
+import type { NavGroup } from "./NavMenu";
 
-const links: NavLink[] = [
-  { id: "home", label: "Accueil", to: "/" },
-  { id: "services", label: "Services", to: "/services" },
+const groups: NavGroup[] = [
+  {
+    id: "general",
+    label: "Général",
+    links: [
+      { id: "home", label: "Accueil", to: "/" },
+      { id: "services", label: "Services", to: "/services" },
+    ],
+  },
 ];
 
 describe("Header", () => {
@@ -20,7 +26,7 @@ describe("Header", () => {
     render(
       <MemoryRouter>
         <Header
-          links={links}
+          groups={groups}
           isMenuOpen={false}
           onMenuToggle={onMenuToggle}
           onNavigate={onNavigate}

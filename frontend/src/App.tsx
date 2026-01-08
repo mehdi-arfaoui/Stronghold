@@ -1,4 +1,4 @@
-import { Suspense, lazy, useCallback, useMemo, useState } from "react";
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Footer } from "./components/layout/Footer";
@@ -7,7 +7,13 @@ import type { HomeStepId } from "./components/home/HomePage";
 import { ConfigurationPage } from "./routes/ConfigurationPage";
 import { HomeRoute } from "./routes/HomeRoute";
 import { NavigationPage } from "./routes/NavigationPage";
-import { MAIN_NAV_LINKS, MODULE_PATH_TO_ID, MODULE_ROUTES, MODULE_PATHS } from "./constants/navigation";
+import {
+  MAIN_NAV_GROUPS,
+  MODULE_PATH_TO_ID,
+  MODULE_ROUTES,
+  MODULE_PATHS,
+  WIZARD_STEP_ORDER,
+} from "./constants/navigation";
 import type { ApiConfig, TabId } from "./types";
 import { loadApiConfig } from "./utils/api";
 
@@ -102,6 +108,7 @@ function App() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<HomeStepId>("services");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
+  const wizardSteps = useMemo(() => WIZARD_STEP_ORDER as HomeStepId[], []);
 
   const activeTab = useMemo<TabId>(() => {
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
@@ -121,22 +128,50 @@ function App() {
     (tabId: TabId) => {
       navigate(MODULE_PATHS[tabId]);
       setMenuOpen(false);
+      const stepIndex = wizardSteps.indexOf(tabId as HomeStepId);
+      if (stepIndex >= 0) {
+        setActiveStep(tabId as HomeStepId);
+        const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
+        setCompletedSteps((prev) =>
+          wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
+        );
+      }
     },
-    [navigate]
+    [navigate, wizardSteps]
   );
 
   const handleStepAction = useCallback(
     (stepId: HomeStepId) => {
+      const stepIndex = wizardSteps.indexOf(stepId);
       setActiveStep(stepId);
-      setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
+      if (stepIndex >= 0) {
+        const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
+        setCompletedSteps((prev) =>
+          wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
+        );
+      } else {
+        setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
+      }
       navigate(MODULE_PATHS[stepId]);
     },
-    [navigate]
+    [navigate, wizardSteps]
   );
 
   const handleQuickAction = useCallback(() => {
     navigate(MODULE_PATHS.analysis);
   }, [navigate]);
+
+  useEffect(() => {
+    const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
+    if (!tabFromPath) return;
+    const stepIndex = wizardSteps.indexOf(tabFromPath as HomeStepId);
+    if (stepIndex === -1) return;
+    setActiveStep(tabFromPath as HomeStepId);
+    setCompletedSteps((prev) => {
+      const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
+      return wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step));
+    });
+  }, [location.pathname, wizardSteps]);
 
   return (
     <div className="app-shell">
@@ -144,7 +179,7 @@ function App() {
         Aller au contenu principal
       </a>
       <Header
-        links={MAIN_NAV_LINKS}
+        groups={MAIN_NAV_GROUPS}
         isMenuOpen={menuOpen}
         onMenuToggle={() => setMenuOpen((open) => !open)}
         onNavigate={handleNavigate}
@@ -187,7 +222,7 @@ function App() {
         </Routes>
       </main>
 
-      <Footer links={MAIN_NAV_LINKS} />
+      <Footer groups={MAIN_NAV_GROUPS} />
     </div>
   );
 }

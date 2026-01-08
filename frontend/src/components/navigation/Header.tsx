@@ -1,9 +1,9 @@
 import { Link } from "react-router-dom";
-import { NavMenu, type NavLink } from "./NavMenu";
+import { NavMenu, type NavGroup } from "./NavMenu";
 import "./Header.css";
 
 interface HeaderProps {
-  links: NavLink[];
+  groups: NavGroup[];
   isMenuOpen: boolean;
   onMenuToggle: () => void;
   onNavigate: () => void;
@@ -11,7 +11,7 @@ interface HeaderProps {
 }
 
 export function Header({
-  links,
+  groups,
   isMenuOpen,
   onMenuToggle,
   onNavigate,
@@ -28,7 +28,7 @@ export function Header({
         </Link>
 
         <div className="header-nav-desktop">
-          <NavMenu links={links} onNavigate={onNavigate} />
+          <NavMenu groups={groups} onNavigate={onNavigate} />
         </div>
 
         <div className="header-actions">
@@ -69,7 +69,7 @@ export function Header({
             Fermer
           </button>
         </div>
-        <NavMenu links={links} onNavigate={onNavigate} variant="vertical" />
+        <NavMenu groups={groups} onNavigate={onNavigate} variant="vertical" />
         <button type="button" className="btn primary" onClick={onQuickAction}>
           Démarrer un PRA
         </button>
