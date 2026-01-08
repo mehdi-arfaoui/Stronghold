@@ -14,6 +14,7 @@ type ApiKeyRecord = {
   expiresAt: string | null;
   revokedAt: string | null;
   lastUsedAt: string | null;
+  lastReviewedAt: string | null;
   rotatedFromId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +31,7 @@ type CreatedKey = {
 };
 
 const ROLE_OPTIONS = ["ADMIN", "OPERATOR", "READER"] as const;
+const REVIEW_INTERVAL_DAYS = 90;
 
 function formatDate(value?: string | null) {
   if (!value) return "-";
@@ -44,6 +46,13 @@ function buildStatus(key: ApiKeyRecord) {
     return { label: "Expirée", detail: formatDate(key.expiresAt) };
   }
   return { label: "Active", detail: key.expiresAt ? formatDate(key.expiresAt) : "-" };
+}
+
+function isReviewOverdue(key: ApiKeyRecord) {
+  if (!key.lastReviewedAt) return true;
+  const reviewedAt = new Date(key.lastReviewedAt).getTime();
+  const intervalMs = REVIEW_INTERVAL_DAYS * 24 * 60 * 60 * 1000;
+  return Date.now() - reviewedAt > intervalMs;
 }
 
 export function AuthSection({ configVersion }: AuthSectionProps) {
@@ -62,6 +71,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
   const [rotateRole, setRotateRole] = useState<(typeof ROLE_OPTIONS)[number]>("OPERATOR");
   const [rotateExpiresInDays, setRotateExpiresInDays] = useState("");
   const [rotating, setRotating] = useState(false);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
 
   const loadKeys = async () => {
     try {
@@ -148,6 +158,22 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
     }
   };
 
+  const handleReview = async (id: string) => {
+    setReviewingId(id);
+    setActionError(null);
+
+    try {
+      await apiFetch(`/auth/api-keys/${id}/review`, {
+        method: "POST",
+      });
+      await loadKeys();
+    } catch (err: any) {
+      setActionError(err.message || "Revue impossible");
+    } finally {
+      setReviewingId(null);
+    }
+  };
+
   const keyRows = useMemo(() => {
     return keys.map((key) => ({
       ...key,
@@ -194,6 +220,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
         tips={[
           "Limitez les clés ADMIN aux comptes de confiance.",
           "Programmez une rotation régulière des clés sensibles.",
+          "Planifiez une revue périodique des permissions.",
           "Vérifiez le dernier usage avant révocation.",
         ]}
         links={[
@@ -351,6 +378,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
                 <th>Expiration</th>
                 <th>Dernière utilisation</th>
                 <th>Rotation</th>
+                <th>Revue</th>
               </tr>
             </thead>
             <tbody>
@@ -369,6 +397,22 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
                   <td>{formatDate(key.expiresAt)}</td>
                   <td>{formatDate(key.lastUsedAt)}</td>
                   <td>{key.rotatedFromId ? `↺ depuis ${key.rotatedFromId}` : "-"}</td>
+                  <td>
+                    <div className="tag-list">
+                      <span className="tag">
+                        {key.lastReviewedAt ? formatDate(key.lastReviewedAt) : "À faire"}
+                      </span>
+                      {isReviewOverdue(key) && <span className="tag warning">Revue due</span>}
+                      <button
+                        type="button"
+                        className="button"
+                        onClick={() => handleReview(key.id)}
+                        disabled={reviewingId === key.id}
+                      >
+                        {reviewingId === key.id ? "Mise à jour..." : "Marquer revue"}
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>

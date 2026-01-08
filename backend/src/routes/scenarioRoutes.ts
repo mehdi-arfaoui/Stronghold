@@ -18,7 +18,7 @@ const router = Router();
  * GET /scenarios
  * Liste tous les scénarios du tenant avec services impactés + steps
  */
-router.get("/", async (req: TenantRequest, res) => {
+router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

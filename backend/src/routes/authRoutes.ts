@@ -47,6 +47,7 @@ router.get(
           expiresAt: true,
           revokedAt: true,
           lastUsedAt: true,
+          lastReviewedAt: true,
           rotatedFromId: true,
           createdAt: true,
           updatedAt: true,
@@ -83,6 +84,7 @@ router.post(
           keyHash: hash,
           role: parsedRole,
           expiresAt,
+          lastReviewedAt: new Date(),
         },
       });
 
@@ -95,6 +97,46 @@ router.post(
       });
     } catch (error) {
       console.error("Error in POST /auth/api-keys:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/api-keys/:id/review",
+  requireRole("ADMIN"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const keyId = String(req.params.id || "");
+      if (!keyId) {
+        return res.status(400).json({ error: "Missing api key id" });
+      }
+
+      const updated = await prisma.apiKey.updateMany({
+        where: { id: keyId, tenantId },
+        data: { lastReviewedAt: new Date() },
+      });
+
+      if (updated.count === 0) {
+        return res.status(404).json({ error: "API key introuvable pour ce tenant" });
+      }
+
+      const key = await prisma.apiKey.findFirst({
+        where: { id: keyId, tenantId },
+        select: {
+          id: true,
+          lastReviewedAt: true,
+        },
+      });
+
+      return res.status(200).json(key);
+    } catch (error) {
+      console.error("Error in POST /auth/api-keys/:id/review:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -123,6 +165,7 @@ router.post(
           role: parsedRole,
           expiresAt,
           rotatedFromId: req.apiKeyId ?? null,
+          lastReviewedAt: new Date(),
         },
       });
 

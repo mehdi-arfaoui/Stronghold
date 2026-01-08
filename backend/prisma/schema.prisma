@@ -763,6 +763,7 @@ model ApiKey {
   keyHash       String    @unique
   role          ApiRole   @default(OPERATOR)
   lastUsedAt    DateTime?
+  lastReviewedAt DateTime?
   expiresAt     DateTime?
   revokedAt     DateTime?
   rotatedFromId String?

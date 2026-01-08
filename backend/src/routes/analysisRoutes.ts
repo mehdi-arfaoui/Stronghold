@@ -800,7 +800,7 @@ router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, 
 
 /* ========= 1. Analyse simple applicative ========= */
 
-router.get("/basic", async (req: TenantRequest, res) => {
+router.get("/basic", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -832,7 +832,7 @@ router.get("/basic", async (req: TenantRequest, res) => {
 
 /* ========= 2. Analyse simple infra ========= */
 
-router.get("/infra-basic", async (req: TenantRequest, res) => {
+router.get("/infra-basic", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -860,7 +860,7 @@ router.get("/infra-basic", async (req: TenantRequest, res) => {
 
 /* ========= 3. Rapport texte simple ========= */
 
-router.get("/report", async (req: TenantRequest, res) => {
+router.get("/report", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -874,7 +874,7 @@ router.get("/report", async (req: TenantRequest, res) => {
   }
 });
 
-router.get("/report/pdf", async (req: TenantRequest, res) => {
+router.get("/report/pdf", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -969,7 +969,7 @@ router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, re
 
 /* ========= 5. Rapport JSON complet ========= */
 
-router.get("/full-report-json", async (req: TenantRequest, res) => {
+router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

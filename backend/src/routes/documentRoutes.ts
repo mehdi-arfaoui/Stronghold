@@ -5,8 +5,8 @@ import * as crypto from "crypto";
 import prisma from "../prismaClient";
 import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService";
-import { ingestDocumentText } from "../services/documentIngestionService";
 import { retentionConfig } from "../config/observability";
+import { scanSensitiveDataOnUpload } from "../services/sensitiveDataScanService";
 import {
   buildValidationError,
   parseOptionalNumber,
@@ -78,6 +78,19 @@ router.post(
         return res.status(400).json(buildValidationError(issues));
       }
       const file = req.file;
+      const scanResult = await scanSensitiveDataOnUpload({
+        buffer: file.buffer,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+      });
+      if (scanResult.blockedTypes.length > 0) {
+        return res.status(422).json({
+          error: "Document contenant des données sensibles non autorisées",
+          blockedTypes: scanResult.blockedTypes,
+          findings: scanResult.findings,
+        });
+      }
+
       const objectKey = buildObjectKey(tenantId, file.originalname);
       const bucketAndKey = {
         bucket: getTenantBucketName(tenantId),
@@ -133,7 +146,7 @@ router.post(
  * GET /documents
  * Liste des documents du tenant courant.
  */
-router.get("/", async (req: TenantRequest, res) => {
+router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
