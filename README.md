@@ -46,6 +46,36 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 - `GET/POST/PATCH /incidents/notification-channels` : gestion des canaux n8n.
 - `GET /incidents/:id/actions` / `POST /incidents/:id/actions` : suivi d’actions.
 
+### Découverte (import)
+- `POST /discovery/import` : import d’un fichier CSV ou JSON pour créer des nœuds et dépendances.
+
+**CSV attendu**
+- Header obligatoire : `record_type,id,name,type,source,target,dependency_type`.
+- `record_type` vaut `node` ou `edge`.
+- Lignes `node` : `id`, `name`, `type` requis (les autres champs peuvent être vides).
+- Lignes `edge` : `source`, `target` requis (optionnel : `dependency_type`).
+
+Exemple minimal CSV :
+```csv
+record_type,id,name,type,source,target,dependency_type
+node,svc-1,Service API,SERVICE,,,
+node,db-1,Database,DB,,,
+edge,,,,svc-1,db-1,dépendance
+```
+
+**JSON minimal**
+```json
+{
+  "nodes": [
+    { "id": "svc-1", "name": "Service API", "type": "SERVICE" },
+    { "id": "db-1", "name": "Database", "type": "DB" }
+  ],
+  "edges": [
+    { "source": "svc-1", "target": "db-1", "dependency_type": "dépendance" }
+  ]
+}
+```
+
 ### Exercices (planification de tests)
 - `POST /exercises` : planification d’un exercice avec checklist auto-générée.
 - `GET /exercises` : liste des exercices.

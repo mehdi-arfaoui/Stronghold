@@ -34,7 +34,8 @@
     "pdf-lib": "^1.17.1",
     "pdf-parse": "^2.4.5",
     "prisma": "^5.21.1",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.3.5"
   },
   "devDependencies": {
     "@types/express": "^5.0.5",

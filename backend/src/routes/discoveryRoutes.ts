@@ -6,6 +6,7 @@ import { buildValidationError, parseStringArray, parseOptionalString } from "../
 import {
   applyDiscoveryImport,
   buildJobResponse,
+  DiscoveryImportError,
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
 } from "../services/discoveryService";
@@ -191,8 +192,10 @@ router.post(
   requireRole("OPERATOR"),
   upload.single("file"),
   async (req: TenantRequest, res) => {
+    let jobId: string | null = null;
+    let tenantId: string | null = null;
     try {
-      const tenantId = req.tenantId;
+      tenantId = req.tenantId;
       if (!tenantId) {
         return res.status(500).json({ error: "Tenant not resolved" });
       }
@@ -215,8 +218,13 @@ router.post(
           startedAt: new Date(),
         },
       });
+      jobId = job.id;
 
-      const payload = parseDiscoveryImport(req.file.buffer, req.file.originalname, req.file.mimetype);
+      const { payload, report } = parseDiscoveryImport(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
       const summary = await applyDiscoveryImport(tenantId, payload);
 
       const completed = await prisma.discoveryJob.update({
@@ -225,13 +233,27 @@ router.post(
           status: "COMPLETED",
           progress: 100,
           completedAt: new Date(),
-          resultSummary: JSON.stringify(summary),
+          resultSummary: JSON.stringify({ ...summary, importReport: report }),
         },
       });
 
       return res.status(201).json(buildJobResponse(completed));
     } catch (error) {
       console.error("Error in POST /discovery/import:", error);
+      if (error instanceof DiscoveryImportError) {
+        if (jobId) {
+          await prisma.discoveryJob.updateMany({
+            where: { id: jobId, tenantId },
+            data: {
+              status: "FAILED",
+              step: "FAILED",
+              errorMessage: error.message,
+              completedAt: new Date(),
+            },
+          });
+        }
+        return res.status(400).json({ error: error.message, details: error.details });
+      }
       return res.status(500).json({ error: "Internal server error" });
     }
   }
