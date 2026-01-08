@@ -11,6 +11,7 @@ import { AuthSection } from "./sections/AuthSection";
 import { AuditLogsSection } from "./sections/AuditLogsSection";
 import { ArchitectureSection } from "./sections/ArchitectureSection";
 import { DocumentsSection } from "./sections/DocumentsSection";
+import { DiscoverySection } from "./sections/DiscoverySection";
 import { GraphSection } from "./sections/GraphSection";
 import { LandingZoneSection } from "./sections/LandingZoneSection";
 import { RagSection } from "./sections/RagSection";
@@ -30,6 +31,7 @@ const tabs: TabDefinition[] = [
   { id: "bia", label: "BIA", description: "Processus & impacts" },
   { id: "incidents", label: "Incidents", description: "Crises & notifications" },
   { id: "documents", label: "Documents", description: "Upload & extraction" },
+  { id: "discovery", label: "Découverte", description: "Scan réseau & imports" },
   { id: "rag", label: "Faits IA / RAG", description: "Questions & contexte" },
   { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
   { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
@@ -65,6 +67,8 @@ function App() {
         return <IncidentsSection configVersion={configVersion} />;
       case "documents":
         return <DocumentsSection configVersion={configVersion} />;
+      case "discovery":
+        return <DiscoverySection configVersion={configVersion} />;
       case "rag":
         return <RagSection configVersion={configVersion} />;
       case "runbooks":

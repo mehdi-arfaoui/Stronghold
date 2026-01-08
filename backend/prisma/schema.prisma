@@ -51,6 +51,8 @@ model Tenant {
   exerciseChecklistItems ExerciseChecklistItem[]
   exerciseResults        ExerciseResult[]
   exerciseAnalyses       ExerciseAnalysis[]
+  discoveryJobs          DiscoveryJob[]
+  discoveryScanAudits    DiscoveryScanAudit[]
 }
 
 model Service {
@@ -741,6 +743,8 @@ model ApiKey {
   updatedAt DateTime @updatedAt
 
   auditLogs AuditLog[]
+  discoveryJobs DiscoveryJob[]
+  discoveryScanAudits DiscoveryScanAudit[]
 }
 
 model AuditLog {
@@ -759,6 +763,51 @@ model AuditLog {
   clientIp      String?
   userAgent     String?
   correlationId String?
+
+  createdAt DateTime @default(now())
+}
+
+model DiscoveryJob {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  status   String
+  jobType  String
+  progress Int    @default(0)
+
+  parameters     String?
+  resultSummary  String?
+  errorMessage   String?
+
+  credentialsCiphertext String?
+  credentialsIv         String?
+  credentialsTag        String?
+
+  requestedByApiKeyId String?
+  requestedByApiKey   ApiKey? @relation(fields: [requestedByApiKeyId], references: [id])
+
+  startedAt   DateTime?
+  completedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  auditLogs DiscoveryScanAudit[]
+}
+
+model DiscoveryScanAudit {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  jobId String
+  job   DiscoveryJob @relation(fields: [jobId], references: [id])
+
+  apiKeyId String?
+  apiKey   ApiKey? @relation(fields: [apiKeyId], references: [id])
+
+  ipRange String
 
   createdAt DateTime @default(now())
 }
