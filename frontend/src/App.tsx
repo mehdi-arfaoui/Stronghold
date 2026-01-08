@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { ConfigBanner } from "./components/config/ConfigBanner";
-import { MainLayout } from "./components/layout/MainLayout";
+import { Footer } from "./components/layout/Footer";
 import { Header } from "./components/navigation/Header";
-import { TabNavigation } from "./components/navigation/TabNavigation";
-import { InfoBadge } from "./components/ui/InfoBadge";
+import type { NavLink } from "./components/navigation/NavMenu";
 import { SectionCard } from "./components/ui/SectionCard";
+import { HomePage } from "./components/home/HomePage";
+import { InfoBadge } from "./components/ui/InfoBadge";
+import { TabNavigation } from "./components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "./constants/domains";
 import { AnalysisSection } from "./sections/AnalysisSection";
 import { AuthSection } from "./sections/AuthSection";
@@ -32,11 +34,11 @@ const tabs: TabDefinition[] = [
   { id: "incidents", label: "Incidents", description: "Crises & notifications" },
   { id: "documents", label: "Documents", description: "Upload & extraction" },
   { id: "discovery", label: "Découverte", description: "Scan réseau & imports" },
-  { id: "rag", label: "Faits IA / RAG", description: "Questions & contexte" },
-  { id: "runbooks", label: "Runbooks & rapports", description: "Génération & exports" },
+  { id: "rag", label: "RAG/PRA", description: "Questions & contexte" },
+  { id: "runbooks", label: "Runbooks", description: "Génération & exports" },
   { id: "analysis", label: "Analyse PRA", description: "Contrôles et risques" },
   { id: "risks", label: "Risques", description: "Menaces & matrices" },
-  { id: "graph", label: "Graphe", description: "Dépendances" },
+  { id: "graph", label: "Graphes", description: "Dépendances" },
   { id: "architecture", label: "Architecture", description: "Vue d'ensemble" },
   { id: "landing", label: "Landing Zone", description: "Infrastructure" },
   { id: "scenarios", label: "Scénarios", description: "Runbooks" },
@@ -44,15 +46,70 @@ const tabs: TabDefinition[] = [
   { id: "audit", label: "Audit (ADMIN)", description: "Historique des appels API" },
 ];
 
+const navLinks: NavLink[] = [
+  { id: "home", label: "Accueil", href: "#home" },
+  { id: "services", label: "Services", href: "#services" },
+  { id: "documents", label: "Documents", href: "#documents" },
+  { id: "rag", label: "RAG/PRA", href: "#rag" },
+  { id: "runbooks", label: "Runbooks", href: "#runbooks" },
+  { id: "analysis", label: "Analyse", href: "#analysis" },
+  { id: "graph", label: "Graphes", href: "#graph" },
+  { id: "architecture", label: "Architecture", href: "#architecture" },
+  { id: "scenarios", label: "Scénarios", href: "#scenarios" },
+];
+
+const tabNavigationMap: Record<string, TabId> = {
+  services: "services",
+  documents: "documents",
+  rag: "rag",
+  runbooks: "runbooks",
+  analysis: "analysis",
+  graph: "graph",
+  architecture: "architecture",
+  scenarios: "scenarios",
+};
+
+type StepId = "services" | "documents" | "rag" | "runbooks";
+
+const stepIds: StepId[] = ["services", "documents", "rag", "runbooks"];
+
 function App() {
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
   const [activeTab, setActiveTab] = useState<TabId>("services");
   const [tabQuery, setTabQuery] = useState("");
+  const [activeNav, setActiveNav] = useState<string>("home");
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [activeStep, setActiveStep] = useState<StepId>("services");
+  const [completedSteps, setCompletedSteps] = useState<StepId[]>([]);
 
   const handleConfigSave = (config: ApiConfig) => {
     setApiConfig(config);
     setConfigVersion((version) => version + 1);
+  };
+
+  const handleNavigate = (id: string) => {
+    setActiveNav(id);
+    const mappedTab = tabNavigationMap[id];
+    if (mappedTab) {
+      setActiveTab(mappedTab);
+      if (stepIds.includes(mappedTab as StepId)) {
+        setActiveStep(mappedTab as StepId);
+      }
+    }
+    setMenuOpen(false);
+  };
+
+  const handleStepAction = (stepId: StepId) => {
+    setActiveStep(stepId);
+    setActiveTab(stepId);
+    setActiveNav(stepId);
+    setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
+  };
+
+  const handleQuickAction = () => {
+    setActiveNav("analysis");
+    setActiveTab("analysis");
   };
 
   const currentPanel = useMemo(() => {
@@ -112,62 +169,109 @@ function App() {
   }, [filteredTabs, activeTab]);
 
   return (
-    <div className="page-wrapper">
-      <section className="hero-banner">
-        <Header />
-        <div className="hero-content">
-          <p className="hero-eyebrow">Plan de continuité</p>
-          <h1 className="hero-title">Stronghold PRA/PCA</h1>
-          <p className="hero-subtitle">
-            Tableau de bord pour piloter la résilience, la gouvernance et les scénarios critiques.
-          </p>
-        </div>
-      </section>
+    <div className="app-shell">
+      <a className="skip-link" href="#main-content">
+        Aller au contenu principal
+      </a>
+      <Header
+        links={navLinks}
+        activeId={activeNav}
+        isMenuOpen={menuOpen}
+        onMenuToggle={() => setMenuOpen((open) => !open)}
+        onNavigate={handleNavigate}
+        onQuickAction={handleQuickAction}
+      />
 
-      <MainLayout
-        title="Stronghold PRA/PCA"
-        description="Noyau multi-tenant : services, Landing Zone, scénarios & runbooks, analyses et graphe."
-      >
-        <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
+      <main id="main-content" className="main-content">
+        <section id="home" className="home-section" aria-labelledby="home-title">
+          <HomePage
+            title="Premiers pas vers la résilience"
+            subtitle="Suivez ces étapes guidées pour structurer vos services, alimenter le moteur RAG/PRA et générer des recommandations actionnables."
+            activeStepId={activeStep}
+            completedSteps={completedSteps}
+            onStepAction={handleStepAction}
+          />
+        </section>
 
-        <SectionCard
-          eyebrow="Navigation"
-          title="Vue d'ensemble"
-          description="Pilotez vos services, analyses, runbooks et dépendances via des onglets rapides."
-          actions={
-            <div className="tab-controls">
-              <InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>
-              <div className="tab-search">
-                <input
-                  type="search"
-                  value={tabQuery}
-                  onChange={(event) => setTabQuery(event.target.value)}
-                  placeholder="Rechercher un module"
-                  aria-label="Rechercher un module"
-                />
-                <span className="muted small">
-                  {filteredTabs.length}/{tabs.length}
-                </span>
-              </div>
+        <section className="workspace-section" aria-labelledby="workspace-title">
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Espace opérationnel</p>
+              <h2 id="workspace-title">Modules et analyses stratégiques</h2>
+              <p className="muted">
+                Pilotez vos services, analyses, runbooks et dépendances via des modules
+                intelligents.
+              </p>
             </div>
-          }
-        >
-          {filteredTabs.length ? (
-            <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
-          ) : (
-            <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
-          )}
-        </SectionCard>
+            <button type="button" className="btn primary" onClick={handleQuickAction}>
+              Démarrer un PRA
+            </button>
+          </div>
 
-        <div
-          id={`${activeTab}-panel`}
-          className="panel-stack"
-          role="tabpanel"
-          aria-labelledby={`${activeTab}-tab`}
-        >
-          {currentPanel}
-        </div>
-      </MainLayout>
+          <div className="workspace-grid">
+            <SectionCard
+              eyebrow="Configuration"
+              title="Connexion API"
+              description="Renseignez l'URL et la clé API pour activer les workflows Stronghold."
+            >
+              <ConfigBanner config={apiConfig} onSave={handleConfigSave} />
+            </SectionCard>
+
+            <SectionCard
+              eyebrow="Navigation"
+              title="Vue d'ensemble"
+              description="Accédez rapidement à chaque module pour orchestrer la continuité."
+              actions={
+                <div className="tab-controls">
+                  <InfoBadge variant="subtle">
+                    {SERVICE_DOMAINS.length} domaines suivis
+                  </InfoBadge>
+                  <div className="tab-search">
+                    <label className="sr-only" htmlFor="tab-search">
+                      Rechercher un module
+                    </label>
+                    <input
+                      id="tab-search"
+                      type="search"
+                      value={tabQuery}
+                      onChange={(event) => setTabQuery(event.target.value)}
+                      placeholder="Rechercher un module"
+                    />
+                    <span className="muted small">
+                      {filteredTabs.length}/{tabs.length}
+                    </span>
+                  </div>
+                </div>
+              }
+            >
+              {filteredTabs.length ? (
+                <TabNavigation tabs={filteredTabs} activeTab={activeTab} onChange={setActiveTab} />
+              ) : (
+                <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
+              )}
+            </SectionCard>
+          </div>
+
+          <div className="anchor-targets" aria-hidden="true">
+            {navLinks
+              .filter((link) => link.id !== "home")
+              .map((link) => (
+                <span key={link.id} id={link.id} className="anchor-target" />
+              ))}
+          </div>
+
+          <div
+            id={`${activeTab}-panel`}
+            className="panel-stack"
+            role="tabpanel"
+            aria-labelledby={`${activeTab}-tab`}
+          >
+            {currentPanel}
+          </div>
+        </section>
+      </main>
+
+      <Footer links={navLinks} onNavigate={handleNavigate} />
     </div>
   );
 }

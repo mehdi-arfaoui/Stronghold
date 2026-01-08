@@ -71,3 +71,15 @@ export default defineConfig([
   },
 ])
 ```
+
+## Stronghold UI customization
+
+### Ajouter une page ou un lien de navigation
+1. Ajoutez un nouvel objet dans `navLinks` de `src/App.tsx` pour exposer le lien dans le menu principal.
+2. Associez un `TabId` dans `tabNavigationMap` pour relier le lien à un module existant.
+3. Si vous créez un nouveau module, ajoutez le `TabDefinition` correspondant dans `tabs` et créez la section dans `src/sections/`.
+
+### Personnaliser la palette et le thème
+- Les couleurs principales se trouvent dans `src/App.css` (`--primary-color`, `--secondary-color`, `--accent-color`, etc.).
+- Les variantes sombre/clair sont définies via `prefers-color-scheme` dans `src/App.css`.
+- Le reset et les styles de base sont dans `src/index.css` si vous souhaitez ajuster la typographie globale.
