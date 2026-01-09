@@ -17,9 +17,15 @@ import { buildMaturityScore } from "../analysis/maturityScore";
 import { buildNextActions } from "../analysis/nextActions";
 import {
   DocumentNotFoundError,
+  ExtractedFactNotFoundError,
   MissingExtractedTextError,
+  applyClassificationFeedback,
   getOrCreateExtractedFacts,
 } from "../services/extractedFactService";
+import {
+  EXTRACTED_FACT_CATEGORIES,
+  ExtractedFactCategory,
+} from "../ai/extractedFactSchema";
 import { buildBiaSummary } from "../services/biaSummary";
 import { buildRiskSummary } from "../services/riskSummary";
 import {
@@ -38,6 +44,144 @@ import {
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const router = Router();
+
+const CLASSIFICATION_CATEGORY_OPTIONS = EXTRACTED_FACT_CATEGORIES.map((category) =>
+  category.toLowerCase()
+);
+
+type FeedbackPayload = {
+  factId: string;
+  category?: ExtractedFactCategory;
+  type?: string;
+  label?: string;
+  service?: string | null;
+  infra?: string | null;
+  sla?: string | null;
+};
+
+type ValidationIssue = { field: string; message: string };
+
+function addIssue(issues: ValidationIssue[], field: string, message: string) {
+  issues.push({ field, message });
+}
+
+function parseRequiredString(
+  value: unknown,
+  field: string,
+  issues: ValidationIssue[]
+) {
+  if (value === null || value === undefined) {
+    addIssue(issues, field, "champ requis");
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    addIssue(issues, field, "doit être une chaîne de caractères");
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    addIssue(issues, field, "ne doit pas être vide");
+    return undefined;
+  }
+  return trimmed;
+}
+
+function parseOptionalString(
+  value: unknown,
+  field: string,
+  issues: ValidationIssue[],
+  allowNull = false
+) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    if (allowNull) {
+      return null;
+    }
+    addIssue(issues, field, "ne peut pas être null");
+    return undefined;
+  }
+  if (typeof value !== "string") {
+    addIssue(issues, field, "doit être une chaîne de caractères");
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return allowNull ? null : undefined;
+  }
+  return trimmed;
+}
+
+function parseOptionalCategory(
+  value: unknown,
+  field: string,
+  issues: ValidationIssue[]
+): ExtractedFactCategory | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
+    addIssue(issues, field, "ne peut pas être vide");
+    return undefined;
+  }
+  const normalized = String(value).toLowerCase();
+  if (!CLASSIFICATION_CATEGORY_OPTIONS.includes(normalized)) {
+    addIssue(
+      issues,
+      field,
+      `doit être l'une des valeurs: ${CLASSIFICATION_CATEGORY_OPTIONS.join("|")}`
+    );
+    return undefined;
+  }
+  return normalized.toUpperCase() as ExtractedFactCategory;
+}
+
+function parseFeedbackPayload(body: any): {
+  payload?: FeedbackPayload;
+  issues: ValidationIssue[];
+} {
+  const issues: ValidationIssue[] = [];
+  const factId = parseRequiredString(body?.factId, "factId", issues);
+  const category = parseOptionalCategory(body?.category, "category", issues);
+  const type = parseOptionalString(body?.type, "type", issues);
+  const label = parseOptionalString(body?.label, "label", issues);
+  const service = parseOptionalString(body?.service, "service", issues, true);
+  const infra = parseOptionalString(body?.infra, "infra", issues, true);
+  const sla = parseOptionalString(body?.sla, "sla", issues, true);
+
+  if (
+    !category &&
+    !type &&
+    !label &&
+    service === undefined &&
+    infra === undefined &&
+    sla === undefined
+  ) {
+    addIssue(
+      issues,
+      "payload",
+      "au moins un champ de correction doit être fourni"
+    );
+  }
+
+  if (issues.length > 0) {
+    return { issues };
+  }
+
+  return {
+    payload: {
+      factId: factId!,
+      category,
+      type,
+      label,
+      service,
+      infra,
+      sla,
+    },
+    issues,
+  };
+}
 
 /* ========= Helpers d'analyse applicative ========= */
 
@@ -1337,6 +1481,39 @@ router.post(
         return res.status(error.status).json({ error: error.message });
       }
       console.error("Error in POST /analysis/documents/:id/extracted-facts:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post(
+  "/documents/:id/classification-feedback",
+  requireRole("OPERATOR"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const { id } = req.params;
+      const { payload, issues } = parseFeedbackPayload(req.body);
+
+      if (!payload) {
+        return res.status(400).json({ error: "Payload invalide", details: issues });
+      }
+
+      const updated = await applyClassificationFeedback(id, tenantId, payload);
+
+      return res.json({ documentId: id, fact: updated });
+    } catch (error) {
+      if (error instanceof ExtractedFactNotFoundError) {
+        return res.status(error.status).json({ error: error.message });
+      }
+      console.error(
+        "Error in POST /analysis/documents/:id/classification-feedback:",
+        error
+      );
       return res.status(500).json({ error: "Internal server error" });
     }
   }

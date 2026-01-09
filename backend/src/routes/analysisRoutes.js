@@ -10,8 +10,98 @@ const praRecommender_1 = require("../analysis/praRecommender");
 const drStrategyEngine_1 = require("../analysis/drStrategyEngine");
 const dependencyRiskEngine_1 = require("../analysis/dependencyRiskEngine");
 const extractedFactService_1 = require("../services/extractedFactService");
+const extractedFactSchema_1 = require("../ai/extractedFactSchema");
 const ragService_1 = require("../ai/ragService");
 const router = (0, express_1.Router)();
+const CLASSIFICATION_CATEGORY_OPTIONS = extractedFactSchema_1.EXTRACTED_FACT_CATEGORIES.map((category) => category.toLowerCase());
+function addIssue(issues, field, message) {
+    issues.push({ field, message });
+}
+function parseRequiredString(value, field, issues) {
+    if (value === null || value === undefined) {
+        addIssue(issues, field, "champ requis");
+        return undefined;
+    }
+    if (typeof value !== "string") {
+        addIssue(issues, field, "doit être une chaîne de caractères");
+        return undefined;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        addIssue(issues, field, "ne doit pas être vide");
+        return undefined;
+    }
+    return trimmed;
+}
+function parseOptionalString(value, field, issues, allowNull = false) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null) {
+        if (allowNull) {
+            return null;
+        }
+        addIssue(issues, field, "ne peut pas être null");
+        return undefined;
+    }
+    if (typeof value !== "string") {
+        addIssue(issues, field, "doit être une chaîne de caractères");
+        return undefined;
+    }
+    const trimmed = value.trim();
+    if (!trimmed) {
+        return allowNull ? null : undefined;
+    }
+    return trimmed;
+}
+function parseOptionalCategory(value, field, issues) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || value === "") {
+        addIssue(issues, field, "ne peut pas être vide");
+        return undefined;
+    }
+    const normalized = String(value).toLowerCase();
+    if (!CLASSIFICATION_CATEGORY_OPTIONS.includes(normalized)) {
+        addIssue(issues, field, `doit être l'une des valeurs: ${CLASSIFICATION_CATEGORY_OPTIONS.join("|")}`);
+        return undefined;
+    }
+    return normalized.toUpperCase();
+}
+function parseFeedbackPayload(body) {
+    const issues = [];
+    const factId = parseRequiredString(body?.factId, "factId", issues);
+    const category = parseOptionalCategory(body?.category, "category", issues);
+    const type = parseOptionalString(body?.type, "type", issues);
+    const label = parseOptionalString(body?.label, "label", issues);
+    const service = parseOptionalString(body?.service, "service", issues, true);
+    const infra = parseOptionalString(body?.infra, "infra", issues, true);
+    const sla = parseOptionalString(body?.sla, "sla", issues, true);
+    if (!category &&
+        !type &&
+        !label &&
+        service === undefined &&
+        infra === undefined &&
+        sla === undefined) {
+        addIssue(issues, "payload", "au moins un champ de correction doit être fourni");
+    }
+    if (issues.length > 0) {
+        return { issues };
+    }
+    return {
+        payload: {
+            factId: factId,
+            category,
+            type,
+            label,
+            service,
+            infra,
+            sla,
+        },
+        issues,
+    };
+}
 /* ========= Helpers d'analyse applicative ========= */
 // Analyse basique de cohérence RTO/RPO/criticité
 function buildAppContinuityWarnings(services) {
@@ -789,6 +879,28 @@ router.post("/documents/:id/extracted-facts", (0, tenantMiddleware_1.requireRole
             return res.status(error.status).json({ error: error.message });
         }
         console.error("Error in POST /analysis/documents/:id/extracted-facts:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+router.post("/documents/:id/classification-feedback", (0, tenantMiddleware_1.requireRole)("OPERATOR"), async (req, res) => {
+    try {
+        const tenantId = req.tenantId;
+        if (!tenantId) {
+            return res.status(500).json({ error: "Tenant not resolved" });
+        }
+        const { id } = req.params;
+        const { payload, issues } = parseFeedbackPayload(req.body);
+        if (!payload) {
+            return res.status(400).json({ error: "Payload invalide", details: issues });
+        }
+        const updated = await (0, extractedFactService_1.applyClassificationFeedback)(id, tenantId, payload);
+        return res.json({ documentId: id, fact: updated });
+    }
+    catch (error) {
+        if (error instanceof extractedFactService_1.ExtractedFactNotFoundError) {
+            return res.status(error.status).json({ error: error.message });
+        }
+        console.error("Error in POST /analysis/documents/:id/classification-feedback:", error);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
