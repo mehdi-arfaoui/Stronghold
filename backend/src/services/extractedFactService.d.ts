@@ -9,6 +9,9 @@ export interface ExtractedFactPayload {
     category: ExtractedFactCategory;
     label: string;
     data: Record<string, unknown>;
+    service?: string | null;
+    infra?: string | null;
+    sla?: string | null;
     source?: string | null;
     confidence?: number | null;
     createdAt: Date;
@@ -22,9 +25,22 @@ export declare class MissingExtractedTextError extends Error {
     status: number;
     constructor();
 }
+export declare class ExtractedFactNotFoundError extends Error {
+    status: number;
+    constructor();
+}
 export declare function getOrCreateExtractedFacts(documentId: string, tenantId: string, force?: boolean, prismaClient?: PrismaClientOrTx, factAnalyzer?: typeof analyzeExtractedFacts): Promise<{
     documentId: string;
     facts: ExtractedFactPayload[];
 }>;
+export declare function applyClassificationFeedback(documentId: string, tenantId: string, payload: {
+    factId: string;
+    category?: ExtractedFactCategory;
+    type?: string;
+    label?: string;
+    service?: string | null;
+    infra?: string | null;
+    sla?: string | null;
+}, prismaClient?: PrismaClientOrTx): Promise<ExtractedFactPayload>;
 export {};
 //# sourceMappingURL=extractedFactService.d.ts.map

@@ -47,6 +47,20 @@ const RESPONSE_SCHEMA = {
             type: "object",
             description: "Structured attributes describing the fact (key/value).",
             additionalProperties: true,
+            properties: {
+              service: {
+                type: "string",
+                description: "Service name when applicable.",
+              },
+              infra: {
+                type: "string",
+                description: "Infrastructure component when applicable.",
+              },
+              sla: {
+                type: "string",
+                description: "SLA target or constraint when applicable.",
+              },
+            },
           },
           source: {
             type: "string",
@@ -313,7 +327,7 @@ export async function analyzeExtractedFacts(
       {
         role: "system",
         content:
-          "Tu es un assistant PRA/PCA qui extrait des faits exploitables et structurés. Reste concis, inclue la catégorie (SERVICE, INFRA, RISK, RTO_RPO, OTHER), un label bref, des données structurées, et si possible une courte référence de source (page ou extrait <280 caractères). N'inclus jamais le texte complet du document.",
+          "Tu es un assistant PRA/PCA qui extrait des faits exploitables et structurés. Reste concis, inclue la catégorie (SERVICE, INFRA, RISK, RTO_RPO, SLA, OTHER), un label bref, des données structurées (ex: service, infra, sla), et si possible une courte référence de source (page ou extrait <280 caractères). N'inclus jamais le texte complet du document.",
       },
       {
         role: "user",

@@ -3,6 +3,7 @@ export const EXTRACTED_FACT_CATEGORIES = [
   "INFRA",
   "RISK",
   "RTO_RPO",
+  "SLA",
   "OTHER",
 ] as const;
 

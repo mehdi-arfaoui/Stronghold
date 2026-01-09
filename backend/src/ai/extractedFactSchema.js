@@ -6,6 +6,7 @@ exports.EXTRACTED_FACT_CATEGORIES = [
     "INFRA",
     "RISK",
     "RTO_RPO",
+    "SLA",
     "OTHER",
 ];
 //# sourceMappingURL=extractedFactSchema.js.map

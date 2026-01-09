@@ -5,6 +5,11 @@ import {
   EXTRACTED_FACT_CATEGORIES,
   ExtractedFactCategory,
 } from "../ai/extractedFactSchema";
+import {
+  classifyDocumentFacts,
+  computeDocumentHash,
+  updateCachedClassification,
+} from "./classificationService";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
@@ -15,6 +20,9 @@ export interface ExtractedFactPayload {
   category: ExtractedFactCategory;
   label: string;
   data: Record<string, unknown>;
+  service?: string | null;
+  infra?: string | null;
+  sla?: string | null;
   source?: string | null;
   confidence?: number | null;
   createdAt: Date;
@@ -32,6 +40,13 @@ export class MissingExtractedTextError extends Error {
   status = 400;
   constructor() {
     super("Document has no extracted text");
+  }
+}
+
+export class ExtractedFactNotFoundError extends Error {
+  status = 404;
+  constructor() {
+    super("Extracted fact not found for tenant");
   }
 }
 
@@ -55,14 +70,29 @@ function parseDataField(raw: string): Record<string, unknown> {
   }
 }
 
+function pickOptionalStringField(
+  data: Record<string, unknown>,
+  key: string
+): string | null {
+  const value = data[key];
+  if (typeof value === "string" && value.trim()) {
+    return value.trim();
+  }
+  return null;
+}
+
 function mapDbFact(fact: ExtractedFact): ExtractedFactPayload {
+  const data = parseDataField(fact.data);
   return {
     id: fact.id,
     documentId: fact.documentId,
     type: fact.type,
     category: normalizeCategory(fact.category),
     label: fact.label,
-    data: parseDataField(fact.data),
+    data,
+    service: pickOptionalStringField(data, "service"),
+    infra: pickOptionalStringField(data, "infra"),
+    sla: pickOptionalStringField(data, "sla"),
     source: fact.source ?? null,
     confidence: clampConfidence(fact.confidence ?? null),
     createdAt: fact.createdAt,
@@ -162,13 +192,15 @@ export async function getOrCreateExtractedFacts(
 
   let aiFacts;
   try {
-    aiFacts = await factAnalyzer({
+    const classification = await classifyDocumentFacts({
       text: documentText,
       documentName: document.originalName,
       docType: document.docType,
       correlationId,
       tenantId,
+      factAnalyzer,
     });
+    aiFacts = classification.facts;
   } catch (err: any) {
     const message = err?.message || "Unknown OpenAI analysis error";
     console.error("[extractedFactService] analysis failed", {
@@ -216,4 +248,98 @@ export async function getOrCreateExtractedFacts(
     documentId: document.id,
     facts: createdFacts,
   };
+}
+
+function applyOptionalDataField(
+  data: Record<string, unknown>,
+  key: string,
+  value: string | null | undefined
+) {
+  if (value === undefined) {
+    return;
+  }
+  if (value === null) {
+    delete data[key];
+    return;
+  }
+  data[key] = value;
+}
+
+export async function applyClassificationFeedback(
+  documentId: string,
+  tenantId: string,
+  payload: {
+    factId: string;
+    category?: ExtractedFactCategory;
+    type?: string;
+    label?: string;
+    service?: string | null;
+    infra?: string | null;
+    sla?: string | null;
+  },
+  prismaClient: PrismaClientOrTx = prisma
+): Promise<ExtractedFactPayload> {
+  const existing = await prismaClient.extractedFact.findFirst({
+    where: { id: payload.factId, tenantId, documentId },
+  });
+
+  if (!existing) {
+    throw new ExtractedFactNotFoundError();
+  }
+
+  const updatedData = parseDataField(existing.data);
+  applyOptionalDataField(updatedData, "service", payload.service);
+  applyOptionalDataField(updatedData, "infra", payload.infra);
+  applyOptionalDataField(updatedData, "sla", payload.sla);
+
+  const updatedCategory = payload.category
+    ? normalizeCategory(payload.category)
+    : normalizeCategory(existing.category);
+
+  const updatePayload: Prisma.ExtractedFactUpdateManyArgs["data"] = {
+    category: updatedCategory,
+    type: payload.type ?? existing.type,
+    label: payload.label ?? existing.label,
+    data: JSON.stringify(updatedData),
+  };
+
+  await prismaClient.extractedFact.updateMany({
+    where: { id: existing.id, tenantId, documentId },
+    data: updatePayload,
+  });
+
+  const refreshed = await prismaClient.extractedFact.findFirst({
+    where: { id: existing.id, tenantId, documentId },
+  });
+
+  if (!refreshed) {
+    throw new ExtractedFactNotFoundError();
+  }
+
+  const document = await prismaClient.document.findFirst({
+    where: { id: documentId, tenantId },
+  });
+
+  if (document?.textContent) {
+    const docHash = computeDocumentHash(document.textContent);
+    await updateCachedClassification({
+      tenantId,
+      docHash,
+      originalFact: {
+        type: existing.type,
+        category: existing.category,
+        label: existing.label,
+      },
+      updatedFact: {
+        type: updatePayload.type ?? existing.type,
+        category: updatedCategory,
+        label: updatePayload.label ?? existing.label,
+        data: updatedData,
+        source: existing.source ?? null,
+        confidence: existing.confidence ?? null,
+      },
+    });
+  }
+
+  return mapDbFact(refreshed);
 }
