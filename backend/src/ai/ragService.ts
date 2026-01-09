@@ -3,6 +3,14 @@ import { ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
 import { DR_SCENARIOS, DrScenario } from "../analysis/drStrategyEngine";
 import { queryChromaCollection } from "../clients/chromaClient";
 import { buildChromaCollectionName } from "../services/documentIntelligenceService";
+import { recordRagRecall } from "../observability/metrics";
+import { fuseChunkScores, rerankChunksRrf } from "./ragRanking";
+import type { RagChunkCandidate } from "./ragRanking";
+import elasticlunr from "elasticlunr";
+import crypto from "node:crypto";
+
+export { fuseChunkScores, rerankChunksRrf } from "./ragRanking";
+export type { RagChunkCandidate } from "./ragRanking";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
@@ -54,6 +62,9 @@ const DEFAULT_MAX_CHUNKS = 6;
 const DEFAULT_MAX_FACTS = 8;
 const PROMPT_MAX_TOTAL = 4_000;
 const DEFAULT_VECTOR_SCORE = 0.1;
+const DEFAULT_ALPHA = 0.6;
+const DEFAULT_LEXICAL_CHUNKS_PER_DOC = 12;
+const DEFAULT_RECALL_KS = [3, 5, 10];
 
 function sanitizeText(text: string | null | undefined): string {
   return (text ?? "").replace(/\s+/g, " ").trim();
@@ -108,26 +119,88 @@ function normalizeDocType(value: string | null | undefined): string | null {
   return value.toUpperCase();
 }
 
-function splitIntoChunks(text: string, maxChunks: number): string[] {
-  const cleaned = sanitizeText(text);
-  if (!cleaned) return [];
+function splitIntoSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?…])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
 
-  const rawParts = cleaned.split(/\n{2,}/).filter(Boolean);
+function infoDensity(text: string): number {
+  const tokens = text
+    .replace(/[^a-zA-Z0-9À-ÿ\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return 0;
+  const informative = tokens.filter((token) => token.length >= 5 || /\d/.test(token)).length;
+  return informative / tokens.length;
+}
+
+function buildSentenceChunks(sentences: string[], maxLength: number): string[] {
   const chunks: string[] = [];
+  let current = "";
 
-  for (const part of rawParts) {
-    if (chunks.length >= maxChunks * 2) break;
-    if (part.length <= MAX_CHARS_PER_CHUNK) {
-      chunks.push(part);
+  const flush = () => {
+    if (current.trim().length > 0) {
+      chunks.push(current.trim());
+    }
+    current = "";
+  };
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    const candidate = current ? `${current} ${trimmed}` : trimmed;
+    if (candidate.length <= maxLength) {
+      current = candidate;
       continue;
     }
 
-    for (let i = 0; i < part.length && chunks.length < maxChunks * 2; i += MAX_CHARS_PER_CHUNK) {
-      chunks.push(part.slice(i, i + MAX_CHARS_PER_CHUNK));
+    if (current && infoDensity(current) < 0.18 && current.length < maxLength * 0.6) {
+      current = candidate.slice(0, maxLength);
+      continue;
     }
+
+    flush();
+    current = trimmed.length > maxLength ? trimmed.slice(0, maxLength) : trimmed;
   }
 
+  flush();
+  return chunks;
+}
+
+function buildChunkKey(documentId: string, text: string): string {
+  const hash = crypto.createHash("sha256").update(`${documentId}:${text}`).digest("hex");
+  return `${documentId}:${hash}`;
+}
+
+function buildChunkTextCandidates(text: string, maxChunks: number): string[] {
+  const cleaned = sanitizeText(text);
+  if (!cleaned) return [];
+  const sentences = splitIntoSentences(cleaned);
+  const chunks = buildSentenceChunks(sentences, MAX_CHARS_PER_CHUNK);
+  if (chunks.length <= maxChunks) return chunks;
   return chunks.slice(0, maxChunks);
+}
+
+function parseAlpha(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return DEFAULT_ALPHA;
+  return Math.min(1, Math.max(0, parsed));
+}
+
+function parseRerankStrategy(value: string | undefined): "none" | "rrf" {
+  const normalized = (value || "").toLowerCase();
+  return normalized === "rrf" ? "rrf" : "none";
+}
+
+function parseRecallKs(value: string | undefined): number[] {
+  if (!value) return DEFAULT_RECALL_KS;
+  const parsed = value
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((num) => Number.isFinite(num) && num > 0);
+  return parsed.length > 0 ? parsed : DEFAULT_RECALL_KS;
 }
 
 function buildFactPreview(fact: ExtractedFact): RagFact {
@@ -191,6 +264,7 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
   const maxFacts = options.maxFacts ?? DEFAULT_MAX_FACTS;
 
   const questionTokens = buildTokenSet(`${options.question} ${options.serviceFilter || ""}`);
+  const questionText = `${options.question} ${options.serviceFilter || ""}`.trim();
   const docFilter: Prisma.DocumentWhereInput = {
     ...(options.documentIds && options.documentIds.length > 0 ? { id: { in: options.documentIds } } : {}),
     ...(options.documentTypes && options.documentTypes.length > 0
@@ -222,28 +296,74 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
     }),
   ]);
 
-  const chunkCandidates: RagChunk[] = [];
+  const chunkDocs: RagChunkCandidate[] = [];
   for (const doc of documents) {
-    const chunks = splitIntoChunks(doc.textContent || "", maxChunks);
+    const chunks = buildChunkTextCandidates(doc.textContent || "", DEFAULT_LEXICAL_CHUNKS_PER_DOC);
     for (const chunk of chunks) {
-      chunkCandidates.push({
+      chunkDocs.push({
+        chunkKey: buildChunkKey(doc.id, chunk),
         documentId: doc.id,
         documentName: doc.originalName,
         documentType: doc.docType,
         text: clampText(chunk, MAX_CHARS_PER_CHUNK),
-        score: similarityScore(questionTokens, chunk),
+        score: 0,
+        bm25Score: 0,
       });
     }
   }
 
   const allowedDocIds = new Set(documents.map((d) => d.id));
 
-  const sortedChunks = chunkCandidates.sort((a, b) => b.score - a.score).slice(0, maxChunks);
+  if (chunkDocs.length === 0) {
+    return {
+      context: { chunks: [], extractedFacts: [] },
+      usedDocumentIds: documents.map((d) => d.id),
+      questionTokens,
+    };
+  }
+
+  const index = elasticlunr(function () {
+    this.setRef("chunkKey");
+    this.addField("text");
+  });
+
+  for (const chunk of chunkDocs) {
+    index.addDoc({ chunkKey: chunk.chunkKey, text: chunk.text });
+  }
+
+  const searchResults = questionText ? index.search(questionText, { expand: true }) : [];
+  const resultScoreMap = new Map<string, number>();
+  for (const result of searchResults) {
+    const score = typeof result.score === "number" ? result.score : 0;
+    resultScoreMap.set(result.ref, score);
+  }
+
+  const rankedCandidates =
+    searchResults.length > 0
+      ? searchResults
+          .map((result) => chunkDocs.find((chunk) => chunk.chunkKey === result.ref))
+          .filter((chunk): chunk is RagChunkCandidate => Boolean(chunk))
+      : chunkDocs;
+
+  const scoredCandidates: RagChunkCandidate[] = rankedCandidates.map((candidate) => {
+    const bm25Score =
+      resultScoreMap.get(candidate.chunkKey) ?? similarityScore(questionTokens, candidate.text);
+    return {
+      ...candidate,
+      bm25Score,
+      score: bm25Score,
+    };
+  });
+
+  const sortedChunks = scoredCandidates
+    .filter((candidate) => allowedDocIds.has(candidate.documentId))
+    .sort((a, b) => (b.bm25Score ?? 0) - (a.bm25Score ?? 0))
+    .slice(0, maxChunks);
   const sortedFacts = facts.filter((fact) => allowedDocIds.has(fact.documentId));
 
   return {
     context: {
-      chunks: sortedChunks,
+      chunks: sortedChunks.map((chunk) => ({ ...chunk, score: chunk.score })),
       extractedFacts: sortedFacts,
     },
     usedDocumentIds: documents.map((d) => d.id),
@@ -287,7 +407,7 @@ async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
   const metadatas = response.metadatas[0] || [];
   const distances = response.distances?.[0] || [];
 
-  const chunkCandidates: RagChunk[] = [];
+  const chunkCandidates: RagChunkCandidate[] = [];
   for (let index = 0; index < documents.length; index += 1) {
     const text = documents[index];
     const metadata = metadatas[index] || {};
@@ -301,13 +421,16 @@ async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
       toOptionalString(metadata.classification);
     const distance = typeof distances[index] === "number" ? distances[index] : null;
     const score = distance !== null ? Number((1 / (1 + distance)).toFixed(4)) : DEFAULT_VECTOR_SCORE;
+    const chunkText = clampText(text, MAX_CHARS_PER_CHUNK);
 
     chunkCandidates.push({
+      chunkKey: buildChunkKey(documentId, chunkText),
       documentId,
       documentName: rawDocName,
       documentType: normalizeDocType(rawDocType),
-      text: clampText(text, MAX_CHARS_PER_CHUNK),
+      text: chunkText,
       score,
+      vectorScore: score,
     });
   }
 
@@ -344,7 +467,7 @@ async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
       if (!allowedDocTypes || allowedDocTypes.length === 0) return true;
       return chunk.documentType ? allowedDocTypes.includes(chunk.documentType) : false;
     })
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => (b.vectorScore ?? 0) - (a.vectorScore ?? 0))
     .slice(0, maxChunks);
 
   const usedDocumentIds = Array.from(new Set(filteredChunks.map((chunk) => chunk.documentId)));
@@ -388,11 +511,12 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
   usedDocumentIds: string[];
   questionTokens: Set<string>;
 }> {
+  const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  const lexicalOptions = { ...options, maxChunks: Math.max(maxChunks * 3, maxChunks) };
+
+  let vectorResult: Awaited<ReturnType<typeof retrieveVectorRagContext>> | null = null;
   try {
-    const vectorResult = await retrieveVectorRagContext(options);
-    if (vectorResult) {
-      return vectorResult;
-    }
+    vectorResult = await retrieveVectorRagContext(options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
@@ -401,7 +525,101 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     });
   }
 
-  return retrieveLexicalRagContext(options);
+  const lexicalResult = await retrieveLexicalRagContext(lexicalOptions);
+
+  if (!vectorResult) {
+    const trimmedLexical = {
+      ...lexicalResult,
+      context: {
+        ...lexicalResult.context,
+        chunks: lexicalResult.context.chunks.slice(0, maxChunks),
+      },
+    };
+    if (options.documentIds && options.documentIds.length > 0) {
+      const rankedDocIds = Array.from(
+        new Set(trimmedLexical.context.chunks.map((chunk) => chunk.documentId))
+      );
+      recordRagRecall({
+        tenantId: options.tenantId,
+        relevantDocumentIds: options.documentIds,
+        rankedDocumentIds: rankedDocIds,
+        ks: parseRecallKs(process.env.RAG_RECALL_KS),
+      });
+    }
+    return trimmedLexical;
+  }
+
+  const alpha = parseAlpha(process.env.RAG_FUSION_ALPHA);
+  const rerankStrategy = parseRerankStrategy(process.env.RAG_RERANKING);
+
+  const combinedMap = new Map<string, RagChunkCandidate>();
+  for (const chunk of lexicalResult.context.chunks as RagChunkCandidate[]) {
+    combinedMap.set(chunk.chunkKey, { ...chunk, bm25Score: chunk.bm25Score ?? chunk.score });
+  }
+  for (const chunk of vectorResult.context.chunks as RagChunkCandidate[]) {
+    const existing = combinedMap.get(chunk.chunkKey);
+    if (existing) {
+      combinedMap.set(chunk.chunkKey, {
+        ...existing,
+        vectorScore: chunk.vectorScore ?? chunk.score,
+      });
+    } else {
+      combinedMap.set(chunk.chunkKey, { ...chunk, vectorScore: chunk.vectorScore ?? chunk.score });
+    }
+  }
+
+  const combinedCandidates = Array.from(combinedMap.values());
+  const fusedCandidates = fuseChunkScores(combinedCandidates, alpha);
+
+  let rerankedCandidates = fusedCandidates;
+  if (rerankStrategy === "rrf") {
+    const bm25Ranking = [...combinedCandidates]
+      .sort((a, b) => (b.bm25Score ?? 0) - (a.bm25Score ?? 0))
+      .map((chunk) => chunk.chunkKey);
+    const vectorRanking = [...combinedCandidates]
+      .sort((a, b) => (b.vectorScore ?? 0) - (a.vectorScore ?? 0))
+      .map((chunk) => chunk.chunkKey);
+    rerankedCandidates = rerankChunksRrf(fusedCandidates, {
+      vector: vectorRanking,
+      bm25: bm25Ranking,
+    });
+  }
+
+  const finalChunks = rerankedCandidates
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxChunks)
+    .map((chunk) => ({
+      documentId: chunk.documentId,
+      documentName: chunk.documentName,
+      documentType: chunk.documentType,
+      score: chunk.score,
+      text: chunk.text,
+    }));
+
+  const usedDocumentIds = Array.from(new Set(finalChunks.map((chunk) => chunk.documentId)));
+
+  if (options.documentIds && options.documentIds.length > 0) {
+    recordRagRecall({
+      tenantId: options.tenantId,
+      relevantDocumentIds: options.documentIds,
+      rankedDocumentIds: usedDocumentIds,
+      ks: parseRecallKs(process.env.RAG_RECALL_KS),
+    });
+  }
+
+  const extractedFacts =
+    vectorResult.context.extractedFacts.length > 0
+      ? vectorResult.context.extractedFacts
+      : lexicalResult.context.extractedFacts;
+
+  return {
+    context: {
+      chunks: finalChunks,
+      extractedFacts,
+    },
+    usedDocumentIds,
+    questionTokens: vectorResult.questionTokens,
+  };
 }
 
 export function draftAnswerFromContext(question: string, context: RagContext): string {
