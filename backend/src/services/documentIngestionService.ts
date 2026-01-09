@@ -91,15 +91,23 @@ async function extractTextFromPdf(filePath: string): Promise<string> {
 }
 
 async function extractTextWithOcr(filePath: string): Promise<string> {
-  const enableOcr = String(process.env.ENABLE_OCR || "false").toLowerCase() === "true";
+  const enableOcr = String(process.env.ENABLE_OCR || "true").toLowerCase() === "true";
   if (!enableOcr) {
     throw new Error("OCR désactivé (ENABLE_OCR non défini)");
   }
 
-  const { stdout } = await execFileAsync("tesseract", [filePath, "stdout", "-l", "eng+fra"], {
-    maxBuffer: 12 * 1024 * 1024,
-  });
-  return stdout.toString();
+  const ocrLangs = process.env.OCR_LANGS || "eng+fra";
+  try {
+    const { stdout } = await execFileAsync("tesseract", [filePath, "stdout", "-l", ocrLangs], {
+      maxBuffer: 12 * 1024 * 1024,
+    });
+    return stdout.toString();
+  } catch (err: any) {
+    if (err?.code === "ENOENT") {
+      throw new Error("OCR indisponible (tesseract manquant)");
+    }
+    throw err;
+  }
 }
 
 async function extractTextFromXlsx(filePath: string): Promise<string> {
@@ -497,6 +505,9 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       text = await extractTextWithOcr(resolvedFile.filePath);
     } else if (mime === "application/pdf" || ext === ".pdf") {
       text = await extractTextFromPdf(resolvedFile.filePath);
+      if (text.trim().length === 0) {
+        text = await extractTextWithOcr(resolvedFile.filePath);
+      }
     } else if (
       mime ===
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
