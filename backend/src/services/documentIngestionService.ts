@@ -22,6 +22,8 @@ import {
   resolveBucketAndKey,
 } from "../clients/s3Client";
 import { recordExtractionResult } from "../observability/metrics";
+import { extractTextWithOcr } from "./ocrService";
+import { upsertDocumentSensitivityReport } from "./documentSensitivityReportService";
 
 const execFileAsync = promisify(execFile);
 
@@ -90,24 +92,9 @@ async function extractTextFromPdf(filePath: string): Promise<string> {
   }
 }
 
-async function extractTextWithOcr(filePath: string): Promise<string> {
-  const enableOcr = String(process.env.ENABLE_OCR || "true").toLowerCase() === "true";
-  if (!enableOcr) {
-    throw new Error("OCR désactivé (ENABLE_OCR non défini)");
-  }
-
-  const ocrLangs = process.env.OCR_LANGS || "eng+fra";
-  try {
-    const { stdout } = await execFileAsync("tesseract", [filePath, "stdout", "-l", ocrLangs], {
-      maxBuffer: 12 * 1024 * 1024,
-    });
-    return stdout.toString();
-  } catch (err: any) {
-    if (err?.code === "ENOENT") {
-      throw new Error("OCR indisponible (tesseract manquant)");
-    }
-    throw err;
-  }
+function isScannedPdf(text: string): boolean {
+  const stripped = (text || "").replace(/\s+/g, "");
+  return stripped.length < 50;
 }
 
 async function extractTextFromXlsx(filePath: string): Promise<string> {
@@ -493,6 +480,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
   let mergedMetadata: any = null;
   let chunks: ReturnType<typeof buildChunks> = [];
   let ingestionError: string | null = null;
+  let ocrStatus: string | null = "NOT_REQUIRED";
+  let ocrProvider: string | null = null;
+  let ocrStartedAt: Date | null = null;
+  let ocrCompletedAt: Date | null = null;
 
   const resolvedFile = await resolveDocumentFilePath({
     storagePath: doc.storagePath,
@@ -502,11 +493,21 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
 
   try {
     if (mime.startsWith("image/")) {
-      text = await extractTextWithOcr(resolvedFile.filePath);
+      ocrStartedAt = new Date();
+      const ocrResult = await extractTextWithOcr(resolvedFile.filePath);
+      ocrCompletedAt = new Date();
+      ocrStatus = "SUCCESS";
+      ocrProvider = ocrResult.provider;
+      text = ocrResult.text;
     } else if (mime === "application/pdf" || ext === ".pdf") {
       text = await extractTextFromPdf(resolvedFile.filePath);
-      if (text.trim().length === 0) {
-        text = await extractTextWithOcr(resolvedFile.filePath);
+      if (isScannedPdf(text)) {
+        ocrStartedAt = new Date();
+        const ocrResult = await extractTextWithOcr(resolvedFile.filePath);
+        ocrCompletedAt = new Date();
+        ocrStatus = "SUCCESS";
+        ocrProvider = ocrResult.provider;
+        text = ocrResult.text;
       }
     } else if (
       mime ===
@@ -590,6 +591,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     status = isOcrDisabled ? "UNSUPPORTED" : "FAILED";
     error = errMessage;
     ingestionError = errMessage;
+    if (ocrStartedAt) {
+      ocrStatus = isOcrDisabled ? "DISABLED" : "FAILED";
+      ocrCompletedAt = new Date();
+    }
   } finally {
     await resolvedFile.cleanup().catch(() => undefined);
   }
@@ -618,6 +623,19 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     const ingestionStatusValue =
       status === "SUCCESS" ? "TEXT_EXTRACTED" : status === "UNSUPPORTED" ? "UNSUPPORTED" : "ERROR";
 
+    if (status === "SUCCESS") {
+      await upsertDocumentSensitivityReport({
+        tenantId,
+        documentId: doc.id,
+        text,
+        prismaClient: tx,
+      });
+    } else {
+      await tx.documentSensitivityReport.deleteMany({
+        where: { tenantId, documentId: doc.id },
+      });
+    }
+
     const updateResult = await tx.document.updateMany({
       where: { id: doc.id, tenantId: doc.tenantId },
       data: {
@@ -631,6 +649,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
         ingestionStatus: ingestionStatusValue,
         ingestionError,
         textExtractedAt: status === "SUCCESS" ? textExtractedAt : null,
+        ocrStatus: ocrStatus,
+        ocrProvider: ocrProvider,
+        ocrStartedAt: ocrStartedAt,
+        ocrCompletedAt: ocrCompletedAt,
       },
     });
 

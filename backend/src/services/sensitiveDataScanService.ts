@@ -16,6 +16,8 @@ const SENSITIVE_TYPES = [
   "NATIONAL_ID",
   "EMAIL",
   "PHONE",
+  "ADDRESS",
+  "BIRTH_DATE",
   "PASSWORD",
   "API_KEY",
 ] as const;
@@ -292,6 +294,22 @@ function buildFindings(text: string): SensitiveFinding[] {
     findings.push({ type: "PHONE", count: phoneCount });
   }
 
+  const addressCount = countMatches(
+    /\b\d{1,4}\s+[A-ZÀ-ÿ][A-ZÀ-ÿ'’.\s-]{3,}\b/gi,
+    trimmedText
+  );
+  if (addressCount > 0) {
+    findings.push({ type: "ADDRESS", count: addressCount });
+  }
+
+  const birthDateCount = countMatches(
+    /\b(?:0?[1-9]|[12]\d|3[01])[\/\-.](?:0?[1-9]|1[0-2])[\/\-.](?:19|20)\d{2}\b/g,
+    trimmedText
+  );
+  if (birthDateCount > 0) {
+    findings.push({ type: "BIRTH_DATE", count: birthDateCount });
+  }
+
   const passwordCount = countMatches(/(?:password|mot de passe)\s*[:=]\s*\S{6,}/gi, trimmedText);
   if (passwordCount > 0) {
     findings.push({ type: "PASSWORD", count: passwordCount });
@@ -324,8 +342,13 @@ export async function scanSensitiveDataOnUpload(options: {
   };
 }
 
+export function scanSensitiveText(text: string): SensitiveFinding[] {
+  return buildFindings(text);
+}
+
 export const __test__ = {
   buildFindings,
   luhnCheck,
   countIbans,
+  scanSensitiveText,
 };

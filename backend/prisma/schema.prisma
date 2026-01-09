@@ -349,6 +349,10 @@ model Document {
   extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
   extractionError  String?
   textContent      String? // texte brut extrait (pour debug / IA)
+  ocrStatus        String? @default("NOT_REQUIRED") // NOT_REQUIRED, SKIPPED, SUCCESS, FAILED, DISABLED
+  ocrProvider      String? // TESSERACT, AWS_TEXTRACT
+  ocrStartedAt     DateTime?
+  ocrCompletedAt   DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -358,6 +362,7 @@ model Document {
   extractionSuggestions DocumentExtractionSuggestion[]
   exerciseEvidence      ExerciseEvidence[]
   incidentDocuments     IncidentDocument[]
+  sensitivityReport     DocumentSensitivityReport?
 
   @@unique([tenantId, textHash])
   @@unique([tenantId, fileHash])
@@ -647,6 +652,25 @@ model ExerciseEvidence {
   description  String?
   exerciseType String?
   occurredAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, documentId])
+}
+
+model DocumentSensitivityReport {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  documentId String   @unique
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  status        String   @default("COMPLETED")
+  findings      Json
+  totalFindings Int
+  scannedAt     DateTime @default(now())
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -20,6 +20,7 @@ import {
   listExtractionSuggestions,
   rejectExtractionSuggestions,
 } from "../services/extractionSuggestionService";
+import { getDocumentSensitivityReport } from "../services/documentSensitivityReportService";
 
 import {
   buildObjectKey,
@@ -554,6 +555,45 @@ router.post(
     }
   }
 );
+
+/**
+ * GET /documents/:id/sensitivity-report
+ * Récupère le rapport de sensibilité d'un document.
+ */
+router.get("/:id/sensitivity-report", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: { field: string; message: string }[] = [];
+    const docId = parseRequiredString(req.params.id, "id", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
+    if (!doc) {
+      return res.status(404).json({ error: "Document introuvable pour ce tenant" });
+    }
+
+    const report = await getDocumentSensitivityReport({
+      tenantId,
+      documentId: docId,
+      prismaClient: prisma,
+    });
+
+    if (!report) {
+      return res.status(404).json({ error: "Rapport de sensibilité introuvable" });
+    }
+
+    return res.json(report);
+  } catch (error) {
+    console.error("Error in GET /documents/:id/sensitivity-report:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
