@@ -1,4 +1,4 @@
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 
 type IncidentEventPayload = {
   event: "incident.created" | "incident.updated";

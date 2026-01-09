@@ -1,7 +1,7 @@
 import { Router } from "express";
 import crypto from "crypto";
 import type { ApiRole } from "@prisma/client";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 

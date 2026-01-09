@@ -2,7 +2,7 @@ import {
   CostEstimate,
   defaultBudgetForCriticality,
   formatCostEstimate,
-} from "./financialModels";
+} from "./financialModels.js";
 
 export type CriticalityLevel = "critical" | "high" | "medium" | "low";
 

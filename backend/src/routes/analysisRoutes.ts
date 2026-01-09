@@ -1,39 +1,39 @@
 import { Router } from "express";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { recommendPraOptions } from "../analysis/praRecommender";
+import { recommendPraOptions } from "../analysis/praRecommender.js";
 import {
   DR_SCENARIOS,
   getSuggestedDRStrategy,
   summarizeScenarioForTable,
-} from "../analysis/drStrategyEngine";
+} from "../analysis/drStrategyEngine.js";
 import {
   budgetFromLevel,
   defaultBudgetForCriticality,
   formatCostEstimate,
-} from "../analysis/financialModels";
-import { buildDependencyRisks } from "../analysis/dependencyRiskEngine";
-import { buildMaturityScore } from "../analysis/maturityScore";
-import { buildNextActions } from "../analysis/nextActions";
+} from "../analysis/financialModels.js";
+import { buildDependencyRisks } from "../analysis/dependencyRiskEngine.js";
+import { buildMaturityScore } from "../analysis/maturityScore.js";
+import { buildNextActions } from "../analysis/nextActions.js";
 import {
   DocumentNotFoundError,
   ExtractedFactNotFoundError,
   MissingExtractedTextError,
   applyClassificationFeedback,
   getOrCreateExtractedFacts,
-} from "../services/extractedFactService";
+} from "../services/extractedFactService.js";
 import {
   EXTRACTED_FACT_CATEGORIES,
   ExtractedFactCategory,
-} from "../ai/extractedFactSchema";
-import { buildBiaSummary } from "../services/biaSummary";
-import { buildRiskSummary } from "../services/riskSummary";
+} from "../ai/extractedFactSchema.js";
+import { buildBiaSummary } from "../services/biaSummary.js";
+import { buildRiskSummary } from "../services/riskSummary.js";
 import {
   buildComplianceIndicators,
   buildComplianceReport,
   listComplianceTemplates,
-} from "../services/complianceReporting";
+} from "../services/complianceReporting.js";
 import {
   buildRagPrompt,
   draftAnswerFromContext,
@@ -41,7 +41,7 @@ import {
   generateRunbookDraft,
   recommendScenariosWithRag,
   retrieveRagContext,
-} from "../ai/ragService";
+} from "../ai/ragService.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const router = Router();

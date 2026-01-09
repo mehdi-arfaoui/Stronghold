@@ -1,17 +1,17 @@
 import { Router } from "express";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import {
   buildValidationError,
-} from "../validation/common";
+} from "../validation/common.js";
 import {
   parseChecklistUpdatePayload,
   parseExerciseCreatePayload,
   parseExerciseResultPayload,
   parseExerciseUpdatePayload,
-} from "../validation/exerciseValidation";
-import { buildExerciseAnalysis } from "../services/exerciseAnalysisService";
+} from "../validation/exerciseValidation.js";
+import { buildExerciseAnalysis } from "../services/exerciseAnalysisService.js";
 
 const router = Router();
 

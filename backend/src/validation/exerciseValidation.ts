@@ -5,7 +5,7 @@ import {
   parseOptionalString,
   parseRequiredString,
   parseStringArray,
-} from "./common";
+} from "./common.js";
 
 export const EXERCISE_STATUSES = ["planned", "in_progress", "completed", "canceled"] as const;
 export const EXERCISE_RESULT_STATUSES = ["success", "failure", "partial"] as const;

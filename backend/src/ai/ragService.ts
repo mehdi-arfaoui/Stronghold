@@ -1,16 +1,16 @@
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import { ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
-import { DR_SCENARIOS, DrScenario } from "../analysis/drStrategyEngine";
-import { queryChromaCollection } from "../clients/chromaClient";
-import { buildChromaCollectionName } from "../services/documentIntelligenceService";
-import { recordRagRecall } from "../observability/metrics";
-import { fuseChunkScores, rerankChunksRrf } from "./ragRanking";
-import type { RagChunkCandidate } from "./ragRanking";
+import { DR_SCENARIOS, DrScenario } from "../analysis/drStrategyEngine.js";
+import { queryChromaCollection } from "../clients/chromaClient.js";
+import { buildChromaCollectionName } from "../services/documentIntelligenceService.js";
+import { recordRagRecall } from "../observability/metrics.js";
+import { fuseChunkScores, rerankChunksRrf } from "./ragRanking.js";
+import type { RagChunkCandidate } from "./ragRanking.js";
 import elasticlunr from "elasticlunr";
 import crypto from "node:crypto";
 
-export { fuseChunkScores, rerankChunksRrf } from "./ragRanking";
-export type { RagChunkCandidate } from "./ragRanking";
+export { fuseChunkScores, rerankChunksRrf } from "./ragRanking.js";
+export type { RagChunkCandidate } from "./ragRanking.js";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 

@@ -1,10 +1,10 @@
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { normalizeAwsPricingResponse } from "../clients/awsPricingClient";
-import { normalizeAzurePricingResponse } from "../clients/azurePricingClient";
-import { normalizeGcpPricingResponse } from "../clients/gcpPricingClient";
-import { summarizePricing } from "../clients/pricingTypes";
+import { normalizeAwsPricingResponse } from "../clients/awsPricingClient.js";
+import { normalizeAzurePricingResponse } from "../clients/azurePricingClient.js";
+import { normalizeGcpPricingResponse } from "../clients/gcpPricingClient.js";
+import { summarizePricing } from "../clients/pricingTypes.js";
 
 const router = Router();
 

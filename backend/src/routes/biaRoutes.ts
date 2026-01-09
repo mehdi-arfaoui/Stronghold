@@ -1,5 +1,5 @@
 import { Router } from "express";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import {
@@ -9,13 +9,13 @@ import {
   parseRequiredString,
   parseStringArray,
   type ValidationIssue,
-} from "../validation/common";
+} from "../validation/common.js";
 import {
   buildBiaSummary,
   scoreCriticality,
   scoreImpact,
   scoreTimeSensitivity,
-} from "../services/biaSummary";
+} from "../services/biaSummary.js";
 
 const router = Router();
 

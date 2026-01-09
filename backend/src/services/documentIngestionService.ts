@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { PDFParse } from "pdf-parse";
 import * as xlsx from "xlsx";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import * as crypto from "crypto";
 import type { Prisma, Service, InfraComponent } from "@prisma/client";
 import {
@@ -15,15 +15,15 @@ import {
   extractStructuredMetadata,
   pushChunksToChroma,
   serializeMetadata,
-} from "./documentIntelligenceService";
-import { createExtractionSuggestions } from "./extractionSuggestionService";
+} from "./documentIntelligenceService.js";
+import { createExtractionSuggestions } from "./extractionSuggestionService.js";
 import {
   downloadObjectToTempFile,
   resolveBucketAndKey,
-} from "../clients/s3Client";
-import { recordExtractionResult } from "../observability/metrics";
-import { extractTextWithOcr } from "./ocrService";
-import { upsertDocumentSensitivityReport } from "./documentSensitivityReportService";
+} from "../clients/s3Client.js";
+import { recordExtractionResult } from "../observability/metrics.js";
+import { extractTextWithOcr } from "./ocrService.js";
+import { upsertDocumentSensitivityReport } from "./documentSensitivityReportService.js";
 
 const execFileAsync = promisify(execFile);
 

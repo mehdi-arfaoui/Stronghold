@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { z, ZodError } from "zod";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 
 type DiscoveryNodeKind = "service" | "infra";
 

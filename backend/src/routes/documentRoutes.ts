@@ -3,25 +3,25 @@ import * as fs from "fs";
 import multer from "multer";
 import path from "path";
 import * as crypto from "crypto";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { enqueueDocumentIngestion } from "../services/documentIngestionService";
-import { retentionConfig } from "../config/observability";
-import { scanSensitiveDataOnUpload } from "../services/sensitiveDataScanService";
+import { enqueueDocumentIngestion } from "../services/documentIngestionService.js";
+import { retentionConfig } from "../config/observability.js";
+import { scanSensitiveDataOnUpload } from "../services/sensitiveDataScanService.js";
 import {
   buildValidationError,
   parseOptionalNumber,
   parseOptionalString,
   parseRequiredNumber,
   parseRequiredString,
-} from "../validation/common";
+} from "../validation/common.js";
 import {
   approveExtractionSuggestions,
   listExtractionSuggestions,
   rejectExtractionSuggestions,
-} from "../services/extractionSuggestionService";
-import { getDocumentSensitivityReport } from "../services/documentSensitivityReportService";
+} from "../services/extractionSuggestionService.js";
+import { getDocumentSensitivityReport } from "../services/documentSensitivityReportService.js";
 
 import {
   buildObjectKey,
@@ -30,7 +30,7 @@ import {
   getTenantBucketName,
   resolveBucketAndKey,
   uploadObjectToBucket,
-} from "../clients/s3Client";
+} from "../clients/s3Client.js";
 
 const router = Router();
 

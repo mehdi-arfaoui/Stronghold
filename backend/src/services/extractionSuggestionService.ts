@@ -1,4 +1,4 @@
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import { Prisma, PrismaClient } from "@prisma/client";
 
 export type SuggestionStatus = "PENDING" | "APPROVED" | "REJECTED";

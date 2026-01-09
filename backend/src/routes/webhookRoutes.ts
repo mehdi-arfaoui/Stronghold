@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { ingestDocumentText } from "../services/documentIngestionService";
+import { ingestDocumentText } from "../services/documentIngestionService.js";
 
 const router = Router();
 

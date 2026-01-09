@@ -1,14 +1,14 @@
-import prisma from "../prismaClient";
-import { recommendPraOptions } from "../analysis/praRecommender";
+import prisma from "../prismaClient.js";
+import { recommendPraOptions } from "../analysis/praRecommender.js";
 import * as crypto from "crypto";
-import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService";
+import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService.js";
 import type { RunbookTemplate } from "@prisma/client";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService";
-import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client";
-import { buildBiaSummary } from "./biaSummary";
-import { buildRiskSummary } from "./riskSummary";
-import { defaultBudgetForCriticality, formatCostEstimate } from "../analysis/financialModels";
+import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService.js";
+import { buildObjectKey, getTenantBucketName, uploadObjectToBucket } from "../clients/s3Client.js";
+import { buildBiaSummary } from "./biaSummary.js";
+import { buildRiskSummary } from "./riskSummary.js";
+import { defaultBudgetForCriticality, formatCostEstimate } from "../analysis/financialModels.js";
 
 export interface RunbookGenerationOptions {
   scenarioId?: string | null;

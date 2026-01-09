@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import type { ApiRole } from "@prisma/client";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 
 export type TenantRequest = Request & {
   tenantId?: string;

@@ -1,6 +1,6 @@
 import { Job, Worker } from "bullmq";
-import prisma from "../prismaClient";
-import { createRedisConnection } from "../queues/discoveryQueue";
+import prisma from "../prismaClient.js";
+import { createRedisConnection } from "../queues/discoveryQueue.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;

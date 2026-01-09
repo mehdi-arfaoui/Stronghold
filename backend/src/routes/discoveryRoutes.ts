@@ -1,17 +1,17 @@
 import { Router } from "express";
 import multer from "multer";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { buildValidationError, parseStringArray, parseOptionalString } from "../validation/common";
+import { buildValidationError, parseStringArray, parseOptionalString } from "../validation/common.js";
 import {
   applyDiscoveryImport,
   buildJobResponse,
   DiscoveryImportError,
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
-} from "../services/discoveryService";
-import { discoveryQueue } from "../queues/discoveryQueue";
+} from "../services/discoveryService.js";
+import { discoveryQueue } from "../queues/discoveryQueue.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });

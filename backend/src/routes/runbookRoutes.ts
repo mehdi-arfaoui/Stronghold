@@ -1,21 +1,21 @@
 import { Router } from "express";
 import multer from "multer";
-import prisma from "../prismaClient";
+import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { generateRunbook } from "../services/runbookGenerator";
+import { generateRunbook } from "../services/runbookGenerator.js";
 import {
   computeBufferHash,
   detectTemplateFormat,
   sanitizeTemplateDescription,
-} from "../services/runbookTemplateService";
+} from "../services/runbookTemplateService.js";
 import {
   buildObjectKey,
   getSignedUrlForObject,
   getTenantBucketName,
   resolveBucketAndKey,
   uploadObjectToBucket,
-} from "../clients/s3Client";
+} from "../clients/s3Client.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });

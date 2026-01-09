@@ -1,7 +1,7 @@
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { listScenarioCatalog, syncScenarioCatalog } from "../services/scenarioCatalogService";
+import { listScenarioCatalog, syncScenarioCatalog } from "../services/scenarioCatalogService.js";
 
 const router = Router();
 

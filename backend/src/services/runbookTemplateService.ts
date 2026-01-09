@@ -3,7 +3,7 @@ import AdmZip from "adm-zip";
 import fs from "fs";
 import mammoth from "mammoth";
 import { RunbookTemplate } from "@prisma/client";
-import { downloadObjectToTempFile, resolveBucketAndKey } from "../clients/s3Client";
+import { downloadObjectToTempFile, resolveBucketAndKey } from "../clients/s3Client.js";
 
 export type TemplateFormat = "DOCX" | "ODT" | "MARKDOWN";
 

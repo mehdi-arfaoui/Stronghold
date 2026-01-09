@@ -1,15 +1,15 @@
-import prisma from "../prismaClient";
-import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer";
+import prisma from "../prismaClient.js";
+import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
 import { Document, ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
 import {
   EXTRACTED_FACT_CATEGORIES,
   ExtractedFactCategory,
-} from "../ai/extractedFactSchema";
+} from "../ai/extractedFactSchema.js";
 import {
   classifyDocumentFacts,
   computeDocumentHash,
   updateCachedClassification,
-} from "./classificationService";
+} from "./classificationService.js";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
