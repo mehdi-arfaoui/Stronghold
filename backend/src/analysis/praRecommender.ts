@@ -1,4 +1,5 @@
-import { CostEstimate, formatCostEstimate } from "./financialModels.js";
+import type { CostEstimate } from "./financialModels.js";
+import { formatCostEstimate } from "./financialModels.js";
 
 export type EnvironmentType = "cloud" | "onprem" | "hybrid";
 export type Level = "low" | "medium" | "high";

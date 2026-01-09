@@ -1,5 +1,5 @@
+import type { ValidationIssue } from "./common.js";
 import {
-  ValidationIssue,
   parseOptionalEnum,
   parseOptionalNumber,
   parseOptionalString,

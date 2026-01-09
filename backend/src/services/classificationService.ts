@@ -1,10 +1,9 @@
 import crypto from "node:crypto";
 import IORedis from "ioredis";
-import { analyzeExtractedFacts, AiExtractedFact } from "../ai/extractedFactsAnalyzer.js";
-import {
-  EXTRACTED_FACT_CATEGORIES,
-  ExtractedFactCategory,
-} from "../ai/extractedFactSchema.js";
+import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
+import type { AiExtractedFact } from "../ai/extractedFactsAnalyzer.js";
+import { EXTRACTED_FACT_CATEGORIES } from "../ai/extractedFactSchema.js";
+import type { ExtractedFactCategory } from "../ai/extractedFactSchema.js";
 
 type CacheClient = Pick<IORedis, "get" | "set">;
 

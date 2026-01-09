@@ -1,4 +1,4 @@
-import { NormalizedPricingItem } from "./pricingTypes.js";
+import type { NormalizedPricingItem } from "./pricingTypes.js";
 
 function toNumber(value: unknown): number {
   if (value == null) return 0;

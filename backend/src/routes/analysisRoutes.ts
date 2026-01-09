@@ -23,10 +23,8 @@ import {
   applyClassificationFeedback,
   getOrCreateExtractedFacts,
 } from "../services/extractedFactService.js";
-import {
-  EXTRACTED_FACT_CATEGORIES,
-  ExtractedFactCategory,
-} from "../ai/extractedFactSchema.js";
+import { EXTRACTED_FACT_CATEGORIES } from "../ai/extractedFactSchema.js";
+import type { ExtractedFactCategory } from "../ai/extractedFactSchema.js";
 import { buildBiaSummary } from "../services/biaSummary.js";
 import { buildRiskSummary } from "../services/riskSummary.js";
 import {

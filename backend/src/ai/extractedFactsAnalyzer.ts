@@ -1,7 +1,5 @@
-import {
-  EXTRACTED_FACT_CATEGORIES,
-  ExtractedFactCategory,
-} from "./extractedFactSchema.js";
+import { EXTRACTED_FACT_CATEGORIES } from "./extractedFactSchema.js";
+import type { ExtractedFactCategory } from "./extractedFactSchema.js";
 import { recordLlmCall } from "../observability/metrics.js";
 
 export interface AiExtractedFact {

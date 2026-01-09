@@ -1,10 +1,8 @@
 import prisma from "../prismaClient.js";
 import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
 import { Document, ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
-import {
-  EXTRACTED_FACT_CATEGORIES,
-  ExtractedFactCategory,
-} from "../ai/extractedFactSchema.js";
+import { EXTRACTED_FACT_CATEGORIES } from "../ai/extractedFactSchema.js";
+import type { ExtractedFactCategory } from "../ai/extractedFactSchema.js";
 import {
   classifyDocumentFacts,
   computeDocumentHash,

@@ -1,5 +1,5 @@
+import type { CostEstimate } from "./financialModels.js";
 import {
-  CostEstimate,
   defaultBudgetForCriticality,
   formatCostEstimate,
 } from "./financialModels.js";
