@@ -111,6 +111,57 @@ const asyncMiddleware = (fn: (req: any, res: any, next: any) => Promise<any>) =>
 };
 app.use(asyncMiddleware(tenantMiddleware));
 
+// Helper pour normaliser les imports (gère les exports par défaut)
+// Un router Express est un objet avec des méthodes comme use, get, post, etc.
+const isExpressRouter = (obj: any): boolean => {
+  return (
+    obj &&
+    typeof obj === "object" &&
+    (typeof obj.use === "function" ||
+      typeof obj.get === "function" ||
+      typeof obj.post === "function" ||
+      typeof obj.put === "function" ||
+      typeof obj.delete === "function")
+  );
+};
+
+const normalizeRouteHandler = (handler: any, name: string): any => {
+  // Si c'est un router Express directement, on le retourne
+  if (isExpressRouter(handler)) {
+    return handler;
+  }
+  // Si c'est une fonction (middleware), on la retourne
+  if (typeof handler === "function") {
+    return handler;
+  }
+  // Si c'est un objet avec une propriété default, on l'extrait
+  if (handler && typeof handler === "object" && "default" in handler) {
+    const defaultHandler = handler.default;
+    if (isExpressRouter(defaultHandler)) {
+      return defaultHandler;
+    }
+    if (typeof defaultHandler === "function") {
+      return defaultHandler;
+    }
+    throw new Error(
+      `Route handler for ${name} has a default property but it's not a router or function. Got: ${typeof defaultHandler}, keys: ${JSON.stringify(
+        Object.keys(defaultHandler || {})
+      )}`
+    );
+  }
+  // Si c'est un objet mais pas de default, on vérifie s'il a des propriétés de router Express
+  if (handler && typeof handler === "object") {
+    if (isExpressRouter(handler)) {
+      return handler;
+    }
+  }
+  throw new Error(
+    `Route handler for ${name} is not a router or function. Got: ${typeof handler}, keys: ${JSON.stringify(
+      Object.keys(handler || {})
+    )}`
+  );
+};
+
 // Validation et enregistrement des routes
 const routes = [
   { path: "/services", handler: serviceRoutes, name: "serviceRoutes" },
@@ -134,10 +185,8 @@ const routes = [
 ];
 
 for (const route of routes) {
-  if (!route.handler || typeof route.handler !== "function") {
-    throw new Error(`Route handler for ${route.name} is not a function. Got: ${typeof route.handler}`);
-  }
-  app.use(route.path, route.handler);
+  const normalizedHandler = normalizeRouteHandler(route.handler, route.name);
+  app.use(route.path, normalizedHandler);
 }
 
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
