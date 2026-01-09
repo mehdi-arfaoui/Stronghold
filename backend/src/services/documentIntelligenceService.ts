@@ -379,30 +379,82 @@ export function buildChunks(
   const chunks: DocumentChunk[] = [];
   const seen = new Set<string>();
 
-  for (const paragraph of paragraphs) {
-    let remaining = paragraph;
-    while (remaining.length > 0) {
-      const slice = remaining.slice(0, maxLength);
-      const chunkText = slice.trim();
-      if (chunkText.length === 0) break;
-      const hash = crypto.createHash("sha256").update(chunkText).digest("hex");
-      if (seen.has(hash)) {
-        remaining = remaining.slice(maxLength - overlap);
-        continue;
-      }
-      seen.add(hash);
-      const id = crypto.randomUUID();
-      chunks.push({
-        id,
-        content: chunkText,
-        hash,
-        metadata: { ...baseMetadata, length: chunkText.length },
-      });
-      if (remaining.length <= maxLength) break;
-      remaining = remaining.slice(maxLength - overlap);
-    }
+  const sentences = paragraphs.flatMap((paragraph) => splitIntoSentences(paragraph));
+  const sentenceChunks = buildSentenceChunks(sentences, maxLength);
+
+  for (let index = 0; index < sentenceChunks.length; index += 1) {
+    const baseText = sentenceChunks[index];
+    const overlapText =
+      overlap > 0 && index > 0
+        ? sentenceChunks[index - 1].slice(Math.max(0, sentenceChunks[index - 1].length - overlap))
+        : "";
+    const mergedText = overlapText ? `${overlapText} ${baseText}`.trim() : baseText;
+    const chunkText = mergedText.slice(0, maxLength).trim();
+    if (!chunkText) continue;
+
+    const hash = crypto.createHash("sha256").update(chunkText).digest("hex");
+    if (seen.has(hash)) continue;
+    seen.add(hash);
+
+    const id = crypto.randomUUID();
+    chunks.push({
+      id,
+      content: chunkText,
+      hash,
+      metadata: { ...baseMetadata, length: chunkText.length },
+    });
   }
 
+  return chunks;
+}
+
+function splitIntoSentences(text: string): string[] {
+  return text
+    .split(/(?<=[.!?…])\s+|\n+/)
+    .map((sentence) => sentence.trim())
+    .filter((sentence) => sentence.length > 0);
+}
+
+function infoDensity(text: string): number {
+  const tokens = text
+    .replace(/[^a-zA-Z0-9À-ÿ\s]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return 0;
+  const informative = tokens.filter((token) => token.length >= 5 || /\d/.test(token)).length;
+  return informative / tokens.length;
+}
+
+function buildSentenceChunks(sentences: string[], maxLength: number): string[] {
+  const chunks: string[] = [];
+  let current = "";
+
+  const flush = () => {
+    if (current.trim().length > 0) {
+      chunks.push(current.trim());
+    }
+    current = "";
+  };
+
+  for (const sentence of sentences) {
+    const trimmed = sentence.trim();
+    if (!trimmed) continue;
+    const candidate = current ? `${current} ${trimmed}` : trimmed;
+    if (candidate.length <= maxLength) {
+      current = candidate;
+      continue;
+    }
+
+    if (current && infoDensity(current) < 0.18 && current.length < maxLength * 0.6) {
+      current = candidate.slice(0, maxLength);
+      continue;
+    }
+
+    flush();
+    current = trimmed.length > maxLength ? trimmed.slice(0, maxLength) : trimmed;
+  }
+
+  flush();
   return chunks;
 }
 

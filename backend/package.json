@@ -28,6 +28,7 @@
     "cors": "^2.8.5",
     "docx": "^8.5.0",
     "dotenv": "^17.2.3",
+    "elasticlunr": "^0.9.5",
     "express": "^5.1.0",
     "ioredis": "^5.9.0",
     "mammoth": "^1.7.2",
