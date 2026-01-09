@@ -44,6 +44,7 @@ const allowedOrigins = new Set(
     "http://127.0.0.1:3000",
     "http://localhost:5173", // Vite default port
   ]
+    .filter((origin): origin is string => typeof origin === "string" && origin.length > 0)
     .map((origin) => origin.trim())
     .filter(Boolean)
 );
@@ -102,26 +103,42 @@ app.get("/metrics", (_req, res) => {
 });
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
-app.use(tenantMiddleware as any);
+// Wrapper pour gérer les middlewares async
+const asyncMiddleware = (fn: (req: any, res: any, next: any) => Promise<any>) => {
+  return (req: any, res: any, next: any) => {
+    Promise.resolve(fn(req, res, next)).catch(next);
+  };
+};
+app.use(asyncMiddleware(tenantMiddleware));
 
-app.use("/services", serviceRoutes);
-app.use("/graph", graphRoutes);
-app.use("/analysis", analysisRoutes);
-app.use("/infra", infraRoutes);
-app.use("/scenarios", scenarioRoutes);
-app.use("/scenario-catalog", scenarioCatalogRoutes);
-app.use("/documents", documentRoutes);
-app.use("/continuity", continuityRoutes);
-app.use("/runbooks", runbookRoutes);
-app.use("/webhooks", webhookRoutes);
-app.use("/auth", authRoutes);
-app.use("/audit-logs", auditRoutes);
-app.use("/risks", riskRoutes);
-app.use("/bia", biaRoutes);
-app.use("/incidents", incidentRoutes);
-app.use("/exercises", exerciseRoutes);
-app.use("/discovery", discoveryRoutes);
-app.use("/pricing", pricingRoutes);
+// Validation et enregistrement des routes
+const routes = [
+  { path: "/services", handler: serviceRoutes, name: "serviceRoutes" },
+  { path: "/graph", handler: graphRoutes, name: "graphRoutes" },
+  { path: "/analysis", handler: analysisRoutes, name: "analysisRoutes" },
+  { path: "/infra", handler: infraRoutes, name: "infraRoutes" },
+  { path: "/scenarios", handler: scenarioRoutes, name: "scenarioRoutes" },
+  { path: "/scenario-catalog", handler: scenarioCatalogRoutes, name: "scenarioCatalogRoutes" },
+  { path: "/documents", handler: documentRoutes, name: "documentRoutes" },
+  { path: "/continuity", handler: continuityRoutes, name: "continuityRoutes" },
+  { path: "/runbooks", handler: runbookRoutes, name: "runbookRoutes" },
+  { path: "/webhooks", handler: webhookRoutes, name: "webhookRoutes" },
+  { path: "/auth", handler: authRoutes, name: "authRoutes" },
+  { path: "/audit-logs", handler: auditRoutes, name: "auditRoutes" },
+  { path: "/risks", handler: riskRoutes, name: "riskRoutes" },
+  { path: "/bia", handler: biaRoutes, name: "biaRoutes" },
+  { path: "/incidents", handler: incidentRoutes, name: "incidentRoutes" },
+  { path: "/exercises", handler: exerciseRoutes, name: "exerciseRoutes" },
+  { path: "/discovery", handler: discoveryRoutes, name: "discoveryRoutes" },
+  { path: "/pricing", handler: pricingRoutes, name: "pricingRoutes" },
+];
+
+for (const route of routes) {
+  if (!route.handler || typeof route.handler !== "function") {
+    throw new Error(`Route handler for ${route.name} is not a function. Got: ${typeof route.handler}`);
+  }
+  app.use(route.path, route.handler);
+}
 
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
   startDiscoveryWorker();
