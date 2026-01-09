@@ -28,6 +28,7 @@ model Tenant {
   extractedFacts                ExtractedFact[]
   aiExtractionErrors            AiExtractionError[]
   documentExtractionSuggestions DocumentExtractionSuggestion[]
+  documentSensitivityReports    DocumentSensitivityReport[]
   backupStrategies              BackupStrategy[]
   securityPolicies              SecurityPolicy[]
   policyLinks                   SecurityPolicyService[]

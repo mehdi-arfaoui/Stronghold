@@ -8,22 +8,30 @@ export type SensitivityReport = {
   scannedAt: Date;
 };
 
+type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
+
+// Helper to access documentSensitivityReport on both PrismaClient and TransactionClient
+function getDocumentSensitivityReportClient(client: PrismaClientOrTx) {
+  return (client as any).documentSensitivityReport;
+}
+
 export async function upsertDocumentSensitivityReport(options: {
   tenantId: string;
   documentId: string;
   text: string;
-  prismaClient: Prisma.TransactionClient | PrismaClient;
+  prismaClient: PrismaClientOrTx;
 }) {
   const findings = scanSensitiveText(options.text || "");
   const totalFindings = findings.reduce((sum, finding) => sum + finding.count, 0);
   const scannedAt = new Date();
 
-  const existing = await options.prismaClient.documentSensitivityReport.findFirst({
+  const reportClient = getDocumentSensitivityReportClient(options.prismaClient);
+  const existing = await reportClient.findFirst({
     where: { tenantId: options.tenantId, documentId: options.documentId },
   });
 
   if (!existing) {
-    return options.prismaClient.documentSensitivityReport.create({
+    return reportClient.create({
       data: {
         tenantId: options.tenantId,
         documentId: options.documentId,
@@ -35,7 +43,7 @@ export async function upsertDocumentSensitivityReport(options: {
     });
   }
 
-  const updateResult = await options.prismaClient.documentSensitivityReport.updateMany({
+  const updateResult = await reportClient.updateMany({
     where: { id: existing.id, tenantId: options.tenantId },
     data: {
       status: "COMPLETED",
@@ -49,7 +57,7 @@ export async function upsertDocumentSensitivityReport(options: {
     throw new Error("Failed to update sensitivity report for this tenant");
   }
 
-  return options.prismaClient.documentSensitivityReport.findFirst({
+  return reportClient.findFirst({
     where: { tenantId: options.tenantId, documentId: options.documentId },
   });
 }
@@ -57,9 +65,10 @@ export async function upsertDocumentSensitivityReport(options: {
 export async function getDocumentSensitivityReport(options: {
   tenantId: string;
   documentId: string;
-  prismaClient: Prisma.TransactionClient | PrismaClient;
+  prismaClient: PrismaClientOrTx;
 }) {
-  return options.prismaClient.documentSensitivityReport.findFirst({
+  const reportClient = getDocumentSensitivityReportClient(options.prismaClient);
+  return reportClient.findFirst({
     where: { tenantId: options.tenantId, documentId: options.documentId },
   });
 }
