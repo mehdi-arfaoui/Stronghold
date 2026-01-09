@@ -1,5 +1,5 @@
 import express from "express";
-import cors from "cors";
+import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient";
 import { metricsConfig } from "./config/observability";
@@ -30,32 +30,55 @@ dotenv.config();
 
 const app = express();
 
+const isDevelopment = process.env.NODE_ENV !== "production";
+const allowAllDevOrigins =
+  isDevelopment &&
+  String(process.env.CORS_DEV_ALLOW_ALL || "true").toLowerCase() === "true";
+
+const allowedOrigins = new Set(
+  [
+    process.env.FRONTEND_URL,
+    process.env.CORS_ORIGIN,
+    ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173", // Vite default port
+  ]
+    .map((origin) => origin.trim())
+    .filter(Boolean)
+);
+
 // Configure CORS to allow requests from frontend
-const corsOptions = {
-  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+const corsOptions: CorsOptions = {
+  origin(origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    const allowedOrigins = [
-      process.env.FRONTEND_URL,
-      process.env.CORS_ORIGIN,
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:5173", // Vite default port
-    ].filter(Boolean);
-    
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(null, true); // Allow all for development
+
+    if (allowAllDevOrigins) {
+      return callback(null, true);
     }
+
+    if (allowedOrigins.has(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("Origin not allowed by CORS"));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-correlation-id"],
 };
 
-app.use(cors(corsOptions));
+const corsMiddleware = cors(corsOptions);
+app.use((req, res, next) => {
+  res.append("Vary", "Origin");
+  corsMiddleware(req, res, (err) => {
+    if (err) {
+      return res.status(403).json({ error: "Origin not allowed by CORS" });
+    }
+    return next();
+  });
+});
 app.use(express.json());
 
 // ✅ health-check sans tenant

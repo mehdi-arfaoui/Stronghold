@@ -56,6 +56,10 @@ async function getS3Client() {
 
 const DEFAULT_SIGNED_URL_TTL = Number(process.env.S3_SIGNED_URL_TTL_SECONDS || 900);
 
+function resolveSignedUrlTtl(ttlSeconds?: number) {
+  return Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
+}
+
 function sanitizeTenantId(tenantId: string): string {
   const normalized = tenantId.toLowerCase().replace(/[^a-z0-9-]/g, "-");
   return normalized.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
@@ -169,9 +173,28 @@ export async function getSignedUrlForObject(bucket: string, key: string, ttlSeco
   const sdk = await loadS3Sdk();
   const { getSignedUrl } = await loadPresigner();
   const s3Client = await getS3Client();
-  const expiresIn = Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
+  const expiresIn = resolveSignedUrlTtl(ttlSeconds);
   const command = new sdk.GetObjectCommand({ Bucket: bucket, Key: key });
   return getSignedUrl(s3Client, command, { expiresIn });
+}
+
+export async function getSignedUploadUrlForObject(
+  bucket: string,
+  key: string,
+  contentType?: string,
+  ttlSeconds?: number
+): Promise<{ url: string; expiresIn: number }> {
+  const sdk = await loadS3Sdk();
+  const { getSignedUrl } = await loadPresigner();
+  const s3Client = await getS3Client();
+  const expiresIn = resolveSignedUrlTtl(ttlSeconds);
+  const command = new sdk.PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
+  });
+  const url = await getSignedUrl(s3Client, command, { expiresIn });
+  return { url, expiresIn };
 }
 
 export async function downloadObjectToTempFile(
