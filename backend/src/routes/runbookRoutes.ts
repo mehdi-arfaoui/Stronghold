@@ -1,7 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
 import prisma from "../prismaClient";
-import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import type { TenantRequest } from "../middleware/tenantMiddleware.js";
+import { requireRole } from "../middleware/tenantMiddleware.js";
 import { generateRunbook } from "../services/runbookGenerator";
 import {
   computeBufferHash,

@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "test": "TS_NODE_COMPILER_OPTIONS='{\"module\":\"CommonJS\",\"verbatimModuleSyntax\":false}' node --test tests/**/*.test.js",
@@ -17,7 +17,7 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
+  "type": "module",
   "dependencies": {
     "@aws-sdk/client-s3": "^3.956.0",
     "@aws-sdk/client-textract": "^3.965.0",
@@ -42,7 +42,7 @@
     "@types/express": "^5.0.5",
     "@types/node": "^24.10.1",
     "prisma": "^5.21.1",
-    "ts-node-dev": "^2.0.0",
+    "tsx": "^4.19.2",
     "typescript": "^5.9.3"
   }
 }

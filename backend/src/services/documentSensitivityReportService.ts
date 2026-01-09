@@ -1,5 +1,5 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
-import { scanSensitiveText } from "./sensitiveDataScanService";
+import { scanSensitiveText, type SensitiveFinding } from "./sensitiveDataScanService.js";
 
 export type SensitivityReport = {
   findings: ReturnType<typeof scanSensitiveText>;
@@ -22,7 +22,7 @@ export async function upsertDocumentSensitivityReport(options: {
   prismaClient: PrismaClientOrTx;
 }) {
   const findings = scanSensitiveText(options.text || "");
-  const totalFindings = findings.reduce((sum, finding) => sum + finding.count, 0);
+  const totalFindings = findings.reduce((sum: number, finding: SensitiveFinding) => sum + finding.count, 0);
   const scannedAt = new Date();
 
   const reportClient = getDocumentSensitivityReportClient(options.prismaClient);

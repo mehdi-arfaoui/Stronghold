@@ -1,6 +1,7 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
-import { TenantRequest, requireRole } from "../middleware/tenantMiddleware";
+import type { TenantRequest } from "../middleware/tenantMiddleware.js";
+import { requireRole } from "../middleware/tenantMiddleware.js";
 import {
   buildValidationError,
   parseOptionalString,

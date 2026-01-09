@@ -1,14 +1,14 @@
-import { Request, Response, NextFunction } from "express";
+import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient";
 
-export interface TenantRequest extends Request {
+export type TenantRequest = Request & {
   tenantId?: string;
   apiKeyId?: string;
   apiRole?: ApiRole;
   correlationId?: string;
-}
+};
 
 export const tenantMiddleware = async (
   req: TenantRequest,

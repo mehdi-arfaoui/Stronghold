@@ -1,6 +1,6 @@
 import { Router } from "express";
 import prisma from "../prismaClient";
-import { TenantRequest } from "../middleware/tenantMiddleware";
+import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 
 type Criticality = "critical" | "high" | "medium" | "low";
 type EdgeKind = "CRITICAL" | "STRONG" | "NORMAL";

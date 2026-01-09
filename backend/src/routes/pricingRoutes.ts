@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { requireRole, TenantRequest } from "../middleware/tenantMiddleware";
+import type { TenantRequest } from "../middleware/tenantMiddleware.js";
+import { requireRole } from "../middleware/tenantMiddleware.js";
 import { normalizeAwsPricingResponse } from "../clients/awsPricingClient";
 import { normalizeAzurePricingResponse } from "../clients/azurePricingClient";
 import { normalizeGcpPricingResponse } from "../clients/gcpPricingClient";
