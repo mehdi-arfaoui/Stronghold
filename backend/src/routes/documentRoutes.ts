@@ -1,4 +1,5 @@
 import { Router } from "express";
+import * as fs from "fs";
 import multer from "multer";
 import path from "path";
 import * as crypto from "crypto";
@@ -11,6 +12,7 @@ import {
   buildValidationError,
   parseOptionalNumber,
   parseOptionalString,
+  parseRequiredNumber,
   parseRequiredString,
 } from "../validation/common";
 import {
@@ -21,6 +23,7 @@ import {
 
 import {
   buildObjectKey,
+  getSignedUploadUrlForObject,
   getSignedUrlForObject,
   getTenantBucketName,
   resolveBucketAndKey,
@@ -29,7 +32,74 @@ import {
 
 const router = Router();
 
-const upload = multer({ storage: multer.memoryStorage() });
+const uploadDir = path.join(process.cwd(), "uploads", "documents");
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const DEFAULT_ALLOWED_MIME_TYPES = [
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "text/plain",
+  "text/markdown",
+  "text/csv",
+  "application/json",
+];
+
+const MAX_FILE_SIZE_BYTES = (() => {
+  const value = Number(process.env.UPLOAD_MAX_FILE_SIZE_MB || 25);
+  return Math.max(1, Math.floor(value)) * 1024 * 1024;
+})();
+
+const MAX_FILE_COUNT = Math.max(1, Number(process.env.UPLOAD_MAX_FILES || 1));
+
+const allowedMimeTypes = new Set(
+  (process.env.UPLOAD_ALLOWED_MIME_TYPES || DEFAULT_ALLOWED_MIME_TYPES.join(","))
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+
+function isAllowedMimeType(mimeType?: string | null) {
+  if (!mimeType) return false;
+  return allowedMimeTypes.has(mimeType);
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
+    },
+  }),
+  limits: { fileSize: MAX_FILE_SIZE_BYTES, files: MAX_FILE_COUNT },
+  fileFilter: (_req, file, cb) => {
+    if (!isAllowedMimeType(file.mimetype)) {
+      return cb(new Error("Type de fichier non autorisé"));
+    }
+    return cb(null, true);
+  },
+});
+
+function runSingleUpload(req: any, res: any): Promise<void> {
+  return new Promise((resolve) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) {
+        const message =
+          err instanceof multer.MulterError
+            ? "Fichier invalide (taille ou format non autorisé)"
+            : err.message || "Fichier invalide";
+        res.status(400).json({ error: message });
+        return resolve();
+      }
+      return resolve();
+    });
+  });
+}
 
 async function computeFileHash(buffer: Buffer): Promise<string> {
   return crypto.createHash("sha256").update(buffer).digest("hex");
@@ -53,9 +123,11 @@ function computeRetentionDate(days: number): Date | null {
 router.post(
   "/",
   requireRole("OPERATOR"),
-  upload.single("file"),
   async (req: TenantRequest, res) => {
     try {
+      await runSingleUpload(req, res);
+      if (res.headersSent) return;
+
       const tenantId = req.tenantId;
       if (!tenantId) {
         // Multer a déjà potentiellement écrit le fichier, on pourrait le supprimer ici si besoin
@@ -64,6 +136,14 @@ router.post(
 
       if (!req.file) {
         return res.status(400).json({ error: "Aucun fichier fourni" });
+      }
+
+      if (!isAllowedMimeType(req.file.mimetype)) {
+        return res.status(400).json({ error: "Type de fichier non autorisé" });
+      }
+
+      if (req.file.size > MAX_FILE_SIZE_BYTES) {
+        return res.status(400).json({ error: "Taille de fichier dépassée" });
       }
 
       const payload = req.body || {};
@@ -78,69 +158,130 @@ router.post(
         return res.status(400).json(buildValidationError(issues));
       }
       const file = req.file;
-      const scanResult = await scanSensitiveDataOnUpload({
-        buffer: file.buffer,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-      });
-      if (scanResult.blockedTypes.length > 0) {
-        return res.status(422).json({
-          error: "Document contenant des données sensibles non autorisées",
-          blockedTypes: scanResult.blockedTypes,
-          findings: scanResult.findings,
-        });
-      }
+      const filePath = file.path;
+      let fileBuffer: Buffer | null = null;
 
-      const objectKey = buildObjectKey(tenantId, file.originalname);
-      const bucketAndKey = {
-        bucket: getTenantBucketName(tenantId),
-        key: objectKey,
-      };
+      try {
+        fileBuffer = await fs.promises.readFile(filePath);
 
-      await uploadObjectToBucket({
-        bucket: bucketAndKey.bucket,
-        key: bucketAndKey.key,
-        body: file.buffer,
-        contentType: file.mimetype,
-      });
-
-      const fileHash = await computeFileHash(file.buffer);
-      const duplicate = await prisma.document.findFirst({
-        where: { tenantId, fileHash },
-      });
-      if (duplicate) {
-        return res.status(409).json({
-          error: "Document déjà présent pour ce tenant (hash identique)",
-          existingDocumentId: duplicate.id,
-        });
-      }
-
-      const doc = await prisma.document.create({
-        data: {
-          tenantId,
-          originalName: file.originalname,
-          storedName: path.basename(objectKey),
+        const scanResult = await scanSensitiveDataOnUpload({
+          buffer: fileBuffer,
+          fileName: file.originalname,
           mimeType: file.mimetype,
-          size: file.size,
-          storagePath: `s3://${bucketAndKey.bucket}/${bucketAndKey.key}`,
-          docType: docType ? docType.toUpperCase() : null,
-          description,
-          fileHash,
-          ingestionStatus: "FILE_STORED",
-          retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
-          embeddingRetentionUntil: computeRetentionDate(retentionConfig.embeddingRetentionDays),
-        },
-      });
+        });
+        if (scanResult.blockedTypes.length > 0) {
+          return res.status(422).json({
+            error: "Document contenant des données sensibles non autorisées",
+            blockedTypes: scanResult.blockedTypes,
+            findings: scanResult.findings,
+          });
+        }
 
-      const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
+        const objectKey = buildObjectKey(tenantId, file.originalname);
+        const bucketAndKey = {
+          bucket: getTenantBucketName(tenantId),
+          key: objectKey,
+        };
 
-      return res.status(201).json({ ...doc, signedUrl });
+        await uploadObjectToBucket({
+          bucket: bucketAndKey.bucket,
+          key: bucketAndKey.key,
+          body: fileBuffer,
+          contentType: file.mimetype,
+        });
+
+        const fileHash = await computeFileHash(fileBuffer);
+        const duplicate = await prisma.document.findFirst({
+          where: { tenantId, fileHash },
+        });
+        if (duplicate) {
+          return res.status(409).json({
+            error: "Document déjà présent pour ce tenant (hash identique)",
+            existingDocumentId: duplicate.id,
+          });
+        }
+
+        const doc = await prisma.document.create({
+          data: {
+            tenantId,
+            originalName: file.originalname,
+            storedName: path.basename(objectKey),
+            mimeType: file.mimetype,
+            size: file.size,
+            storagePath: `s3://${bucketAndKey.bucket}/${bucketAndKey.key}`,
+            docType: docType ? docType.toUpperCase() : null,
+            description,
+            fileHash,
+            ingestionStatus: "FILE_STORED",
+            retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
+            embeddingRetentionUntil: computeRetentionDate(retentionConfig.embeddingRetentionDays),
+          },
+        });
+
+        const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
+
+        return res.status(201).json({ ...doc, signedUrl });
+      } finally {
+        if (filePath) {
+          await fs.promises.rm(filePath, { force: true }).catch(() => undefined);
+        }
+      }
     } catch (error) {
       console.error("Error in POST /documents:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
 );
+
+/**
+ * POST /documents/presign
+ * Retourne une URL signée pour uploader directement sur S3.
+ */
+router.post("/presign", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const fileName = parseRequiredString(payload.fileName, "fileName", issues);
+    const mimeType = parseRequiredString(payload.mimeType, "mimeType", issues);
+    const size = parseRequiredNumber(payload.size, "size", issues, { min: 1 });
+
+    if (mimeType && !isAllowedMimeType(mimeType)) {
+      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+    }
+
+    if (size && size > MAX_FILE_SIZE_BYTES) {
+      issues.push({ field: "size", message: "taille maximale dépassée" });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const objectKey = buildObjectKey(tenantId, fileName as string);
+    const bucket = getTenantBucketName(tenantId);
+    const { url, expiresIn } = await getSignedUploadUrlForObject(
+      bucket,
+      objectKey,
+      mimeType as string
+    );
+
+    return res.status(201).json({
+      uploadUrl: url,
+      expiresIn,
+      bucket,
+      key: objectKey,
+      storagePath: `s3://${bucket}/${objectKey}`,
+    });
+  } catch (error) {
+    console.error("Error in POST /documents/presign:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 /**
  * GET /documents

@@ -40,6 +40,7 @@ exports.extractObjectKey = extractObjectKey;
 exports.resolveBucketAndKey = resolveBucketAndKey;
 exports.uploadObjectToBucket = uploadObjectToBucket;
 exports.getSignedUrlForObject = getSignedUrlForObject;
+exports.getSignedUploadUrlForObject = getSignedUploadUrlForObject;
 exports.downloadObjectToTempFile = downloadObjectToTempFile;
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
@@ -85,6 +86,9 @@ async function getS3Client() {
     return s3ClientPromise;
 }
 const DEFAULT_SIGNED_URL_TTL = Number(process.env.S3_SIGNED_URL_TTL_SECONDS || 900);
+function resolveSignedUrlTtl(ttlSeconds) {
+    return Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
+}
 function sanitizeTenantId(tenantId) {
     const normalized = tenantId.toLowerCase().replace(/[^a-z0-9-]/g, "-");
     return normalized.replace(/-+/g, "-").replace(/^-+|-+$/g, "");
@@ -181,9 +185,22 @@ async function getSignedUrlForObject(bucket, key, ttlSeconds) {
     const sdk = await loadS3Sdk();
     const { getSignedUrl } = await loadPresigner();
     const s3Client = await getS3Client();
-    const expiresIn = Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
+    const expiresIn = resolveSignedUrlTtl(ttlSeconds);
     const command = new sdk.GetObjectCommand({ Bucket: bucket, Key: key });
     return getSignedUrl(s3Client, command, { expiresIn });
+}
+async function getSignedUploadUrlForObject(bucket, key, contentType, ttlSeconds) {
+    const sdk = await loadS3Sdk();
+    const { getSignedUrl } = await loadPresigner();
+    const s3Client = await getS3Client();
+    const expiresIn = resolveSignedUrlTtl(ttlSeconds);
+    const command = new sdk.PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        ContentType: contentType,
+    });
+    const url = await getSignedUrl(s3Client, command, { expiresIn });
+    return { url, expiresIn };
 }
 async function downloadObjectToTempFile(bucket, key, preferredName) {
     const sdk = await loadS3Sdk();

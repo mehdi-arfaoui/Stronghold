@@ -13,5 +13,9 @@ export declare function uploadObjectToBucket(params: {
     contentType?: string;
 }): Promise<void>;
 export declare function getSignedUrlForObject(bucket: string, key: string, ttlSeconds?: number): Promise<any>;
+export declare function getSignedUploadUrlForObject(bucket: string, key: string, contentType?: string, ttlSeconds?: number): Promise<{
+    url: string;
+    expiresIn: number;
+}>;
 export declare function downloadObjectToTempFile(bucket: string, key: string, preferredName?: string): Promise<string>;
 //# sourceMappingURL=s3Client.d.ts.map
