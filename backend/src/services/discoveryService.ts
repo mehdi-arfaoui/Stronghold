@@ -111,6 +111,8 @@ type DiscoveryGitHubSource = {
   rawUrl?: string;
 };
 
+type ExternalImportRecord = Record<string, any>;
+
 const MAX_GITHUB_IMPORT_BYTES = 5 * 1024 * 1024;
 
 const expectedCsvHeaders = [
@@ -236,6 +238,92 @@ function buildDiscoveryDescription(node: DiscoveryNode) {
 function normalizeExternalId(input: string | null | undefined, fallback: string) {
   const trimmed = (input || "").trim();
   return trimmed || fallback;
+}
+
+function readStringField(record: ExternalImportRecord, keys: string[]): string | null {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+}
+
+function mapExternalRecords(records: ExternalImportRecord[], source: string): DiscoveryNode[] {
+  return records
+    .map((record, index) => {
+      if (!record || typeof record !== "object") return null;
+      const externalId =
+        readStringField(record, ["id", "assetId", "deviceId", "sys_id", "resourceId"]) ||
+        `${source}-${index + 1}`;
+      const name =
+        readStringField(record, ["name", "hostname", "hostName", "fqdn", "assetName"]) ||
+        readStringField(record, ["ip", "ipAddress", "ip_address", "primary_ip"]) ||
+        externalId;
+      const rawType =
+        readStringField(record, ["type", "assetType", "deviceType", "class", "ci_type"]) ||
+        "HOST";
+      const kind = classifyNodeKind(rawType);
+      const ip = readStringField(record, ["ip", "ipAddress", "ip_address", "primary_ip"]);
+      const hostname = readStringField(record, ["hostname", "hostName", "fqdn"]);
+      const description =
+        readStringField(record, ["description", "os", "operatingSystem", "model", "manufacturer"]);
+
+      return {
+        externalId,
+        name,
+        kind,
+        type: normalizeNodeType(rawType, kind),
+        criticality: normalizeCriticality(readStringField(record, ["criticality", "criticity"])),
+        provider: readStringField(record, ["provider", "cloud", "vendor"]),
+        location: readStringField(record, ["location", "site", "datacenter"]),
+        ip,
+        hostname,
+        description,
+      } satisfies DiscoveryNode;
+    })
+    .filter(Boolean) as DiscoveryNode[];
+}
+
+function mapExternalEdges(records: ExternalImportRecord[]): DiscoveryEdge[] {
+  return records
+    .map((record) => {
+      if (!record || typeof record !== "object") return null;
+      const source = readStringField(record, ["source", "from", "parent", "from_id"]);
+      const target = readStringField(record, ["target", "to", "child", "to_id"]);
+      if (!source || !target) return null;
+      return {
+        source,
+        target,
+        dependencyType: readStringField(record, ["dependencyType", "dependency_type", "relation"]),
+      } satisfies DiscoveryEdge;
+    })
+    .filter(Boolean) as DiscoveryEdge[];
+}
+
+function parseExternalImportPayload(parsed: Record<string, any>): DiscoveryImportResult | null {
+  const source = (parsed.source || parsed.tool || parsed.vendor || "external").toString();
+  const records =
+    parsed.assets ||
+    parsed.devices ||
+    parsed.items ||
+    parsed.records ||
+    parsed.result ||
+    parsed.resources;
+
+  if (!Array.isArray(records)) return null;
+
+  const nodes = mapExternalRecords(records, source);
+  const edgeRecords = Array.isArray(parsed.edges || parsed.dependencies || parsed.relations)
+    ? parsed.edges || parsed.dependencies || parsed.relations
+    : [];
+  const edges = mapExternalEdges(edgeRecords);
+
+  const payload = { nodes, edges };
+  ensurePayloadSchema(payload);
+
+  return { payload, report: { rejectedRows: 0, rejectedEntries: [] } };
 }
 
 function normalizeName(value: string) {
@@ -428,6 +516,12 @@ function parseJsonPayload(content: string): DiscoveryImportResult {
       { field: "payload", message: "Objet JSON attendu" },
     ]);
   }
+
+  const externalPayload = parseExternalImportPayload(parsed as Record<string, any>);
+  if (externalPayload) {
+    return externalPayload;
+  }
+
   const rawNodes = Array.isArray((parsed as any).nodes) ? (parsed as any).nodes : null;
   const rawEdges = Array.isArray((parsed as any).edges) ? (parsed as any).edges : null;
   if (!rawNodes || !rawEdges) {
@@ -838,6 +932,20 @@ export function encryptDiscoveryCredentials(payload: Record<string, unknown>, se
     iv: iv.toString("base64"),
     tag: tag.toString("base64"),
   };
+}
+
+export function decryptDiscoveryCredentials(
+  payload: { ciphertext: string; iv: string; tag: string },
+  secret: string
+): Record<string, unknown> {
+  const key = crypto.createHash("sha256").update(secret).digest();
+  const iv = Buffer.from(payload.iv, "base64");
+  const tag = Buffer.from(payload.tag, "base64");
+  const ciphertext = Buffer.from(payload.ciphertext, "base64");
+  const decipher = crypto.createDecipheriv("aes-256-gcm", key, iv);
+  decipher.setAuthTag(tag);
+  const decrypted = Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf-8");
+  return JSON.parse(decrypted) as Record<string, unknown>;
 }
 
 export function buildJobResponse(job: any) {

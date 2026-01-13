@@ -26,6 +26,7 @@ import exerciseRoutes from "./routes/exerciseRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
 import pricingRoutes from "./routes/pricingRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
+import { startDiscoveryScheduler } from "./services/discoveryScheduleService.js";
 
 dotenv.config();
 initTelemetry();
@@ -193,6 +194,10 @@ for (const route of routes) {
 
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
   startDiscoveryWorker();
+}
+
+if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {
+  startDiscoveryScheduler();
 }
 
 // Global error handler - ensure all errors return JSON
