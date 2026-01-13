@@ -5,6 +5,9 @@ import { getTracer } from "../observability/telemetry.js";
 import { SpanStatusCode } from "@opentelemetry/api";
 import { recordDiscoveryJobResult } from "../observability/metrics.js";
 import { notifyN8nAlert } from "../services/n8nAlertService.js";
+import { decryptDiscoveryCredentials } from "../services/discoveryService.js";
+import { runDiscoveryEngine } from "../services/discoveryEngine.js";
+import { resolveVaultCredentials } from "../services/discoveryVaultService.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;
@@ -12,13 +15,15 @@ export type DiscoveryQueuePayload = {
   ipRanges: string[];
   cloudProviders: string[];
   requestedBy: string | null;
+  scheduleId?: string | null;
 };
 
 const discoverySteps = [
   { step: "SCAN_NETWORK", progress: 20 },
   { step: "FETCH_CLOUD", progress: 45 },
-  { step: "MERGE_GRAPH", progress: 70 },
-  { step: "MAP_TO_DB", progress: 90 },
+  { step: "INVENTORY_VIRTUAL", progress: 60 },
+  { step: "CORRELATE_RESOURCES", progress: 80 },
+  { step: "MAP_TO_DB", progress: 95 },
 ];
 
 async function updateDiscoveryJob(tenantId: string, jobId: string, data: Record<string, unknown>) {
@@ -62,17 +67,60 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
           });
         }
 
+        const jobRecord = await prisma.discoveryJob.findFirst({
+          where: { id: jobId, tenantId },
+        });
+
+        if (!jobRecord) {
+          throw new Error("Discovery job not found for tenant");
+        }
+
+        const parameters = jobRecord.parameters ? JSON.parse(jobRecord.parameters) : {};
+        const hasCredentials = Boolean(
+          jobRecord.credentialsCiphertext && jobRecord.credentialsIv && jobRecord.credentialsTag
+        );
+        let credentials: Record<string, unknown> = {};
+        if (hasCredentials) {
+          const secret = process.env.DISCOVERY_SECRET;
+          if (!secret) {
+            throw new Error("DISCOVERY_SECRET requis pour déchiffrer les credentials");
+          }
+          credentials = decryptDiscoveryCredentials(
+            {
+              ciphertext: jobRecord.credentialsCiphertext as string,
+              iv: jobRecord.credentialsIv as string,
+              tag: jobRecord.credentialsTag as string,
+            },
+            secret
+          );
+        }
+        credentials = await resolveVaultCredentials(credentials);
+
+        const summary = await runDiscoveryEngine({
+          tenantId,
+          jobId,
+          ipRanges: Array.isArray(parameters.ipRanges) ? parameters.ipRanges : [],
+          cloudProviders: Array.isArray(parameters.cloudProviders) ? parameters.cloudProviders : [],
+          credentials: credentials as any,
+          requestedBy: parameters.requestedBy || null,
+          autoCreate: Boolean(parameters.autoCreate),
+        });
+
         await updateDiscoveryJob(tenantId, jobId, {
           status: "COMPLETED",
           step: "COMPLETED",
           progress: 100,
           completedAt: new Date(),
           resultSummary: JSON.stringify({
-            discoveredHosts: 0,
-            createdServices: 0,
-            createdInfra: 0,
-            createdDependencies: 0,
-            createdInfraLinks: 0,
+            discoveredResources: summary.discoveredResources,
+            discoveredFlows: summary.discoveredFlows,
+            matchedResources: summary.matchedResources,
+            createdServices: summary.createdServices,
+            createdInfra: summary.createdInfra,
+            createdDependencies: summary.createdDependencies,
+            createdInfraLinks: summary.createdInfraLinks,
+            ignoredEdges: summary.ignoredEdges,
+            warnings: summary.warnings,
           }),
         });
         recordDiscoveryJobResult(true, tenantId);

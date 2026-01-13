@@ -55,6 +55,10 @@ model Tenant {
   exerciseAnalyses       ExerciseAnalysis[]
   discoveryJobs          DiscoveryJob[]
   discoveryScanAudits    DiscoveryScanAudit[]
+  discoveryResources     DiscoveryResource[]
+  discoveryResourceMatches DiscoveryResourceMatch[]
+  discoverySchedules     DiscoverySchedule[]
+  discoveryFlows         DiscoveryFlow[]
 }
 
 model Service {
@@ -851,6 +855,8 @@ model DiscoveryJob {
   updatedAt DateTime @updatedAt
 
   auditLogs DiscoveryScanAudit[]
+  discoveryResources DiscoveryResource[]
+  discoveryFlows DiscoveryFlow[]
 }
 
 model DiscoveryScanAudit {
@@ -867,4 +873,101 @@ model DiscoveryScanAudit {
   ipRange String
 
   createdAt DateTime @default(now())
+}
+
+model DiscoveryResource {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  jobId String?
+  job   DiscoveryJob? @relation(fields: [jobId], references: [id])
+
+  source     String
+  externalId String
+  name       String
+  kind       String
+  type       String
+  ip         String?
+  hostname   String?
+  tags       Json?
+  metadata   Json?
+  fingerprint String
+
+  discoveredAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  matches     DiscoveryResourceMatch[]
+  flowSources DiscoveryFlow[] @relation("DiscoveryFlowSource")
+  flowTargets DiscoveryFlow[] @relation("DiscoveryFlowTarget")
+
+  @@index([tenantId, externalId])
+  @@index([tenantId, ip])
+  @@index([tenantId, hostname])
+}
+
+model DiscoveryResourceMatch {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  resourceId String
+  resource   DiscoveryResource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  matchType String
+  matchId   String
+  strategy  String
+  score     Float
+  status    String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, resourceId])
+}
+
+model DiscoverySchedule {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  name           String
+  ipRanges       Json
+  cloudProviders Json
+  frequency      String
+  scheduleConfig Json
+  nextRunAt      DateTime
+  lastRunAt      DateTime?
+  active         Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model DiscoveryFlow {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  jobId String?
+  job   DiscoveryJob? @relation(fields: [jobId], references: [id])
+
+  sourceResourceId String?
+  sourceResource   DiscoveryResource? @relation("DiscoveryFlowSource", fields: [sourceResourceId], references: [id])
+
+  targetResourceId String?
+  targetResource   DiscoveryResource? @relation("DiscoveryFlowTarget", fields: [targetResourceId], references: [id])
+
+  sourceIp String?
+  targetIp String?
+  sourcePort Int?
+  targetPort Int?
+  protocol  String?
+  bytes     Int?
+  packets   Int?
+  observedAt DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, observedAt])
 }

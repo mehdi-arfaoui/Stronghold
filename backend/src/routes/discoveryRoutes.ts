@@ -3,7 +3,14 @@ import multer from "multer";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
-import { buildValidationError, parseStringArray, parseOptionalString } from "../validation/common.js";
+import {
+  buildValidationError,
+  parseOptionalBoolean,
+  parseOptionalNumber,
+  parseOptionalString,
+  parseRequiredString,
+  parseStringArray,
+} from "../validation/common.js";
 import {
   applyDiscoveryImport,
   buildJobResponse,
@@ -15,6 +22,8 @@ import {
   parseDiscoveryImport,
 } from "../services/discoveryService.js";
 import { discoveryQueue } from "../queues/discoveryQueue.js";
+import { createDiscoverySchedule } from "../services/discoveryScheduleService.js";
+import { importDiscoveryFlows } from "../services/discoveryFlowService.js";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -45,10 +54,14 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
     const requestedBy = parseOptionalString(payload.requestedBy, "requestedBy", issues, {
       allowNull: true,
     });
+    const autoCreate = parseOptionalBoolean(payload.autoCreate, "autoCreate", issues);
     const credentials = resolveCredentials(payload.credentials);
 
-    if (!ipRanges || ipRanges.length === 0) {
-      issues.push({ field: "ipRanges", message: "au moins une plage IP est requise" });
+    if ((!ipRanges || ipRanges.length === 0) && (!cloudProviders || cloudProviders.length === 0)) {
+      issues.push({
+        field: "ipRanges",
+        message: "au moins une plage IP ou un cloudProvider est requis",
+      });
     }
     if (typeof credentials === "string") {
       issues.push({ field: "credentials", message: credentials });
@@ -81,6 +94,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
           ipRanges,
           cloudProviders,
           requestedBy: requestedBy || req.apiKeyId || null,
+          autoCreate: Boolean(autoCreate),
         }),
         credentialsCiphertext: encryptedCredentials?.ciphertext,
         credentialsIv: encryptedCredentials?.iv,
@@ -138,6 +152,118 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
 
 router.post("/run", requireRole("OPERATOR"), handleDiscoveryRun);
 router.post("/scan", requireRole("OPERATOR"), handleDiscoveryRun);
+
+/**
+ * POST /discovery/schedules
+ * Planifie un scan régulier (quotidien/hebdomadaire).
+ */
+router.post("/schedules", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const name = parseRequiredString(payload.name, "name", issues, { minLength: 3 });
+    const ipRanges = parseStringArray(payload.ipRanges, "ipRanges", issues) || [];
+    const cloudProviders = parseStringArray(payload.cloudProviders, "cloudProviders", issues) || [];
+    const frequency = parseOptionalString(payload.frequency, "frequency", issues) || "WEEKLY";
+    const dayOfWeek = parseOptionalNumber(payload.dayOfWeek, "dayOfWeek", issues);
+    const hour = parseOptionalNumber(payload.hour, "hour", issues);
+    const minute = parseOptionalNumber(payload.minute, "minute", issues);
+
+    if (!["DAILY", "WEEKLY"].includes(frequency.toUpperCase())) {
+      issues.push({ field: "frequency", message: "doit être DAILY ou WEEKLY" });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const schedule = await createDiscoverySchedule({
+      tenantId,
+      name: name || "Scan planifié",
+      ipRanges,
+      cloudProviders,
+      frequency: frequency.toUpperCase() as "DAILY" | "WEEKLY",
+      scheduleConfig: {
+        dayOfWeek: typeof dayOfWeek === "number" ? dayOfWeek : undefined,
+        hour: typeof hour === "number" ? hour : undefined,
+        minute: typeof minute === "number" ? minute : undefined,
+        timezone: payload.timezone ? String(payload.timezone) : undefined,
+      },
+      requestedByApiKeyId: req.apiKeyId ?? null,
+    });
+
+    return res.status(201).json(schedule);
+  } catch (error) {
+    console.error("Error in POST /discovery/schedules:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * GET /discovery/schedules
+ * Liste les scans planifiés.
+ */
+router.get("/schedules", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const schedules = await prisma.discoverySchedule.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json(schedules);
+  } catch (error) {
+    console.error("Error in GET /discovery/schedules:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /discovery/flows/import
+ * Import de flux NetFlow/sFlow pour alimenter le graph dynamique.
+ */
+router.post("/flows/import", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const payload = req.body || {};
+    const flows = Array.isArray(payload.flows) ? payload.flows : null;
+    if (!flows) {
+      return res.status(400).json({ error: "flows doit être un tableau" });
+    }
+
+    const records = flows
+      .map((flow: any) => ({
+        sourceIp: flow.sourceIp || flow.src_ip || flow.srcIp,
+        targetIp: flow.targetIp || flow.dst_ip || flow.dstIp,
+        sourcePort: flow.sourcePort ?? flow.src_port ?? null,
+        targetPort: flow.targetPort ?? flow.dst_port ?? null,
+        protocol: flow.protocol ?? flow.proto ?? null,
+        bytes: flow.bytes ?? flow.octets ?? null,
+        packets: flow.packets ?? flow.pkt ?? null,
+        observedAt: flow.observedAt ? new Date(flow.observedAt) : null,
+      }))
+      .filter((flow) => flow.sourceIp && flow.targetIp);
+
+    const result = await importDiscoveryFlows(tenantId, payload.jobId || null, records);
+    return res.status(201).json(result);
+  } catch (error) {
+    console.error("Error in POST /discovery/flows/import:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 /**
  * GET /discovery/status/:jobId

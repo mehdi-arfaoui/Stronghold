@@ -353,5 +353,77 @@ router.get("/", async (req: TenantRequest, res) => {
   }
 });
 
+router.get("/flows", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const flows = await prisma.discoveryFlow.findMany({
+      where: { tenantId },
+      include: {
+        sourceResource: true,
+        targetResource: true,
+      },
+      orderBy: { observedAt: "desc" },
+      take: 500,
+    });
+
+    const nodes = new Map<string, any>();
+    const edges = flows
+      .map((flow) => {
+        const source = flow.sourceResource;
+        const target = flow.targetResource;
+        const sourceId = source?.id || flow.sourceIp;
+        const targetId = target?.id || flow.targetIp;
+        if (!sourceId || !targetId) return null;
+
+        if (source && !nodes.has(sourceId)) {
+          nodes.set(sourceId, {
+            id: sourceId,
+            label: source.name,
+            type: source.type,
+            nodeKind: source.kind,
+            category: "Network",
+            criticality: "medium",
+            ip: source.ip,
+            hostname: source.hostname,
+          });
+        }
+        if (target && !nodes.has(targetId)) {
+          nodes.set(targetId, {
+            id: targetId,
+            label: target.name,
+            type: target.type,
+            nodeKind: target.kind,
+            category: "Network",
+            criticality: "medium",
+            ip: target.ip,
+            hostname: target.hostname,
+          });
+        }
+
+        return {
+          id: flow.id,
+          from: sourceId,
+          to: targetId,
+          type: flow.protocol || "flow",
+          edgeLabelShort: flow.protocol || "flow",
+          edgeLabelLong: `${flow.sourceIp || source?.name} → ${flow.targetIp || target?.name}`,
+          strength: "normal",
+          edgeWeight: 1,
+          edgeKind: "NORMAL",
+        };
+      })
+      .filter(Boolean);
+
+    return res.json({ nodes: Array.from(nodes.values()), edges });
+  } catch (error) {
+    console.error("Error building flow graph:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 
 export default router;
