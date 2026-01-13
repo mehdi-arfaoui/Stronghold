@@ -37,25 +37,35 @@ const allowAllDevOrigins =
   isDevelopment &&
   String(process.env.CORS_DEV_ALLOW_ALL || "true").toLowerCase() === "true";
 
-const allowedOrigins = new Set(
-  [
-    process.env.FRONTEND_URL,
-    process.env.CORS_ORIGIN,
-    ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173", // Vite default port
-  ]
-    .filter((origin): origin is string => typeof origin === "string" && origin.length > 0)
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-);
+const baseAllowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN,
+  ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
+]
+  .filter((origin): origin is string => typeof origin === "string" && origin.length > 0)
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const devAllowedOrigins = isDevelopment
+  ? [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:5173", // Vite default port
+    ]
+  : [];
+
+const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
 
 // Configure CORS to allow requests from frontend
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    // Allow requests with no origin only in dev if explicitly enabled
+    if (!origin) {
+      if (allowAllDevOrigins) {
+        return callback(null, true);
+      }
+      return callback(new Error("Origin not allowed by CORS"));
+    }
 
     if (allowAllDevOrigins) {
       return callback(null, true);
@@ -216,6 +226,9 @@ const HOST = process.env.HOST || "0.0.0.0";
 
 app.listen(PORT, HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
-  console.log(`CORS enabled for origins: ${process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "all"}`);
+  const originList = [...allowedOrigins.values()];
+  console.log(
+    `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
+  );
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
 });

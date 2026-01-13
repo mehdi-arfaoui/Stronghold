@@ -30,6 +30,8 @@ import { buildRiskSummary } from "../services/riskSummary.js";
 import {
   buildComplianceIndicators,
   buildComplianceReport,
+  buildStatementOfApplicability,
+  listComplianceChecklists,
   listComplianceTemplates,
 } from "../services/complianceReporting.js";
 import {
@@ -674,6 +676,10 @@ router.get("/compliance/templates", requireRole("READER"), async (_req: TenantRe
   return res.json(listComplianceTemplates());
 });
 
+router.get("/compliance/checklists", requireRole("READER"), async (_req: TenantRequest, res) => {
+  return res.json(listComplianceChecklists());
+});
+
 router.get("/compliance/report", requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
@@ -690,6 +696,26 @@ router.get("/compliance/report", requireRole("READER"), async (req: TenantReques
     return res.json(report);
   } catch (error) {
     console.error("Error in /analysis/compliance/report:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/compliance/statement-of-applicability", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const checklistId =
+      req.query?.checklistId && typeof req.query.checklistId === "string"
+        ? req.query.checklistId
+        : undefined;
+
+    const soa = await buildStatementOfApplicability(prisma, tenantId, checklistId);
+    return res.json(soa);
+  } catch (error) {
+    console.error("Error in /analysis/compliance/statement-of-applicability:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

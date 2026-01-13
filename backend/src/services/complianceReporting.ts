@@ -36,6 +36,43 @@ export type ComplianceTemplate = {
   chapters: ComplianceTemplateChapter[];
 };
 
+export type ComplianceChecklistItem = {
+  id: string;
+  clause: string;
+  title: string;
+  description: string;
+  requiredFields: string[];
+  guidance?: string;
+};
+
+export type ComplianceChecklist = {
+  id: string;
+  framework: string;
+  version: string;
+  label: string;
+  items: ComplianceChecklistItem[];
+};
+
+export type StatementOfApplicabilityItem = {
+  id: string;
+  clause: string;
+  title: string;
+  applicability: "applicable" | "not_applicable";
+  justification: string | null;
+  status: "implemented" | "partial" | "missing";
+  evidence: string[];
+};
+
+export type StatementOfApplicability = {
+  meta: {
+    tenantId: string;
+    generatedAt: string;
+    framework: string;
+    version: string;
+  };
+  items: StatementOfApplicabilityItem[];
+};
+
 export type ComplianceReportField = {
   key: string;
   label: string;
@@ -250,6 +287,128 @@ const COMPLIANCE_TEMPLATES: ComplianceTemplate[] = [
     ],
   },
 ];
+
+const ISO22301_CHECKLIST: ComplianceChecklist = {
+  id: "iso22301-checklist",
+  framework: "ISO 22301",
+  version: "2019",
+  label: "Checklist ISO 22301 (continuité d'activité)",
+  items: [
+    {
+      id: "iso22301-4.1",
+      clause: "4.1",
+      title: "Contexte de l'organisation",
+      description: "Définir le périmètre et les parties intéressées.",
+      requiredFields: ["organization.scope"],
+    },
+    {
+      id: "iso22301-5.3",
+      clause: "5.3",
+      title: "Rôles et responsabilités",
+      description: "Nommer un responsable de la continuité.",
+      requiredFields: ["organization.owner"],
+    },
+    {
+      id: "iso22301-8.2",
+      clause: "8.2",
+      title: "BIA et impacts",
+      description: "Documenter les processus critiques et objectifs RTO/RPO.",
+      requiredFields: ["bia.process.count", "bia.service.coverage", "bia.last.review"],
+    },
+    {
+      id: "iso22301-8.3",
+      clause: "8.3",
+      title: "Évaluation des risques",
+      description: "Maintenir un registre des risques et plans de traitement.",
+      requiredFields: ["risk.count", "risk.high.count", "risk.mitigation.coverage"],
+    },
+    {
+      id: "iso22301-8.4",
+      clause: "8.4",
+      title: "Stratégies de continuité",
+      description: "Définir des stratégies de continuité alignées au BIA.",
+      requiredFields: ["bia.service.coverage"],
+    },
+    {
+      id: "iso22301-8.5",
+      clause: "8.5",
+      title: "Procédures de continuité",
+      description: "Décrire les procédures de réponse et reprise.",
+      requiredFields: ["incidents.count"],
+    },
+    {
+      id: "iso22301-8.6",
+      clause: "8.6",
+      title: "Exercices et tests",
+      description: "Planifier et réaliser des exercices réguliers.",
+      requiredFields: ["exercises.last12Months", "exercises.completion.rate", "exercises.lastDate"],
+    },
+    {
+      id: "iso22301-9.1",
+      clause: "9.1",
+      title: "Suivi et mesure",
+      description: "Suivre l'efficacité du SMSCA.",
+      requiredFields: ["incidents.resolution.rate", "exercises.completion.rate"],
+    },
+    {
+      id: "iso22301-10.1",
+      clause: "10.1",
+      title: "Amélioration continue",
+      description: "Planifier les actions d'amélioration.",
+      requiredFields: ["improvements.keyActions"],
+    },
+  ],
+};
+
+export function listComplianceChecklists(): ComplianceChecklist[] {
+  return [ISO22301_CHECKLIST];
+}
+
+function hasFieldValue(value: string | number | null): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === "number") return true;
+  return value.toString().trim().length > 0;
+}
+
+export async function buildStatementOfApplicability(
+  prisma: PrismaClient,
+  tenantId: string,
+  checklistId = ISO22301_CHECKLIST.id
+): Promise<StatementOfApplicability> {
+  const checklist =
+    checklistId === ISO22301_CHECKLIST.id ? ISO22301_CHECKLIST : ISO22301_CHECKLIST;
+  const report = await buildComplianceReport(prisma, tenantId, "iso22301");
+  const fieldMap = new Map(report.chapters.flatMap((chapter) => chapter.fields.map((f) => [f.key, f])));
+
+  const items = checklist.items.map((item) => {
+    const evidence = item.requiredFields.filter((field) => hasFieldValue(fieldMap.get(field)?.value ?? null));
+    const status =
+      evidence.length === 0
+        ? "missing"
+        : evidence.length === item.requiredFields.length
+          ? "implemented"
+          : "partial";
+    return {
+      id: item.id,
+      clause: item.clause,
+      title: item.title,
+      applicability: "applicable",
+      justification: null,
+      status,
+      evidence,
+    } as StatementOfApplicabilityItem;
+  });
+
+  return {
+    meta: {
+      tenantId,
+      generatedAt: new Date().toISOString(),
+      framework: checklist.framework,
+      version: checklist.version,
+    },
+    items,
+  };
+}
 
 function ratio(numerator: number, denominator: number) {
   if (!denominator) return 0;

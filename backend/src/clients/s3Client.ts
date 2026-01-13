@@ -25,6 +25,9 @@ const s3Config: S3ClientConfig = {
   forcePathStyle,
 };
 
+const sseAlgorithm = process.env.S3_SSE_ALGORITHM || process.env.S3_SERVER_SIDE_ENCRYPTION;
+const sseKmsKeyId = process.env.S3_SSE_KMS_KEY_ID;
+
 if (credentials) {
   s3Config.credentials = credentials;
 }
@@ -58,6 +61,14 @@ const DEFAULT_SIGNED_URL_TTL = Number(process.env.S3_SIGNED_URL_TTL_SECONDS || 9
 
 function resolveSignedUrlTtl(ttlSeconds?: number) {
   return Math.max(60, Math.min(ttlSeconds || DEFAULT_SIGNED_URL_TTL, 60 * 60 * 24 * 7));
+}
+
+function buildSseParams(): Record<string, string | undefined> {
+  if (!sseAlgorithm) return {};
+  return {
+    ServerSideEncryption: sseAlgorithm,
+    SSEKMSKeyId: sseAlgorithm === "aws:kms" ? sseKmsKeyId : undefined,
+  };
 }
 
 function sanitizeTenantId(tenantId: string): string {
@@ -165,6 +176,7 @@ export async function uploadObjectToBucket(params: {
       Body: params.body,
       ContentType: params.contentType,
       ContentLength: params.body.byteLength,
+      ...buildSseParams(),
     })
   );
 }
@@ -186,6 +198,7 @@ export async function uploadFileToBucket(params: {
       Body: fs.createReadStream(params.filePath),
       ContentType: params.contentType,
       ContentLength: stats.size,
+      ...buildSseParams(),
     })
   );
 }
@@ -213,6 +226,7 @@ export async function getSignedUploadUrlForObject(
     Bucket: bucket,
     Key: key,
     ContentType: contentType,
+    ...buildSseParams(),
   });
   const url = await getSignedUrl(s3Client, command, { expiresIn });
   return { url, expiresIn };
