@@ -42,6 +42,9 @@ import {
   recommendScenariosWithRag,
   retrieveRagContext,
 } from "../ai/ragService.js";
+import { recordEntityFeedback, recordRecommendationFeedback } from "../services/feedbackService.js";
+import { runMlTrainingForTenant } from "../services/mlTrainingService.js";
+import { resolveRagRuntimeConfig } from "../services/ragTuningService.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const router = Router();
@@ -112,6 +115,61 @@ function parseOptionalString(
     return allowNull ? null : undefined;
   }
   return trimmed;
+}
+
+function parseOptionalNumber(value: unknown, field: string, issues: ValidationIssue[]) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
+    addIssue(issues, field, "ne peut pas être vide");
+    return undefined;
+  }
+  const parsed = Number(value);
+  if (Number.isNaN(parsed)) {
+    addIssue(issues, field, "doit être un nombre");
+    return undefined;
+  }
+  return parsed;
+}
+
+function parseOptionalEnum(
+  value: unknown,
+  field: string,
+  issues: ValidationIssue[],
+  allowed: string[]
+) {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null || value === "") {
+    addIssue(issues, field, "ne peut pas être vide");
+    return undefined;
+  }
+  const normalized = String(value).toLowerCase();
+  if (!allowed.includes(normalized)) {
+    addIssue(issues, field, `doit être l'une des valeurs: ${allowed.join("|")}`);
+    return undefined;
+  }
+  return normalized;
+}
+
+function parseOptionalObject(
+  value: unknown,
+  field: string,
+  issues: ValidationIssue[]
+): Record<string, unknown> | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    addIssue(issues, field, "doit être un objet JSON");
+    return undefined;
+  }
+  return value as Record<string, unknown>;
 }
 
 function parseOptionalCategory(
@@ -645,6 +703,12 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
         ? (req.query.question as string)
         : `Recommandations PRA pour ${tenantId}`;
 
+    const { runtimeConfig, experimentKey, variant } = await resolveRagRuntimeConfig({
+      tenantId,
+      subjectId: req.apiKeyId ?? null,
+      trigger: "pra-dashboard",
+    });
+
     const ragReport = await generatePraReport({
       tenantId,
       question: ragQuestion,
@@ -652,6 +716,7 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       serviceFilter: typeof req.query?.service === "string" ? (req.query.service as string) : null,
       maxChunks: 6,
       maxFacts: 8,
+      ragRuntimeConfig: runtimeConfig,
     });
 
     return res.json({
@@ -664,7 +729,19 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
         comparison: scenarioComparison,
       },
       categories: categoryView,
-      rag: ragReport,
+      rag: {
+        ...ragReport,
+        ragStrategy: {
+          experimentKey,
+          variant,
+          mode: runtimeConfig.mode,
+          chunkingStrategy: runtimeConfig.chunkingStrategy,
+          chunkSize: runtimeConfig.chunkSize ?? null,
+          lexicalChunksPerDoc: runtimeConfig.lexicalChunksPerDoc ?? null,
+          fusionAlpha: runtimeConfig.fusionAlpha ?? null,
+          rerankStrategy: runtimeConfig.rerankStrategy ?? null,
+        },
+      },
     });
   } catch (error) {
     console.error("Error in /analysis/pra-dashboard:", error);
@@ -883,6 +960,12 @@ router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res)
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
+    const { runtimeConfig, experimentKey, variant } = await resolveRagRuntimeConfig({
+      tenantId,
+      subjectId: req.apiKeyId ?? null,
+      trigger: "rag-query",
+    });
+
     const { question, documentIds, documentTypes, serviceFilter, maxChunks, maxFacts } = req.body || {};
     if (!question || typeof question !== "string" || question.trim().length < 4) {
       return res.status(400).json({ error: "Question manquante ou trop courte" });
@@ -896,6 +979,7 @@ router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res)
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
       maxChunks: typeof maxChunks === "number" ? maxChunks : undefined,
       maxFacts: typeof maxFacts === "number" ? maxFacts : undefined,
+      ragRuntimeConfig: runtimeConfig,
     });
 
     const prompt = buildRagPrompt({ question, context: ragResult.context });
@@ -908,6 +992,16 @@ router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res)
       promptSize: prompt.totalChars,
       draftAnswer: answerHint,
       usedDocumentIds: ragResult.usedDocumentIds,
+      ragStrategy: {
+        experimentKey,
+        variant,
+        mode: runtimeConfig.mode,
+        chunkingStrategy: runtimeConfig.chunkingStrategy,
+        chunkSize: runtimeConfig.chunkSize ?? null,
+        lexicalChunksPerDoc: runtimeConfig.lexicalChunksPerDoc ?? null,
+        fusionAlpha: runtimeConfig.fusionAlpha ?? null,
+        rerankStrategy: runtimeConfig.rerankStrategy ?? null,
+      },
     });
   } catch (error) {
     console.error("Error in /analysis/rag-query:", error);
@@ -922,6 +1016,12 @@ router.post("/pra-rag-report", requireRole("READER"), async (req: TenantRequest,
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
+    const { runtimeConfig, experimentKey, variant } = await resolveRagRuntimeConfig({
+      tenantId,
+      subjectId: req.apiKeyId ?? null,
+      trigger: "pra-rag-report",
+    });
+
     const { question, documentIds, documentTypes, serviceFilter } = req.body || {};
     if (!question || typeof question !== "string" || question.trim().length < 4) {
       return res.status(400).json({ error: "Question manquante ou trop courte" });
@@ -935,9 +1035,22 @@ router.post("/pra-rag-report", requireRole("READER"), async (req: TenantRequest,
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
       maxChunks: 8,
       maxFacts: 10,
+      ragRuntimeConfig: runtimeConfig,
     });
 
-    return res.json(report);
+    return res.json({
+      ...report,
+      ragStrategy: {
+        experimentKey,
+        variant,
+        mode: runtimeConfig.mode,
+        chunkingStrategy: runtimeConfig.chunkingStrategy,
+        chunkSize: runtimeConfig.chunkSize ?? null,
+        lexicalChunksPerDoc: runtimeConfig.lexicalChunksPerDoc ?? null,
+        fusionAlpha: runtimeConfig.fusionAlpha ?? null,
+        rerankStrategy: runtimeConfig.rerankStrategy ?? null,
+      },
+    });
   } catch (error) {
     console.error("Error in /analysis/pra-rag-report:", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -952,17 +1065,152 @@ router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, 
     }
     const { question, documentIds, documentTypes, serviceFilter } = req.body || {};
 
+    const { runtimeConfig, experimentKey, variant } = await resolveRagRuntimeConfig({
+      tenantId,
+      subjectId: req.apiKeyId ?? null,
+      trigger: "runbook-draft",
+    });
+
     const draft = await generateRunbookDraft({
       tenantId,
       question: typeof question === "string" && question.trim().length > 0 ? question : undefined,
       documentIds: Array.isArray(documentIds) ? documentIds : undefined,
       documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
+      ragRuntimeConfig: runtimeConfig,
     });
 
-    return res.json(draft);
+    return res.json({
+      ...draft,
+      ragStrategy: {
+        experimentKey,
+        variant,
+        mode: runtimeConfig.mode,
+        chunkingStrategy: runtimeConfig.chunkingStrategy,
+        chunkSize: runtimeConfig.chunkSize ?? null,
+        lexicalChunksPerDoc: runtimeConfig.lexicalChunksPerDoc ?? null,
+        fusionAlpha: runtimeConfig.fusionAlpha ?? null,
+        rerankStrategy: runtimeConfig.rerankStrategy ?? null,
+      },
+    });
   } catch (error) {
     console.error("Error in /analysis/runbook-draft:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/* ========= Feedback ML ========= */
+
+router.post("/feedback/entities", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: ValidationIssue[] = [];
+    const entityType = parseRequiredString(req.body?.entityType, "entityType", issues);
+    const action = parseRequiredString(req.body?.action, "action", issues);
+    const entityId = parseOptionalString(req.body?.entityId, "entityId", issues, true);
+    const documentId = parseOptionalString(req.body?.documentId, "documentId", issues, true);
+    const notes = parseOptionalString(req.body?.notes, "notes", issues, true);
+    const originalValue = req.body?.originalValue;
+    const correctedValue = req.body?.correctedValue;
+    const context = parseOptionalObject(req.body?.context, "context", issues);
+
+    if (issues.length > 0) {
+      return res.status(400).json({ error: "Payload invalide", details: issues });
+    }
+
+    const feedback = await recordEntityFeedback({
+      tenantId,
+      entityType: entityType as string,
+      entityId,
+      documentId,
+      action: action as string,
+      originalValue,
+      correctedValue,
+      notes,
+      context,
+    });
+
+    return res.status(201).json({ feedback });
+  } catch (error) {
+    console.error("Error in POST /analysis/feedback/entities:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post(
+  "/feedback/recommendations",
+  requireRole("OPERATOR"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const issues: ValidationIssue[] = [];
+      const recommendationType = parseRequiredString(
+        req.body?.recommendationType,
+        "recommendationType",
+        issues
+      );
+      const recommendationId = parseOptionalString(
+        req.body?.recommendationId,
+        "recommendationId",
+        issues,
+        true
+      );
+      const rating = parseOptionalEnum(req.body?.rating, "rating", issues, ["like", "dislike"]);
+      const comment = parseOptionalString(req.body?.comment, "comment", issues, true);
+      const score = parseOptionalNumber(req.body?.score, "score", issues);
+      const context = parseOptionalObject(req.body?.context, "context", issues);
+
+      if (!rating) {
+        addIssue(issues, "rating", "champ requis");
+      }
+
+      if (issues.length > 0) {
+        return res.status(400).json({ error: "Payload invalide", details: issues });
+      }
+
+      const feedback = await recordRecommendationFeedback({
+        tenantId,
+        recommendationType: recommendationType as string,
+        recommendationId,
+        rating: rating as "like" | "dislike",
+        score,
+        comment,
+        context,
+      });
+
+      return res.status(201).json({ feedback });
+    } catch (error) {
+      console.error("Error in POST /analysis/feedback/recommendations:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post("/ml-training/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: ValidationIssue[] = [];
+    const trigger = parseOptionalString(req.body?.trigger, "trigger", issues, true);
+    if (issues.length > 0) {
+      return res.status(400).json({ error: "Payload invalide", details: issues });
+    }
+
+    const tuning = await runMlTrainingForTenant(tenantId, trigger ?? "manual");
+    return res.json({ status: "completed", ragTuning: tuning });
+  } catch (error) {
+    console.error("Error in POST /analysis/ml-training/run:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1302,11 +1550,18 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
         ? `Synthèse PRA/PCA pour ${tenant.name} (tenant ${tenantId})`
         : `Synthèse PRA/PCA pour le tenant ${tenantId}`;
 
+    const { runtimeConfig, experimentKey, variant } = await resolveRagRuntimeConfig({
+      tenantId,
+      subjectId: req.apiKeyId ?? null,
+      trigger: "full-report",
+    });
+
     const ragContextResult = await retrieveRagContext({
       tenantId,
       question: ragQuestion,
       maxChunks: 4,
       maxFacts: 6,
+      ragRuntimeConfig: runtimeConfig,
     });
 
     const ragPrompt = buildRagPrompt({
@@ -1468,6 +1723,16 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
         promptSize: ragPrompt.totalChars,
         context: ragContextResult.context,
         scenarioRecommendations: ragScenarioRecs,
+        ragStrategy: {
+          experimentKey,
+          variant,
+          mode: runtimeConfig.mode,
+          chunkingStrategy: runtimeConfig.chunkingStrategy,
+          chunkSize: runtimeConfig.chunkSize ?? null,
+          lexicalChunksPerDoc: runtimeConfig.lexicalChunksPerDoc ?? null,
+          fusionAlpha: runtimeConfig.fusionAlpha ?? null,
+          rerankStrategy: runtimeConfig.rerankStrategy ?? null,
+        },
       },
       biaSummary,
       riskSummary,
