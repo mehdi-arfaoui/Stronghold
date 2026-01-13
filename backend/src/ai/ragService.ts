@@ -5,6 +5,7 @@ import { DR_SCENARIOS } from "../analysis/drStrategyEngine.js";
 import type { DrScenario } from "../analysis/drStrategyEngine.js";
 import { queryChromaCollection } from "../clients/chromaClient.js";
 import { buildChromaCollectionName } from "../services/documentIntelligenceService.js";
+import { resolveEncryptedDocumentText } from "../services/encryptionService.js";
 import { recordRagMrr, recordRagRecall } from "../observability/metrics.js";
 import { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } from "./ragRanking.js";
 import type { RagChunkCandidate } from "./ragRanking.js";
@@ -340,6 +341,9 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
         originalName: true,
         docType: true,
         textContent: true,
+        textContentCiphertext: true,
+        textContentIv: true,
+        textContentTag: true,
       },
       take: 25,
     }),
@@ -354,7 +358,16 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
 
   const chunkDocs: RagChunkCandidate[] = [];
   for (const doc of documents) {
-    const rawText = doc.textContent || "";
+    let rawText = "";
+    try {
+      rawText = resolveEncryptedDocumentText(doc) ?? "";
+    } catch (err: any) {
+      console.warn("Failed to decrypt document text for RAG", {
+        documentId: doc.id,
+        message: err?.message,
+      });
+      rawText = "";
+    }
     const chunkSize = computeChunkSizeForDocument(rawText);
     const chunks = buildChunkTextCandidates(rawText, DEFAULT_LEXICAL_CHUNKS_PER_DOC, chunkSize);
     for (const chunk of chunks) {

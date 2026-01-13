@@ -356,7 +356,10 @@ model Document {
   // Extraction de texte
   extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
   extractionError  String?
-  textContent      String? // texte brut extrait (pour debug / IA)
+  textContent      String? // texte brut extrait (legacy, chiffré de préférence)
+  textContentCiphertext String?
+  textContentIv         String?
+  textContentTag        String?
   ocrStatus        String? @default("NOT_REQUIRED") // NOT_REQUIRED, SKIPPED, SUCCESS, FAILED, DISABLED
   ocrProvider      String? // TESSERACT, AWS_TEXTRACT
   ocrStartedAt     DateTime?

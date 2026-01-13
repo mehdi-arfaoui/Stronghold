@@ -16,6 +16,7 @@ import {
   serializeMetadata,
 } from "./documentIntelligenceService.js";
 import { classifyDocumentTypeWithModel } from "./documentTypeClassificationService.js";
+import { encryptDocumentText } from "./encryptionService.js";
 import { createExtractionSuggestions } from "./extractionSuggestionService.js";
 import {
   downloadObjectToTempFile,
@@ -610,6 +611,20 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     : { services: [], dependencies: [], infra: [] };
   const anchoredDependencies = expandDependencies(mapping.dependencies, mapping.services);
 
+  let encryptedText: { ciphertext: string; iv: string; tag: string } | null = null;
+  if (status === "SUCCESS") {
+    try {
+      encryptedText = encryptDocumentText(text);
+    } catch (encryptionError: any) {
+      status = "FAILED";
+      error = "Chiffrement du document impossible";
+      ingestionError = encryptionError?.message || "Chiffrement du document impossible";
+      text = "";
+      textHash = null;
+      textExtractedAt = null;
+    }
+  }
+
   const updatedAfterExtraction = await prisma.$transaction(async (tx) => {
     if (status === "SUCCESS" && mergedMetadata) {
       await createExtractionSuggestions({
@@ -647,7 +662,10 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       data: {
         extractionStatus: status,
         extractionError: error,
-        textContent: status === "SUCCESS" ? text : null,
+        textContent: null,
+        textContentCiphertext: status === "SUCCESS" ? encryptedText?.ciphertext ?? null : null,
+        textContentIv: status === "SUCCESS" ? encryptedText?.iv ?? null : null,
+        textContentTag: status === "SUCCESS" ? encryptedText?.tag ?? null : null,
         detectedDocType: detectedDocType,
         detectedMetadata: detectedMetadata,
         textHash,

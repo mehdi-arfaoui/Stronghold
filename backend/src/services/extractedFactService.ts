@@ -9,6 +9,7 @@ import {
   computeDocumentHash,
   updateCachedClassification,
 } from "./classificationService.js";
+import { resolveEncryptedDocumentText } from "./encryptionService.js";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
@@ -166,7 +167,16 @@ export async function getOrCreateExtractedFacts(
     throw new DocumentNotFoundError();
   }
 
-  const documentText = document.textContent ?? "";
+  let documentText = "";
+  try {
+    documentText = resolveEncryptedDocumentText(document) ?? "";
+  } catch (err: any) {
+    console.warn("Failed to decrypt document text for facts extraction", {
+      documentId: document.id,
+      message: err?.message,
+    });
+    documentText = "";
+  }
   ensureDocumentHasText(documentText);
 
   const existingFacts = await prismaClient.extractedFact.findMany({
@@ -319,25 +329,28 @@ export async function applyClassificationFeedback(
     where: { id: documentId, tenantId },
   });
 
-  if (document?.textContent) {
-    const docHash = computeDocumentHash(document.textContent);
-    await updateCachedClassification({
-      tenantId,
-      docHash,
-      originalFact: {
-        type: existing.type,
-        category: existing.category,
-        label: existing.label,
-      },
-      updatedFact: {
-        type: updatePayload.type ?? existing.type,
-        category: updatedCategory,
-        label: updatePayload.label ?? existing.label,
-        data: updatedData,
-        source: existing.source ?? null,
-        confidence: existing.confidence ?? null,
-      },
-    });
+  if (document) {
+    const rawText = resolveEncryptedDocumentText(document) ?? "";
+    if (rawText) {
+      const docHash = computeDocumentHash(rawText);
+      await updateCachedClassification({
+        tenantId,
+        docHash,
+        originalFact: {
+          type: existing.type,
+          category: existing.category,
+          label: existing.label,
+        },
+        updatedFact: {
+          type: updatePayload.type ?? existing.type,
+          category: updatedCategory,
+          label: updatePayload.label ?? existing.label,
+          data: updatedData,
+          source: existing.source ?? null,
+          confidence: existing.confidence ?? null,
+        },
+      });
+    }
   }
 
   return mapDbFact(refreshed);
