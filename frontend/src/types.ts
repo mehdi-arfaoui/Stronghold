@@ -129,6 +129,33 @@ export type Risk = {
   mitigations: RiskMitigation[];
 };
 
+export type VulnerabilityRemediation = {
+  title: string;
+  description?: string | null;
+  script?: string | null;
+  type?: string | null;
+};
+
+export type Vulnerability = {
+  id: string;
+  cveId: string;
+  summary?: string | null;
+  severityScore: number;
+  severityLabel: string;
+  packageName?: string | null;
+  packageVersion?: string | null;
+  fixedVersion?: string | null;
+  references?: string[] | null;
+  remediation?: VulnerabilityRemediation[] | null;
+  status?: string | null;
+  discoveredAt?: string;
+  service?: {
+    id: string;
+    name: string;
+    criticality: string;
+  } | null;
+};
+
 export type RiskSummary = {
   meta: { tenantId: string };
   totals: {

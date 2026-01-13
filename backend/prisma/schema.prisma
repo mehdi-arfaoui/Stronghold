@@ -61,6 +61,7 @@ model Tenant {
   discoverySchedules     DiscoverySchedule[]
   discoveryFlows         DiscoveryFlow[]
   discoveryResourceChanges DiscoveryResourceChange[]
+  vulnerabilities            Vulnerability[]
 }
 
 model Service {
@@ -87,6 +88,7 @@ model Service {
   policyLinks          SecurityPolicyService[]
   dependencyCycles     DependencyCycleService[]
   risks                Risk[]
+  vulnerabilities      Vulnerability[]
   businessProcessLinks BusinessProcessService[]
   incidentServices     IncidentService[]
 
@@ -133,6 +135,37 @@ model RiskMitigation {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Vulnerability {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  serviceId String
+  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  fingerprint   String
+  cveId         String
+  source        String?
+  summary       String?
+  severityScore Float
+  severityLabel String
+  packageName   String?
+  packageVersion String?
+  fixedVersion  String?
+  references    Json?
+  remediation   Json?
+  status        String @default("open")
+  metadata      Json?
+
+  discoveredAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId, serviceId])
+  @@index([tenantId, cveId])
+  @@unique([tenantId, fingerprint])
 }
 
 model BusinessProcess {
