@@ -21,9 +21,9 @@ interface AppLayoutProps {
   onToggleTheme: () => void;
   language: Language;
   onLanguageChange: (language: Language) => void;
-  isSidebarOpen: boolean;
-  onSidebarToggle: () => void;
-  onSidebarClose: () => void;
+  isMenuOpen: boolean;
+  onMenuToggle: () => void;
+  onMenuClose: () => void;
 }
 
 export function AppLayout({
@@ -39,9 +39,9 @@ export function AppLayout({
   onToggleTheme,
   language,
   onLanguageChange,
-  isSidebarOpen,
-  onSidebarToggle,
-  onSidebarClose,
+  isMenuOpen,
+  onMenuToggle,
+  onMenuClose,
 }: AppLayoutProps) {
   return (
     <div className="app-layout">
@@ -51,9 +51,9 @@ export function AppLayout({
             <button
               type="button"
               className="menu-toggle"
-              aria-expanded={isSidebarOpen}
+              aria-expanded={isMenuOpen}
               aria-controls="app-sidebar"
-              onClick={onSidebarToggle}
+              onClick={onMenuToggle}
             >
               <span className="menu-icon" aria-hidden="true">
                 <span />
@@ -104,7 +104,7 @@ export function AppLayout({
         </div>
       </header>
 
-      <div className="app-body">
+      <div className={`app-body ${isMenuOpen ? "sidebar-open" : "sidebar-closed"}`}>
         <Sidebar
           groups={groups}
           copy={copy}
@@ -112,8 +112,8 @@ export function AppLayout({
           activeStepId={activeStepId}
           completedSteps={completedSteps}
           onStepAction={onStepAction}
-          isOpen={isSidebarOpen}
-          onClose={onSidebarClose}
+          isOpen={isMenuOpen}
+          onClose={onMenuClose}
         />
         <main id="main-content" className="main-content">
           {children}

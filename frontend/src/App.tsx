@@ -120,7 +120,7 @@ function App() {
   const navigate = useNavigate();
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<HomeStepId>("services");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
   const [language, setLanguage] = useState<Language>(
@@ -148,7 +148,7 @@ function App() {
   const handleTabNavigation = useCallback(
     (tabId: TabId) => {
       navigate(MODULE_PATHS[tabId]);
-      setIsSidebarOpen(false);
+      setIsMenuOpen(false);
       const stepIndex = wizardSteps.indexOf(tabId as HomeStepId);
       if (stepIndex >= 0) {
         setActiveStep(tabId as HomeStepId);
@@ -174,7 +174,7 @@ function App() {
         setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
       }
       navigate(MODULE_PATHS[stepId]);
-      setIsSidebarOpen(false);
+      setIsMenuOpen(false);
     },
     [navigate, wizardSteps]
   );
@@ -226,9 +226,9 @@ function App() {
         onToggleTheme={toggleTheme}
         language={language}
         onLanguageChange={setLanguage}
-        isSidebarOpen={isSidebarOpen}
-        onSidebarToggle={() => setIsSidebarOpen((open) => !open)}
-        onSidebarClose={() => setIsSidebarOpen(false)}
+        isMenuOpen={isMenuOpen}
+        onMenuToggle={() => setIsMenuOpen((open) => !open)}
+        onMenuClose={() => setIsMenuOpen(false)}
       >
         <Routes>
           <Route

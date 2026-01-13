@@ -13,7 +13,10 @@
 - **PDF** : extraction textuelle activée via `pdf-parse`.
 - **DOCX/PPTX** : extraction textuelle via décompression OpenXML (zip) et lecture XML interne.
 - **Excel** (`.xlsx/.xlsm/.xlsb`) et **fichiers texte** (`.txt/.md/.json/.csv/.log/.yml/.yaml`) : support inchangé.
-- **Images** (`image/*`) : toujours non supportées (OCR à activer ultérieurement).
+- **OCR (PDF scannés/images)** : activé via Tesseract, avec bascule possible vers AWS Textract si configuré.
+  - Installer Tesseract : `sudo apt install tesseract-ocr libtesseract-dev` ou `sudo backend/scripts/install-ocr.sh`.
+  - Activer Textract en fallback : `AWS_TEXTRACT_ENABLED=true` + `AWS_TEXTRACT_REGION=...`.
+  - Forcer un provider : `OCR_PROVIDER=aws_textract` ou `OCR_PROVIDER=tesseract`.
 
 ## Schémas de données (backend)
 Les modèles sont définis dans `backend/prisma/schema.prisma`. Les principaux objets utilisés par les endpoints récents :
@@ -70,6 +73,8 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 
 ### Découverte (import)
 - `POST /discovery/import` : import d’un fichier CSV ou JSON pour créer des nœuds et dépendances.
+- `POST /discovery/suggestions` : prévisualise les correspondances entre éléments découverts et services existants.
+- `POST /discovery/run` : lance un scan réseau/cloud asynchrone (SNMP/SSH/WMI à brancher côté worker).
 
 **CSV attendu**
 - Header obligatoire : `record_type,id,name,type,source,target,dependency_type`.

@@ -5,6 +5,7 @@ import { HOME_STEP_CONTENT } from "../i18n/translations";
 export const HOME_STEP_ORDER: HomeStepId[] = [
   "services",
   "documents",
+  "discovery",
   "bia",
   "risks",
   "scenarios",

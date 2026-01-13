@@ -7,6 +7,7 @@ import { buildValidationError, parseStringArray, parseOptionalString } from "../
 import {
   applyDiscoveryImport,
   buildJobResponse,
+  buildDiscoverySuggestions,
   DiscoveryImportError,
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
@@ -183,6 +184,43 @@ router.get("/history", async (req: TenantRequest, res) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 });
+
+/**
+ * POST /discovery/suggestions
+ * Prévisualise les correspondances entre découverte et services existants.
+ */
+router.post(
+  "/suggestions",
+  requireRole("OPERATOR"),
+  upload.single("file"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: "Aucun fichier fourni" });
+      }
+
+      const { payload } = parseDiscoveryImport(
+        req.file.buffer,
+        req.file.originalname,
+        req.file.mimetype
+      );
+      const suggestions = await buildDiscoverySuggestions(tenantId, payload);
+
+      return res.json(suggestions);
+    } catch (error) {
+      console.error("Error in POST /discovery/suggestions:", error);
+      if (error instanceof DiscoveryImportError) {
+        return res.status(400).json({ error: error.message, details: error.details });
+      }
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 /**
  * POST /discovery/import

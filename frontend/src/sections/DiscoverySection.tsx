@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
 import { SectionCard } from "../components/ui/SectionCard";
 import { InfoBadge } from "../components/ui/InfoBadge";
-import type { DiscoveryJob } from "../types";
+import type { DiscoveryJob, DiscoverySuggestionResponse } from "../types";
 import { apiFetch, apiFetchFormData } from "../utils/api";
 
 interface DiscoverySectionProps {
@@ -63,6 +63,9 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<DiscoverySuggestionResponse | null>(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   const loadHistory = async () => {
@@ -188,16 +191,68 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
     }
   };
 
+  const handleSuggest = async () => {
+    setSuggestError(null);
+    setSuggestions(null);
+    if (!importFile) {
+      setSuggestError("Sélectionnez un fichier CSV ou JSON pour générer des suggestions.");
+      return;
+    }
+    setSuggesting(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile);
+      const response = await apiFetchFormData("/discovery/suggestions", formData);
+      setSuggestions(response as DiscoverySuggestionResponse);
+    } catch (err: any) {
+      setSuggestError(err.message || "Impossible de générer les suggestions");
+    } finally {
+      setSuggesting(false);
+    }
+  };
+
   const latestJobs = history.slice(0, 6);
+  const progressValue = currentJob?.progress ?? (history.length > 0 ? 60 : 10);
+  const progressLabel = currentJob
+    ? `Job ${currentJob.status.toLowerCase()} (${currentJob.progress}%)`
+    : history.length > 0
+      ? "Découvertes disponibles"
+      : "Aucun scan lancé";
 
   return (
     <div className="section-stack">
       <PageIntro
         title="Découverte"
-        description="Lancez une découverte réseau/cloud, ou importez un export NetFlow/CMDB pour enrichir le graphe."
+        objective="Lancez une découverte réseau/cloud, ou importez un export NetFlow/CMDB pour enrichir la cartographie."
+        steps={[
+          "Définir les plages IP et connecteurs cloud",
+          "Lancer un scan ou importer un export",
+          "Valider les suggestions de correspondance",
+          "Confirmer l'import pour créer services et dépendances",
+        ]}
+        tips={[
+          "Ajoutez un identifiant cloud uniquement si nécessaire (AWS/Azure/GCP).",
+          "Utilisez l'analyse automatique pour retrouver les services déjà connus.",
+          "Les dépendances issues des exports seront préremplies lors de l'import.",
+        ]}
+        links={[
+          { label: "Lancer un scan", href: "#discovery-run", description: "Réseau/Cloud" },
+          { label: "Importer un export", href: "#discovery-import", description: "CSV/JSON" },
+          { label: "Wizard de mapping", href: "#discovery-wizard", description: "Suggestions" },
+        ]}
+        expectedData={[
+          "Plages IP (CIDR) ou exports CMDB/NetFlow",
+          "Connecteurs cloud sélectionnés",
+          "Services existants pour le matching",
+        ]}
+        progress={{
+          value: progressValue,
+          label: progressLabel,
+        }}
       />
 
-      <SectionCard
+      <div id="discovery-run">
+        <SectionCard
         eyebrow="Découverte réseau"
         title="Lancer un scan"
         description="Saisissez vos plages IP et ajoutez des identifiants cloud si nécessaire."
@@ -321,8 +376,10 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
           </div>
         </form>
       </SectionCard>
+      </div>
 
-      <SectionCard
+      <div id="discovery-import">
+        <SectionCard
         eyebrow="Import NetFlow"
         title="Importer un export CSV/JSON"
         description="Chargez un export Faddom ou équivalent pour créer des services et dépendances."
@@ -344,6 +401,62 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
           </button>
         </form>
       </SectionCard>
+      </div>
+
+      <div id="discovery-wizard">
+        <SectionCard
+          eyebrow="Wizard de correspondance"
+          title="Suggérer les services existants"
+          description="Analysez l'export pour rapprocher les éléments découverts du catalogue actuel."
+        >
+          <div className="stack">
+            <button type="button" className="btn primary" onClick={handleSuggest} disabled={suggesting}>
+              {suggesting ? "Analyse en cours..." : "Analyser l'export"}
+            </button>
+            {suggestError && <div className="alert error">{suggestError}</div>}
+            {suggestions ? (
+              <div className="table-wrapper">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Élément détecté</th>
+                      <th>Type</th>
+                      <th>Suggestion</th>
+                      <th>Score</th>
+                      <th>RTO/RPO</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {suggestions.suggestions.map((suggestion) => (
+                      <tr key={suggestion.externalId}>
+                        <td>{suggestion.name}</td>
+                        <td>{suggestion.kind}</td>
+                        <td>
+                          {suggestion.match ? suggestion.match.name : "Aucune correspondance"}
+                        </td>
+                        <td>{suggestion.match ? `${Math.round(suggestion.match.score * 100)}%` : "-"}</td>
+                        <td>
+                          {suggestion.match
+                            ? `RTO ${suggestion.match.rtoHours ?? "-"}h · RPO ${suggestion.match.rpoMinutes ?? "-"}m`
+                            : "-"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="muted small">
+                  {suggestions.summary.serviceNodes} services et {suggestions.summary.infraNodes} composants infra détectés,
+                  {` ${suggestions.summary.edges} dépendances prêtes à être importées.`}
+                </p>
+              </div>
+            ) : (
+              <p className="muted small">
+                Chargez un export pour visualiser les correspondances suggérées avec votre catalogue.
+              </p>
+            )}
+          </div>
+        </SectionCard>
+      </div>
 
       <SectionCard
         eyebrow="Suivi"
