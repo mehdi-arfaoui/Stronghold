@@ -3,32 +3,44 @@ import { InfoBadge } from "../components/ui/InfoBadge";
 import { SectionCard } from "../components/ui/SectionCard";
 import { TabNavigation } from "../components/navigation/TabNavigation";
 import { SERVICE_DOMAINS } from "../constants/domains";
-import { MODULE_GROUPS, MODULE_ROUTES, WIZARD_STEP_GROUP } from "../constants/navigation";
+import type { ModuleGroup, ModuleRoute } from "../constants/navigation";
+import type { TranslationCopy } from "../i18n/translations";
 import type { TabId } from "../types";
 
 interface NavigationPageProps {
   activeTab: TabId;
   onNavigateTab: (tabId: TabId) => void;
+  copy: TranslationCopy;
+  wizardGroup: ModuleGroup;
+  moduleGroups: ModuleGroup[];
+  moduleRoutes: ModuleRoute[];
 }
 
-export function NavigationPage({ activeTab, onNavigateTab }: NavigationPageProps) {
+export function NavigationPage({
+  activeTab,
+  onNavigateTab,
+  copy,
+  wizardGroup,
+  moduleGroups,
+  moduleRoutes,
+}: NavigationPageProps) {
   const [tabQuery, setTabQuery] = useState("");
 
   const filteredWizardTabs = useMemo(() => {
     const query = tabQuery.trim().toLowerCase();
-    if (!query) return WIZARD_STEP_GROUP.tabs;
-    return WIZARD_STEP_GROUP.tabs.filter(
+    if (!query) return wizardGroup.tabs;
+    return wizardGroup.tabs.filter(
       (tab) =>
         tab.label.toLowerCase().includes(query) ||
         tab.description.toLowerCase().includes(query)
     );
-  }, [tabQuery]);
+  }, [tabQuery, wizardGroup.tabs]);
 
   const filteredGroups = useMemo(() => {
     const query = tabQuery.trim().toLowerCase();
-    if (!query) return MODULE_GROUPS;
+    if (!query) return moduleGroups;
 
-    return MODULE_GROUPS.map((group) => {
+    return moduleGroups.map((group) => {
       const groupMatches =
         group.label.toLowerCase().includes(query) ||
         group.description.toLowerCase().includes(query);
@@ -42,7 +54,7 @@ export function NavigationPage({ activeTab, onNavigateTab }: NavigationPageProps
         tabs: groupMatches && tabs.length === 0 ? group.tabs : tabs,
       };
     }).filter((group) => group.tabs.length > 0);
-  }, [tabQuery]);
+  }, [moduleGroups, tabQuery]);
 
   const filteredTabCount = useMemo(
     () => filteredGroups.reduce((total, group) => total + group.tabs.length, 0),
@@ -53,34 +65,34 @@ export function NavigationPage({ activeTab, onNavigateTab }: NavigationPageProps
     <section className="workspace-section" aria-labelledby="navigation-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">Navigation</p>
-          <h2 id="navigation-title">Vue d'ensemble</h2>
-          <p className="muted">
-            Accédez rapidement à chaque module pour orchestrer la continuité.
-          </p>
+          <p className="eyebrow">{copy.navigationEyebrow}</p>
+          <h2 id="navigation-title">{copy.navigationTitle}</h2>
+          <p className="muted">{copy.navigationSubtitle}</p>
         </div>
       </div>
 
       <SectionCard
-        eyebrow="Parcours guidé"
-        title="Avancez étape par étape"
-        description="Suivez le flux recommandé pour générer votre PRA complet."
+        eyebrow={copy.guidedJourney}
+        title={copy.navigationWizardTitle}
+        description={copy.navigationWizardDescription}
         actions={
           <div className="tab-controls">
-            <InfoBadge variant="subtle">{SERVICE_DOMAINS.length} domaines suivis</InfoBadge>
+            <InfoBadge variant="subtle">
+              {SERVICE_DOMAINS.length} {copy.navigationDomainLabel}
+            </InfoBadge>
             <div className="tab-search">
               <label className="sr-only" htmlFor="tab-search">
-                Rechercher un module
+                {copy.navigationSearchLabel}
               </label>
               <input
                 id="tab-search"
                 type="search"
                 value={tabQuery}
                 onChange={(event) => setTabQuery(event.target.value)}
-                placeholder="Rechercher un module"
+                placeholder={copy.navigationSearchPlaceholder}
               />
               <span className="muted small">
-                {filteredTabCount}/{MODULE_ROUTES.length}
+                {filteredTabCount}/{moduleRoutes.length}
               </span>
             </div>
           </div>
@@ -94,14 +106,14 @@ export function NavigationPage({ activeTab, onNavigateTab }: NavigationPageProps
             showIndex
           />
         ) : (
-          <p className="empty-state">Aucun module ne correspond à cette recherche.</p>
+          <p className="empty-state">{copy.navigationEmptyState}</p>
         )}
       </SectionCard>
 
       <SectionCard
-        eyebrow="Navigation"
-        title="Catalogue regroupé"
-        description="Explorez les modules par grands ensembles fonctionnels."
+        eyebrow={copy.navigation}
+        title={copy.navigationCatalogTitle}
+        description={copy.navigationCatalogDescription}
       >
         {filteredGroups.length ? (
           <div className="nav-group-grid">
@@ -119,7 +131,7 @@ export function NavigationPage({ activeTab, onNavigateTab }: NavigationPageProps
             ))}
           </div>
         ) : (
-          <p className="empty-state">Aucun groupe ne correspond à cette recherche.</p>
+          <p className="empty-state">{copy.navigationGroupEmptyState}</p>
         )}
       </SectionCard>
     </section>

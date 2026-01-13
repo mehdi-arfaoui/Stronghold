@@ -2,20 +2,35 @@ import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react
 import type { ComponentType } from "react";
 import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Footer } from "./components/layout/Footer";
-import { Header } from "./components/navigation/Header";
+import { AppLayout } from "./components/layout/AppLayout";
 import type { HomeStepId } from "./components/home/HomePage";
 import { ConfigurationPage } from "./routes/ConfigurationPage";
 import { HomeRoute } from "./routes/HomeRoute";
 import { NavigationPage } from "./routes/NavigationPage";
 import {
-  MAIN_NAV_GROUPS,
   MODULE_PATH_TO_ID,
   MODULE_ROUTES,
   MODULE_PATHS,
   WIZARD_STEP_ORDER,
+  getMainNavGroups,
+  getModuleGroups,
+  getModuleRoutes,
+  getWizardStepGroup,
 } from "./constants/navigation";
 import type { ApiConfig, TabId } from "./types";
 import { loadApiConfig } from "./utils/api";
+import { getHomeSteps } from "./constants/homeSteps";
+import { getCopy } from "./i18n/utils";
+import type { Language } from "./i18n/translations";
+import {
+  getDefaultLanguage,
+  getDefaultTheme,
+  getStoredLanguage,
+  getStoredTheme,
+  setStoredLanguage,
+  setStoredTheme,
+  type ThemeMode,
+} from "./utils/preferences";
 
 // Lazy-load module panels to reduce the initial bundle footprint.
 const ServicesSection = lazy(() =>
@@ -105,10 +120,20 @@ function App() {
   const navigate = useNavigate();
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<HomeStepId>("services");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
+  const [language, setLanguage] = useState<Language>(
+    () => getStoredLanguage() ?? getDefaultLanguage()
+  );
+  const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme() ?? getDefaultTheme());
   const wizardSteps = useMemo(() => WIZARD_STEP_ORDER as HomeStepId[], []);
+  const copy = useMemo(() => getCopy(language), [language]);
+  const homeSteps = useMemo(() => getHomeSteps(language), [language]);
+  const navGroups = useMemo(() => getMainNavGroups(language), [language]);
+  const moduleGroups = useMemo(() => getModuleGroups(language), [language]);
+  const moduleRoutes = useMemo(() => getModuleRoutes(language), [language]);
+  const wizardGroup = useMemo(() => getWizardStepGroup(language), [language]);
 
   const activeTab = useMemo<TabId>(() => {
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
@@ -120,14 +145,10 @@ function App() {
     setConfigVersion((version) => version + 1);
   };
 
-  const handleNavigate = useCallback(() => {
-    setMenuOpen(false);
-  }, []);
-
   const handleTabNavigation = useCallback(
     (tabId: TabId) => {
       navigate(MODULE_PATHS[tabId]);
-      setMenuOpen(false);
+      setIsSidebarOpen(false);
       const stepIndex = wizardSteps.indexOf(tabId as HomeStepId);
       if (stepIndex >= 0) {
         setActiveStep(tabId as HomeStepId);
@@ -153,6 +174,7 @@ function App() {
         setCompletedSteps((prev) => (prev.includes(stepId) ? prev : [...prev, stepId]));
       }
       navigate(MODULE_PATHS[stepId]);
+      setIsSidebarOpen(false);
     },
     [navigate, wizardSteps]
   );
@@ -160,6 +182,10 @@ function App() {
   const handleQuickAction = useCallback(() => {
     navigate(MODULE_PATHS.analysis);
   }, [navigate]);
+
+  const toggleTheme = useCallback(() => {
+    setTheme((current) => (current === "dark" ? "light" : "dark"));
+  }, []);
 
   useEffect(() => {
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
@@ -173,25 +199,44 @@ function App() {
     });
   }, [location.pathname, wizardSteps]);
 
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    setStoredTheme(theme);
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.lang = language;
+    setStoredLanguage(language);
+  }, [language]);
+
   return (
     <div className="app-shell">
       <a className="skip-link" href="#main-content">
-        Aller au contenu principal
+        {copy.skipToContent}
       </a>
-      <Header
-        groups={MAIN_NAV_GROUPS}
-        isMenuOpen={menuOpen}
-        onMenuToggle={() => setMenuOpen((open) => !open)}
-        onNavigate={handleNavigate}
+      <AppLayout
+        groups={navGroups}
+        copy={copy}
+        steps={homeSteps}
+        activeStepId={activeStep}
+        completedSteps={completedSteps}
+        onStepAction={handleStepAction}
         onQuickAction={handleQuickAction}
-      />
-
-      <main id="main-content" className="main-content">
+        theme={theme}
+        onToggleTheme={toggleTheme}
+        language={language}
+        onLanguageChange={setLanguage}
+        isSidebarOpen={isSidebarOpen}
+        onSidebarToggle={() => setIsSidebarOpen((open) => !open)}
+        onSidebarClose={() => setIsSidebarOpen(false)}
+      >
         <Routes>
           <Route
             path="/"
             element={
               <HomeRoute
+                copy={copy}
+                steps={homeSteps}
                 activeStepId={activeStep}
                 completedSteps={completedSteps}
                 onStepAction={handleStepAction}
@@ -200,11 +245,22 @@ function App() {
           />
           <Route
             path="/configuration"
-            element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} />}
+            element={
+              <ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />
+            }
           />
           <Route
             path="/navigation"
-            element={<NavigationPage activeTab={activeTab} onNavigateTab={handleTabNavigation} />}
+            element={
+              <NavigationPage
+                activeTab={activeTab}
+                onNavigateTab={handleTabNavigation}
+                copy={copy}
+                wizardGroup={wizardGroup}
+                moduleGroups={moduleGroups}
+                moduleRoutes={moduleRoutes}
+              />
+            }
           />
           {MODULE_ROUTES.map((module) => (
             <Route
@@ -216,13 +272,20 @@ function App() {
           <Route
             path="*"
             element={
-              <NavigationPage activeTab={activeTab} onNavigateTab={handleTabNavigation} />
+              <NavigationPage
+                activeTab={activeTab}
+                onNavigateTab={handleTabNavigation}
+                copy={copy}
+                wizardGroup={wizardGroup}
+                moduleGroups={moduleGroups}
+                moduleRoutes={moduleRoutes}
+              />
             }
           />
         </Routes>
-      </main>
+      </AppLayout>
 
-      <Footer groups={MAIN_NAV_GROUPS} />
+      <Footer groups={navGroups} copy={copy} />
     </div>
   );
 }

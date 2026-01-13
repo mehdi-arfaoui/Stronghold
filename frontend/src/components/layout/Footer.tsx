@@ -1,23 +1,23 @@
 import { NavLink as RouterNavLink } from "react-router-dom";
 import type { NavGroup } from "../navigation/NavMenu";
+import type { TranslationCopy } from "../../i18n/translations";
 
 interface FooterProps {
   groups: NavGroup[];
+  copy: TranslationCopy;
 }
 
-export function Footer({ groups }: FooterProps) {
+export function Footer({ groups, copy }: FooterProps) {
   return (
     <footer className="site-footer" aria-labelledby="footer-title">
       <div className="footer-inner">
         <div>
           <p id="footer-title" className="footer-title">
-            Stronghold PRA/PCA
+            {copy.footerTitle}
           </p>
-          <p className="muted">
-            Plateforme de résilience et d'analyse continue pour les organisations critiques.
-          </p>
+          <p className="muted">{copy.footerDescription}</p>
         </div>
-        <nav className="footer-nav" aria-label="Navigation secondaire">
+        <nav className="footer-nav" aria-label={copy.footerNavLabel}>
           <div className="footer-nav-groups">
             {groups.map((group) => (
               <div key={group.id} className="footer-nav-group">

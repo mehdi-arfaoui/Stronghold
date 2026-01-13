@@ -3,6 +3,9 @@ interface ProgressStepProps {
   title: string;
   description: string;
   actionLabel: string;
+  tagCompleteLabel: string;
+  tagPendingLabel: string;
+  completedLabel: string;
   isActive: boolean;
   isComplete: boolean;
   onAction: (stepId: string) => void;
@@ -13,6 +16,9 @@ export function ProgressStep({
   title,
   description,
   actionLabel,
+  tagCompleteLabel,
+  tagPendingLabel,
+  completedLabel,
   isActive,
   isComplete,
   onAction,
@@ -25,7 +31,9 @@ export function ProgressStep({
       aria-current={isActive ? "step" : undefined}
     >
       <div className="progress-step-header">
-        <span className="progress-step-tag">{isComplete ? "Terminé" : "Étape"}</span>
+        <span className="progress-step-tag">
+          {isComplete ? tagCompleteLabel : tagPendingLabel}
+        </span>
         <span className="progress-step-title">{title}</span>
       </div>
       <p className="progress-step-description">{description}</p>
@@ -33,7 +41,7 @@ export function ProgressStep({
         <button type="button" className="btn primary" onClick={() => onAction(stepId)}>
           {actionLabel}
         </button>
-        {isComplete ? <span className="progress-step-status">Complété</span> : null}
+        {isComplete ? <span className="progress-step-status">{completedLabel}</span> : null}
       </div>
     </article>
   );
