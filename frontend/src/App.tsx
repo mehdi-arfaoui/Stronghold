@@ -13,8 +13,6 @@ import {
   MODULE_PATHS,
   WIZARD_STEP_ORDER,
   getMainNavGroups,
-  getModuleGroups,
-  getModuleRoutes,
   getWizardStepGroup,
 } from "./constants/navigation";
 import type { ApiConfig, TabId } from "./types";
@@ -121,7 +119,7 @@ function App() {
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
   const [configVersion, setConfigVersion] = useState(0);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [activeStep, setActiveStep] = useState<HomeStepId>("services");
+  const [activeStep, setActiveStep] = useState<HomeStepId>("discovery");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
   const [language, setLanguage] = useState<Language>(
     () => getStoredLanguage() ?? getDefaultLanguage()
@@ -131,13 +129,11 @@ function App() {
   const copy = useMemo(() => getCopy(language), [language]);
   const homeSteps = useMemo(() => getHomeSteps(language), [language]);
   const navGroups = useMemo(() => getMainNavGroups(language), [language]);
-  const moduleGroups = useMemo(() => getModuleGroups(language), [language]);
-  const moduleRoutes = useMemo(() => getModuleRoutes(language), [language]);
   const wizardGroup = useMemo(() => getWizardStepGroup(language), [language]);
 
   const activeTab = useMemo<TabId>(() => {
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
-    return tabFromPath ?? "services";
+    return tabFromPath ?? "discovery";
   }, [location.pathname]);
 
   const handleConfigSave = (config: ApiConfig) => {
@@ -145,24 +141,40 @@ function App() {
     setConfigVersion((version) => version + 1);
   };
 
+  const maxAllowedIndex = useMemo(() => {
+    const completedIndex = completedSteps.reduce(
+      (max, stepId) => Math.max(max, wizardSteps.indexOf(stepId)),
+      -1
+    );
+    const activeIndex = wizardSteps.indexOf(activeStep);
+    const furthestIndex = Math.max(completedIndex, activeIndex);
+    return Math.min(wizardSteps.length - 1, furthestIndex + 1);
+  }, [activeStep, completedSteps, wizardSteps]);
+
+  const isStepAllowed = useCallback(
+    (stepId: HomeStepId) => wizardSteps.indexOf(stepId) <= maxAllowedIndex,
+    [maxAllowedIndex, wizardSteps]
+  );
+
   const handleTabNavigation = useCallback(
     (tabId: TabId) => {
+      const stepId = tabId as HomeStepId;
+      const stepIndex = wizardSteps.indexOf(stepId);
+      if (stepIndex === -1 || !isStepAllowed(stepId)) return;
       navigate(MODULE_PATHS[tabId]);
       setIsMenuOpen(false);
-      const stepIndex = wizardSteps.indexOf(tabId as HomeStepId);
-      if (stepIndex >= 0) {
-        setActiveStep(tabId as HomeStepId);
-        const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
-        setCompletedSteps((prev) =>
-          wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
-        );
-      }
+      setActiveStep(stepId);
+      const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
+      setCompletedSteps((prev) =>
+        wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
+      );
     },
-    [navigate, wizardSteps]
+    [isStepAllowed, navigate, wizardSteps]
   );
 
   const handleStepAction = useCallback(
     (stepId: HomeStepId) => {
+      if (!isStepAllowed(stepId)) return;
       const stepIndex = wizardSteps.indexOf(stepId);
       setActiveStep(stepId);
       if (stepIndex >= 0) {
@@ -176,7 +188,7 @@ function App() {
       navigate(MODULE_PATHS[stepId]);
       setIsMenuOpen(false);
     },
-    [navigate, wizardSteps]
+    [isStepAllowed, navigate, wizardSteps]
   );
 
   const handleQuickAction = useCallback(() => {
@@ -192,12 +204,16 @@ function App() {
     if (!tabFromPath) return;
     const stepIndex = wizardSteps.indexOf(tabFromPath as HomeStepId);
     if (stepIndex === -1) return;
+    if (!isStepAllowed(tabFromPath as HomeStepId)) {
+      navigate(MODULE_PATHS[wizardSteps[maxAllowedIndex]], { replace: true });
+      return;
+    }
     setActiveStep(tabFromPath as HomeStepId);
     setCompletedSteps((prev) => {
       const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
       return wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step));
     });
-  }, [location.pathname, wizardSteps]);
+  }, [isStepAllowed, location.pathname, maxAllowedIndex, navigate, wizardSteps]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -220,6 +236,7 @@ function App() {
         steps={homeSteps}
         activeStepId={activeStep}
         completedSteps={completedSteps}
+        maxAllowedIndex={maxAllowedIndex}
         onStepAction={handleStepAction}
         onQuickAction={handleQuickAction}
         theme={theme}
@@ -239,6 +256,7 @@ function App() {
                 steps={homeSteps}
                 activeStepId={activeStep}
                 completedSteps={completedSteps}
+                maxAllowedIndex={maxAllowedIndex}
                 onStepAction={handleStepAction}
               />
             }
@@ -257,8 +275,6 @@ function App() {
                 onNavigateTab={handleTabNavigation}
                 copy={copy}
                 wizardGroup={wizardGroup}
-                moduleGroups={moduleGroups}
-                moduleRoutes={moduleRoutes}
               />
             }
           />
@@ -277,8 +293,6 @@ function App() {
                 onNavigateTab={handleTabNavigation}
                 copy={copy}
                 wizardGroup={wizardGroup}
-                moduleGroups={moduleGroups}
-                moduleRoutes={moduleRoutes}
               />
             }
           />

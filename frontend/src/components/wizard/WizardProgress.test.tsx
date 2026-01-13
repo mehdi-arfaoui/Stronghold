@@ -15,6 +15,7 @@ describe("WizardProgress", () => {
         steps={steps}
         activeStepId={steps[1].id}
         completedSteps={completedSteps}
+        maxAllowedIndex={2}
         onStepAction={() => undefined}
       />
     );

@@ -65,14 +65,14 @@ const MODULE_GROUP_BASE = [
 ];
 
 export const WIZARD_STEP_ORDER: TabId[] = [
-  "services",
-  "documents",
   "discovery",
+  "documents",
+  "rag",
   "bia",
   "risks",
   "scenarios",
-  "analysis",
   "runbooks",
+  "analysis",
 ];
 
 export const WIZARD_STEP_GROUP_ID = "wizard";
@@ -133,57 +133,6 @@ export const getMainNavGroups = (language: Language): NavGroup[] => {
       links: [
         { id: "home", label: generalLabels.home, to: "/" },
         { id: "configuration", label: generalLabels.configuration, to: "/configuration" },
-        { id: "navigation", label: generalLabels.navigation, to: "/navigation" },
-      ],
-    },
-    {
-      id: "services-infra",
-      label: groupLabels["services-infra"]?.label ?? "Services",
-      links: [
-        { id: "services", label: MODULE_LABELS[language].services.label, to: "/services" },
-        { id: "discovery", label: MODULE_LABELS[language].discovery.label, to: "/discovery" },
-        { id: "architecture", label: MODULE_LABELS[language].architecture.label, to: "/architecture" },
-        { id: "landing", label: MODULE_LABELS[language].landing.label, to: "/landing" },
-        { id: "graph", label: MODULE_LABELS[language].graph.label, to: "/graph" },
-        { id: "continuity", label: MODULE_LABELS[language].continuity.label, to: "/continuity" },
-      ],
-    },
-    {
-      id: "documents-ai",
-      label: groupLabels["documents-ai"]?.label ?? "Documents",
-      links: [
-        { id: "documents", label: MODULE_LABELS[language].documents.label, to: "/documents" },
-        { id: "rag", label: MODULE_LABELS[language].rag.label, to: "/rag" },
-      ],
-    },
-    {
-      id: "analyses-risks",
-      label: groupLabels["analyses-risks"]?.label ?? "Analysis",
-      links: [
-        { id: "bia", label: MODULE_LABELS[language].bia.label, to: "/bia" },
-        { id: "risks", label: MODULE_LABELS[language].risks.label, to: "/risks" },
-        { id: "analysis", label: MODULE_LABELS[language].analysis.label, to: "/analysis" },
-      ],
-    },
-    {
-      id: "scenarios-runbooks",
-      label: groupLabels["scenarios-runbooks"]?.label ?? "Scenarios",
-      links: [
-        { id: "scenarios", label: MODULE_LABELS[language].scenarios.label, to: "/scenarios" },
-        { id: "runbooks", label: MODULE_LABELS[language].runbooks.label, to: "/runbooks" },
-      ],
-    },
-    {
-      id: "incidents",
-      label: groupLabels.incidents?.label ?? "Incidents",
-      links: [{ id: "incidents", label: MODULE_LABELS[language].incidents.label, to: "/incidents" }],
-    },
-    {
-      id: "administration",
-      label: groupLabels.administration?.label ?? "Administration",
-      links: [
-        { id: "auth", label: MODULE_LABELS[language].auth.label, to: "/auth" },
-        { id: "audit", label: MODULE_LABELS[language].audit.label, to: "/audit" },
       ],
     },
   ];

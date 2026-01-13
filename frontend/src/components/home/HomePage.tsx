@@ -2,14 +2,14 @@ import { ProgressStep } from "./ProgressStep";
 import type { TranslationCopy } from "../../i18n/translations";
 
 export type HomeStepId =
-  | "services"
-  | "documents"
   | "discovery"
+  | "documents"
+  | "rag"
   | "bia"
   | "risks"
   | "scenarios"
-  | "analysis"
-  | "runbooks";
+  | "runbooks"
+  | "analysis";
 
 export type HomeStep = {
   id: HomeStepId;
@@ -26,6 +26,7 @@ interface HomePageProps {
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
+  maxAllowedIndex: number;
   onStepAction: (stepId: HomeStepId) => void;
 }
 
@@ -37,6 +38,7 @@ export function HomePage({
   steps,
   activeStepId,
   completedSteps,
+  maxAllowedIndex,
   onStepAction,
 }: HomePageProps) {
   return (
@@ -62,6 +64,7 @@ export function HomePage({
             completedLabel={copy.progressStepCompleted}
             isActive={activeStepId === step.id}
             isComplete={completedSteps.includes(step.id)}
+            isLocked={index > maxAllowedIndex}
             onAction={onStepAction}
           />
         ))}

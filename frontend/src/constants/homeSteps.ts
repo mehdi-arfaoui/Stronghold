@@ -3,14 +3,14 @@ import type { Language } from "../i18n/translations";
 import { HOME_STEP_CONTENT } from "../i18n/translations";
 
 export const HOME_STEP_ORDER: HomeStepId[] = [
-  "services",
-  "documents",
   "discovery",
+  "documents",
+  "rag",
   "bia",
   "risks",
   "scenarios",
-  "analysis",
   "runbooks",
+  "analysis",
 ];
 
 export function getHomeSteps(language: Language): HomeStep[] {

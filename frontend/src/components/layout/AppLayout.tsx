@@ -15,6 +15,7 @@ interface AppLayoutProps {
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
+  maxAllowedIndex: number;
   onStepAction: (stepId: HomeStepId) => void;
   onQuickAction: () => void;
   theme: ThemeMode;
@@ -33,6 +34,7 @@ export function AppLayout({
   steps,
   activeStepId,
   completedSteps,
+  maxAllowedIndex,
   onStepAction,
   onQuickAction,
   theme,
@@ -111,6 +113,7 @@ export function AppLayout({
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}
+          maxAllowedIndex={maxAllowedIndex}
           onStepAction={onStepAction}
           isOpen={isMenuOpen}
           onClose={onMenuClose}

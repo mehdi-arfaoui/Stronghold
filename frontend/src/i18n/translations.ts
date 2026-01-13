@@ -80,7 +80,7 @@ export const TRANSLATIONS: Record<Language, TranslationCopy> = {
     homeEyebrow: "Accueil",
     homeTitle: "Premiers pas vers la résilience",
     homeSubtitle:
-      "Suivez ces étapes guidées pour cartographier vos services, réaliser le BIA, évaluer les risques et produire vos runbooks.",
+      "Suivez ce parcours guidé pour aller de la découverte à la classification documentaire, puis jusqu'au rapport PRA.",
     assistantTitle: "Votre parcours PRA",
     assistantProgress: (completed, total, percent) =>
       `${completed}/${total} étapes complétées · ${percent}% terminé`,
@@ -92,13 +92,14 @@ export const TRANSLATIONS: Record<Language, TranslationCopy> = {
     assistantJumpTo: (actionLabel) => `Passer à ${actionLabel.toLowerCase()}`,
     assistantEyebrow: "Assistant",
     navigationTitle: "Vue d'ensemble",
-    navigationSubtitle: "Accédez rapidement à chaque module pour orchestrer la continuité.",
+    navigationSubtitle:
+      "Suivez le parcours guidé et avancez étape par étape sans navigation libre.",
     navigationEyebrow: "Navigation",
     navigationWizardTitle: "Avancez étape par étape",
     navigationWizardDescription: "Suivez le flux recommandé pour générer votre PRA complet.",
     navigationCatalogTitle: "Catalogue regroupé",
     navigationCatalogDescription: "Explorez les modules par grands ensembles fonctionnels.",
-    navigationDomainLabel: "domaines suivis",
+    navigationDomainLabel: "étapes",
     navigationSearchLabel: "Rechercher un module",
     navigationSearchPlaceholder: "Rechercher un module",
     navigationEmptyState: "Aucun module ne correspond à cette recherche.",
@@ -138,7 +139,7 @@ export const TRANSLATIONS: Record<Language, TranslationCopy> = {
     homeEyebrow: "Home",
     homeTitle: "First steps to resilience",
     homeSubtitle:
-      "Follow these guided steps to map services, perform the BIA, assess risks, and produce runbooks.",
+      "Follow this guided path from discovery to document classification, then to your DRP report.",
     assistantTitle: "Your DRP journey",
     assistantProgress: (completed, total, percent) =>
       `${completed}/${total} steps completed · ${percent}% done`,
@@ -150,13 +151,13 @@ export const TRANSLATIONS: Record<Language, TranslationCopy> = {
     assistantJumpTo: (actionLabel) => `Jump to ${actionLabel.toLowerCase()}`,
     assistantEyebrow: "Assistant",
     navigationTitle: "Overview",
-    navigationSubtitle: "Jump quickly to every module to orchestrate continuity.",
+    navigationSubtitle: "Follow the guided steps and move forward without free tab hopping.",
     navigationEyebrow: "Navigation",
     navigationWizardTitle: "Move forward step by step",
     navigationWizardDescription: "Follow the recommended flow to build a complete DRP.",
     navigationCatalogTitle: "Grouped catalog",
     navigationCatalogDescription: "Explore modules grouped by functional domains.",
-    navigationDomainLabel: "domains tracked",
+    navigationDomainLabel: "steps",
     navigationSearchLabel: "Search for a module",
     navigationSearchPlaceholder: "Search for a module",
     navigationEmptyState: "No modules match this search.",
@@ -189,7 +190,7 @@ export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
     graph: { label: "Graphes", description: "Dépendances" },
     continuity: { label: "Continuité", description: "Sauvegardes & politiques" },
     documents: { label: "Documents", description: "Upload & extraction" },
-    rag: { label: "RAG/PRA", description: "Questions & contexte" },
+    rag: { label: "Classification", description: "Qualification documentaire" },
     bia: { label: "BIA", description: "Processus & impacts" },
     risks: { label: "Risques", description: "Menaces & matrices" },
     analysis: { label: "Analyse PRA", description: "Contrôles et risques" },
@@ -207,7 +208,7 @@ export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
     graph: { label: "Graphs", description: "Dependencies" },
     continuity: { label: "Continuity", description: "Backups & policies" },
     documents: { label: "Documents", description: "Uploads & extraction" },
-    rag: { label: "RAG/DRP", description: "Questions & context" },
+    rag: { label: "Classification", description: "Document qualification" },
     bia: { label: "BIA", description: "Processes & impacts" },
     risks: { label: "Risks", description: "Threats & matrices" },
     analysis: { label: "DRP analysis", description: "Controls and risks" },
@@ -305,12 +306,6 @@ export const GENERAL_NAV_LABELS: Record<Language, Record<string, string>> = {
 
 export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string; description: string; actionLabel: string }>> = {
   fr: {
-    services: {
-      title: "Cartographier les services",
-      description:
-        "Structurez le catalogue applicatif, les dépendances et la criticité métier.",
-      actionLabel: "Créer un service",
-    },
     documents: {
       title: "Centraliser les documents",
       description:
@@ -322,6 +317,12 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       description:
         "Scannez le réseau ou importez la CMDB pour enrichir les dépendances et services.",
       actionLabel: "Lancer une découverte",
+    },
+    rag: {
+      title: "Classifier les documents",
+      description:
+        "Posez les bonnes questions et organisez les preuves pour alimenter les analyses.",
+      actionLabel: "Lancer la classification",
     },
     bia: {
       title: "Conduire le BIA",
@@ -339,24 +340,19 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       description: "Planifiez les stratégies de reprise et les étapes de crise.",
       actionLabel: "Créer un scénario",
     },
-    analysis: {
-      title: "Produire le rapport PRA",
-      description: "Générez les analyses consolidées et les synthèses décisionnelles.",
-      actionLabel: "Voir le rapport",
-    },
     runbooks: {
       title: "Finaliser les runbooks",
       description:
         "Publiez les procédures opérationnelles et partagez-les aux équipes.",
       actionLabel: "Accéder aux runbooks",
     },
+    analysis: {
+      title: "Produire le rapport PRA",
+      description: "Générez les analyses consolidées et les synthèses décisionnelles.",
+      actionLabel: "Voir le rapport",
+    },
   },
   en: {
-    services: {
-      title: "Map services",
-      description: "Structure the app catalog, dependencies, and business criticality.",
-      actionLabel: "Create a service",
-    },
     documents: {
       title: "Centralize documents",
       description: "Import procedures and diagrams to fuel BIA and risk analysis.",
@@ -367,6 +363,11 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       description:
         "Scan the network or import CMDB exports to enrich dependencies and services.",
       actionLabel: "Run discovery",
+    },
+    rag: {
+      title: "Classify documents",
+      description: "Ask the right questions and organize evidence for downstream analysis.",
+      actionLabel: "Start classification",
     },
     bia: {
       title: "Conduct the BIA",
@@ -383,15 +384,15 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       description: "Plan recovery strategies and crisis steps.",
       actionLabel: "Create a scenario",
     },
-    analysis: {
-      title: "Produce the DRP report",
-      description: "Generate consolidated analyses and decision-ready summaries.",
-      actionLabel: "View the report",
-    },
     runbooks: {
       title: "Finalize runbooks",
       description: "Publish operational procedures and share them with teams.",
       actionLabel: "Access runbooks",
+    },
+    analysis: {
+      title: "Produce the DRP report",
+      description: "Generate consolidated analyses and decision-ready summaries.",
+      actionLabel: "View the report",
     },
   },
 };

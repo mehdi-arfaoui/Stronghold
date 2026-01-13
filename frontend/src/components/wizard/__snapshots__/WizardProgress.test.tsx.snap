@@ -57,7 +57,7 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
             class="wizard-step-label"
           >
             <span>
-              Cartographier les services
+              Découvrir l'architecture
             </span>
             <span
               class="muted small"
@@ -110,7 +110,7 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
             class="wizard-step-label"
           >
             <span>
-              Découvrir l'architecture
+              Classifier les documents
             </span>
             <span
               class="muted small"
@@ -120,9 +120,13 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
           </span>
         </button>
       </li>
-      <li>
+      <li
+        class="locked"
+      >
         <button
+          aria-disabled="true"
           class="wizard-step "
+          disabled=""
           type="button"
         >
           <span
@@ -145,9 +149,13 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
           </span>
         </button>
       </li>
-      <li>
+      <li
+        class="locked"
+      >
         <button
+          aria-disabled="true"
           class="wizard-step "
+          disabled=""
           type="button"
         >
           <span
@@ -170,9 +178,13 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
           </span>
         </button>
       </li>
-      <li>
+      <li
+        class="locked"
+      >
         <button
+          aria-disabled="true"
           class="wizard-step "
+          disabled=""
           type="button"
         >
           <span
@@ -195,9 +207,13 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
           </span>
         </button>
       </li>
-      <li>
+      <li
+        class="locked"
+      >
         <button
+          aria-disabled="true"
           class="wizard-step "
+          disabled=""
           type="button"
         >
           <span
@@ -210,7 +226,7 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
             class="wizard-step-label"
           >
             <span>
-              Produire le rapport PRA
+              Finaliser les runbooks
             </span>
             <span
               class="muted small"
@@ -220,9 +236,13 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
           </span>
         </button>
       </li>
-      <li>
+      <li
+        class="locked"
+      >
         <button
+          aria-disabled="true"
           class="wizard-step "
+          disabled=""
           type="button"
         >
           <span
@@ -235,7 +255,7 @@ exports[`WizardProgress > renders progress summary and matches snapshot 1`] = `
             class="wizard-step-label"
           >
             <span>
-              Finaliser les runbooks
+              Produire le rapport PRA
             </span>
             <span
               class="muted small"

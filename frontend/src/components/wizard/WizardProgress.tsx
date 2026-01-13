@@ -6,6 +6,7 @@ interface WizardProgressProps {
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
+  maxAllowedIndex: number;
   onStepAction: (stepId: HomeStepId) => void;
 }
 
@@ -14,6 +15,7 @@ export function WizardProgress({
   steps,
   activeStepId,
   completedSteps,
+  maxAllowedIndex,
   onStepAction,
 }: WizardProgressProps) {
   const completedCount = completedSteps.length;
@@ -40,6 +42,7 @@ export function WizardProgress({
         {steps.map((step, index) => {
           const isCompleted = completedSteps.includes(step.id);
           const isActive = step.id === activeStepId;
+          const isLocked = index > maxAllowedIndex;
           const statusLabel = isCompleted ? "✓" : `${index + 1}`;
           const statusText = isCompleted
             ? copy.wizardStatusComplete
@@ -47,12 +50,14 @@ export function WizardProgress({
             ? copy.wizardStatusActive
             : copy.wizardStatusPending;
           return (
-            <li key={step.id} className={isCompleted ? "completed" : undefined}>
+            <li key={step.id} className={isCompleted ? "completed" : isLocked ? "locked" : undefined}>
               <button
                 type="button"
                 className={`wizard-step ${isActive ? "active" : ""}`}
                 onClick={() => onStepAction(step.id)}
                 aria-current={isActive ? "step" : undefined}
+                disabled={isLocked}
+                aria-disabled={isLocked}
               >
                 <span className="wizard-step-index" aria-hidden="true">
                   {statusLabel}

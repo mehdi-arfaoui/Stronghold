@@ -9,6 +9,7 @@ interface HomeRouteProps {
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
+  maxAllowedIndex: number;
   onStepAction: (stepId: HomeStepId) => void;
 }
 
@@ -17,6 +18,7 @@ export function HomeRoute({
   steps,
   activeStepId,
   completedSteps,
+  maxAllowedIndex,
   onStepAction,
 }: HomeRouteProps) {
   return (
@@ -30,6 +32,7 @@ export function HomeRoute({
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}
+          maxAllowedIndex={maxAllowedIndex}
           onStepAction={onStepAction}
         />
         <AssistantPanel
