@@ -89,3 +89,58 @@ test("classifyDocumentFacts writes to cache after analysis", async () => {
   const cachedPayload = JSON.parse(cacheStore.get(cacheKey));
   assert.equal(cachedPayload.facts[0].label, "Datacenter");
 });
+
+test("updateCachedClassification met à jour une entrée en cache", async () => {
+  const cacheStore = new Map();
+  const cacheClient = {
+    get: async (key) => cacheStore.get(key) ?? null,
+    set: async (key, value) => {
+      cacheStore.set(key, value);
+      return "OK";
+    },
+  };
+
+  const tenantId = "tenant-3";
+  const text = "Service CRM";
+  const docHash = computeDocumentHash(text);
+  const cacheKey = buildClassificationCacheKey(tenantId, docHash);
+
+  cacheStore.set(
+    cacheKey,
+    JSON.stringify({
+      schemaVersion: 1,
+      facts: [
+        {
+          type: "PRA_PCA_FACT",
+          category: "SERVICE",
+          label: "CRM",
+          data: { service: "CRM" },
+          source: "doc",
+          confidence: 0.4,
+        },
+      ],
+    })
+  );
+
+  const { updateCachedClassification } = require("../src/services/classificationService");
+
+  const updated = await updateCachedClassification({
+    tenantId,
+    docHash,
+    originalFact: { type: "PRA_PCA_FACT", category: "SERVICE", label: "CRM" },
+    updatedFact: {
+      type: "PRA_PCA_FACT",
+      category: "SERVICE",
+      label: "CRM Core",
+      data: { service: "CRM" },
+      source: "review",
+      confidence: 0.9,
+    },
+    cacheClient,
+  });
+
+  assert.equal(updated, true);
+  const cachedPayload = JSON.parse(cacheStore.get(cacheKey));
+  assert.equal(cachedPayload.facts[0].label, "CRM Core");
+  assert.equal(cachedPayload.facts[0].confidence, 0.9);
+});

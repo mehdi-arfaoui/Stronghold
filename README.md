@@ -46,6 +46,28 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 - `GET/POST/PATCH /incidents/notification-channels` : gestion des canaux n8n.
 - `GET /incidents/:id/actions` / `POST /incidents/:id/actions` : suivi d’actions.
 
+### Documents & uploads
+- `POST /documents` : upload multipart vers S3 + scan de données sensibles.
+- `POST /documents/presign` : URL signée pour upload direct côté client.
+- `GET /documents` : liste + `signedUrl` (si stockage S3).
+- `GET /documents/:id/sensitivity-report` : rapport de sensibilité (PII/IBAN/etc.).
+- `GET /documents/:id/extraction-suggestions` : suggestions d’extraction IA.
+- `POST /documents/:id/extraction-suggestions/approve` : validation des suggestions.
+- `POST /documents/:id/extraction-suggestions/reject` : rejet des suggestions.
+
+### IA & RAG
+- `POST /analysis/rag-query` : question ad-hoc + contexte RAG + prompt.
+- `POST /analysis/pra-rag-report` : génération d’un rapport PRA/PCA assisté RAG.
+- `POST /analysis/documents/:id/classification-feedback` : feedback humain sur la classification.
+
+### Runbooks
+- `POST /runbooks/templates` : upload d’un template (DOCX/ODT/Markdown).
+- `GET /runbooks/templates` / `GET /runbooks/templates/:id` : listing + détail.
+- `PUT/DELETE /runbooks/templates/:id` : mise à jour/suppression.
+- `GET /runbooks` / `GET /runbooks/:id` : runbooks générés.
+- `PUT/DELETE /runbooks/:id` : mise à jour/suppression.
+- `POST /runbooks/generate` : génération d’un runbook depuis un scénario.
+
 ### Découverte (import)
 - `POST /discovery/import` : import d’un fichier CSV ou JSON pour créer des nœuds et dépendances.
 
