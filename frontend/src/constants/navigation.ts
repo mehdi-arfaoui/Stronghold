@@ -26,6 +26,7 @@ const MODULE_ROUTE_BASE: Array<{ id: TabId; path: string }> = [
   { id: "bia", path: "/bia" },
   { id: "risks", path: "/risks" },
   { id: "analysis", path: "/analysis" },
+  { id: "compliance", path: "/compliance" },
   { id: "financier", path: "/financier" },
   { id: "scenarios", path: "/scenarios" },
   { id: "runbooks", path: "/runbooks" },
@@ -59,7 +60,7 @@ const MODULE_GROUP_BASE = [
     "continuity",
   ]),
   createGroup("documents-ai", ["documents", "rag"]),
-  createGroup("analyses-risks", ["bia", "risks", "analysis", "financier"]),
+  createGroup("analyses-risks", ["bia", "risks", "analysis", "compliance", "financier"]),
   createGroup("scenarios-runbooks", ["scenarios", "runbooks"]),
   createGroup("incidents", ["incidents"]),
   createGroup("administration", ["auth", "audit"]),
@@ -134,6 +135,7 @@ export const getMainNavGroups = (language: Language): NavGroup[] => {
       links: [
         { id: "home", label: generalLabels.home, to: "/" },
         { id: "configuration", label: generalLabels.configuration, to: "/configuration" },
+        { id: "compliance", label: generalLabels.compliance ?? "Conformité", to: "/compliance" },
       ],
     },
   ];

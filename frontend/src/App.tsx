@@ -86,6 +86,9 @@ const AuthSection = lazy(() =>
 const AuditLogsSection = lazy(() =>
   import("./sections/AuditLogsSection").then((module) => ({ default: module.AuditLogsSection }))
 );
+const ComplianceSection = lazy(() =>
+  import("./sections/ComplianceSection").then((module) => ({ default: module.ComplianceSection }))
+);
 
 const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> = {
   services: ServicesSection,
@@ -105,6 +108,7 @@ const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> 
   scenarios: ScenariosSection,
   auth: AuthSection,
   audit: AuditLogsSection,
+  compliance: ComplianceSection,
 };
 
 function ModuleRoute({ tabId, configVersion }: { tabId: TabId; configVersion: number }) {
