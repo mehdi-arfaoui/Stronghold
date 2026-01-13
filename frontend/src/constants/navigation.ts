@@ -67,6 +67,7 @@ const MODULE_GROUP_BASE = [
 export const WIZARD_STEP_ORDER: TabId[] = [
   "services",
   "documents",
+  "discovery",
   "bia",
   "risks",
   "scenarios",

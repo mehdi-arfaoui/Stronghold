@@ -52,6 +52,33 @@ type DiscoveryImportResult = {
   report: DiscoveryImportReport;
 };
 
+export type DiscoverySuggestion = {
+  externalId: string;
+  name: string;
+  kind: DiscoveryNodeKind;
+  type: string;
+  match: {
+    id: string;
+    name: string;
+    score: number;
+    rtoHours: number | null;
+    rpoMinutes: number | null;
+    mtpdHours: number | null;
+  } | null;
+};
+
+export type DiscoverySuggestionSummary = {
+  totalNodes: number;
+  serviceNodes: number;
+  infraNodes: number;
+  edges: number;
+};
+
+export type DiscoverySuggestionResponse = {
+  summary: DiscoverySuggestionSummary;
+  suggestions: DiscoverySuggestion[];
+};
+
 type DiscoveryImportErrorDetail = {
   field: string;
   message: string;
@@ -190,6 +217,34 @@ function buildDiscoveryDescription(node: DiscoveryNode) {
 function normalizeExternalId(input: string | null | undefined, fallback: string) {
   const trimmed = (input || "").trim();
   return trimmed || fallback;
+}
+
+function normalizeName(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function tokenizeName(value: string) {
+  return new Set(normalizeName(value).split(" ").filter(Boolean));
+}
+
+function scoreSimilarity(source: string, target: string) {
+  const sourceTokens = tokenizeName(source);
+  const targetTokens = tokenizeName(target);
+  if (sourceTokens.size === 0 || targetTokens.size === 0) return 0;
+
+  let matches = 0;
+  sourceTokens.forEach((token) => {
+    if (targetTokens.has(token)) {
+      matches += 1;
+    }
+  });
+  const unionSize = new Set([...sourceTokens, ...targetTokens]).size;
+  const overlapScore = unionSize === 0 ? 0 : matches / unionSize;
+  const directMatch =
+    normalizeName(source) === normalizeName(target) ||
+    normalizeName(source).includes(normalizeName(target)) ||
+    normalizeName(target).includes(normalizeName(source));
+  return directMatch ? Math.max(overlapScore, 0.95) : overlapScore;
 }
 
 function toLowerHeader(value: string) {
@@ -429,6 +484,68 @@ export function parseDiscoveryImport(
     return parseJsonPayload(content);
   }
   return parseCsvPayload(content);
+}
+
+export async function buildDiscoverySuggestions(
+  tenantId: string,
+  payload: DiscoveryImportPayload
+): Promise<DiscoverySuggestionResponse> {
+  const services = await prisma.service.findMany({
+    where: { tenantId },
+    include: { continuity: true },
+  });
+
+  const suggestions = payload.nodes.map((node) => {
+    if (node.kind !== "service") {
+      return {
+        externalId: node.externalId,
+        name: node.name,
+        kind: node.kind,
+        type: node.type,
+        match: null,
+      };
+    }
+
+    let bestMatch: DiscoverySuggestion["match"] = null;
+    for (const service of services) {
+      const score = scoreSimilarity(node.name, service.name);
+      if (!bestMatch || score > bestMatch.score) {
+        bestMatch = {
+          id: service.id,
+          name: service.name,
+          score,
+          rtoHours: service.continuity?.rtoHours ?? null,
+          rpoMinutes: service.continuity?.rpoMinutes ?? null,
+          mtpdHours: service.continuity?.mtpdHours ?? null,
+        };
+      }
+    }
+
+    if (bestMatch && bestMatch.score < 0.5) {
+      bestMatch = null;
+    }
+
+    return {
+      externalId: node.externalId,
+      name: node.name,
+      kind: node.kind,
+      type: node.type,
+      match: bestMatch,
+    };
+  });
+
+  const serviceNodes = payload.nodes.filter((node) => node.kind === "service").length;
+  const infraNodes = payload.nodes.filter((node) => node.kind === "infra").length;
+
+  return {
+    summary: {
+      totalNodes: payload.nodes.length,
+      serviceNodes,
+      infraNodes,
+      edges: payload.edges.length,
+    },
+    suggestions,
+  };
 }
 
 export async function applyDiscoveryImport(

@@ -301,6 +301,31 @@ export type DiscoveryJob = {
   completedAt?: string | null;
 };
 
+export type DiscoverySuggestion = {
+  externalId: string;
+  name: string;
+  kind: "service" | "infra";
+  type: string;
+  match?: {
+    id: string;
+    name: string;
+    score: number;
+    rtoHours: number | null;
+    rpoMinutes: number | null;
+    mtpdHours: number | null;
+  } | null;
+};
+
+export type DiscoverySuggestionResponse = {
+  summary: {
+    totalNodes: number;
+    serviceNodes: number;
+    infraNodes: number;
+    edges: number;
+  };
+  suggestions: DiscoverySuggestion[];
+};
+
 export type GraphNode = {
   id: string;
   label: string;

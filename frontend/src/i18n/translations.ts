@@ -317,6 +317,12 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
         "Importez procédures et schémas pour alimenter les analyses BIA et risques.",
       actionLabel: "Importer un document",
     },
+    discovery: {
+      title: "Découvrir l'architecture",
+      description:
+        "Scannez le réseau ou importez la CMDB pour enrichir les dépendances et services.",
+      actionLabel: "Lancer une découverte",
+    },
     bia: {
       title: "Conduire le BIA",
       description: "Définissez les processus critiques et mesurez les impacts métier.",
@@ -355,6 +361,12 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       title: "Centralize documents",
       description: "Import procedures and diagrams to fuel BIA and risk analysis.",
       actionLabel: "Import a document",
+    },
+    discovery: {
+      title: "Discover the architecture",
+      description:
+        "Scan the network or import CMDB exports to enrich dependencies and services.",
+      actionLabel: "Run discovery",
     },
     bia: {
       title: "Conduct the BIA",

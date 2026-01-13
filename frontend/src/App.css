@@ -1272,6 +1272,28 @@ ol {
   gap: var(--space-2);
 }
 
+.help-box {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.help-box-toggle {
+  border-radius: 999px;
+}
+
+.help-box-content {
+  width: 100%;
+  background: var(--color-neutral-50);
+  border: 1px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
 .checklist,
 .callout-list {
   margin: 0;
