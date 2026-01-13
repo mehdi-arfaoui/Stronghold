@@ -4,6 +4,10 @@ exports.OpenAiCallError = void 0;
 exports.analyzeExtractedFacts = analyzeExtractedFacts;
 const extractedFactSchema_1 = require("./extractedFactSchema");
 const metrics_1 = require("../observability/metrics");
+const telemetry_1 = require("../observability/telemetry");
+const api_1 = require("@opentelemetry/api");
+const circuitBreakerStore_1 = require("./circuitBreakerStore");
+const n8nAlertService_1 = require("../services/n8nAlertService");
 const RESPONSE_SCHEMA = {
     type: "object",
     additionalProperties: false,
@@ -80,7 +84,45 @@ const DEFAULT_RETRY_CONFIG = {
     maxDelayMs: 1500,
     chunkTimeoutMs: 20_000,
 };
+const DEFAULT_CIRCUIT_CONFIG = {
+    failureThreshold: 3,
+    openDurationMs: 60_000,
+};
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+function resolveCircuitConfig() {
+    const thresholdEnv = Number(process.env.OPENAI_CIRCUIT_BREAKER_THRESHOLD ?? "");
+    const openDurationEnv = Number(process.env.OPENAI_CIRCUIT_BREAKER_OPEN_MS ?? "");
+    return {
+        failureThreshold: Number.isFinite(thresholdEnv) && thresholdEnv > 0 ? thresholdEnv : DEFAULT_CIRCUIT_CONFIG.failureThreshold,
+        openDurationMs: Number.isFinite(openDurationEnv) && openDurationEnv > 0 ? openDurationEnv : DEFAULT_CIRCUIT_CONFIG.openDurationMs,
+    };
+}
+async function ensureCircuitOpen(correlationId, tenantId) {
+    const config = resolveCircuitConfig();
+    const circuitBreakerState = await (0, circuitBreakerStore_1.readCircuitBreakerState)(tenantId);
+    if (circuitBreakerState.openedAt === null) {
+        return;
+    }
+    const elapsed = Date.now() - circuitBreakerState.openedAt;
+    if (elapsed < config.openDurationMs) {
+        throw new OpenAiCallError(`OpenAI circuit breaker open [correlationId=${correlationId}]`, 503, correlationId);
+    }
+    circuitBreakerState.failures = 0;
+    circuitBreakerState.openedAt = null;
+    await (0, circuitBreakerStore_1.writeCircuitBreakerState)(tenantId, circuitBreakerState);
+}
+async function recordCircuitSuccess(tenantId) {
+    await (0, circuitBreakerStore_1.writeCircuitBreakerState)(tenantId, { failures: 0, openedAt: null });
+}
+async function recordCircuitFailure(tenantId) {
+    const config = resolveCircuitConfig();
+    const circuitBreakerState = await (0, circuitBreakerStore_1.readCircuitBreakerState)(tenantId);
+    circuitBreakerState.failures += 1;
+    if (circuitBreakerState.failures >= config.failureThreshold) {
+        circuitBreakerState.openedAt = Date.now();
+    }
+    await (0, circuitBreakerStore_1.writeCircuitBreakerState)(tenantId, circuitBreakerState);
+}
 function safeParseJson(value) {
     if (typeof value === "string") {
         try {
@@ -125,7 +167,8 @@ function resolveRetryConfig(overrides) {
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
-async function callOpenAiWithRetry(requestBody, headers, correlationId, retryOverrides) {
+async function callOpenAiWithRetry(requestBody, headers, correlationId, tenantId, retryOverrides) {
+    await ensureCircuitOpen(correlationId, tenantId);
     const config = resolveRetryConfig(retryOverrides);
     let attempt = 0;
     let delay = config.initialDelayMs;
@@ -146,10 +189,12 @@ async function callOpenAiWithRetry(requestBody, headers, correlationId, retryOve
                 clearTimeout(timeoutId);
             }
             if (response.ok) {
+                await recordCircuitSuccess(tenantId);
                 return response;
             }
             if (attempt >= config.maxAttempts) {
                 const message = await response.text().catch(() => response.statusText);
+                await recordCircuitFailure(tenantId);
                 throw new OpenAiCallError(`OpenAI request failed (${response.status}) [correlationId=${correlationId}]: ${message}`, response.status, correlationId);
             }
         }
@@ -159,12 +204,14 @@ async function callOpenAiWithRetry(requestBody, headers, correlationId, retryOve
             }
             if (attempt >= config.maxAttempts) {
                 const message = err?.message || "OpenAI request failed";
+                await recordCircuitFailure(tenantId);
                 throw new OpenAiCallError(`${message} [correlationId=${correlationId}]`, err?.status ?? err?.code, correlationId);
             }
         }
         await sleep(Math.min(delay, config.maxDelayMs));
         delay = Math.min(delay * 2, config.maxDelayMs);
     }
+    await recordCircuitFailure(tenantId);
     throw new OpenAiCallError(`OpenAI request failed [correlationId=${correlationId}]`, undefined, correlationId);
 }
 async function analyzeExtractedFacts(params) {
@@ -173,6 +220,7 @@ async function analyzeExtractedFacts(params) {
         throw new Error("Missing OPENAI_API_KEY environment variable");
     }
     const correlationId = params.correlationId || "openai-analyzer";
+    const tenantId = params.tenantId ?? "global";
     const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
     const truncatedText = params.text.slice(0, 12000);
     const headers = {
@@ -205,23 +253,54 @@ async function analyzeExtractedFacts(params) {
             },
         },
     };
+    const tracer = (0, telemetry_1.getTracer)();
+    const span = tracer.startSpan("llm.openai.request", {
+        attributes: {
+            "llm.provider": "openai",
+            "llm.model": model,
+            "tenant.id": tenantId,
+            "correlation_id": correlationId,
+        },
+    });
     let response;
     try {
-        response = await callOpenAiWithRetry(requestBody, headers, correlationId, params.retryConfig);
+        response = await callOpenAiWithRetry(requestBody, headers, correlationId, tenantId, params.retryConfig);
     }
     catch (err) {
-        (0, metrics_1.recordLlmCall)(false);
+        (0, metrics_1.recordLlmCall)(false, params.tenantId ?? undefined);
+        span.recordException(err);
+        span.setStatus({ code: api_1.SpanStatusCode.ERROR, message: err?.message });
+        const status = err instanceof OpenAiCallError ? err.status : undefined;
+        void (0, n8nAlertService_1.notifyN8nAlert)({
+            event: status === 429 ? "llm.quota" : "llm.error",
+            tenantId,
+            correlationId,
+            status,
+            message: err instanceof Error ? err.message : "LLM error",
+        });
+        span.end();
         throw err;
     }
     try {
         const payload = await response.json();
         const parsed = extractJsonFromResponse(payload);
-        (0, metrics_1.recordLlmCall)(true);
+        (0, metrics_1.recordLlmCall)(true, params.tenantId ?? undefined);
+        span.setStatus({ code: api_1.SpanStatusCode.OK });
+        span.end();
         return parsed.facts;
     }
     catch (err) {
-        (0, metrics_1.recordLlmCall)(false);
+        (0, metrics_1.recordLlmCall)(false, params.tenantId ?? undefined);
+        span.recordException(err);
+        span.setStatus({ code: api_1.SpanStatusCode.ERROR, message: err?.message });
+        span.end();
         const message = err?.message || "Failed to parse OpenAI response";
+        void (0, n8nAlertService_1.notifyN8nAlert)({
+            event: "llm.error",
+            tenantId,
+            correlationId,
+            message,
+        });
         throw new OpenAiCallError(`${message} [correlationId=${correlationId}]`, undefined, correlationId);
     }
 }
