@@ -5,13 +5,26 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const multer_1 = __importDefault(require("multer"));
+const os_1 = __importDefault(require("os"));
+const path_1 = __importDefault(require("path"));
+const fs_1 = __importDefault(require("fs"));
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const tenantMiddleware_1 = require("../middleware/tenantMiddleware");
 const runbookGenerator_1 = require("../services/runbookGenerator");
 const runbookTemplateService_1 = require("../services/runbookTemplateService");
 const s3Client_1 = require("../clients/s3Client");
 const router = (0, express_1.Router)();
-const upload = (0, multer_1.default)({ storage: multer_1.default.memoryStorage() });
+const uploadDir = path_1.default.join(os_1.default.tmpdir(), "runbook-templates");
+fs_1.default.mkdirSync(uploadDir, { recursive: true });
+const upload = (0, multer_1.default)({
+    storage: multer_1.default.diskStorage({
+        destination: (_req, _file, cb) => cb(null, uploadDir),
+        filename: (_req, file, cb) => {
+            const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+            cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
+        },
+    }),
+});
 async function withDownloadUrls(runbook) {
     const downloadUrls = { pdf: null, docx: null, markdown: null };
     if (runbook.pdfPath) {
@@ -42,36 +55,43 @@ router.post("/templates", upload.single("file"), async (req, res) => {
                 .status(415)
                 .json({ error: "Format non supporté. Utilisez DOCX, ODT ou Markdown." });
         }
-        const fileHash = (0, runbookTemplateService_1.computeBufferHash)(file.buffer);
-        const duplicate = await prismaClient_1.default.runbookTemplate.findFirst({ where: { tenantId, fileHash } });
-        if (duplicate) {
-            return res
-                .status(409)
-                .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+        try {
+            const fileHash = await (0, runbookTemplateService_1.computeFileHash)(file.path);
+            const duplicate = await prismaClient_1.default.runbookTemplate.findFirst({ where: { tenantId, fileHash } });
+            if (duplicate) {
+                return res
+                    .status(409)
+                    .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+            }
+            const bucket = (0, s3Client_1.getTenantBucketName)(tenantId);
+            const key = (0, s3Client_1.buildObjectKey)(tenantId, `runbook-template-${file.originalname}`);
+            await (0, s3Client_1.uploadFileToBucket)({
+                bucket,
+                key,
+                filePath: file.path,
+                contentType: file.mimetype,
+            });
+            const template = await prismaClient_1.default.runbookTemplate.create({
+                data: {
+                    tenantId,
+                    originalName: file.originalname,
+                    storedName: key.split("/").pop() || file.originalname,
+                    mimeType: file.mimetype,
+                    size: file.size,
+                    storagePath: `s3://${bucket}/${key}`,
+                    format,
+                    description: (0, runbookTemplateService_1.sanitizeTemplateDescription)((req.body || {}).description),
+                    fileHash,
+                },
+            });
+            const signedUrl = await (0, s3Client_1.getSignedUrlForObject)(bucket, key);
+            return res.status(201).json({ ...template, signedUrl });
         }
-        const bucket = (0, s3Client_1.getTenantBucketName)(tenantId);
-        const key = (0, s3Client_1.buildObjectKey)(tenantId, `runbook-template-${file.originalname}`);
-        await (0, s3Client_1.uploadObjectToBucket)({
-            bucket,
-            key,
-            body: file.buffer,
-            contentType: file.mimetype,
-        });
-        const template = await prismaClient_1.default.runbookTemplate.create({
-            data: {
-                tenantId,
-                originalName: file.originalname,
-                storedName: key.split("/").pop() || file.originalname,
-                mimeType: file.mimetype,
-                size: file.size,
-                storagePath: `s3://${bucket}/${key}`,
-                format,
-                description: (0, runbookTemplateService_1.sanitizeTemplateDescription)((req.body || {}).description),
-                fileHash,
-            },
-        });
-        const signedUrl = await (0, s3Client_1.getSignedUrlForObject)(bucket, key);
-        return res.status(201).json({ ...template, signedUrl });
+        finally {
+            if (file?.path) {
+                await fs_1.default.promises.rm(file.path, { force: true }).catch(() => undefined);
+            }
+        }
     }
     catch (error) {
         console.error("Error uploading runbook template", { message: error?.message });

@@ -1,11 +1,14 @@
 import { Router } from "express";
 import multer from "multer";
+import * as os from "os";
+import path from "path";
+import * as fs from "fs";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import { generateRunbook } from "../services/runbookGenerator.js";
 import {
-  computeBufferHash,
+  computeFileHash,
   detectTemplateFormat,
   sanitizeTemplateDescription,
 } from "../services/runbookTemplateService.js";
@@ -14,11 +17,21 @@ import {
   getSignedUrlForObject,
   getTenantBucketName,
   resolveBucketAndKey,
-  uploadObjectToBucket,
+  uploadFileToBucket,
 } from "../clients/s3Client.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const uploadDir = path.join(os.tmpdir(), "runbook-templates");
+fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
+    },
+  }),
+});
 
 async function withDownloadUrls(runbook: any) {
   const downloadUrls: Record<string, string | null> = { pdf: null, docx: null, markdown: null };
@@ -53,39 +66,45 @@ router.post("/templates", upload.single("file"), async (req: TenantRequest, res)
         .json({ error: "Format non supporté. Utilisez DOCX, ODT ou Markdown." });
     }
 
-    const fileHash = computeBufferHash(file.buffer);
-    const duplicate = await prisma.runbookTemplate.findFirst({ where: { tenantId, fileHash } });
-    if (duplicate) {
-      return res
-        .status(409)
-        .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+    try {
+      const fileHash = await computeFileHash(file.path);
+      const duplicate = await prisma.runbookTemplate.findFirst({ where: { tenantId, fileHash } });
+      if (duplicate) {
+        return res
+          .status(409)
+          .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+      }
+
+      const bucket = getTenantBucketName(tenantId);
+      const key = buildObjectKey(tenantId, `runbook-template-${file.originalname}`);
+      await uploadFileToBucket({
+        bucket,
+        key,
+        filePath: file.path,
+        contentType: file.mimetype,
+      });
+
+      const template = await prisma.runbookTemplate.create({
+        data: {
+          tenantId,
+          originalName: file.originalname,
+          storedName: key.split("/").pop() || file.originalname,
+          mimeType: file.mimetype,
+          size: file.size,
+          storagePath: `s3://${bucket}/${key}`,
+          format,
+          description: sanitizeTemplateDescription((req.body || {}).description),
+          fileHash,
+        },
+      });
+
+      const signedUrl = await getSignedUrlForObject(bucket, key);
+      return res.status(201).json({ ...template, signedUrl });
+    } finally {
+      if (file?.path) {
+        await fs.promises.rm(file.path, { force: true }).catch(() => undefined);
+      }
     }
-
-    const bucket = getTenantBucketName(tenantId);
-    const key = buildObjectKey(tenantId, `runbook-template-${file.originalname}`);
-    await uploadObjectToBucket({
-      bucket,
-      key,
-      body: file.buffer,
-      contentType: file.mimetype,
-    });
-
-    const template = await prisma.runbookTemplate.create({
-      data: {
-        tenantId,
-        originalName: file.originalname,
-        storedName: key.split("/").pop() || file.originalname,
-        mimeType: file.mimetype,
-        size: file.size,
-        storagePath: `s3://${bucket}/${key}`,
-        format,
-        description: sanitizeTemplateDescription((req.body || {}).description),
-        fileHash,
-      },
-    });
-
-    const signedUrl = await getSignedUrlForObject(bucket, key);
-    return res.status(201).json({ ...template, signedUrl });
   } catch (error: any) {
     console.error("Error uploading runbook template", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });

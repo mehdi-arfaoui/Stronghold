@@ -38,6 +38,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.detectTemplateFormat = detectTemplateFormat;
 exports.computeBufferHash = computeBufferHash;
+exports.computeFileHash = computeFileHash;
 exports.loadTemplateText = loadTemplateText;
 exports.applyPlaceholders = applyPlaceholders;
 exports.sanitizeTemplateDescription = sanitizeTemplateDescription;
@@ -67,6 +68,15 @@ function detectTemplateFormat(mimeType, originalName) {
 }
 function computeBufferHash(buffer) {
     return crypto.createHash("sha256").update(buffer).digest("hex");
+}
+async function computeFileHash(filePath) {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash("sha256");
+        const stream = fs_1.default.createReadStream(filePath);
+        stream.on("error", (err) => reject(err));
+        stream.on("data", (chunk) => hash.update(chunk));
+        stream.on("end", () => resolve(hash.digest("hex")));
+    });
 }
 function stripXmlTags(xml) {
     return xml

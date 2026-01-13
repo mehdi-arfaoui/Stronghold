@@ -9,7 +9,6 @@ const prisma = require("../prismaClient");
 const { requireRole } = require("../middleware/tenantMiddleware");
 const { enqueueDocumentIngestion } = require("../services/documentIngestionService");
 const { retentionConfig } = require("../config/observability");
-const { scanSensitiveDataOnUpload } = require("../services/sensitiveDataScanService");
 const {
   buildValidationError,
   parseOptionalNumber,
@@ -32,7 +31,7 @@ const {
   getSignedUrlForObject,
   getTenantBucketName,
   resolveBucketAndKey,
-  uploadObjectToBucket,
+  uploadFileToBucket,
 } = require("../clients/s3Client");
 
 const router = Router();
@@ -106,8 +105,14 @@ function runSingleUpload(req, res) {
   });
 }
 
-async function computeFileHash(buffer) {
-  return crypto.createHash("sha256").update(buffer).digest("hex");
+async function computeFileHash(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("error", (err) => reject(err));
+    stream.on("data", (chunk) => hash.update(chunk));
+    stream.on("end", () => resolve(hash.digest("hex")));
+  });
 }
 
 function computeRetentionDate(days) {
@@ -161,43 +166,27 @@ router.post("/", requireRole("OPERATOR"), async (req, res) => {
     }
 
     const file = req.file;
-    const filePath = file.path;
-    let fileBuffer = null;
+      const filePath = file.path;
 
     try {
-      fileBuffer = await fs.promises.readFile(filePath);
+        const objectKey = buildObjectKey(tenantId, file.originalname);
+        const bucketAndKey = {
+          bucket: getTenantBucketName(tenantId),
+          key: objectKey,
+        };
 
-      const scanResult = await scanSensitiveDataOnUpload({
-        buffer: fileBuffer,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-      });
-      if (scanResult.blockedTypes.length > 0) {
-        return res.status(422).json({
-          error: "Document contenant des données sensibles non autorisées",
-          blockedTypes: scanResult.blockedTypes,
-          findings: scanResult.findings,
+        await uploadFileToBucket({
+          bucket: bucketAndKey.bucket,
+          key: bucketAndKey.key,
+          filePath,
+          contentType: file.mimetype,
         });
-      }
 
-      const objectKey = buildObjectKey(tenantId, file.originalname);
-      const bucketAndKey = {
-        bucket: getTenantBucketName(tenantId),
-        key: objectKey,
-      };
-
-      await uploadObjectToBucket({
-        bucket: bucketAndKey.bucket,
-        key: bucketAndKey.key,
-        body: fileBuffer,
-        contentType: file.mimetype,
-      });
-
-      const fileHash = await computeFileHash(fileBuffer);
-      const duplicate = await prisma.document.findFirst({
-        where: { tenantId, fileHash },
-      });
-      if (duplicate) {
+        const fileHash = await computeFileHash(filePath);
+        const duplicate = await prisma.document.findFirst({
+          where: { tenantId, fileHash },
+        });
+        if (duplicate) {
         return res.status(409).json({
           error: "Document déjà présent pour ce tenant (hash identique)",
           existingDocumentId: duplicate.id,
@@ -277,6 +266,77 @@ router.post("/presign", requireRole("OPERATOR"), async (req, res) => {
     });
   } catch (error) {
     console.error("Error in POST /documents/presign:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /documents/register
+ * Enregistre un document déjà uploadé via URL signée.
+ */
+router.post("/register", requireRole("OPERATOR"), async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const payload = req.body || {};
+    const issues = [];
+    const fileName = parseRequiredString(payload.fileName, "fileName", issues);
+    const mimeType = parseRequiredString(payload.mimeType, "mimeType", issues);
+    const size = parseRequiredNumber(payload.size, "size", issues, { min: 1 });
+    const storagePath = parseRequiredString(payload.storagePath, "storagePath", issues);
+    const fileHash = parseRequiredString(payload.fileHash, "fileHash", issues, { minLength: 8 });
+    const docType = parseOptionalString(payload.docType, "docType", issues, { allowNull: true });
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+
+    if (mimeType && !isAllowedMimeType(mimeType)) {
+      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+    }
+    if (size && size > MAX_FILE_SIZE_BYTES) {
+      issues.push({ field: "size", message: "taille maximale dépassée" });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const { bucket, key } = resolveBucketAndKey(storagePath, tenantId);
+    const duplicate = await prisma.document.findFirst({
+      where: { tenantId, fileHash: String(fileHash) },
+    });
+    if (duplicate) {
+      return res.status(409).json({
+        error: "Document déjà présent pour ce tenant (hash identique)",
+        existingDocumentId: duplicate.id,
+      });
+    }
+
+    const doc = await prisma.document.create({
+      data: {
+        tenantId,
+        originalName: fileName,
+        storedName: path.basename(key || fileName),
+        mimeType: mimeType,
+        size: size,
+        storagePath: `s3://${bucket}/${key}`,
+        docType: docType ? docType.toUpperCase() : null,
+        description,
+        fileHash: String(fileHash),
+        ingestionStatus: "FILE_STORED",
+        retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
+        embeddingRetentionUntil: computeRetentionDate(retentionConfig.embeddingRetentionDays),
+      },
+    });
+
+    const signedUrl = await getSignedUrlForObject(bucket, key);
+
+    return res.status(201).json({ ...doc, signedUrl });
+  } catch (error) {
+    console.error("Error in POST /documents/register:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

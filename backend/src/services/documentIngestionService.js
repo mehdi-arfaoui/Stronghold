@@ -51,6 +51,7 @@ const documentIntelligenceService_1 = require("./documentIntelligenceService");
 const documentTypeClassificationService_1 = require("./documentTypeClassificationService");
 const s3Client_1 = require("../clients/s3Client");
 const metrics_1 = require("../observability/metrics");
+const documentIngestionQueue_1 = require("../queues/documentIngestionQueue");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
 const OCR_TESSERACT_MISSING_MESSAGE = "OCR indisponible (tesseract manquant). Consultez TROUBLESHOOTING.md#ocr-indisponible-tesseract-manquant pour l'installation.";
 async function fileExists(filePath) {
@@ -639,6 +640,7 @@ function resolveCallbackUrl() {
     return null;
 }
 async function enqueueDocumentIngestion(documentId, tenantId) {
+    const queueMode = String(process.env.DOCUMENT_INGESTION_QUEUE_MODE || "bullmq").toLowerCase();
     const queueUrl = process.env.N8N_INGESTION_TRIGGER_URL;
     const doc = await prismaClient_1.default.document.findFirst({
         where: { id: documentId, tenantId },
@@ -649,37 +651,59 @@ async function enqueueDocumentIngestion(documentId, tenantId) {
     await prismaClient_1.default.document.updateMany({
         where: { id: doc.id, tenantId: doc.tenantId },
         data: {
-            ingestionStatus: queueUrl ? "QUEUED" : "PROCESSING",
-            ingestionQueuedAt: queueUrl ? new Date() : null,
+            ingestionStatus: queueMode === "inline" ? "PROCESSING" : "QUEUED",
+            ingestionQueuedAt: queueMode === "inline" ? null : new Date(),
             ingestionError: null,
             extractionStatus: "PENDING",
             extractionError: null,
         },
     });
-    if (!queueUrl) {
+    if (queueMode === "inline") {
         return ingestDocumentText(documentId, tenantId);
     }
-    const headers = { "Content-Type": "application/json" };
-    if (process.env.N8N_WEBHOOK_TOKEN) {
-        headers["x-webhook-token"] = process.env.N8N_WEBHOOK_TOKEN;
-    }
-    const payload = {
-        documentId: doc.id,
-        tenantId,
-        storagePath: doc.storagePath,
-        mimeType: doc.mimeType,
-        callbackUrl: resolveCallbackUrl(),
-    };
-    try {
-        const response = await fetch(queueUrl, {
-            method: "POST",
-            headers,
-            body: JSON.stringify(payload),
-        });
-        if (!response.ok) {
-            const errText = await response.text().catch(() => response.statusText);
-            throw new Error(`Queue dispatch failed: ${response.status} ${errText}`);
+    if (queueMode === "n8n") {
+        if (!queueUrl) {
+            throw new Error("N8N_INGESTION_TRIGGER_URL requis pour le mode n8n");
         }
+        const headers = { "Content-Type": "application/json" };
+        if (process.env.N8N_WEBHOOK_TOKEN) {
+            headers["x-webhook-token"] = process.env.N8N_WEBHOOK_TOKEN;
+        }
+        const payload = {
+            documentId: doc.id,
+            tenantId,
+            storagePath: doc.storagePath,
+            mimeType: doc.mimeType,
+            callbackUrl: resolveCallbackUrl(),
+        };
+        try {
+            const response = await fetch(queueUrl, {
+                method: "POST",
+                headers,
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const errText = await response.text().catch(() => response.statusText);
+                throw new Error(`Queue dispatch failed: ${response.status} ${errText}`);
+            }
+        }
+        catch (err) {
+            const message = err?.message || "Queue dispatch failed";
+            await prismaClient_1.default.document.updateMany({
+                where: { id: doc.id, tenantId: doc.tenantId },
+                data: { ingestionStatus: "ERROR", ingestionError: message.slice(0, 255) },
+            });
+            throw err;
+        }
+        return prismaClient_1.default.document.findFirstOrThrow({
+            where: { id: doc.id, tenantId: doc.tenantId },
+        });
+    }
+    try {
+        await documentIngestionQueue_1.documentIngestionQueue.add("document-ingestion", {
+            documentId: doc.id,
+            tenantId,
+        });
     }
     catch (err) {
         const message = err?.message || "Queue dispatch failed";

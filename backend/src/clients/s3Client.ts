@@ -169,6 +169,27 @@ export async function uploadObjectToBucket(params: {
   );
 }
 
+export async function uploadFileToBucket(params: {
+  bucket: string;
+  key: string;
+  filePath: string;
+  contentType?: string;
+}) {
+  const sdk = await loadS3Sdk();
+  const s3Client = await getS3Client();
+  await ensureBucketExists(params.bucket);
+  const stats = await fs.promises.stat(params.filePath);
+  await s3Client.send(
+    new sdk.PutObjectCommand({
+      Bucket: params.bucket,
+      Key: params.key,
+      Body: fs.createReadStream(params.filePath),
+      ContentType: params.contentType,
+      ContentLength: stats.size,
+    })
+  );
+}
+
 export async function getSignedUrlForObject(bucket: string, key: string, ttlSeconds?: number) {
   const sdk = await loadS3Sdk();
   const { getSignedUrl } = await loadPresigner();

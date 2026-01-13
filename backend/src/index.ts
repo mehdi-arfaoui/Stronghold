@@ -2,8 +2,6 @@ import express from "express";
 import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient.js";
-import { metricsConfig } from "./config/observability.js";
-import { getMetricsSnapshot } from "./observability/metrics.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
 
 import serviceRoutes from "./routes/serviceRoutes.js";
@@ -26,6 +24,7 @@ import exerciseRoutes from "./routes/exerciseRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
 import pricingRoutes from "./routes/pricingRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
+import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./services/discoveryScheduleService.js";
 
 dotenv.config();
@@ -88,15 +87,9 @@ app.use(express.json());
 // ✅ health-check sans tenant
 app.get("/health", async (_req, res) => {
   const tenantsCount = await prisma.tenant.count();
-  const metrics = getMetricsSnapshot();
   res.json({
     status: "ok",
     tenantsCount,
-    metrics,
-    alerts: {
-      extractionFailureRate: metrics.extraction.failureRate >= metricsConfig.extractionFailureAlertThreshold,
-      llmFailureRate: metrics.llm.failureRate >= metricsConfig.llmFailureAlertThreshold,
-    },
   });
 });
 
@@ -194,6 +187,10 @@ for (const route of routes) {
 
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
   startDiscoveryWorker();
+}
+
+if (process.env.DOCUMENT_WORKER_ENABLED !== "false") {
+  startDocumentIngestionWorker();
 }
 
 if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {

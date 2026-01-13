@@ -24,6 +24,7 @@ import {
 import { recordExtractionResult } from "../observability/metrics.js";
 import { extractTextWithOcr } from "./ocrService.js";
 import { upsertDocumentSensitivityReport } from "./documentSensitivityReportService.js";
+import { documentIngestionQueue } from "../queues/documentIngestionQueue.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -739,6 +740,7 @@ function resolveCallbackUrl(): string | null {
 }
 
 export async function enqueueDocumentIngestion(documentId: string, tenantId: string) {
+  const queueMode = String(process.env.DOCUMENT_INGESTION_QUEUE_MODE || "bullmq").toLowerCase();
   const queueUrl = process.env.N8N_INGESTION_TRIGGER_URL;
   const doc = await prisma.document.findFirst({
     where: { id: documentId, tenantId },
@@ -751,41 +753,65 @@ export async function enqueueDocumentIngestion(documentId: string, tenantId: str
   await prisma.document.updateMany({
     where: { id: doc.id, tenantId: doc.tenantId },
     data: {
-      ingestionStatus: queueUrl ? "QUEUED" : "PROCESSING",
-      ingestionQueuedAt: queueUrl ? new Date() : null,
+      ingestionStatus: queueMode === "inline" ? "PROCESSING" : "QUEUED",
+      ingestionQueuedAt: queueMode === "inline" ? null : new Date(),
       ingestionError: null,
       extractionStatus: "PENDING",
       extractionError: null,
     },
   });
 
-  if (!queueUrl) {
+  if (queueMode === "inline") {
     return ingestDocumentText(documentId, tenantId);
   }
 
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (process.env.N8N_WEBHOOK_TOKEN) {
-    headers["x-webhook-token"] = process.env.N8N_WEBHOOK_TOKEN;
+  if (queueMode === "n8n") {
+    if (!queueUrl) {
+      throw new Error("N8N_INGESTION_TRIGGER_URL requis pour le mode n8n");
+    }
+
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (process.env.N8N_WEBHOOK_TOKEN) {
+      headers["x-webhook-token"] = process.env.N8N_WEBHOOK_TOKEN;
+    }
+
+    const payload = {
+      documentId: doc.id,
+      tenantId,
+      storagePath: doc.storagePath,
+      mimeType: doc.mimeType,
+      callbackUrl: resolveCallbackUrl(),
+    };
+
+    try {
+      const response = await fetch(queueUrl, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errText = await response.text().catch(() => response.statusText);
+        throw new Error(`Queue dispatch failed: ${response.status} ${errText}`);
+      }
+    } catch (err: any) {
+      const message = err?.message || "Queue dispatch failed";
+      await prisma.document.updateMany({
+        where: { id: doc.id, tenantId: doc.tenantId },
+        data: { ingestionStatus: "ERROR", ingestionError: message.slice(0, 255) },
+      });
+      throw err;
+    }
+
+    return prisma.document.findFirstOrThrow({
+      where: { id: doc.id, tenantId: doc.tenantId },
+    });
   }
 
-  const payload = {
-    documentId: doc.id,
-    tenantId,
-    storagePath: doc.storagePath,
-    mimeType: doc.mimeType,
-    callbackUrl: resolveCallbackUrl(),
-  };
-
   try {
-    const response = await fetch(queueUrl, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
+    await documentIngestionQueue.add("document-ingestion", {
+      documentId: doc.id,
+      tenantId,
     });
-    if (!response.ok) {
-      const errText = await response.text().catch(() => response.statusText);
-      throw new Error(`Queue dispatch failed: ${response.status} ${errText}`);
-    }
   } catch (err: any) {
     const message = err?.message || "Queue dispatch failed";
     await prisma.document.updateMany({
