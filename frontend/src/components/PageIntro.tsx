@@ -1,4 +1,4 @@
-import { HelpBox } from "./ui/HelpBox";
+import { HelpButton } from "./ui/HelpButton";
 
 interface QuickLink {
   label: string;
@@ -73,13 +73,13 @@ export function PageIntro({
       </div>
       {tips && tips.length > 0 ? (
         <div className="page-intro-tips">
-          <HelpBox title="Aides contextuelles">
+          <HelpButton title="Aides contextuelles">
             <ul className="tips-list">
               {tips.map((tip) => (
                 <li key={tip}>{tip}</li>
               ))}
             </ul>
-          </HelpBox>
+          </HelpButton>
         </div>
       ) : null}
       <div className="page-intro-callout">

@@ -277,6 +277,10 @@ export type DiscoveryJob = {
     cloudProviders?: string[];
     filename?: string;
     contentType?: string;
+    repoUrl?: string;
+    filePath?: string;
+    ref?: string;
+    rawUrl?: string;
   } | null;
   resultSummary?: {
     discoveredHosts?: number;

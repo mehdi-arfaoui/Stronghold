@@ -16,6 +16,9 @@ type OcrRunners = {
 };
 
 const OCR_DISABLED_MESSAGE = "OCR désactivé (ENABLE_OCR non défini)";
+const OCR_TESSERACT_DOC_URL =
+  "Consultez TROUBLESHOOTING.md#ocr-indisponible-tesseract-manquant pour l'installation.";
+const OCR_TESSERACT_MISSING_MESSAGE = `OCR indisponible (tesseract manquant). ${OCR_TESSERACT_DOC_URL}`;
 
 function isOcrEnabled(): boolean {
   return String(process.env.ENABLE_OCR || "true").toLowerCase() === "true";
@@ -48,7 +51,7 @@ async function runTesseract(filePath: string): Promise<string> {
     return await tesseract.recognize(filePath, { lang: ocrLangs });
   } catch (err: any) {
     if (err?.code === "ENOENT" || String(err?.message || "").toLowerCase().includes("tesseract")) {
-      throw new Error("OCR indisponible (tesseract manquant)");
+      throw new Error(OCR_TESSERACT_MISSING_MESSAGE);
     }
     throw err;
   }
@@ -113,4 +116,5 @@ export const __test__ = {
   isTextractEnabled,
   resolveProvider,
   OCR_DISABLED_MESSAGE,
+  OCR_TESSERACT_MISSING_MESSAGE,
 };

@@ -17,6 +17,7 @@
   - Installer Tesseract : `sudo apt install tesseract-ocr libtesseract-dev` ou `sudo backend/scripts/install-ocr.sh`.
   - Activer Textract en fallback : `AWS_TEXTRACT_ENABLED=true` + `AWS_TEXTRACT_REGION=...`.
   - Forcer un provider : `OCR_PROVIDER=aws_textract` ou `OCR_PROVIDER=tesseract`.
+  - En cas d'erreur "tesseract manquant", consultez `TROUBLESHOOTING.md` (section OCR) pour la marche à suivre.
 
 ## Schémas de données (backend)
 Les modèles sont définis dans `backend/prisma/schema.prisma`. Les principaux objets utilisés par les endpoints récents :
@@ -74,7 +75,39 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 ### Découverte (import)
 - `POST /discovery/import` : import d’un fichier CSV ou JSON pour créer des nœuds et dépendances.
 - `POST /discovery/suggestions` : prévisualise les correspondances entre éléments découverts et services existants.
-- `POST /discovery/run` : lance un scan réseau/cloud asynchrone (SNMP/SSH/WMI à brancher côté worker).
+- `POST /discovery/run` ou `/discovery/scan` : lance un scan réseau/cloud asynchrone (SNMP/SSH/WMI à brancher côté worker).
+- `POST /discovery/github-import` : importe un export JSON depuis un dépôt GitHub public (repo + chemin de fichier ou URL raw).
+
+Payload JSON attendu pour `/discovery/scan` :
+```json
+{
+  "ipRanges": ["10.0.0.0/24", "10.0.1.0/24"],
+  "cloudProviders": ["aws", "azure"],
+  "credentials": {
+    "aws": { "accessKeyId": "REDACTED", "secretAccessKey": "REDACTED" },
+    "azure": { "tenantId": "REDACTED", "clientId": "REDACTED", "clientSecret": "REDACTED" }
+  }
+}
+```
+
+**Import GitHub (exemple rapide)**
+```bash
+node backend/scripts/import-github-discovery.mjs \
+  --backend http://localhost:4000 \
+  --api-key dev-key \
+  --repo https://github.com/organisation/infra-discovery \
+  --file exports/discovery.json \
+  --ref main
+```
+
+Payload JSON attendu pour `/discovery/github-import` :
+```json
+{
+  "repoUrl": "https://github.com/organisation/infra-discovery",
+  "filePath": "exports/discovery.json",
+  "ref": "main"
+}
+```
 
 **CSV attendu**
 - Header obligatoire : `record_type,id,name,type,source,target,dependency_type`.
