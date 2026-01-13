@@ -40,7 +40,6 @@ export function TabNavigation({ tabs, activeTab, onChange, showIndex = false }: 
             className={`tab ${isActive ? "active" : ""}`}
             role="tab"
             aria-selected={isActive}
-            aria-controls={`${tab.id}-panel`}
             id={`${tab.id}-tab`}
             tabIndex={isActive ? 0 : -1}
             onClick={() => onChange(tab.id)}

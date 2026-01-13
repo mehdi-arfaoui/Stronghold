@@ -14,6 +14,7 @@ Boîte logicielle (appliance) déployable chez le client, permettant :
 - MinIO : stockage des documents (PDF, DOCX, images) en local.
 - ChromaDB (ou Qdrant) : index d’embedding par client (ici : instance unique).
 - n8n : orchestration (ingestion, vectorisation, génération de rapport).
+- Service IA interne : classification documentaire, extraction de faits, RAG et génération de runbooks.
 
 ## Données
 Toutes les données (DB, docs, embeddings) restent dans l’infrastructure du client.
@@ -23,6 +24,13 @@ Les appels IA ne servent qu’à la génération de réponses et rapports, pas �
 - Un `docker-compose.yml` lance tous les services.
 - Un fichier `.env` permet de configurer les mots de passe, ports, etc.
 - Mises à jour via nouvelles images Docker et migrations de base.
+
+## Services backend & endpoints clés
+- **Upload documentaire sécurisé** : `POST /documents`, `POST /documents/presign`, `GET /documents`.
+- **Sensibilité & classification** : `GET /documents/:id/sensitivity-report`, `POST /analysis/documents/:id/classification-feedback`.
+- **RAG & rapports** : `POST /analysis/rag-query`, `POST /analysis/pra-rag-report`.
+- **Runbooks** : `POST /runbooks/templates`, `POST /runbooks/generate`, `GET /runbooks`.
+- **Navigation UI** : route frontend `/navigation` pour explorer les modules et filtres.
 
 ## Flux n8n (orchestration)
 Les flux n8n sont appelés par des webhooks ou par l’API backend :
