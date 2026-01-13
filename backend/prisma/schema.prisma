@@ -30,6 +30,11 @@ model Tenant {
   documentExtractionSuggestions DocumentExtractionSuggestion[]
   documentSensitivityReports    DocumentSensitivityReport[]
   documentClassificationFeedbacks DocumentClassificationFeedback[]
+  entityFeedbacks               EntityFeedback[]
+  recommendationFeedbacks       RecommendationFeedback[]
+  ragExperimentAssignments      RagExperimentAssignment[]
+  ragTuningConfigs              RagTuningConfig[]
+  mlTrainingRuns                MlTrainingRun[]
   backupStrategies              BackupStrategy[]
   securityPolicies              SecurityPolicy[]
   policyLinks                   SecurityPolicyService[]
@@ -764,6 +769,93 @@ model DocumentClassificationFeedback {
   createdAt DateTime @default(now())
 
   @@index([tenantId, documentId])
+}
+
+model EntityFeedback {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  entityType     String
+  entityId       String?
+  documentId     String?
+  action         String
+  originalValue  Json?
+  correctedValue Json?
+  notes          String?
+  context        Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, entityType])
+  @@index([tenantId, entityId])
+  @@index([tenantId, documentId])
+}
+
+model RecommendationFeedback {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  recommendationType String
+  recommendationId   String?
+  rating             String
+  score              Float?
+  comment            String?
+  context            Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, recommendationType])
+  @@index([tenantId, recommendationId])
+}
+
+model RagExperimentAssignment {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  experimentKey String
+  subjectId     String
+  variant       String
+  context       Json?
+
+  createdAt DateTime @default(now())
+
+  @@unique([tenantId, experimentKey, subjectId])
+  @@index([tenantId, experimentKey])
+}
+
+model RagTuningConfig {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  fusionAlpha         Float
+  lexicalChunksPerDoc Int
+  chunkSize           Int
+  normalizationStats  Json?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MlTrainingRun {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  status                   String
+  trigger                  String
+  startedAt                DateTime @default(now())
+  completedAt              DateTime?
+  classificationSampleSize Int?
+  entitySampleSize         Int?
+  recommendationSampleSize Int?
+  ragTuningSnapshot        Json?
+  metrics                  Json?
+
+  @@index([tenantId, startedAt])
 }
 
 model AiExtractionError {

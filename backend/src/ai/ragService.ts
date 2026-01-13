@@ -9,6 +9,8 @@ import { resolveEncryptedDocumentText } from "../services/encryptionService.js";
 import { recordRagMrr, recordRagRecall } from "../observability/metrics.js";
 import { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } from "./ragRanking.js";
 import type { RagChunkCandidate } from "./ragRanking.js";
+import { DEFAULT_RAG_RUNTIME_CONFIG, clampNumber } from "./ragRuntime.js";
+import type { RagRuntimeConfig } from "./ragRuntime.js";
 import elasticlunr from "elasticlunr";
 import crypto from "node:crypto";
 
@@ -49,6 +51,7 @@ export type RagQueryOptions = {
   maxChunks?: number;
   maxFacts?: number;
   prismaClient?: PrismaClientOrTx;
+  ragRuntimeConfig?: RagRuntimeConfig;
 };
 
 export type RagScenarioRecommendation = {
@@ -317,8 +320,11 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
   questionTokens: Set<string>;
 }> {
   const prismaClient = options.prismaClient ?? prisma;
+  const runtimeConfig = options.ragRuntimeConfig ?? {};
   const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
   const maxFacts = options.maxFacts ?? DEFAULT_MAX_FACTS;
+  const lexicalChunksPerDoc =
+    runtimeConfig.lexicalChunksPerDoc ?? DEFAULT_RAG_RUNTIME_CONFIG.lexicalChunksPerDoc;
 
   const questionTokens = buildTokenSet(`${options.question} ${options.serviceFilter || ""}`);
   const questionText = `${options.question} ${options.serviceFilter || ""}`.trim();
@@ -368,8 +374,11 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
       });
       rawText = "";
     }
-    const chunkSize = computeChunkSizeForDocument(rawText);
-    const chunks = buildChunkTextCandidates(rawText, DEFAULT_LEXICAL_CHUNKS_PER_DOC, chunkSize);
+    const chunkSize =
+      runtimeConfig.chunkingStrategy === "fixed" && runtimeConfig.chunkSize
+        ? clampNumber(runtimeConfig.chunkSize, MIN_CHARS_PER_CHUNK, MAX_CHARS_PER_CHUNK)
+        : computeChunkSizeForDocument(rawText);
+    const chunks = buildChunkTextCandidates(rawText, lexicalChunksPerDoc, chunkSize);
     for (const chunk of chunks) {
       chunkDocs.push({
         chunkKey: buildChunkKey(doc.id, chunk),
@@ -583,17 +592,21 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
   questionTokens: Set<string>;
 }> {
   const maxChunks = options.maxChunks ?? DEFAULT_MAX_CHUNKS;
+  const runtimeConfig = options.ragRuntimeConfig ?? {};
   const lexicalOptions = { ...options, maxChunks: Math.max(maxChunks * 3, maxChunks) };
+  const useVector = runtimeConfig.mode !== "lexical";
 
   let vectorResult: Awaited<ReturnType<typeof retrieveVectorRagContext>> | null = null;
-  try {
-    vectorResult = await retrieveVectorRagContext(options);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
-      tenantId: options.tenantId,
-      message: message.slice(0, 300),
-    });
+  if (useVector) {
+    try {
+      vectorResult = await retrieveVectorRagContext(options);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
+        tenantId: options.tenantId,
+        message: message.slice(0, 300),
+      });
+    }
   }
 
   const lexicalResult = await retrieveLexicalRagContext(lexicalOptions);
@@ -623,8 +636,11 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     return trimmedLexical;
   }
 
-  const alpha = parseAlpha(process.env.RAG_FUSION_ALPHA);
-  const rerankStrategy = parseRerankStrategy(process.env.RAG_RERANKING);
+  const alpha =
+    typeof runtimeConfig.fusionAlpha === "number"
+      ? clampNumber(runtimeConfig.fusionAlpha, 0, 1)
+      : parseAlpha(process.env.RAG_FUSION_ALPHA);
+  const rerankStrategy = runtimeConfig.rerankStrategy ?? parseRerankStrategy(process.env.RAG_RERANKING);
 
   const combinedMap = new Map<string, RagChunkCandidate>();
   for (const chunk of lexicalResult.context.chunks as RagChunkCandidate[]) {
@@ -659,11 +675,8 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     });
   } else if (rerankStrategy === "cross") {
     const questionText = `${options.question} ${options.serviceFilter || ""}`.trim();
-    rerankedCandidates = rerankChunksCrossEncoder(
-      fusedCandidates,
-      questionText,
-      parseCrossWeights(process.env.RAG_CROSS_WEIGHTS)
-    );
+    const crossWeights = runtimeConfig.crossWeights ?? parseCrossWeights(process.env.RAG_CROSS_WEIGHTS);
+    rerankedCandidates = rerankChunksCrossEncoder(fusedCandidates, questionText, crossWeights);
   }
 
   const finalChunks = rerankedCandidates
@@ -875,6 +888,7 @@ export async function generatePraReport(params: {
   maxChunks?: number;
   maxFacts?: number;
   prismaClient?: PrismaClientOrTx;
+  ragRuntimeConfig?: RagRuntimeConfig;
 }) {
   const contextResult = await retrieveRagContext({
     tenantId: params.tenantId,
@@ -885,6 +899,7 @@ export async function generatePraReport(params: {
     maxChunks: params.maxChunks ?? 6,
     maxFacts: params.maxFacts ?? 8,
     prismaClient: params.prismaClient,
+    ragRuntimeConfig: params.ragRuntimeConfig,
   });
 
   const prompt = buildRagPrompt({
@@ -916,6 +931,7 @@ export async function generateRunbookDraft(params: {
   documentIds?: string[];
   documentTypes?: string[];
   serviceFilter?: string | null;
+  ragRuntimeConfig?: RagRuntimeConfig;
 }) {
   const baseQuestion =
     params.question ||
@@ -929,6 +945,7 @@ export async function generateRunbookDraft(params: {
     serviceFilter: params.serviceFilter,
     maxChunks: 8,
     maxFacts: 10,
+    ragRuntimeConfig: params.ragRuntimeConfig,
   });
 
   const sources = [

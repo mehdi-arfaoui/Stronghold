@@ -2,6 +2,7 @@ import prisma from "../prismaClient.js";
 import { recommendPraOptions } from "../analysis/praRecommender.js";
 import * as crypto from "crypto";
 import { buildRagPrompt, recommendScenariosWithRag, retrieveRagContext } from "../ai/ragService.js";
+import { resolveRagRuntimeConfig } from "./ragTuningService.js";
 import type { RunbookTemplate } from "@prisma/client";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 import { applyPlaceholders, loadTemplateText } from "./runbookTemplateService.js";
@@ -284,11 +285,17 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     ? `Préparer un runbook PRA/PCA pour le scénario ${scenario.name} (${scenario.type})`
     : "Préparer un runbook PRA/PCA multi-services pour ce tenant";
 
+  const { runtimeConfig } = await resolveRagRuntimeConfig({
+    tenantId,
+    trigger: "runbook-generator",
+  });
+
   const ragContextResult = await retrieveRagContext({
     tenantId,
     question: ragQuestion,
     maxChunks: 3,
     maxFacts: 5,
+    ragRuntimeConfig: runtimeConfig,
   });
 
   const ragPrompt = buildRagPrompt({
