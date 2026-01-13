@@ -19,6 +19,7 @@ interface NavMenuProps {
   onNavigate?: () => void;
   variant?: "horizontal" | "vertical";
   ariaLabel?: string;
+  disabled?: boolean;
 }
 
 export function NavMenu({
@@ -27,19 +28,26 @@ export function NavMenu({
   onNavigate,
   variant = "horizontal",
   ariaLabel = "Navigation principale",
+  disabled = false,
 }: NavMenuProps) {
   const hasGroups = groups.length > 0;
   const renderLinks = (items: NavLink[]) => (
     <ul>
       {items.map((link) => (
         <li key={link.id}>
-          <RouterNavLink
-            to={link.to}
-            className={({ isActive }) => (isActive ? "active" : undefined)}
-            onClick={onNavigate}
-          >
-            {link.label}
-          </RouterNavLink>
+          {disabled ? (
+            <span className="nav-link disabled" aria-disabled="true">
+              {link.label}
+            </span>
+          ) : (
+            <RouterNavLink
+              to={link.to}
+              className={({ isActive }) => (isActive ? "active" : undefined)}
+              onClick={onNavigate}
+            >
+              {link.label}
+            </RouterNavLink>
+          )}
         </li>
       ))}
     </ul>

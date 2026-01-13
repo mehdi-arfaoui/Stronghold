@@ -311,11 +311,20 @@ export type DiscoveryJob = {
   } | null;
   resultSummary?: {
     discoveredHosts?: number;
+    discoveredResources?: number;
+    discoveredFlows?: number;
+    matchedResources?: number;
     createdServices?: number;
     createdInfra?: number;
     createdDependencies?: number;
     createdInfraLinks?: number;
     ignoredEdges?: number;
+    addedResources?: number;
+    modifiedResources?: number;
+    removedResources?: number;
+    unmatchedResources?: number;
+    shadowFlows?: number;
+    warnings?: string[];
     importReport?: {
       rejectedRows: number;
       rejectedEntries: {

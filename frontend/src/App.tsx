@@ -6,6 +6,7 @@ import { AppLayout } from "./components/layout/AppLayout";
 import type { HomeStepId } from "./components/home/HomePage";
 import { ConfigurationPage } from "./routes/ConfigurationPage";
 import { HomeRoute } from "./routes/HomeRoute";
+import { InitialScanPage } from "./routes/InitialScanPage";
 import { NavigationPage } from "./routes/NavigationPage";
 import {
   MODULE_PATH_TO_ID,
@@ -24,8 +25,10 @@ import {
   getDefaultLanguage,
   getDefaultTheme,
   getStoredLanguage,
+  getStoredScanCompleted,
   getStoredTheme,
   setStoredLanguage,
+  setStoredScanCompleted,
   setStoredTheme,
   type ThemeMode,
 } from "./utils/preferences";
@@ -129,6 +132,7 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<HomeStepId>("discovery");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
+  const [scanCompleted, setScanCompleted] = useState<boolean>(() => getStoredScanCompleted());
   const [language, setLanguage] = useState<Language>(
     () => getStoredLanguage() ?? getDefaultLanguage()
   );
@@ -159,6 +163,8 @@ function App() {
     return Math.min(wizardSteps.length - 1, furthestIndex + 1);
   }, [activeStep, completedSteps, wizardSteps]);
 
+  const isNavigationLocked = !scanCompleted;
+
   const isStepAllowed = useCallback(
     (stepId: HomeStepId) => wizardSteps.indexOf(stepId) <= maxAllowedIndex,
     [maxAllowedIndex, wizardSteps]
@@ -166,6 +172,7 @@ function App() {
 
   const handleTabNavigation = useCallback(
     (tabId: TabId) => {
+      if (!scanCompleted) return;
       const stepId = tabId as HomeStepId;
       const stepIndex = wizardSteps.indexOf(stepId);
       if (stepIndex === -1 || !isStepAllowed(stepId)) return;
@@ -177,11 +184,12 @@ function App() {
         wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
       );
     },
-    [isStepAllowed, navigate, wizardSteps]
+    [isStepAllowed, navigate, scanCompleted, wizardSteps]
   );
 
   const handleStepAction = useCallback(
     (stepId: HomeStepId) => {
+      if (!scanCompleted) return;
       if (!isStepAllowed(stepId)) return;
       const stepIndex = wizardSteps.indexOf(stepId);
       setActiveStep(stepId);
@@ -196,11 +204,17 @@ function App() {
       navigate(MODULE_PATHS[stepId]);
       setIsMenuOpen(false);
     },
-    [isStepAllowed, navigate, wizardSteps]
+    [isStepAllowed, navigate, scanCompleted, wizardSteps]
   );
 
   const handleQuickAction = useCallback(() => {
+    if (!scanCompleted) return;
     navigate(MODULE_PATHS.analysis);
+  }, [navigate, scanCompleted]);
+
+  const handleInitialScanContinue = useCallback(() => {
+    setScanCompleted(true);
+    navigate(MODULE_PATHS.discovery);
   }, [navigate]);
 
   const toggleTheme = useCallback(() => {
@@ -208,6 +222,7 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!scanCompleted) return;
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
     if (!tabFromPath) return;
     const stepIndex = wizardSteps.indexOf(tabFromPath as HomeStepId);
@@ -221,7 +236,19 @@ function App() {
       const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
       return wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step));
     });
-  }, [isStepAllowed, location.pathname, maxAllowedIndex, navigate, wizardSteps]);
+  }, [isStepAllowed, location.pathname, maxAllowedIndex, navigate, scanCompleted, wizardSteps]);
+
+  useEffect(() => {
+    if (scanCompleted) {
+      if (location.pathname === "/initial-scan") {
+        navigate(MODULE_PATHS.discovery, { replace: true });
+      }
+      return;
+    }
+    if (location.pathname !== "/initial-scan") {
+      navigate("/initial-scan", { replace: true });
+    }
+  }, [location.pathname, navigate, scanCompleted]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -232,6 +259,10 @@ function App() {
     document.documentElement.lang = language;
     setStoredLanguage(language);
   }, [language]);
+
+  useEffect(() => {
+    setStoredScanCompleted(scanCompleted);
+  }, [scanCompleted]);
 
   return (
     <div className="app-shell">
@@ -244,7 +275,7 @@ function App() {
         steps={homeSteps}
         activeStepId={activeStep}
         completedSteps={completedSteps}
-        maxAllowedIndex={maxAllowedIndex}
+        maxAllowedIndex={isNavigationLocked ? -1 : maxAllowedIndex}
         onStepAction={handleStepAction}
         onQuickAction={handleQuickAction}
         theme={theme}
@@ -254,57 +285,65 @@ function App() {
         isMenuOpen={isMenuOpen}
         onMenuToggle={() => setIsMenuOpen((open) => !open)}
         onMenuClose={() => setIsMenuOpen(false)}
+        isNavigationLocked={isNavigationLocked}
       >
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <HomeRoute
-                copy={copy}
-                steps={homeSteps}
-                activeStepId={activeStep}
-                completedSteps={completedSteps}
-                maxAllowedIndex={maxAllowedIndex}
-                onStepAction={handleStepAction}
-              />
-            }
-          />
-          <Route
-            path="/configuration"
-            element={
-              <ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />
-            }
-          />
-          <Route
-            path="/navigation"
-            element={
-              <NavigationPage
-                activeTab={activeTab}
-                onNavigateTab={handleTabNavigation}
-                copy={copy}
-                wizardGroup={wizardGroup}
-              />
-            }
-          />
-          {MODULE_ROUTES.map((module) => (
+        {scanCompleted ? (
+          <Routes>
             <Route
-              key={module.id}
-              path={module.path}
-              element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
+              path="/"
+              element={
+                <HomeRoute
+                  copy={copy}
+                  steps={homeSteps}
+                  activeStepId={activeStep}
+                  completedSteps={completedSteps}
+                  maxAllowedIndex={maxAllowedIndex}
+                  onStepAction={handleStepAction}
+                />
+              }
             />
-          ))}
-          <Route
-            path="*"
-            element={
-              <NavigationPage
-                activeTab={activeTab}
-                onNavigateTab={handleTabNavigation}
-                copy={copy}
-                wizardGroup={wizardGroup}
+            <Route
+              path="/configuration"
+              element={
+                <ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />
+              }
+            />
+            <Route
+              path="/navigation"
+              element={
+                <NavigationPage
+                  activeTab={activeTab}
+                  onNavigateTab={handleTabNavigation}
+                  copy={copy}
+                  wizardGroup={wizardGroup}
+                />
+              }
+            />
+            {MODULE_ROUTES.map((module) => (
+              <Route
+                key={module.id}
+                path={module.path}
+                element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
               />
-            }
-          />
-        </Routes>
+            ))}
+            <Route
+              path="*"
+              element={
+                <NavigationPage
+                  activeTab={activeTab}
+                  onNavigateTab={handleTabNavigation}
+                  copy={copy}
+                  wizardGroup={wizardGroup}
+                />
+              }
+            />
+          </Routes>
+        ) : (
+          <Routes>
+            <Route path="/initial-scan" element={<InitialScanPage onContinue={handleInitialScanContinue} />} />
+            <Route path="*" element={<InitialScanPage onContinue={handleInitialScanContinue} />} />
+          </Routes>
+        )}
       </AppLayout>
 
       <Footer groups={navGroups} copy={copy} />

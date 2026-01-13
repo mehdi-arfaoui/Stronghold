@@ -25,6 +25,7 @@ interface AppLayoutProps {
   isMenuOpen: boolean;
   onMenuToggle: () => void;
   onMenuClose: () => void;
+  isNavigationLocked?: boolean;
 }
 
 export function AppLayout({
@@ -44,6 +45,7 @@ export function AppLayout({
   isMenuOpen,
   onMenuToggle,
   onMenuClose,
+  isNavigationLocked = false,
 }: AppLayoutProps) {
   return (
     <div className="app-layout">
@@ -73,7 +75,13 @@ export function AppLayout({
           </div>
 
           <div className="header-actions">
-            <button type="button" className="btn subtle" onClick={onQuickAction}>
+            <button
+              type="button"
+              className="btn subtle"
+              onClick={onQuickAction}
+              disabled={isNavigationLocked}
+              aria-disabled={isNavigationLocked}
+            >
               {copy.quickAction}
             </button>
             <div className="header-control">
@@ -117,6 +125,7 @@ export function AppLayout({
           onStepAction={onStepAction}
           isOpen={isMenuOpen}
           onClose={onMenuClose}
+          isNavigationLocked={isNavigationLocked}
         />
         <main id="main-content" className="main-content">
           {children}
