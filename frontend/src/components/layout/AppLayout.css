@@ -198,6 +198,13 @@
   color: inherit;
 }
 
+.wizard-step:disabled,
+.wizard-step[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  border-style: dashed;
+}
+
 .wizard-step.active {
   border-color: var(--accent-color);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);

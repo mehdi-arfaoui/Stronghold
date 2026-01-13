@@ -31,9 +31,54 @@ export function PageIntro({
   return (
     <div className="card page-intro">
       <div className="page-intro-main">
-        <p className="eyebrow">Pourquoi cette page ?</p>
-        <h3 className="page-intro-title">{title}</h3>
-        <p className="muted">{objective}</p>
+        <p className="eyebrow">Pourquoi cette étape ?</p>
+        <div className="page-intro-header">
+          <div>
+            <h3 className="page-intro-title">{title}</h3>
+            <p className="muted">{objective}</p>
+          </div>
+          <HelpButton title="Aide de l'étape" buttonLabel="Aide" className="page-intro-help">
+            <div className="page-intro-help-grid">
+              <div className="page-intro-help-section">
+                <p className="eyebrow">Checklist rapide</p>
+                <ul className="checklist">
+                  {steps.map((step) => (
+                    <li key={step}>{step}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="page-intro-help-section">
+                <p className="eyebrow">Actions rapides</p>
+                <div className="quick-links">
+                  {links.map((link) => (
+                    <a key={link.label} href={link.href} className="quick-link">
+                      <span>{link.label}</span>
+                      {link.description && <span className="muted small">{link.description}</span>}
+                    </a>
+                  ))}
+                </div>
+              </div>
+              <div className="page-intro-help-section">
+                <p className="eyebrow">Données attendues</p>
+                <ul className="callout-list">
+                  {expectedData.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+              {tips && tips.length > 0 ? (
+                <div className="page-intro-help-section">
+                  <p className="eyebrow">Aides contextuelles</p>
+                  <ul className="tips-list">
+                    {tips.map((tip) => (
+                      <li key={tip}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          </HelpButton>
+        </div>
         <div className="progress-block">
           <div className="progress-header">
             <span className="pill subtle">Progression {progress.value}%</span>
@@ -49,46 +94,6 @@ export function PageIntro({
             <div className="progress-value" style={{ width: `${progress.value}%` }} />
           </div>
         </div>
-      </div>
-      <div className="page-intro-side">
-        <div className="page-intro-block">
-          <p className="eyebrow">Checklist rapide</p>
-          <ul className="checklist">
-            {steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ul>
-        </div>
-        <div className="page-intro-block">
-          <p className="eyebrow">Actions rapides</p>
-          <div className="quick-links">
-            {links.map((link) => (
-              <a key={link.label} href={link.href} className="quick-link">
-                <span>{link.label}</span>
-                {link.description && <span className="muted small">{link.description}</span>}
-              </a>
-            ))}
-          </div>
-        </div>
-      </div>
-      {tips && tips.length > 0 ? (
-        <div className="page-intro-tips">
-          <HelpButton title="Aides contextuelles">
-            <ul className="tips-list">
-              {tips.map((tip) => (
-                <li key={tip}>{tip}</li>
-              ))}
-            </ul>
-          </HelpButton>
-        </div>
-      ) : null}
-      <div className="page-intro-callout">
-        <p className="eyebrow">Données attendues</p>
-        <ul className="callout-list">
-          {expectedData.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
       </div>
     </div>
   );

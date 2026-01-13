@@ -18,15 +18,16 @@ describe("HomePage", () => {
         title="Premiers pas"
         subtitle="Suivez le guide"
         steps={steps}
-        activeStepId="services"
+        activeStepId="discovery"
         completedSteps={[]}
+        maxAllowedIndex={0}
         onStepAction={onStepAction}
       />
     );
 
-    const button = screen.getByRole("button", { name: "Créer un service" });
+    const button = screen.getByRole("button", { name: "Lancer une découverte" });
     await user.click(button);
 
-    expect(onStepAction).toHaveBeenCalledWith("services");
+    expect(onStepAction).toHaveBeenCalledWith("discovery");
   });
 });

@@ -10,6 +10,7 @@ interface SidebarProps {
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
+  maxAllowedIndex: number;
   onStepAction: (stepId: HomeStepId) => void;
   isOpen: boolean;
   onClose: () => void;
@@ -21,6 +22,7 @@ export function Sidebar({
   steps,
   activeStepId,
   completedSteps,
+  maxAllowedIndex,
   onStepAction,
   isOpen,
   onClose,
@@ -50,6 +52,7 @@ export function Sidebar({
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}
+          maxAllowedIndex={maxAllowedIndex}
           onStepAction={onStepAction}
         />
       </aside>

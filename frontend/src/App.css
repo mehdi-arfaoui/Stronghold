@@ -54,6 +54,10 @@
   --color-accent-500: #38bdf8;
   --color-accent-600: #0ea5e9;
   --color-accent-700: #0284c7;
+  --color-success-100: #dcfce7;
+  --color-success-500: #22c55e;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
 }
 
 :root[data-theme="dark"] {
@@ -77,6 +81,10 @@
   --color-neutral-700: #c2cbe0;
   --color-neutral-800: #e2e8f0;
   --color-neutral-900: #f8fafc;
+  --color-success-100: #14532d;
+  --color-success-500: #4ade80;
+  --color-warning-100: #713f12;
+  --color-warning-200: #fbbf24;
 }
 
 @media (prefers-contrast: more) {
@@ -219,7 +227,7 @@ ol {
 }
 
 .progress-step.complete {
-  border-color: #22c55e;
+  border-color: var(--color-success-500);
 }
 
 .progress-step-header {
@@ -253,8 +261,14 @@ ol {
 
 .progress-step-status {
   font-size: var(--font-size-label);
-  color: #22c55e;
+  color: var(--color-success-500);
   font-weight: 600;
+}
+
+.progress-step.locked {
+  border-style: dashed;
+  background: var(--color-neutral-50);
+  opacity: 0.75;
 }
 
 .assistant-panel {
@@ -971,6 +985,13 @@ ol {
   transition: all 0.2s ease;
 }
 
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
 .btn.subtle {
   padding: 8px 16px;
   font-weight: 600;
@@ -1220,10 +1241,10 @@ ol {
 }
 
 .page-intro {
-  display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: var(--space-4);
-  background: var(--color-neutral-50);
+  background: var(--surface-color);
 }
 
 .page-intro-title {
@@ -1234,34 +1255,31 @@ ol {
 .page-intro-main {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }
 
-.page-intro-side {
+.page-intro-header {
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
   gap: var(--space-4);
+  flex-wrap: wrap;
 }
 
-.page-intro-block {
+.page-intro-help {
+  align-self: flex-start;
+}
+
+.page-intro-help-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.page-intro-help-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.page-intro-callout {
-  grid-column: 1 / -1;
-  border: 1px solid #fde68a;
-  background: #fef9c3;
-  border-radius: var(--radius-md);
-  padding: var(--space-3);
-}
-
-.page-intro-tips {
-  grid-column: 1 / -1;
-  border-top: 1px dashed var(--color-neutral-200);
-  padding-top: var(--space-3);
-  margin-top: var(--space-2);
 }
 
 .tips-list {
@@ -1285,8 +1303,8 @@ ol {
 
 .help-box-content {
   width: 100%;
-  background: var(--color-neutral-50);
-  border: 1px dashed var(--border-color);
+  background: var(--surface-color);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: var(--space-4);
   display: flex;
@@ -1425,7 +1443,7 @@ ol {
   }
 
   .page-intro {
-    grid-template-columns: 1fr;
+    padding: var(--space-4);
   }
 }
 

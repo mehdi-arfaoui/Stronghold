@@ -8,6 +8,7 @@ interface ProgressStepProps {
   completedLabel: string;
   isActive: boolean;
   isComplete: boolean;
+  isLocked: boolean;
   onAction: (stepId: string) => void;
 }
 
@@ -21,13 +22,14 @@ export function ProgressStep({
   completedLabel,
   isActive,
   isComplete,
+  isLocked,
   onAction,
 }: ProgressStepProps) {
   return (
     <article
       className={`progress-step ${isActive ? "active" : ""} ${
         isComplete ? "complete" : ""
-      }`}
+      } ${isLocked ? "locked" : ""}`}
       aria-current={isActive ? "step" : undefined}
     >
       <div className="progress-step-header">
@@ -38,7 +40,13 @@ export function ProgressStep({
       </div>
       <p className="progress-step-description">{description}</p>
       <div className="progress-step-actions">
-        <button type="button" className="btn primary" onClick={() => onAction(stepId)}>
+        <button
+          type="button"
+          className="btn primary"
+          onClick={() => onAction(stepId)}
+          disabled={isLocked}
+          aria-disabled={isLocked}
+        >
           {actionLabel}
         </button>
         {isComplete ? <span className="progress-step-status">{completedLabel}</span> : null}
