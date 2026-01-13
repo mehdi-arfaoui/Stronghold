@@ -120,10 +120,55 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
             createdDependencies: summary.createdDependencies,
             createdInfraLinks: summary.createdInfraLinks,
             ignoredEdges: summary.ignoredEdges,
+            addedResources: summary.addedResources,
+            modifiedResources: summary.modifiedResources,
+            removedResources: summary.removedResources,
+            unmatchedResources: summary.unmatchedResources,
+            shadowFlows: summary.shadowFlows,
             warnings: summary.warnings,
           }),
         });
         recordDiscoveryJobResult(true, tenantId);
+        void notifyN8nAlert({
+          event: "discovery.completed",
+          tenantId,
+          message: "Discovery job completed",
+          details: {
+            jobId,
+            scheduleId: job.data.scheduleId ?? null,
+            discoveredResources: summary.discoveredResources,
+            discoveredFlows: summary.discoveredFlows,
+            addedResources: summary.addedResources,
+            modifiedResources: summary.modifiedResources,
+            removedResources: summary.removedResources,
+          },
+        });
+        if (summary.unmatchedResources > 0) {
+          void notifyN8nAlert({
+            event: "discovery.new_resource",
+            tenantId,
+            message: "New unlinked resources detected",
+            details: {
+              jobId,
+              scheduleId: job.data.scheduleId ?? null,
+              count: summary.unmatchedResources,
+              samples: summary.newResourceSamples,
+            },
+          });
+        }
+        if (summary.shadowFlows > 0) {
+          void notifyN8nAlert({
+            event: "discovery.shadow_it",
+            tenantId,
+            message: "Shadow IT flows detected",
+            details: {
+              jobId,
+              scheduleId: job.data.scheduleId ?? null,
+              count: summary.shadowFlows,
+              samples: summary.shadowFlowSamples,
+            },
+          });
+        }
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         recordDiscoveryJobResult(false, tenantId);

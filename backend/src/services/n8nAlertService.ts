@@ -1,9 +1,16 @@
 type AlertPayload = {
-  event: "llm.quota" | "llm.error" | "discovery.error";
+  event:
+    | "llm.quota"
+    | "llm.error"
+    | "discovery.error"
+    | "discovery.completed"
+    | "discovery.new_resource"
+    | "discovery.shadow_it";
   tenantId?: string;
   correlationId?: string;
   status?: number | string;
   message?: string;
+  details?: Record<string, unknown>;
 };
 
 export async function notifyN8nAlert(payload: AlertPayload) {
