@@ -1,4 +1,4 @@
-export type DetectedDocType = "ARCHI" | "BACKUP_POLICY" | "SLA" | "RUNBOOK" | "CMDB" | "CONTRACT" | "RISK" | "UNKNOWN";
+export type DetectedDocType = "ARCHI" | "BACKUP_POLICY" | "POLICY" | "SLA" | "RUNBOOK" | "CMDB" | "CONTRACT" | "RISK" | "UNKNOWN";
 export interface ClassifiedDocument {
     type: DetectedDocType;
     confidence: number;

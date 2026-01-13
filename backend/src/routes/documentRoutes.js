@@ -23,6 +23,10 @@ const {
   rejectExtractionSuggestions,
 } = require("../services/extractionSuggestionService");
 const {
+  DocumentClassificationDocumentNotFoundError,
+  recordDocumentClassificationFeedback,
+} = require("../services/documentClassificationFeedbackService");
+const {
   buildObjectKey,
   getSignedUploadUrlForObject,
   getSignedUrlForObject,
@@ -391,6 +395,43 @@ router.put("/:id", requireRole("OPERATOR"), async (req, res) => {
     return res.json(updated);
   } catch (error) {
     console.error("Error in PUT /documents/:id:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
+ * POST /documents/:id/classification-feedback
+ * Enregistre un feedback utilisateur sur la classification ML du document.
+ */
+router.post("/:id/classification-feedback", requireRole("OPERATOR"), async (req, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const docId = req.params.id;
+    const issues = [];
+    const correctedType = parseRequiredString(req.body?.correctedType, "correctedType", issues);
+    const notes = parseOptionalString(req.body?.notes, "notes", issues, { allowNull: true });
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const feedback = await recordDocumentClassificationFeedback({
+      tenantId,
+      documentId: docId,
+      correctedType: correctedType,
+      notes,
+    });
+
+    return res.json({ documentId: docId, feedback });
+  } catch (error) {
+    if (error instanceof DocumentClassificationDocumentNotFoundError) {
+      return res.status(error.status).json({ error: error.message });
+    }
+    console.error("Error in POST /documents/:id/classification-feedback:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -20,6 +20,7 @@ const SENSITIVE_TYPES = [
   "BIRTH_DATE",
   "PASSWORD",
   "API_KEY",
+  "PII",
 ] as const;
 
 export type SensitiveType = (typeof SENSITIVE_TYPES)[number];
@@ -34,6 +35,12 @@ export type SensitiveScanResult = {
   blockedTypes: SensitiveType[];
   allowedTypes: SensitiveType[];
 };
+
+const YARA_RULES_PATH = process.env.DLP_YARA_RULES_PATH
+  ? path.resolve(process.env.DLP_YARA_RULES_PATH)
+  : path.join(process.cwd(), "config", "dlp", "stronghold.yar");
+const YARA_BINARY = process.env.DLP_YARA_BIN || "yara";
+const YARA_ENABLED = process.env.DLP_YARA_ENABLED !== "false";
 
 function parseAllowedTypes(): Set<SensitiveType> {
   const raw = process.env.ALLOWED_SENSITIVE_DATA_TYPES;
@@ -263,6 +270,67 @@ async function extractTextFromBuffer(
   return "";
 }
 
+function mergeFindings(base: SensitiveFinding[], extra: SensitiveFinding[]): SensitiveFinding[] {
+  const merged = new Map<SensitiveType, number>();
+  base.forEach((finding) => merged.set(finding.type, (merged.get(finding.type) || 0) + finding.count));
+  extra.forEach((finding) => merged.set(finding.type, (merged.get(finding.type) || 0) + finding.count));
+  return Array.from(merged.entries()).map(([type, count]) => ({ type, count }));
+}
+
+async function canUseYara(): Promise<boolean> {
+  if (!YARA_ENABLED) return false;
+  try {
+    await fs.promises.access(YARA_RULES_PATH, fs.constants.R_OK);
+    return true;
+  } catch (_err) {
+    return false;
+  }
+}
+
+const YARA_RULE_MAP: Record<string, SensitiveType> = {
+  credit_card: "CREDIT_CARD",
+  iban: "IBAN",
+  email: "EMAIL",
+  phone: "PHONE",
+  national_id: "NATIONAL_ID",
+  passport: "NATIONAL_ID",
+  pii_keywords: "PII",
+};
+
+async function scanWithYara(text: string): Promise<SensitiveFinding[]> {
+  if (!text || text.trim().length === 0) return [];
+  if (!(await canUseYara())) return [];
+
+  const temp = await writeTempFile(Buffer.from(limitText(text), "utf8"), ".txt");
+  try {
+    const { stdout } = await execFileAsync(YARA_BINARY, [YARA_RULES_PATH, temp.filePath], {
+      maxBuffer: 2 * 1024 * 1024,
+    });
+    const counts = new Map<SensitiveType, number>();
+    const lines = stdout
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    for (const line of lines) {
+      const ruleName = line.split(/\s+/)[0]?.toLowerCase();
+      if (!ruleName) continue;
+      const mapped = YARA_RULE_MAP[ruleName];
+      if (!mapped) continue;
+      counts.set(mapped, (counts.get(mapped) || 0) + 1);
+    }
+
+    return Array.from(counts.entries()).map(([type, count]) => ({ type, count }));
+  } catch (err: any) {
+    if (err?.code === 1) {
+      return [];
+    }
+    return [];
+  } finally {
+    await temp.cleanup();
+  }
+}
+
 function buildFindings(text: string): SensitiveFinding[] {
   const trimmedText = limitText(text);
   if (!trimmedText) return [];
@@ -320,6 +388,14 @@ function buildFindings(text: string): SensitiveFinding[] {
     findings.push({ type: "API_KEY", count: apiKeyCount });
   }
 
+  const piiKeywordCount = countMatches(
+    /\b(nom|pr[ée]nom|passport|passeport|ssn|social security|national id|num[ée]ro de s[ée]curit[ée] sociale|pii)\b/gi,
+    trimmedText
+  );
+  if (piiKeywordCount > 0) {
+    findings.push({ type: "PII", count: piiKeywordCount });
+  }
+
   return findings;
 }
 
@@ -330,7 +406,7 @@ export async function scanSensitiveDataOnUpload(options: {
 }): Promise<SensitiveScanResult> {
   const allowedTypes = parseAllowedTypes();
   const text = await extractTextFromBuffer(options.buffer, options.fileName, options.mimeType);
-  const findings = buildFindings(text);
+  const findings = await scanSensitiveText(text);
   const blockedTypes = findings
     .map((finding) => finding.type)
     .filter((type) => !allowedTypes.has(type));
@@ -342,8 +418,10 @@ export async function scanSensitiveDataOnUpload(options: {
   };
 }
 
-export function scanSensitiveText(text: string): SensitiveFinding[] {
-  return buildFindings(text);
+export async function scanSensitiveText(text: string): Promise<SensitiveFinding[]> {
+  const regexFindings = buildFindings(text);
+  const yaraFindings = await scanWithYara(text);
+  return mergeFindings(regexFindings, yaraFindings);
 }
 
 export const __test__ = {
