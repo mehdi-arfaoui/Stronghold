@@ -60,6 +60,7 @@ model Tenant {
   discoveryResourceMatches DiscoveryResourceMatch[]
   discoverySchedules     DiscoverySchedule[]
   discoveryFlows         DiscoveryFlow[]
+  discoveryResourceChanges DiscoveryResourceChange[]
 }
 
 model Service {
@@ -950,6 +951,30 @@ model DiscoveryResourceMatch {
   createdAt DateTime @default(now())
 
   @@index([tenantId, resourceId])
+}
+
+model DiscoveryResourceChange {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  jobId String?
+  job   DiscoveryJob? @relation(fields: [jobId], references: [id])
+
+  source     String
+  externalId String
+  changeType String
+
+  previousFingerprint String?
+  newFingerprint      String?
+  metadata            Json?
+
+  detectedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@index([tenantId, detectedAt])
+  @@index([tenantId, changeType])
+  @@index([tenantId, source, externalId])
 }
 
 model DiscoverySchedule {

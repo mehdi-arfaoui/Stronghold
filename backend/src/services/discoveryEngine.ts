@@ -25,7 +25,45 @@ type DiscoveryEngineSummary = {
   createdDependencies: number;
   createdInfraLinks: number;
   ignoredEdges: number;
+  addedResources: number;
+  modifiedResources: number;
+  removedResources: number;
+  unmatchedResources: number;
+  shadowFlows: number;
+  newResourceSamples: Array<{ source: string; externalId: string; name: string }>;
+  shadowFlowSamples: Array<{
+    sourceIp: string | null;
+    targetIp: string | null;
+    protocol: string | null;
+    sourcePort: number | null;
+    targetPort: number | null;
+  }>;
   warnings: string[];
+};
+
+type DiscoveryResourceSnapshot = {
+  source: string;
+  externalId: string;
+  name: string;
+  kind: string;
+  type: string;
+  ip: string | null;
+  hostname: string | null;
+  tags: string[] | null;
+  metadata: Record<string, unknown> | null;
+  fingerprint: string;
+};
+
+type DiscoveryResourceChangeInput = {
+  tenantId: string;
+  jobId: string;
+  source: string;
+  externalId: string;
+  changeType: "ADDED" | "MODIFIED" | "REMOVED";
+  previousFingerprint: string | null;
+  newFingerprint: string | null;
+  metadata: Record<string, unknown> | null;
+  detectedAt: Date;
 };
 
 function buildFingerprint(resource: DiscoveredResource) {
@@ -43,6 +81,155 @@ function buildFingerprint(resource: DiscoveredResource) {
     })
   );
   return hash.digest("hex");
+}
+
+function buildResourceKey(resource: { source: string; externalId: string }) {
+  return `${resource.source}::${resource.externalId}`;
+}
+
+function toSnapshot(resource: DiscoveredResource, fingerprint: string): DiscoveryResourceSnapshot {
+  return {
+    source: resource.source,
+    externalId: resource.externalId,
+    name: resource.name,
+    kind: resource.kind,
+    type: resource.type,
+    ip: resource.ip ?? null,
+    hostname: resource.hostname ?? null,
+    tags: resource.tags ?? null,
+    metadata: resource.metadata ?? null,
+    fingerprint,
+  };
+}
+
+function stripSnapshot(snapshot: DiscoveryResourceSnapshot) {
+  return {
+    source: snapshot.source,
+    externalId: snapshot.externalId,
+    name: snapshot.name,
+    kind: snapshot.kind,
+    type: snapshot.type,
+    ip: snapshot.ip,
+    hostname: snapshot.hostname,
+    tags: snapshot.tags,
+    metadata: snapshot.metadata,
+  };
+}
+
+async function fetchPreviousDiscoveryResources(tenantId: string, jobId: string) {
+  const lastJob = await prisma.discoveryJob.findFirst({
+    where: {
+      tenantId,
+      status: "COMPLETED",
+      completedAt: { not: null },
+      id: { not: jobId },
+    },
+    orderBy: { completedAt: "desc" },
+  });
+
+  if (!lastJob) return null;
+
+  const resources = await prisma.discoveryResource.findMany({
+    where: { tenantId, jobId: lastJob.id },
+    select: {
+      source: true,
+      externalId: true,
+      name: true,
+      kind: true,
+      type: true,
+      ip: true,
+      hostname: true,
+      tags: true,
+      metadata: true,
+      fingerprint: true,
+    },
+  });
+
+  return resources as DiscoveryResourceSnapshot[];
+}
+
+function computeResourceChanges(
+  currentSnapshots: DiscoveryResourceSnapshot[],
+  previousSnapshots: DiscoveryResourceSnapshot[] | null,
+  detectedAt: Date,
+  tenantId: string,
+  jobId: string
+) {
+  const addedResources: DiscoveryResourceSnapshot[] = [];
+  const modifiedResources: DiscoveryResourceSnapshot[] = [];
+  const removedResources: DiscoveryResourceSnapshot[] = [];
+  const changes: DiscoveryResourceChangeInput[] = [];
+
+  const previousMap = new Map<string, DiscoveryResourceSnapshot>();
+  previousSnapshots?.forEach((resource) => {
+    previousMap.set(buildResourceKey(resource), resource);
+  });
+
+  const currentMap = new Map<string, DiscoveryResourceSnapshot>();
+  currentSnapshots.forEach((resource) => {
+    currentMap.set(buildResourceKey(resource), resource);
+  });
+
+  currentSnapshots.forEach((resource) => {
+    const previous = previousMap.get(buildResourceKey(resource));
+    if (!previous) {
+      addedResources.push(resource);
+      changes.push({
+        tenantId,
+        jobId,
+        source: resource.source,
+        externalId: resource.externalId,
+        changeType: "ADDED",
+        previousFingerprint: null,
+        newFingerprint: resource.fingerprint,
+        metadata: { current: stripSnapshot(resource) },
+        detectedAt,
+      });
+      return;
+    }
+
+    if (previous.fingerprint !== resource.fingerprint) {
+      modifiedResources.push(resource);
+      changes.push({
+        tenantId,
+        jobId,
+        source: resource.source,
+        externalId: resource.externalId,
+        changeType: "MODIFIED",
+        previousFingerprint: previous.fingerprint,
+        newFingerprint: resource.fingerprint,
+        metadata: {
+          previous: stripSnapshot(previous),
+          current: stripSnapshot(resource),
+        },
+        detectedAt,
+      });
+    }
+  });
+
+  previousSnapshots?.forEach((resource) => {
+    if (!currentMap.has(buildResourceKey(resource))) {
+      removedResources.push(resource);
+      changes.push({
+        tenantId,
+        jobId,
+        source: resource.source,
+        externalId: resource.externalId,
+        changeType: "REMOVED",
+        previousFingerprint: resource.fingerprint,
+        newFingerprint: null,
+        metadata: { previous: stripSnapshot(resource) },
+        detectedAt,
+      });
+    }
+  });
+
+  return {
+    changes,
+    addedResources,
+    modifiedResources,
+    removedResources,
+  };
 }
 
 function normalizeProvider(provider: string) {
@@ -122,7 +309,39 @@ function toDiscoveryEdge(source: DiscoveredResource, target: DiscoveredResource)
 
 export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<DiscoveryEngineSummary> {
   const { resources, flows, warnings } = await collectDiscoveryData(context);
+  const detectedAt = new Date();
+  const previousResources = await fetchPreviousDiscoveryResources(context.tenantId, context.jobId);
+  const currentSnapshots = resources.map((resource) =>
+    toSnapshot(resource, buildFingerprint(resource))
+  );
+  const changeSummary = computeResourceChanges(
+    currentSnapshots,
+    previousResources,
+    detectedAt,
+    context.tenantId,
+    context.jobId
+  );
   const matches = await correlateDiscoveryResources(context.tenantId, resources);
+
+  const matchedExternalIds = new Set(matches.map((match) => match.resourceExternalId));
+  const unmatchedAddedResources = changeSummary.addedResources.filter(
+    (resource) => !matchedExternalIds.has(resource.externalId)
+  );
+
+  const knownIps = new Set(
+    resources.map((resource) => resource.ip).filter((value): value is string => Boolean(value))
+  );
+  const shadowFlows = flows.filter((flow) => {
+    const sourceKnown = flow.sourceIp ? knownIps.has(flow.sourceIp) : false;
+    const targetKnown = flow.targetIp ? knownIps.has(flow.targetIp) : false;
+    return !sourceKnown || !targetKnown;
+  });
+
+  if (shadowFlows.length > 0) {
+    warnings.push(
+      `${shadowFlows.length} flux réseau impliquent des hôtes non identifiés (shadow IT potentielle)`
+    );
+  }
 
   const createdResources = await prisma.$transaction(async (tx) => {
     const created: Array<{
@@ -133,6 +352,7 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
     }> = [];
 
     for (const resource of resources) {
+      const fingerprint = buildFingerprint(resource);
       const createdResource = await tx.discoveryResource.create({
         data: {
           tenantId: context.tenantId,
@@ -146,8 +366,8 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
           hostname: resource.hostname ?? null,
           tags: resource.tags ?? undefined,
           metadata: resource.metadata ?? undefined,
-          fingerprint: buildFingerprint(resource),
-          discoveredAt: new Date(),
+          fingerprint,
+          discoveredAt: detectedAt,
         },
       });
       created.push({
@@ -171,6 +391,22 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
           score: match.score,
           status: match.status,
         },
+      });
+    }
+
+    if (changeSummary.changes.length > 0) {
+      await tx.discoveryResourceChange.createMany({
+        data: changeSummary.changes.map((change) => ({
+          tenantId: change.tenantId,
+          jobId: change.jobId,
+          source: change.source,
+          externalId: change.externalId,
+          changeType: change.changeType,
+          previousFingerprint: change.previousFingerprint ?? undefined,
+          newFingerprint: change.newFingerprint ?? undefined,
+          metadata: change.metadata ?? undefined,
+          detectedAt: change.detectedAt,
+        })),
       });
     }
 
@@ -238,6 +474,23 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
     createdDependencies,
     createdInfraLinks,
     ignoredEdges,
+    addedResources: changeSummary.addedResources.length,
+    modifiedResources: changeSummary.modifiedResources.length,
+    removedResources: changeSummary.removedResources.length,
+    unmatchedResources: unmatchedAddedResources.length,
+    shadowFlows: shadowFlows.length,
+    newResourceSamples: unmatchedAddedResources.slice(0, 20).map((resource) => ({
+      source: resource.source,
+      externalId: resource.externalId,
+      name: resource.name,
+    })),
+    shadowFlowSamples: shadowFlows.slice(0, 20).map((flow) => ({
+      sourceIp: flow.sourceIp ?? null,
+      targetIp: flow.targetIp ?? null,
+      protocol: flow.protocol ?? null,
+      sourcePort: flow.sourcePort ?? null,
+      targetPort: flow.targetPort ?? null,
+    })),
     warnings,
   };
 }

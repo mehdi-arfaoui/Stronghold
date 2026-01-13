@@ -45,6 +45,22 @@ function scoreTags(resourceTags: string[] | null | undefined, targetName: string
   return matches.length > 0 ? 0.6 : 0;
 }
 
+function scoreIdentifierMatch(resource: DiscoveredResource, targetName: string) {
+  const identifiers = [resource.ip, resource.hostname].filter(Boolean) as string[];
+  if (identifiers.length === 0) return 0;
+  const normalizedTarget = normalizeName(targetName);
+  return identifiers.some((identifier) => {
+    const normalizedIdentifier = normalizeName(identifier);
+    return (
+      normalizedIdentifier === normalizedTarget ||
+      normalizedIdentifier.includes(normalizedTarget) ||
+      normalizedTarget.includes(normalizedIdentifier)
+    );
+  })
+    ? 0.8
+    : 0;
+}
+
 export async function correlateDiscoveryResources(
   tenantId: string,
   resources: DiscoveredResource[]
@@ -66,13 +82,16 @@ export async function correlateDiscoveryResources(
       for (const service of services) {
         const nameScore = scoreSimilarity(resource.name, service.name);
         const tagScore = scoreTags(resource.tags, service.name);
-        const score = Math.max(nameScore, tagScore);
+        const identifierScore = scoreIdentifierMatch(resource, service.name);
+        const score = Math.max(nameScore, tagScore, identifierScore);
+        const strategy =
+          score === identifierScore ? "identifier" : score === tagScore ? "tags" : "name";
         if (!best || score > best.score) {
           best = {
             resourceExternalId: resource.externalId,
             matchType: "service",
             matchId: service.id,
-            strategy: nameScore >= tagScore ? "name" : "tags",
+            strategy,
             score,
             status: score >= 0.7 ? "MATCHED" : "PROPOSED",
           };
@@ -86,13 +105,16 @@ export async function correlateDiscoveryResources(
 
     let best: ResourceMatch | null = null;
     for (const component of infra) {
-      const score = scoreSimilarity(resource.name, component.name);
+      const nameScore = scoreSimilarity(resource.name, component.name);
+      const identifierScore = scoreIdentifierMatch(resource, component.name);
+      const score = Math.max(nameScore, identifierScore);
+      const strategy = score === identifierScore ? "identifier" : "name";
       if (!best || score > best.score) {
         best = {
           resourceExternalId: resource.externalId,
           matchType: "infra",
           matchId: component.id,
-          strategy: "name",
+          strategy,
           score,
           status: score >= 0.75 ? "MATCHED" : "PROPOSED",
         };
