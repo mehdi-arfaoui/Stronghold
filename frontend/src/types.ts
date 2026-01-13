@@ -579,6 +579,67 @@ export type CostEstimate = {
   currency: string;
 };
 
+export type FinancialScenarioId =
+  | "backup_restore"
+  | "pilot_light"
+  | "warm_standby"
+  | "multi_site";
+
+export type FinancialScenarioInputs = {
+  instanceType: string;
+  instanceCount: number;
+  storageGb: number;
+  dataTransferGb: number;
+  snapshotFrequencyPerDay: number;
+  currency: string;
+  awsRegion: string;
+  azureRegion: string;
+  gcpRegion: string;
+};
+
+export type FinancialProviderEstimate = {
+  provider: "aws" | "azure" | "gcp";
+  capex: number;
+  opexMonthly: number;
+  currency: string;
+  breakdown: {
+    compute: number;
+    storage: number;
+    dataTransfer: number;
+    snapshots: number;
+  };
+  unitPrices: {
+    compute: number;
+    storage: number;
+    dataTransfer: number;
+    currency: string;
+  };
+  usage: {
+    computeHours: number;
+    storageGbMonth: number;
+    dataTransferGb: number;
+    snapshotGbMonth: number;
+  };
+  sources: {
+    compute?: string;
+    storage?: string;
+    dataTransfer?: string;
+  };
+};
+
+export type FinancialScenarioEstimate = {
+  scenarioId: FinancialScenarioId;
+  scenarioLabel: string;
+  scenarioDescription: string;
+  inputs: FinancialScenarioInputs;
+  providers: FinancialProviderEstimate[];
+};
+
+export type FinancialComparisonResponse = {
+  generatedAt: string;
+  scenarios: FinancialScenarioEstimate[];
+};
+
 export type PraRagReport = {
   prompt: string;
   promptSize: number;
@@ -800,6 +861,7 @@ export type TabId =
   | "incidents"
   | "discovery"
   | "analysis"
+  | "financier"
   | "graph"
   | "architecture"
   | "landing"

@@ -58,6 +58,9 @@ const RunbooksSection = lazy(() =>
 const AnalysisSection = lazy(() =>
   import("./sections/AnalysisSection").then((module) => ({ default: module.AnalysisSection }))
 );
+const FinancialSection = lazy(() =>
+  import("./sections/FinancialSection").then((module) => ({ default: module.FinancialSection }))
+);
 const RisksSection = lazy(() =>
   import("./sections/RisksSection").then((module) => ({ default: module.RisksSection }))
 );
@@ -94,6 +97,7 @@ const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> 
   rag: RagSection,
   runbooks: RunbooksSection,
   analysis: AnalysisSection,
+  financier: FinancialSection,
   risks: RisksSection,
   graph: GraphSection,
   architecture: ArchitectureSection,

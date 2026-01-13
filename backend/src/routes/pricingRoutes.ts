@@ -8,6 +8,7 @@ import { summarizePricing } from "../clients/pricingTypes.js";
 import { fetchAwsPricingProducts } from "../services/awsPricingService.js";
 import { fetchAzureRetailPrices } from "../services/azurePricingService.js";
 import { fetchGcpSkus } from "../services/gcpPricingService.js";
+import { buildScenarioComparison } from "../services/costEstimator.js";
 
 const router = Router();
 
@@ -200,6 +201,38 @@ router.post("/gcp/skus", requireRole("READER"), async (req: TenantRequest, res) 
   } catch (error: any) {
     return res.status(502).json({
       error: "Impossible de joindre GCP Cloud Billing Catalog API.",
+      details: error?.message ?? "Unknown error",
+    });
+  }
+});
+
+router.post("/scenario-estimates", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const payload = req.body ?? {};
+    const response = await buildScenarioComparison({
+      instanceType: typeof payload.instanceType === "string" ? payload.instanceType : undefined,
+      instanceCount: payload.instanceCount,
+      storageGb: payload.storageGb,
+      dataTransferGb: payload.dataTransferGb,
+      snapshotFrequencyPerDay: payload.snapshotFrequencyPerDay,
+      currency: typeof payload.currency === "string" ? payload.currency : undefined,
+      awsRegion: typeof payload.awsRegion === "string" ? payload.awsRegion : undefined,
+      azureRegion: typeof payload.azureRegion === "string" ? payload.azureRegion : undefined,
+      gcpRegion: typeof payload.gcpRegion === "string" ? payload.gcpRegion : undefined,
+      awsLocation: typeof payload.awsLocation === "string" ? payload.awsLocation : undefined,
+      gcpComputeServiceId:
+        typeof payload.gcpComputeServiceId === "string" ? payload.gcpComputeServiceId : undefined,
+      gcpStorageServiceId:
+        typeof payload.gcpStorageServiceId === "string" ? payload.gcpStorageServiceId : undefined,
+      gcpNetworkServiceId:
+        typeof payload.gcpNetworkServiceId === "string" ? payload.gcpNetworkServiceId : undefined,
+      providers: Array.isArray(payload.providers) ? payload.providers : undefined,
+    });
+
+    return res.json(response);
+  } catch (error: any) {
+    return res.status(502).json({
+      error: "Impossible de calculer les estimations financières multi-cloud.",
       details: error?.message ?? "Unknown error",
     });
   }
