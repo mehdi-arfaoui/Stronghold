@@ -1,0 +1,578 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`AppLayout > renders sidebar navigation and matches snapshot 1`] = `
+<div>
+  <div
+    class="app-layout"
+  >
+    <header
+      class="app-header"
+    >
+      <div
+        class="app-header-inner"
+      >
+        <div
+          class="header-brand"
+        >
+          <button
+            aria-controls="app-sidebar"
+            aria-expanded="false"
+            class="menu-toggle"
+            type="button"
+          >
+            <span
+              aria-hidden="true"
+              class="menu-icon"
+            >
+              <span />
+              <span />
+              <span />
+            </span>
+            <span
+              class="sr-only"
+            >
+              Navigation
+            </span>
+          </button>
+          <a
+            aria-label="Stronghold"
+            class="header-logo"
+            href="/"
+          >
+            <span
+              aria-hidden="true"
+              class="logo-mark"
+            >
+              SH
+            </span>
+            <span
+              class="logo-text"
+            >
+              Stronghold
+            </span>
+          </a>
+        </div>
+        <div
+          class="header-actions"
+        >
+          <button
+            class="btn subtle"
+            type="button"
+          >
+            Démarrer un PRA
+          </button>
+          <div
+            class="header-control"
+          >
+            <label
+              class="sr-only"
+              for="language-switch"
+            >
+              Langue
+            </label>
+            <select
+              aria-label="Langue"
+              id="language-switch"
+            >
+              <option
+                value="fr"
+              >
+                FR
+              </option>
+              <option
+                value="en"
+              >
+                EN
+              </option>
+            </select>
+          </div>
+          <button
+            aria-label="Thème"
+            aria-pressed="false"
+            class="btn subtle"
+            type="button"
+          >
+            Clair
+          </button>
+        </div>
+      </div>
+    </header>
+    <div
+      class="app-body"
+    >
+      <div
+        class="sidebar-backdrop "
+        role="presentation"
+      />
+      <aside
+        aria-label="Navigation principale"
+        class="app-sidebar "
+        id="app-sidebar"
+      >
+        <div
+          class="sidebar-header"
+        >
+          <p
+            class="sidebar-title"
+          >
+            Navigation
+          </p>
+          <button
+            class="btn subtle"
+            type="button"
+          >
+            Fermer
+          </button>
+        </div>
+        <nav
+          aria-label="Navigation principale"
+          class="nav-menu vertical"
+        >
+          <div
+            class="nav-menu-groups"
+          >
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Général
+              </p>
+              <ul>
+                <li>
+                  <a
+                    aria-current="page"
+                    class="active"
+                    href="/"
+                  >
+                    Accueil
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/configuration"
+                  >
+                    Configuration
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/navigation"
+                  >
+                    Navigation
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Services + Infrastructure
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/services"
+                  >
+                    Services
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/discovery"
+                  >
+                    Découverte
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/architecture"
+                  >
+                    Architecture
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/landing"
+                  >
+                    Landing Zone
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/graph"
+                  >
+                    Graphes
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/continuity"
+                  >
+                    Continuité
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Documents + IA
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/documents"
+                  >
+                    Documents
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/rag"
+                  >
+                    RAG/PRA
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Analyses BIA + Risques
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/bia"
+                  >
+                    BIA
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/risks"
+                  >
+                    Risques
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/analysis"
+                  >
+                    Analyse PRA
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Scénarios + Runbooks
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/scenarios"
+                  >
+                    Scénarios
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/runbooks"
+                  >
+                    Runbooks
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Incidents
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/incidents"
+                  >
+                    Incidents
+                  </a>
+                </li>
+              </ul>
+            </div>
+            <div
+              class="nav-menu-group"
+            >
+              <p
+                class="nav-menu-title"
+              >
+                Administration
+              </p>
+              <ul>
+                <li>
+                  <a
+                    href="/auth"
+                  >
+                    Auth (ADMIN)
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/audit"
+                  >
+                    Audit (ADMIN)
+                  </a>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </nav>
+        <section
+          aria-labelledby="wizard-progress-title"
+          class="wizard-progress"
+        >
+          <div
+            class="wizard-progress-header"
+          >
+            <p
+              class="eyebrow"
+            >
+              Parcours guidé
+            </p>
+            <h3
+              id="wizard-progress-title"
+            >
+              Progression du parcours
+            </h3>
+            <p
+              class="muted small"
+            >
+              1/7 étapes complétées
+            </p>
+          </div>
+          <div
+            aria-label="Progression du parcours"
+            aria-valuemax="100"
+            aria-valuemin="0"
+            aria-valuenow="14"
+            class="wizard-progress-bar"
+            role="progressbar"
+          >
+            <span
+              style="width: 14%;"
+            />
+          </div>
+          <ol
+            class="wizard-progress-steps"
+          >
+            <li
+              class="completed"
+            >
+              <button
+                aria-current="step"
+                class="wizard-step active"
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  ✓
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Cartographier les services
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    Terminé
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  2
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Centraliser les documents
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  3
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Conduire le BIA
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  4
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Qualifier les risques
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  5
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Construire les scénarios
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  6
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Produire le rapport PRA
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+            <li>
+              <button
+                class="wizard-step "
+                type="button"
+              >
+                <span
+                  aria-hidden="true"
+                  class="wizard-step-index"
+                >
+                  7
+                </span>
+                <span
+                  class="wizard-step-label"
+                >
+                  <span>
+                    Finaliser les runbooks
+                  </span>
+                  <span
+                    class="muted small"
+                  >
+                    À venir
+                  </span>
+                </span>
+              </button>
+            </li>
+          </ol>
+        </section>
+      </aside>
+      <main
+        class="main-content"
+        id="main-content"
+      >
+        <div>
+          Content
+        </div>
+      </main>
+    </div>
+  </div>
+</div>
+`;

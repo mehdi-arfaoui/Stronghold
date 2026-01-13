@@ -1,6 +1,8 @@
 import type { HomeStep, HomeStepId } from "../home/HomePage";
+import type { TranslationCopy } from "../../i18n/translations";
 
 interface AssistantPanelProps {
+  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -8,6 +10,7 @@ interface AssistantPanelProps {
 }
 
 export function AssistantPanel({
+  copy,
   steps,
   activeStepId,
   completedSteps,
@@ -23,10 +26,10 @@ export function AssistantPanel({
   return (
     <aside className="assistant-panel" aria-live="polite">
       <div className="assistant-panel-header">
-        <p className="assistant-eyebrow">Assistant</p>
-        <h3>Votre parcours PRA</h3>
+        <p className="assistant-eyebrow">{copy.assistantEyebrow}</p>
+        <h3>{copy.assistantTitle}</h3>
         <p className="muted">
-          {completedCount}/{steps.length} étapes complétées · {progressPercent}% terminé
+          {copy.assistantProgress(completedCount, steps.length, progressPercent)}
         </p>
       </div>
 
@@ -38,7 +41,7 @@ export function AssistantPanel({
 
       {activeIndex !== -1 && (
         <div className="assistant-section">
-          <p className="assistant-label">Étape en cours</p>
+          <p className="assistant-label">{copy.assistantCurrentStep}</p>
           <p className="assistant-title">{steps[activeIndex].title}</p>
           <p className="muted small">{steps[activeIndex].description}</p>
         </div>
@@ -46,7 +49,7 @@ export function AssistantPanel({
 
       {nextStep && (
         <div className="assistant-section">
-          <p className="assistant-label">Prochaine étape</p>
+          <p className="assistant-label">{copy.assistantNextStep}</p>
           <p className="assistant-title">{nextStep.title}</p>
           <p className="muted small">{nextStep.description}</p>
           {onStepAction && hasNextAction && (
@@ -55,17 +58,15 @@ export function AssistantPanel({
               className="btn primary"
               onClick={() => onStepAction(nextStep.id)}
             >
-              Passer à {nextStep.actionLabel.toLowerCase()}
+              {copy.assistantJumpTo(nextStep.actionLabel)}
             </button>
           )}
         </div>
       )}
 
       <div className="assistant-section">
-        <p className="assistant-label">Conseil</p>
-        <p className="muted small">
-          Révisez les livrables à chaque étape pour assurer la cohérence des runbooks.
-        </p>
+        <p className="assistant-label">{copy.assistantAdviceTitle}</p>
+        <p className="muted small">{copy.assistantAdviceBody}</p>
       </div>
     </aside>
   );

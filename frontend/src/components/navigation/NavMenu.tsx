@@ -1,4 +1,5 @@
 import { NavLink as RouterNavLink } from "react-router-dom";
+import "./NavMenu.css";
 
 export interface NavLink {
   id: string;
@@ -17,9 +18,16 @@ interface NavMenuProps {
   groups?: NavGroup[];
   onNavigate?: () => void;
   variant?: "horizontal" | "vertical";
+  ariaLabel?: string;
 }
 
-export function NavMenu({ links = [], groups = [], onNavigate, variant = "horizontal" }: NavMenuProps) {
+export function NavMenu({
+  links = [],
+  groups = [],
+  onNavigate,
+  variant = "horizontal",
+  ariaLabel = "Navigation principale",
+}: NavMenuProps) {
   const hasGroups = groups.length > 0;
   const renderLinks = (items: NavLink[]) => (
     <ul>
@@ -38,7 +46,7 @@ export function NavMenu({ links = [], groups = [], onNavigate, variant = "horizo
   );
 
   return (
-    <nav className={`nav-menu ${variant}`} aria-label="Navigation principale">
+    <nav className={`nav-menu ${variant}`} aria-label={ariaLabel}>
       {hasGroups ? (
         <div className="nav-menu-groups">
           {groups.map((group) => (
