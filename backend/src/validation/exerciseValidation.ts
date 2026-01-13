@@ -9,9 +9,11 @@ import {
 
 export const EXERCISE_STATUSES = ["planned", "in_progress", "completed", "canceled"] as const;
 export const EXERCISE_RESULT_STATUSES = ["success", "failure", "partial"] as const;
+export const EXERCISE_SIMULATORS = ["infection_monkey", "atomic_red_team"] as const;
 
 export type ExerciseStatus = (typeof EXERCISE_STATUSES)[number];
 export type ExerciseResultStatus = (typeof EXERCISE_RESULT_STATUSES)[number];
+export type ExerciseSimulator = (typeof EXERCISE_SIMULATORS)[number];
 
 function parseRequiredDate(value: unknown, field: string, issues: ValidationIssue[]) {
   if (value === null || value === undefined) {
@@ -103,6 +105,61 @@ export function parseExerciseResultPayload(payload: any) {
       comments,
       startedAt,
       completedAt,
+    },
+  };
+}
+
+export function parseExerciseSimulationPayload(payload: any) {
+  const issues: ValidationIssue[] = [];
+  const simulator = parseOptionalEnum(payload?.simulator, "simulator", issues, [...EXERCISE_SIMULATORS]);
+  if (!simulator) {
+    issues.push({ field: "simulator", message: "champ requis" });
+  }
+  const durationHours = parseOptionalNumber(payload?.durationHours, "durationHours", issues, {
+    min: 1,
+    allowNull: true,
+  });
+  const targets = parseStringArray(payload?.targets, "targets", issues) ?? [];
+  const participants = parseStringArray(payload?.participants, "participants", issues) ?? [];
+  const objectives = parseStringArray(payload?.objectives, "objectives", issues) ?? [];
+  const scenarioLibraryId = parseOptionalString(payload?.scenarioLibraryId, "scenarioLibraryId", issues);
+  const connectorUrl = parseOptionalString(payload?.connectorUrl, "connectorUrl", issues, { allowNull: true });
+  const connectorType = parseOptionalString(payload?.connectorType, "connectorType", issues, { allowNull: true });
+
+  return {
+    issues,
+    data: {
+      simulator: simulator as ExerciseSimulator | undefined,
+      durationHours,
+      targets,
+      participants,
+      objectives,
+      scenarioLibraryId,
+      connectorUrl,
+      connectorType,
+    },
+  };
+}
+
+export function parseExerciseAssistantPayload(payload: any) {
+  const issues: ValidationIssue[] = [];
+  const durationHours = parseOptionalNumber(payload?.durationHours, "durationHours", issues, {
+    min: 1,
+    allowNull: true,
+  });
+  const targets = parseStringArray(payload?.targets, "targets", issues) ?? [];
+  const participants = parseStringArray(payload?.participants, "participants", issues) ?? [];
+  const objectives = parseStringArray(payload?.objectives, "objectives", issues) ?? [];
+  const scenarioLibraryId = parseOptionalString(payload?.scenarioLibraryId, "scenarioLibraryId", issues);
+
+  return {
+    issues,
+    data: {
+      durationHours,
+      targets,
+      participants,
+      objectives,
+      scenarioLibraryId,
     },
   };
 }

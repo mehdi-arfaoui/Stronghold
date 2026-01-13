@@ -8,10 +8,15 @@ import {
 import {
   parseChecklistUpdatePayload,
   parseExerciseCreatePayload,
+  parseExerciseAssistantPayload,
   parseExerciseResultPayload,
+  parseExerciseSimulationPayload,
   parseExerciseUpdatePayload,
 } from "../validation/exerciseValidation.js";
 import { buildExerciseAnalysis } from "../services/exerciseAnalysisService.js";
+import { runCyberSimulation } from "../services/cyberSimulationService.js";
+import { buildExerciseAssistantReport } from "../services/exerciseAssistantService.js";
+import { getCyberScenarioDetails, resolveCyberScenarioFromType } from "../services/cyberScenarioService.js";
 
 const router = Router();
 
@@ -432,6 +437,96 @@ router.get("/:id/report", requireRole("READER"), async (req: TenantRequest, res)
     });
   } catch (error: any) {
     console.error("Error generating exercise report", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/assistant", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const { issues, data } = parseExerciseAssistantPayload(req.body || {});
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const exercise = await prisma.exercise.findFirst({
+      where: { id: req.params.id, tenantId },
+      include: { scenario: true },
+    });
+
+    if (!exercise) {
+      return res.status(404).json({ error: "Exercice introuvable" });
+    }
+
+    const scenario = data.scenarioLibraryId
+      ? getCyberScenarioDetails(data.scenarioLibraryId)
+      : resolveCyberScenarioFromType(exercise.scenario?.type);
+
+    const output = buildExerciseAssistantReport(
+      scenario,
+      {
+        durationHours: data.durationHours ?? null,
+        targets: data.targets,
+        participants: data.participants,
+        objectives: data.objectives,
+      },
+      exercise.title
+    );
+
+    return res.json({
+      exerciseId: exercise.id,
+      scenarioLibraryId: scenario?.id ?? null,
+      ...output,
+    });
+  } catch (error: any) {
+    console.error("Error generating exercise assistant report", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/:id/simulations", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const { issues, data } = parseExerciseSimulationPayload(req.body || {});
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const simulation = await runCyberSimulation(tenantId, req.params.id, {
+      simulator: data.simulator!,
+      durationHours: data.durationHours ?? null,
+      targets: data.targets,
+      participants: data.participants,
+      objectives: data.objectives,
+      scenarioLibraryId: data.scenarioLibraryId ?? null,
+      connectorUrl: data.connectorUrl ?? null,
+      connectorType: data.connectorType ?? null,
+    });
+
+    return res.status(201).json(simulation);
+  } catch (error: any) {
+    console.error("Error running cyber simulation", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/:id/simulations", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = ensureTenant(req, res);
+    if (!tenantId) return;
+
+    const simulations = await prisma.exerciseSimulation.findMany({
+      where: { tenantId, exerciseId: req.params.id },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return res.json(simulations);
+  } catch (error: any) {
+    console.error("Error fetching simulations", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
