@@ -119,6 +119,7 @@
 
 .app-body.sidebar-closed {
   grid-template-columns: minmax(0, 0) minmax(0, 1fr);
+  gap: 0;
 }
 
 .app-body.sidebar-closed .app-sidebar {

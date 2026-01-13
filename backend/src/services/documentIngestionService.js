@@ -51,6 +51,7 @@ const documentIntelligenceService_1 = require("./documentIntelligenceService");
 const s3Client_1 = require("../clients/s3Client");
 const metrics_1 = require("../observability/metrics");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
+const OCR_TESSERACT_MISSING_MESSAGE = "OCR indisponible (tesseract manquant). Consultez TROUBLESHOOTING.md#ocr-indisponible-tesseract-manquant pour l'installation.";
 async function fileExists(filePath) {
     try {
         await fs.promises.access(filePath, fs.constants.R_OK);
@@ -122,7 +123,7 @@ async function extractTextWithOcr(filePath) {
     }
     catch (err) {
         if ((err === null || err === void 0 ? void 0 : err.code) === "ENOENT") {
-            throw new Error("OCR indisponible (tesseract manquant)");
+            throw new Error(OCR_TESSERACT_MISSING_MESSAGE);
         }
         throw err;
     }

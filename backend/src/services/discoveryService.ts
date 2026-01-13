@@ -94,6 +94,25 @@ export class DiscoveryImportError extends Error {
   }
 }
 
+export class DiscoveryGitHubImportError extends Error {
+  details: DiscoveryImportErrorDetail[];
+
+  constructor(message: string, details: DiscoveryImportErrorDetail[]) {
+    super(message);
+    this.name = "DiscoveryGitHubImportError";
+    this.details = details;
+  }
+}
+
+type DiscoveryGitHubSource = {
+  repoUrl?: string;
+  filePath?: string;
+  ref?: string;
+  rawUrl?: string;
+};
+
+const MAX_GITHUB_IMPORT_BYTES = 5 * 1024 * 1024;
+
 const expectedCsvHeaders = [
   "record_type",
   "id",
@@ -465,6 +484,117 @@ function parseJsonPayload(content: string): DiscoveryImportResult {
   ensurePayloadSchema(payload);
 
   return { payload, report: { rejectedRows: 0, rejectedEntries: [] } };
+}
+
+function sanitizeGitHubFilePath(filePath: string) {
+  return filePath.replace(/^\/+/, "").trim();
+}
+
+function buildRawGitHubUrlFromRepo(source: DiscoveryGitHubSource) {
+  const repoUrl = source.repoUrl;
+  const filePath = source.filePath;
+  if (!repoUrl || !filePath) {
+    throw new DiscoveryGitHubImportError("Paramètres GitHub incomplets", [
+      { field: "repoUrl", message: "repoUrl et filePath sont requis" },
+    ]);
+  }
+  const url = new URL(repoUrl);
+  if (url.hostname !== "github.com") {
+    throw new DiscoveryGitHubImportError("Hôte GitHub invalide", [
+      { field: "repoUrl", message: "URL github.com requise" },
+    ]);
+  }
+  const segments = url.pathname.replace(/^\/+/, "").replace(/\.git$/, "").split("/");
+  const owner = segments[0];
+  const repo = segments[1];
+  if (!owner || !repo) {
+    throw new DiscoveryGitHubImportError("URL GitHub invalide", [
+      { field: "repoUrl", message: "Organisation et dépôt requis" },
+    ]);
+  }
+  const ref = (source.ref || "main").trim() || "main";
+  const normalizedPath = sanitizeGitHubFilePath(filePath);
+  if (!normalizedPath) {
+    throw new DiscoveryGitHubImportError("Chemin de fichier invalide", [
+      { field: "filePath", message: "filePath est requis" },
+    ]);
+  }
+  return {
+    rawUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${normalizedPath}`,
+    filename: normalizedPath.split("/").pop() || "discovery.json",
+  };
+}
+
+function buildRawGitHubUrlFromRaw(rawUrl: string) {
+  const url = new URL(rawUrl);
+  if (url.hostname === "raw.githubusercontent.com") {
+    return { rawUrl, filename: url.pathname.split("/").pop() || "discovery.json" };
+  }
+  if (url.hostname !== "github.com") {
+    throw new DiscoveryGitHubImportError("URL GitHub invalide", [
+      { field: "rawUrl", message: "URL github.com ou raw.githubusercontent.com requise" },
+    ]);
+  }
+  const segments = url.pathname.replace(/^\/+/, "").split("/");
+  const blobIndex = segments.indexOf("blob");
+  const rawIndex = segments.indexOf("raw");
+  if (blobIndex > 1 || rawIndex > 1) {
+    const index = blobIndex > -1 ? blobIndex : rawIndex;
+    const owner = segments[0];
+    const repo = segments[1];
+    const ref = segments[index + 1];
+    const path = segments.slice(index + 2).join("/");
+    if (!owner || !repo || !ref || !path) {
+      throw new DiscoveryGitHubImportError("URL GitHub invalide", [
+        { field: "rawUrl", message: "Lien blob/raw GitHub incomplet" },
+      ]);
+    }
+    return {
+      rawUrl: `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`,
+      filename: path.split("/").pop() || "discovery.json",
+    };
+  }
+  throw new DiscoveryGitHubImportError("URL GitHub invalide", [
+    { field: "rawUrl", message: "Utilisez un lien raw ou blob GitHub" },
+  ]);
+}
+
+export async function fetchDiscoveryImportFromGitHub(source: DiscoveryGitHubSource) {
+  const { rawUrl, filename } = source.rawUrl
+    ? buildRawGitHubUrlFromRaw(source.rawUrl)
+    : buildRawGitHubUrlFromRepo(source);
+
+  let response: Response;
+  try {
+    response = await fetch(rawUrl, { headers: { "User-Agent": "Stronghold-Discovery" } });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erreur réseau";
+    throw new DiscoveryGitHubImportError("Impossible de joindre GitHub", [
+      { field: "rawUrl", message },
+    ]);
+  }
+
+  if (!response.ok) {
+    throw new DiscoveryGitHubImportError("Téléchargement GitHub échoué", [
+      { field: "rawUrl", message: `HTTP ${response.status}` },
+    ]);
+  }
+
+  const contentLength = response.headers.get("content-length");
+  if (contentLength && Number(contentLength) > MAX_GITHUB_IMPORT_BYTES) {
+    throw new DiscoveryGitHubImportError("Fichier GitHub trop volumineux", [
+      { field: "rawUrl", message: "Limite 5 Mo" },
+    ]);
+  }
+
+  const text = await response.text();
+  if (text.length > MAX_GITHUB_IMPORT_BYTES) {
+    throw new DiscoveryGitHubImportError("Fichier GitHub trop volumineux", [
+      { field: "rawUrl", message: "Limite 5 Mo" },
+    ]);
+  }
+
+  return { buffer: Buffer.from(text), filename };
 }
 
 export function parseDiscoveryImport(

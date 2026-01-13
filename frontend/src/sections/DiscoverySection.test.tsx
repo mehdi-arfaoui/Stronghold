@@ -11,7 +11,7 @@ vi.mock("../utils/api", () => ({
 }));
 
 describe("DiscoverySection", () => {
-  it("renders a non-empty discovery page", () => {
+  it("renders a non-empty discovery page", async () => {
     render(<DiscoverySection configVersion={0} />);
 
     expect(screen.getByText("Découverte")).toBeInTheDocument();
@@ -19,5 +19,9 @@ describe("DiscoverySection", () => {
     expect(
       screen.getByRole("heading", { name: "Importer un export CSV/JSON" })
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Importer depuis un dépôt GitHub" })
+    ).toBeInTheDocument();
+    expect(await screen.findByText("Aucune découverte en cours")).toBeInTheDocument();
   });
 });

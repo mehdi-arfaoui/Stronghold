@@ -39,6 +39,7 @@ describe("AppLayout", () => {
     expect(
       screen.getByRole("navigation", { name: TRANSLATIONS.fr.sidebarTitle })
     ).toBeInTheDocument();
+    expect(document.querySelector(".app-body")).toHaveClass("sidebar-closed");
   });
 
   it("toggles the menu button", async () => {
