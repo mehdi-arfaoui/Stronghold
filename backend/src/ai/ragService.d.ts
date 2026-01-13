@@ -39,7 +39,7 @@ export type RagScenarioRecommendation = {
     matchedServices: string[];
 };
 export type { RagChunkCandidate } from "./ragRanking";
-export { fuseChunkScores, rerankChunksRrf } from "./ragRanking";
+export { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } from "./ragRanking";
 export declare function retrieveRagContext(options: RagQueryOptions): Promise<{
     context: RagContext;
     usedDocumentIds: string[];

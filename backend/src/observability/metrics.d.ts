@@ -7,6 +7,11 @@ export declare function recordRagRecall(params: {
     rankedDocumentIds: string[];
     ks: number[];
 }): void;
+export declare function recordRagMrr(params: {
+    tenantId: string;
+    relevantDocumentIds: string[];
+    rankedDocumentIds: string[];
+}): void;
 export declare function getMetricsSnapshot(): {
     extraction: {
         failureRate: number;
@@ -51,9 +56,19 @@ export declare function getMetricsSnapshot(): {
         count: number;
         lastValue: number;
     }>;
+    ragMrr: {
+        average: number;
+        count: number;
+        lastValue: number;
+    };
     ragRecallPerTenant: Record<string, Record<string, {
         average: number;
         count: number;
         lastValue: number;
     }>>;
+    ragMrrPerTenant: Record<string, {
+        average: number;
+        count: number;
+        lastValue: number;
+    }>;
 };

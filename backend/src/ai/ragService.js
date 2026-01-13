@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
   return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateRunbookDraft = exports.generatePraReport = exports.recommendScenariosWithRag = exports.buildRagPrompt = exports.draftAnswerFromContext = exports.retrieveRagContext = exports.rerankChunksRrf = exports.fuseChunkScores = void 0;
+exports.generateRunbookDraft = exports.generatePraReport = exports.recommendScenariosWithRag = exports.buildRagPrompt = exports.draftAnswerFromContext = exports.retrieveRagContext = exports.rerankChunksRrf = exports.rerankChunksCrossEncoder = exports.fuseChunkScores = void 0;
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const client_1 = require("@prisma/client");
 const drStrategyEngine_1 = require("../analysis/drStrategyEngine");
@@ -14,8 +14,11 @@ const ragRanking_1 = require("./ragRanking");
 const elasticlunr_1 = __importDefault(require("elasticlunr"));
 const crypto_1 = __importDefault(require("node:crypto"));
 exports.fuseChunkScores = ragRanking_1.fuseChunkScores;
+exports.rerankChunksCrossEncoder = ragRanking_1.rerankChunksCrossEncoder;
 exports.rerankChunksRrf = ragRanking_1.rerankChunksRrf;
-const MAX_CHARS_PER_CHUNK = 900;
+const BASE_CHARS_PER_CHUNK = 900;
+const MIN_CHARS_PER_CHUNK = 480;
+const MAX_CHARS_PER_CHUNK = 1200;
 const MAX_CHARS_PER_FACT = 320;
 const DEFAULT_MAX_CHUNKS = 6;
 const DEFAULT_MAX_FACTS = 8;
@@ -119,12 +122,34 @@ function buildChunkKey(documentId, text) {
   const hash = crypto_1.default.createHash("sha256").update(`${documentId}:${text}`).digest("hex");
   return `${documentId}:${hash}`;
 }
-function buildChunkTextCandidates(text, maxChunks) {
+function computeChunkSizeForDocument(text) {
+  const cleaned = sanitizeText(text);
+  if (!cleaned)
+    return BASE_CHARS_PER_CHUNK;
+  const sentences = splitIntoSentences(cleaned);
+  const sentenceCount = Math.max(1, sentences.length);
+  const avgSentenceLength = cleaned.length / sentenceCount;
+  const lineCount = text.split(/\n+/).filter(Boolean).length;
+  const lineRatio = lineCount / sentenceCount;
+  const density = infoDensity(cleaned);
+  let target = BASE_CHARS_PER_CHUNK;
+  if (lineRatio > 1.4 || avgSentenceLength < 80) {
+    target = 650;
+  }
+  if (density > 0.28 && avgSentenceLength > 140) {
+    target = 1050;
+  }
+  if (cleaned.length < 1400) {
+    target = Math.min(target, 600);
+  }
+  return Math.max(MIN_CHARS_PER_CHUNK, Math.min(MAX_CHARS_PER_CHUNK, Math.round(target)));
+}
+function buildChunkTextCandidates(text, maxChunks, maxLength) {
   const cleaned = sanitizeText(text);
   if (!cleaned)
     return [];
   const sentences = splitIntoSentences(cleaned);
-  const chunks = buildSentenceChunks(sentences, MAX_CHARS_PER_CHUNK);
+  const chunks = buildSentenceChunks(sentences, maxLength);
   if (chunks.length <= maxChunks)
     return chunks;
   return chunks.slice(0, maxChunks);
@@ -137,7 +162,11 @@ function parseAlpha(value) {
 }
 function parseRerankStrategy(value) {
   const normalized = (value || "").toLowerCase();
-  return normalized === "rrf" ? "rrf" : "none";
+  if (normalized === "rrf")
+    return "rrf";
+  if (normalized === "cross" || normalized === "cross-encoder")
+    return "cross";
+  return "none";
 }
 function parseRecallKs(value) {
   if (!value)
@@ -147,6 +176,30 @@ function parseRecallKs(value) {
     .map((part) => Number(part.trim()))
     .filter((num) => Number.isFinite(num) && num > 0);
   return parsed.length > 0 ? parsed : DEFAULT_RECALL_KS;
+}
+function parseCrossWeights(value) {
+  if (!value) {
+    return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
+  }
+  const parts = value
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((num) => Number.isFinite(num) && num >= 0);
+  if (parts.length !== 3) {
+    return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
+  }
+  return { lexical: parts[0], vector: parts[1], bm25: parts[2] };
+}
+function buildRankedDocumentIds(chunks) {
+  const ranked = [];
+  const seen = new Set();
+  for (const chunk of chunks) {
+    if (!seen.has(chunk.documentId)) {
+      ranked.push(chunk.documentId);
+      seen.add(chunk.documentId);
+    }
+  }
+  return ranked;
 }
 function buildFactPreview(fact) {
   const parsed = fact.data && fact.data.length > 0
@@ -225,14 +278,16 @@ async function retrieveLexicalRagContext(options) {
   ]);
   const chunkDocs = [];
   for (const doc of documents) {
-    const chunks = buildChunkTextCandidates(doc.textContent || "", DEFAULT_LEXICAL_CHUNKS_PER_DOC);
+    const rawText = doc.textContent || "";
+    const chunkSize = computeChunkSizeForDocument(rawText);
+    const chunks = buildChunkTextCandidates(rawText, DEFAULT_LEXICAL_CHUNKS_PER_DOC, chunkSize);
     for (const chunk of chunks) {
       chunkDocs.push({
         chunkKey: buildChunkKey(doc.id, chunk),
         documentId: doc.id,
         documentName: doc.originalName,
         documentType: doc.docType,
-        text: clampText(chunk, MAX_CHARS_PER_CHUNK),
+        text: clampText(chunk, chunkSize),
         score: 0,
         bm25Score: 0,
       });
@@ -425,12 +480,17 @@ async function retrieveRagContext(options) {
       },
     };
     if (options.documentIds && options.documentIds.length > 0) {
-      const rankedDocIds = Array.from(new Set(trimmedLexical.context.chunks.map((chunk) => chunk.documentId)));
+      const rankedDocIds = buildRankedDocumentIds(trimmedLexical.context.chunks);
       (0, metrics_1.recordRagRecall)({
         tenantId: options.tenantId,
         relevantDocumentIds: options.documentIds,
         rankedDocumentIds: rankedDocIds,
         ks: parseRecallKs(process.env.RAG_RECALL_KS),
+      });
+      (0, metrics_1.recordRagMrr)({
+        tenantId: options.tenantId,
+        relevantDocumentIds: options.documentIds,
+        rankedDocumentIds: rankedDocIds,
       });
     }
     return trimmedLexical;
@@ -467,6 +527,9 @@ async function retrieveRagContext(options) {
       vector: vectorRanking,
       bm25: bm25Ranking,
     });
+  } else if (rerankStrategy === "cross") {
+    const questionText = `${options.question} ${options.serviceFilter || ""}`.trim();
+    rerankedCandidates = (0, ragRanking_1.rerankChunksCrossEncoder)(fusedCandidates, questionText, parseCrossWeights(process.env.RAG_CROSS_WEIGHTS));
   }
   const finalChunks = rerankedCandidates
     .sort((a, b) => b.score - a.score)
@@ -478,13 +541,18 @@ async function retrieveRagContext(options) {
       score: chunk.score,
       text: chunk.text,
     }));
-  const usedDocumentIds = Array.from(new Set(finalChunks.map((chunk) => chunk.documentId)));
+  const usedDocumentIds = buildRankedDocumentIds(finalChunks);
   if (options.documentIds && options.documentIds.length > 0) {
     (0, metrics_1.recordRagRecall)({
       tenantId: options.tenantId,
       relevantDocumentIds: options.documentIds,
       rankedDocumentIds: usedDocumentIds,
       ks: parseRecallKs(process.env.RAG_RECALL_KS),
+    });
+    (0, metrics_1.recordRagMrr)({
+      tenantId: options.tenantId,
+      relevantDocumentIds: options.documentIds,
+      rankedDocumentIds: usedDocumentIds,
     });
   }
   const extractedFacts = vectorResult.context.extractedFacts.length > 0
