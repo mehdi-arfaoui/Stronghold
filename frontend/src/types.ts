@@ -778,6 +778,15 @@ export type RunbookFront = {
   updatedAt?: string;
 };
 
+export type ExerciseFront = {
+  id: string;
+  title: string;
+  status: string;
+  scheduledAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type RunbookTemplateFront = {
   id: string;
   originalName: string;
@@ -871,7 +880,8 @@ export type TabId =
   | "runbooks"
   | "risks"
   | "auth"
-  | "audit";
+  | "audit"
+  | "compliance";
 
 export type TabDefinition = {
   id: TabId;

@@ -194,6 +194,7 @@ export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
     bia: { label: "BIA", description: "Processus & impacts" },
     risks: { label: "Risques", description: "Menaces & matrices" },
     analysis: { label: "Analyse PRA", description: "Contrôles et risques" },
+    compliance: { label: "Conformité", description: "ISO 22301 & SecNumCloud" },
     financier: { label: "Financier", description: "Comparatif multi-cloud" },
     scenarios: { label: "Scénarios", description: "Runbooks" },
     runbooks: { label: "Runbooks", description: "Génération & exports" },
@@ -213,6 +214,7 @@ export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
     bia: { label: "BIA", description: "Processes & impacts" },
     risks: { label: "Risks", description: "Threats & matrices" },
     analysis: { label: "DRP analysis", description: "Controls and risks" },
+    compliance: { label: "Compliance", description: "ISO 22301 & SecNumCloud" },
     financier: { label: "Financial", description: "Multi-cloud comparison" },
     scenarios: { label: "Scenarios", description: "Runbooks" },
     runbooks: { label: "Runbooks", description: "Generation & exports" },
@@ -298,11 +300,13 @@ export const GENERAL_NAV_LABELS: Record<Language, Record<string, string>> = {
     home: "Accueil",
     configuration: "Configuration",
     navigation: "Navigation",
+    compliance: "Conformité",
   },
   en: {
     home: "Home",
     configuration: "Configuration",
     navigation: "Navigation",
+    compliance: "Compliance",
   },
 };
 
