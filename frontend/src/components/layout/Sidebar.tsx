@@ -14,6 +14,7 @@ interface SidebarProps {
   onStepAction: (stepId: HomeStepId) => void;
   isOpen: boolean;
   onClose: () => void;
+  isNavigationLocked?: boolean;
 }
 
 export function Sidebar({
@@ -26,6 +27,7 @@ export function Sidebar({
   onStepAction,
   isOpen,
   onClose,
+  isNavigationLocked = false,
 }: SidebarProps) {
   return (
     <>
@@ -46,6 +48,7 @@ export function Sidebar({
           onNavigate={onClose}
           variant="vertical"
           ariaLabel={copy.sidebarTitle}
+          disabled={isNavigationLocked}
         />
         <WizardProgress
           copy={copy}

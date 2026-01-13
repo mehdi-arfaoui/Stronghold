@@ -50,6 +50,35 @@ function resolveCredentials(payload: any) {
   return payload as Record<string, unknown>;
 }
 
+function normalizeCredentialGroup(
+  payload: any,
+  allowedFields: string[]
+): { value: Record<string, string> | null; error?: string } {
+  if (payload === undefined || payload === null) return { value: null };
+  if (typeof payload !== "object" || Array.isArray(payload)) {
+    return { value: null, error: "credentials doit être un objet" };
+  }
+  const result = allowedFields.reduce<Record<string, string>>((acc, field) => {
+    const rawValue = payload[field];
+    if (typeof rawValue === "string" && rawValue.trim()) {
+      acc[field] = rawValue.trim();
+    }
+    return acc;
+  }, {});
+
+  return { value: Object.keys(result).length > 0 ? result : null };
+}
+
+function normalizeGcpCredentials(
+  payload: any
+): { value: Record<string, string> | null; error?: string } {
+  if (payload === undefined || payload === null) return { value: null };
+  if (typeof payload === "string") {
+    return { value: payload.trim() ? { serviceAccountJson: payload.trim() } : null };
+  }
+  return normalizeCredentialGroup(payload, ["serviceAccountJson"]);
+}
+
 /**
  * POST /discovery/run
  * Lance un scan réseau/cloud pour le tenant courant.
@@ -63,30 +92,67 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
 
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
-    const ipRanges = parseStringArray(payload.ipRanges, "ipRanges", issues);
-    const cloudProviders = parseStringArray(payload.cloudProviders, "cloudProviders", issues);
+    const ipRanges = parseStringArray(payload.ipRanges, "ipRanges", issues) || [];
+    const cloudProviders = parseStringArray(payload.cloudProviders, "cloudProviders", issues) || [];
     const requestedBy = parseOptionalString(payload.requestedBy, "requestedBy", issues, {
       allowNull: true,
     });
     const autoCreate = parseOptionalBoolean(payload.autoCreate, "autoCreate", issues);
-    const credentials = resolveCredentials(payload.credentials);
+    const rawCredentials = resolveCredentials(payload.credentials);
+    const credentials = typeof rawCredentials === "string" ? null : rawCredentials;
+    const awsCredentials = normalizeCredentialGroup(payload.awsCredentials, [
+      "accessKeyId",
+      "secretAccessKey",
+    ]);
+    const azureCredentials = normalizeCredentialGroup(payload.azureCredentials, [
+      "tenantId",
+      "clientId",
+      "clientSecret",
+    ]);
+    const gcpCredentials = normalizeGcpCredentials(payload.gcpCredentials);
 
-    if ((!ipRanges || ipRanges.length === 0) && (!cloudProviders || cloudProviders.length === 0)) {
+    if (awsCredentials.error) {
+      issues.push({ field: "awsCredentials", message: awsCredentials.error });
+    }
+    if (azureCredentials.error) {
+      issues.push({ field: "azureCredentials", message: azureCredentials.error });
+    }
+    if (gcpCredentials.error) {
+      issues.push({ field: "gcpCredentials", message: gcpCredentials.error });
+    }
+
+    const effectiveCloudProviders = Array.from(
+      new Set([
+        ...cloudProviders,
+        ...(awsCredentials.value ? ["AWS"] : []),
+        ...(azureCredentials.value ? ["AZURE"] : []),
+        ...(gcpCredentials.value ? ["GCP"] : []),
+      ])
+    );
+
+    if ((!ipRanges || ipRanges.length === 0) && effectiveCloudProviders.length === 0) {
       issues.push({
         field: "ipRanges",
         message: "au moins une plage IP ou un cloudProvider est requis",
       });
     }
-    if (typeof credentials === "string") {
-      issues.push({ field: "credentials", message: credentials });
+    if (typeof rawCredentials === "string") {
+      issues.push({ field: "credentials", message: rawCredentials });
     }
 
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
+    const combinedCredentials: Record<string, unknown> = {
+      ...(credentials || {}),
+      ...(awsCredentials.value ? { aws: awsCredentials.value } : {}),
+      ...(azureCredentials.value ? { azure: azureCredentials.value } : {}),
+      ...(gcpCredentials.value ? { gcp: gcpCredentials.value } : {}),
+    };
+
     let encryptedCredentials: { ciphertext: string; iv: string; tag: string } | null = null;
-    if (credentials && Object.keys(credentials).length > 0) {
+    if (Object.keys(combinedCredentials).length > 0) {
       const secret = process.env.DISCOVERY_SECRET;
       if (!secret) {
         return res.status(400).json({
@@ -94,7 +160,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
           details: [{ field: "credentials", message: "DISCOVERY_SECRET requis pour chiffrer les clés" }],
         });
       }
-      encryptedCredentials = encryptDiscoveryCredentials(credentials, secret);
+      encryptedCredentials = encryptDiscoveryCredentials(combinedCredentials, secret);
     }
 
     const job = await prisma.discoveryJob.create({
@@ -106,7 +172,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
         step: "QUEUED",
         parameters: JSON.stringify({
           ipRanges,
-          cloudProviders,
+          cloudProviders: effectiveCloudProviders,
           requestedBy: requestedBy || req.apiKeyId || null,
           autoCreate: Boolean(autoCreate),
         }),
@@ -133,7 +199,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
         jobId: job.id,
         tenantId,
         ipRanges,
-        cloudProviders,
+        cloudProviders: effectiveCloudProviders,
         requestedBy: requestedBy || req.apiKeyId || null,
       });
     } catch (queueError) {

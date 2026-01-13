@@ -4,6 +4,7 @@ export type ThemeMode = "light" | "dark";
 
 const THEME_STORAGE_KEY = "stronghold-theme";
 const LANGUAGE_STORAGE_KEY = "stronghold-language";
+const INITIAL_SCAN_COMPLETED_KEY = "stronghold-initial-scan-completed";
 
 export function getStoredTheme(): ThemeMode | null {
   if (typeof window === "undefined") return null;
@@ -27,6 +28,17 @@ export function setStoredTheme(theme: ThemeMode) {
 export function setStoredLanguage(language: Language) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+}
+
+export function getStoredScanCompleted(): boolean {
+  if (typeof window === "undefined") return false;
+  const stored = window.localStorage.getItem(INITIAL_SCAN_COMPLETED_KEY);
+  return stored === "true";
+}
+
+export function setStoredScanCompleted(completed: boolean) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(INITIAL_SCAN_COMPLETED_KEY, completed ? "true" : "false");
 }
 
 export function getDefaultTheme(): ThemeMode {
