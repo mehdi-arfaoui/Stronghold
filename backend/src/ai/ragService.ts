@@ -1,5 +1,6 @@
 import prisma from "../prismaClient.js";
-import { ExtractedFact, Prisma, PrismaClient } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
+import type { ExtractedFact } from "@prisma/client";
 import { DR_SCENARIOS } from "../analysis/drStrategyEngine.js";
 import type { DrScenario } from "../analysis/drStrategyEngine.js";
 import { queryChromaCollection } from "../clients/chromaClient.js";
