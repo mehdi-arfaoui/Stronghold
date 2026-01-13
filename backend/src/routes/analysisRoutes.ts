@@ -383,8 +383,8 @@ async function buildPraReportText(tenantId: string) {
     budget
   );
 
-  text += "\n7. Volet financier (estimations)\n";
-  text += "--------------------------------\n";
+  text += "\n7. Estimation financière\n";
+  text += "------------------------\n";
   text += `Budget de référence : ${formatCostEstimate(budget)}\n`;
   if (drRecommendations.length === 0) {
     text += "Aucune stratégie DR évaluée.\n";
