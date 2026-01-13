@@ -1,7 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { PaginatedResponse, Risk, RiskMatrixResponse, Service } from "../types";
+import type {
+  PaginatedResponse,
+  Risk,
+  RiskMatrixResponse,
+  Service,
+  Vulnerability,
+} from "../types";
 import { apiFetch } from "../utils/api";
 
 interface RisksSectionProps {
@@ -26,6 +32,20 @@ const STATUS_VALUES = [
 ];
 
 const PAGE_SIZE = 20;
+
+type VulnerabilityReport = {
+  totals: {
+    count: number;
+    bySeverity: {
+      critical: number;
+      high: number;
+      medium: number;
+      low: number;
+      unknown: number;
+    };
+  };
+  items: Vulnerability[];
+};
 
 const defaultRiskDraft = {
   title: "",
@@ -54,6 +74,9 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
   const [draft, setDraft] = useState({ ...defaultRiskDraft });
   const [mitigationDrafts, setMitigationDrafts] = useState<Record<string, string>>({});
   const [mitigationError, setMitigationError] = useState<string | null>(null);
+  const [vulnerabilityReport, setVulnerabilityReport] =
+    useState<VulnerabilityReport | null>(null);
+  const [vulnerabilityError, setVulnerabilityError] = useState<string | null>(null);
 
   const loadRisks = async (offset = 0, append = false) => {
     const data = (await apiFetch(
@@ -70,12 +93,23 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
       setLoading(true);
       setError(null);
       setLoadMoreError(null);
+      setVulnerabilityError(null);
       const [servicesData, matrixData] = await Promise.all([
         apiFetch("/services"),
         apiFetch("/risks/matrix"),
       ]);
       setServices(servicesData);
       setMatrix(matrixData);
+      try {
+        const vulnerabilityData = (await apiFetch(
+          "/vulnerabilities/report"
+        )) as VulnerabilityReport;
+        setVulnerabilityReport(vulnerabilityData);
+      } catch (vulnError: any) {
+        setVulnerabilityError(
+          vulnError?.message || "Impossible de charger les vulnérabilités"
+        );
+      }
       await loadRisks(0, false);
     } catch (err: any) {
       setError(err.message || "Erreur inconnue");
@@ -168,6 +202,17 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
     });
     return Array.from(groups.entries());
   }, [risks]);
+
+  const groupedVulnerabilities = useMemo(() => {
+    const groups = new Map<string, Vulnerability[]>();
+    (vulnerabilityReport?.items || []).forEach((vuln) => {
+      const key = vuln.service?.name || "Sans service";
+      const group = groups.get(key) || [];
+      group.push(vuln);
+      groups.set(key, group);
+    });
+    return Array.from(groups.entries());
+  }, [vulnerabilityReport]);
 
   const progressValue = Math.min(100, totalRisks * 10);
 
@@ -393,6 +438,117 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
           </div>
         ) : (
           <p className="muted">Aucune donnée de matrice disponible.</p>
+        )}
+      </section>
+
+      <section className="panel" id="vulnerability-report">
+        <div className="panel-header">
+          <div>
+            <p className="eyebrow">Cyber</p>
+            <h3 className="section-title">Rapport de vulnérabilités</h3>
+            <p className="muted">
+              Synthèse des CVE détectées via l'inventaire OS et packages.
+            </p>
+          </div>
+          <div className="panel-actions">
+            <span className="pill subtle">
+              {vulnerabilityReport?.totals.count ?? 0} vulnérabilité(s)
+            </span>
+          </div>
+        </div>
+
+        {vulnerabilityError && <p className="helper error">{vulnerabilityError}</p>}
+
+        {!vulnerabilityReport && !vulnerabilityError && (
+          <p className="empty-state">Rapport de vulnérabilités en cours de préparation.</p>
+        )}
+
+        {vulnerabilityReport && (
+          <>
+            <div className="pill-group">
+              <span className="pill subtle">
+                Critiques : {vulnerabilityReport.totals.bySeverity.critical}
+              </span>
+              <span className="pill subtle">
+                Élevées : {vulnerabilityReport.totals.bySeverity.high}
+              </span>
+              <span className="pill subtle">
+                Moyennes : {vulnerabilityReport.totals.bySeverity.medium}
+              </span>
+              <span className="pill subtle">
+                Faibles : {vulnerabilityReport.totals.bySeverity.low}
+              </span>
+              <span className="pill subtle">
+                Inconnues : {vulnerabilityReport.totals.bySeverity.unknown}
+              </span>
+            </div>
+
+            {groupedVulnerabilities.length === 0 ? (
+              <p className="muted">Aucune vulnérabilité enregistrée.</p>
+            ) : (
+              groupedVulnerabilities.map(([serviceName, vulns]) => (
+                <div key={serviceName} className="risk-group">
+                  <div className="risk-group-title">
+                    <strong>{serviceName}</strong>
+                    <span className="pill subtle">{vulns.length} CVE</span>
+                  </div>
+                  <table className="risk-table">
+                    <thead>
+                      <tr>
+                        <th>CVE</th>
+                        <th>Package</th>
+                        <th>Score</th>
+                        <th>Résumé</th>
+                        <th>Remédiations</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vulns.map((vuln) => (
+                        <tr key={vuln.id}>
+                          <td>
+                            <div className="risk-title">{vuln.cveId}</div>
+                          </td>
+                          <td>
+                            {vuln.packageName || "N/A"}
+                            {vuln.packageVersion ? (
+                              <div className="muted small">v{vuln.packageVersion}</div>
+                            ) : null}
+                          </td>
+                          <td>
+                            <span className={`pill ${vuln.severityLabel}`}>
+                              {vuln.severityScore.toFixed(1)}
+                            </span>
+                          </td>
+                          <td>
+                            <div className="muted small">{vuln.summary || "Résumé indisponible."}</div>
+                          </td>
+                          <td>
+                            {vuln.remediation && vuln.remediation.length > 0 ? (
+                              <ul className="risk-mitigations">
+                                {vuln.remediation.map((step, index) => (
+                                  <li key={`${vuln.id}-step-${index}`}>
+                                    <strong>{step.title}</strong>
+                                    {step.description ? (
+                                      <div className="muted small">{step.description}</div>
+                                    ) : null}
+                                    {step.script ? (
+                                      <div className="code-inline">{step.script}</div>
+                                    ) : null}
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <span className="muted small">Aucune remédiation</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))
+            )}
+          </>
         )}
       </section>
 

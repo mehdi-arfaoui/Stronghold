@@ -789,6 +789,12 @@ ol {
   border-color: #fecaca;
 }
 
+.pill.unknown {
+  background: var(--color-neutral-50);
+  color: var(--color-neutral-600);
+  border-color: var(--color-neutral-200);
+}
+
 .tab-list {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
@@ -1085,6 +1091,45 @@ ol {
 
 .risk-group {
   margin-top: var(--space-4);
+}
+
+.risk-group-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.pill-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.risk-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.risk-table th,
+.risk-table td {
+  border-bottom: 1px solid var(--color-neutral-200);
+  padding: var(--space-2);
+  text-align: left;
+  vertical-align: top;
+}
+
+.code-inline {
+  margin-top: var(--space-1);
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: var(--color-neutral-50);
+  border: 1px solid var(--color-neutral-200);
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.75rem;
+  color: var(--color-neutral-700);
+  display: inline-block;
 }
 
 .risk-mitigations {
