@@ -9,13 +9,13 @@ import * as crypto from "crypto";
 import type { Prisma, Service, InfraComponent } from "@prisma/client";
 import {
   buildChunks,
-  classifyDocumentType,
   deriveMetadataMappings,
   extractDocumentMetadata,
   extractStructuredMetadata,
   pushChunksToChroma,
   serializeMetadata,
 } from "./documentIntelligenceService.js";
+import { classifyDocumentTypeWithModel } from "./documentTypeClassificationService.js";
 import { createExtractionSuggestions } from "./extractionSuggestionService.js";
 import {
   downloadObjectToTempFile,
@@ -542,7 +542,12 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     if (status === "SUCCESS") {
       textHash = crypto.createHash("sha256").update(text).digest("hex");
       textExtractedAt = new Date();
-      const classification = classifyDocumentType(text, doc.originalName, doc.docType);
+      const classification = await classifyDocumentTypeWithModel({
+        text,
+        fileName: doc.originalName,
+        providedDocType: doc.docType,
+        correlationId,
+      });
       detectedDocType = classification.type;
 
       const textMetadata = extractDocumentMetadata(text);

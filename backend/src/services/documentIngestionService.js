@@ -48,6 +48,7 @@ const xlsx = __importStar(require("xlsx"));
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const crypto = __importStar(require("crypto"));
 const documentIntelligenceService_1 = require("./documentIntelligenceService");
+const documentTypeClassificationService_1 = require("./documentTypeClassificationService");
 const s3Client_1 = require("../clients/s3Client");
 const metrics_1 = require("../observability/metrics");
 const execFileAsync = (0, node_util_1.promisify)(node_child_process_1.execFile);
@@ -485,7 +486,12 @@ async function ingestDocumentText(documentId, tenantId) {
         if (status === "SUCCESS") {
             textHash = crypto.createHash("sha256").update(text).digest("hex");
             textExtractedAt = new Date();
-            const classification = (0, documentIntelligenceService_1.classifyDocumentType)(text, doc.originalName, doc.docType);
+            const classification = await (0, documentTypeClassificationService_1.classifyDocumentTypeWithModel)({
+                text,
+                fileName: doc.originalName,
+                providedDocType: doc.docType,
+                correlationId,
+            });
             detectedDocType = classification.type;
             const textMetadata = (0, documentIntelligenceService_1.extractDocumentMetadata)(text);
             let structuredPayload = null;

@@ -3,6 +3,7 @@ import * as crypto from "crypto";
 export type DetectedDocType =
   | "ARCHI"
   | "BACKUP_POLICY"
+  | "POLICY"
   | "SLA"
   | "RUNBOOK"
   | "CMDB"

@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { __test__ } = require("../src/services/sensitiveDataScanService");
 
-test("scanSensitiveText détecte IBAN, carte bancaire et PII", () => {
+test("scanSensitiveText détecte IBAN, carte bancaire et PII", async () => {
   const text = [
     "IBAN FR7612345987650123456789014",
     "Carte 4111 1111 1111 1111",
@@ -13,7 +13,7 @@ test("scanSensitiveText détecte IBAN, carte bancaire et PII", () => {
     "Né le 01/02/1990",
   ].join("\n");
 
-  const findings = __test__.scanSensitiveText(text);
+  const findings = await __test__.scanSensitiveText(text);
   const types = findings.map((finding) => finding.type);
 
   assert.ok(types.includes("IBAN"));
