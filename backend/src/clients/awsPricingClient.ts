@@ -15,6 +15,48 @@ function estimateMonthlyOpex(pricePerUnit: number, unit: string): number {
   return pricePerUnit;
 }
 
+export function normalizeAwsPriceListEntries(entries: any[]): NormalizedPricingItem[] {
+  if (!Array.isArray(entries) || entries.length === 0) return [];
+
+  const items: NormalizedPricingItem[] = [];
+
+  entries.forEach((entry: any) => {
+    const product = entry?.product ?? {};
+    const sku = product?.sku ?? entry?.sku ?? "unknown";
+    const service = product?.attributes?.servicename ?? product?.productFamily ?? "AWS";
+    const region = product?.attributes?.location ?? product?.attributes?.regionCode ?? null;
+    const terms = entry?.terms?.OnDemand ?? {};
+
+    Object.values<any>(terms).forEach((term: any) => {
+      const priceDimensions = term?.priceDimensions ?? {};
+      Object.values<any>(priceDimensions).forEach((dim) => {
+        const pricePerUnit = toNumber(
+          dim.pricePerUnit?.USD ?? dim.pricePerUnit?.EUR ?? dim.pricePerUnit
+        );
+        const unit = dim.unit ?? "Hrs";
+        items.push({
+          provider: "aws",
+          service,
+          sku,
+          region,
+          unit,
+          currency: dim.pricePerUnit?.USD ? "USD" : dim.pricePerUnit?.EUR ? "EUR" : "USD",
+          pricePerUnit,
+          capex: 0,
+          opexMonthly: estimateMonthlyOpex(pricePerUnit, unit),
+          source: "aws-pricing",
+          metadata: {
+            instanceType: product?.attributes?.instanceType ?? null,
+            usageType: dim?.description ?? null,
+          },
+        });
+      });
+    });
+  });
+
+  return items;
+}
+
 export function normalizeAwsPricingResponse(payload: any): NormalizedPricingItem[] {
   if (!payload) return [];
 
