@@ -1,5 +1,8 @@
 import { Router } from "express";
 import multer from "multer";
+import * as os from "os";
+import path from "path";
+import * as fs from "fs";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -26,7 +29,18 @@ import { createDiscoverySchedule } from "../services/discoveryScheduleService.js
 import { importDiscoveryFlows } from "../services/discoveryFlowService.js";
 
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+const uploadDir = path.join(os.tmpdir(), "discovery-imports");
+fs.mkdirSync(uploadDir, { recursive: true });
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, uploadDir),
+    filename: (_req, file, cb) => {
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
+      cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+});
 
 function resolveCredentials(payload: any) {
   if (payload === undefined || payload === null) return null;
@@ -335,8 +349,9 @@ router.post(
         return res.status(400).json({ error: "Aucun fichier fourni" });
       }
 
+      const fileBuffer = await fs.promises.readFile(req.file.path);
       const { payload } = parseDiscoveryImport(
-        req.file.buffer,
+        fileBuffer,
         req.file.originalname,
         req.file.mimetype
       );
@@ -349,6 +364,10 @@ router.post(
         return res.status(400).json({ error: error.message, details: error.details });
       }
       return res.status(500).json({ error: "Internal server error" });
+    } finally {
+      if (req.file?.path) {
+        await fs.promises.rm(req.file.path, { force: true }).catch(() => undefined);
+      }
     }
   }
 );
@@ -374,6 +393,7 @@ router.post(
         return res.status(400).json({ error: "Aucun fichier fourni" });
       }
 
+      const fileBuffer = await fs.promises.readFile(req.file.path);
       const job = await prisma.discoveryJob.create({
         data: {
           tenantId,
@@ -391,7 +411,7 @@ router.post(
       jobId = job.id;
 
       const { payload, report } = parseDiscoveryImport(
-        req.file.buffer,
+        fileBuffer,
         req.file.originalname,
         req.file.mimetype
       );
@@ -433,6 +453,10 @@ router.post(
         return res.status(400).json({ error: error.message, details: error.details });
       }
       return res.status(500).json({ error: "Internal server error" });
+    } finally {
+      if (req.file?.path) {
+        await fs.promises.rm(req.file.path, { force: true }).catch(() => undefined);
+      }
     }
   }
 );

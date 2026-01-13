@@ -12,6 +12,12 @@ export declare function uploadObjectToBucket(params: {
     body: Buffer;
     contentType?: string;
 }): Promise<void>;
+export declare function uploadFileToBucket(params: {
+    bucket: string;
+    key: string;
+    filePath: string;
+    contentType?: string;
+}): Promise<void>;
 export declare function getSignedUrlForObject(bucket: string, key: string, ttlSeconds?: number): Promise<any>;
 export declare function getSignedUploadUrlForObject(bucket: string, key: string, contentType?: string, ttlSeconds?: number): Promise<{
     url: string;

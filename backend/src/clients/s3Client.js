@@ -39,6 +39,7 @@ exports.buildObjectKey = buildObjectKey;
 exports.extractObjectKey = extractObjectKey;
 exports.resolveBucketAndKey = resolveBucketAndKey;
 exports.uploadObjectToBucket = uploadObjectToBucket;
+exports.uploadFileToBucket = uploadFileToBucket;
 exports.getSignedUrlForObject = getSignedUrlForObject;
 exports.getSignedUploadUrlForObject = getSignedUploadUrlForObject;
 exports.downloadObjectToTempFile = downloadObjectToTempFile;
@@ -179,6 +180,19 @@ async function uploadObjectToBucket(params) {
         Body: params.body,
         ContentType: params.contentType,
         ContentLength: params.body.byteLength,
+    }));
+}
+async function uploadFileToBucket(params) {
+    const sdk = await loadS3Sdk();
+    const s3Client = await getS3Client();
+    await ensureBucketExists(params.bucket);
+    const stats = await fs.promises.stat(params.filePath);
+    await s3Client.send(new sdk.PutObjectCommand({
+        Bucket: params.bucket,
+        Key: params.key,
+        Body: fs.createReadStream(params.filePath),
+        ContentType: params.contentType,
+        ContentLength: stats.size,
     }));
 }
 async function getSignedUrlForObject(bucket, key, ttlSeconds) {
