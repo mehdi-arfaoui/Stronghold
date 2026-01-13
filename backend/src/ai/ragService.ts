@@ -5,13 +5,13 @@ import { DR_SCENARIOS } from "../analysis/drStrategyEngine.js";
 import type { DrScenario } from "../analysis/drStrategyEngine.js";
 import { queryChromaCollection } from "../clients/chromaClient.js";
 import { buildChromaCollectionName } from "../services/documentIntelligenceService.js";
-import { recordRagRecall } from "../observability/metrics.js";
-import { fuseChunkScores, rerankChunksRrf } from "./ragRanking.js";
+import { recordRagMrr, recordRagRecall } from "../observability/metrics.js";
+import { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } from "./ragRanking.js";
 import type { RagChunkCandidate } from "./ragRanking.js";
 import elasticlunr from "elasticlunr";
 import crypto from "node:crypto";
 
-export { fuseChunkScores, rerankChunksRrf } from "./ragRanking.js";
+export { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } from "./ragRanking.js";
 export type { RagChunkCandidate } from "./ragRanking.js";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
@@ -58,7 +58,9 @@ export type RagScenarioRecommendation = {
   matchedServices: string[];
 };
 
-const MAX_CHARS_PER_CHUNK = 900;
+const BASE_CHARS_PER_CHUNK = 900;
+const MIN_CHARS_PER_CHUNK = 480;
+const MAX_CHARS_PER_CHUNK = 1200;
 const MAX_CHARS_PER_FACT = 320;
 const DEFAULT_MAX_CHUNKS = 6;
 const DEFAULT_MAX_FACTS = 8;
@@ -176,11 +178,35 @@ function buildChunkKey(documentId: string, text: string): string {
   return `${documentId}:${hash}`;
 }
 
-function buildChunkTextCandidates(text: string, maxChunks: number): string[] {
+function computeChunkSizeForDocument(text: string): number {
+  const cleaned = sanitizeText(text);
+  if (!cleaned) return BASE_CHARS_PER_CHUNK;
+  const sentences = splitIntoSentences(cleaned);
+  const sentenceCount = Math.max(1, sentences.length);
+  const avgSentenceLength = cleaned.length / sentenceCount;
+  const lineCount = text.split(/\n+/).filter(Boolean).length;
+  const lineRatio = lineCount / sentenceCount;
+  const density = infoDensity(cleaned);
+
+  let target = BASE_CHARS_PER_CHUNK;
+  if (lineRatio > 1.4 || avgSentenceLength < 80) {
+    target = 650;
+  }
+  if (density > 0.28 && avgSentenceLength > 140) {
+    target = 1050;
+  }
+  if (cleaned.length < 1400) {
+    target = Math.min(target, 600);
+  }
+
+  return Math.max(MIN_CHARS_PER_CHUNK, Math.min(MAX_CHARS_PER_CHUNK, Math.round(target)));
+}
+
+function buildChunkTextCandidates(text: string, maxChunks: number, maxLength: number): string[] {
   const cleaned = sanitizeText(text);
   if (!cleaned) return [];
   const sentences = splitIntoSentences(cleaned);
-  const chunks = buildSentenceChunks(sentences, MAX_CHARS_PER_CHUNK);
+  const chunks = buildSentenceChunks(sentences, maxLength);
   if (chunks.length <= maxChunks) return chunks;
   return chunks.slice(0, maxChunks);
 }
@@ -191,9 +217,11 @@ function parseAlpha(value: string | undefined): number {
   return Math.min(1, Math.max(0, parsed));
 }
 
-function parseRerankStrategy(value: string | undefined): "none" | "rrf" {
+function parseRerankStrategy(value: string | undefined): "none" | "rrf" | "cross" {
   const normalized = (value || "").toLowerCase();
-  return normalized === "rrf" ? "rrf" : "none";
+  if (normalized === "rrf") return "rrf";
+  if (normalized === "cross" || normalized === "cross-encoder") return "cross";
+  return "none";
 }
 
 function parseRecallKs(value: string | undefined): number[] {
@@ -203,6 +231,32 @@ function parseRecallKs(value: string | undefined): number[] {
     .map((part) => Number(part.trim()))
     .filter((num) => Number.isFinite(num) && num > 0);
   return parsed.length > 0 ? parsed : DEFAULT_RECALL_KS;
+}
+
+function parseCrossWeights(value: string | undefined): { lexical: number; vector: number; bm25: number } {
+  if (!value) {
+    return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
+  }
+  const parts = value
+    .split(",")
+    .map((part) => Number(part.trim()))
+    .filter((num) => Number.isFinite(num) && num >= 0);
+  if (parts.length !== 3) {
+    return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
+  }
+  return { lexical: parts[0], vector: parts[1], bm25: parts[2] };
+}
+
+function buildRankedDocumentIds(chunks: RagChunk[]): string[] {
+  const ranked: string[] = [];
+  const seen = new Set<string>();
+  for (const chunk of chunks) {
+    if (!seen.has(chunk.documentId)) {
+      ranked.push(chunk.documentId);
+      seen.add(chunk.documentId);
+    }
+  }
+  return ranked;
 }
 
 function buildFactPreview(fact: ExtractedFact): RagFact {
@@ -300,14 +354,16 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
 
   const chunkDocs: RagChunkCandidate[] = [];
   for (const doc of documents) {
-    const chunks = buildChunkTextCandidates(doc.textContent || "", DEFAULT_LEXICAL_CHUNKS_PER_DOC);
+    const rawText = doc.textContent || "";
+    const chunkSize = computeChunkSizeForDocument(rawText);
+    const chunks = buildChunkTextCandidates(rawText, DEFAULT_LEXICAL_CHUNKS_PER_DOC, chunkSize);
     for (const chunk of chunks) {
       chunkDocs.push({
         chunkKey: buildChunkKey(doc.id, chunk),
         documentId: doc.id,
         documentName: doc.originalName,
         documentType: doc.docType,
-        text: clampText(chunk, MAX_CHARS_PER_CHUNK),
+        text: clampText(chunk, chunkSize),
         score: 0,
         bm25Score: 0,
       });
@@ -538,14 +594,17 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       },
     };
     if (options.documentIds && options.documentIds.length > 0) {
-      const rankedDocIds = Array.from(
-        new Set(trimmedLexical.context.chunks.map((chunk) => chunk.documentId))
-      );
+      const rankedDocIds = buildRankedDocumentIds(trimmedLexical.context.chunks);
       recordRagRecall({
         tenantId: options.tenantId,
         relevantDocumentIds: options.documentIds,
         rankedDocumentIds: rankedDocIds,
         ks: parseRecallKs(process.env.RAG_RECALL_KS),
+      });
+      recordRagMrr({
+        tenantId: options.tenantId,
+        relevantDocumentIds: options.documentIds,
+        rankedDocumentIds: rankedDocIds,
       });
     }
     return trimmedLexical;
@@ -585,6 +644,13 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       vector: vectorRanking,
       bm25: bm25Ranking,
     });
+  } else if (rerankStrategy === "cross") {
+    const questionText = `${options.question} ${options.serviceFilter || ""}`.trim();
+    rerankedCandidates = rerankChunksCrossEncoder(
+      fusedCandidates,
+      questionText,
+      parseCrossWeights(process.env.RAG_CROSS_WEIGHTS)
+    );
   }
 
   const finalChunks = rerankedCandidates
@@ -598,7 +664,7 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       text: chunk.text,
     }));
 
-  const usedDocumentIds = Array.from(new Set(finalChunks.map((chunk) => chunk.documentId)));
+  const usedDocumentIds = buildRankedDocumentIds(finalChunks);
 
   if (options.documentIds && options.documentIds.length > 0) {
     recordRagRecall({
@@ -606,6 +672,11 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       relevantDocumentIds: options.documentIds,
       rankedDocumentIds: usedDocumentIds,
       ks: parseRecallKs(process.env.RAG_RECALL_KS),
+    });
+    recordRagMrr({
+      tenantId: options.tenantId,
+      relevantDocumentIds: options.documentIds,
+      rankedDocumentIds: usedDocumentIds,
     });
   }
 

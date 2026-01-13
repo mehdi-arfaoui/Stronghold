@@ -9,6 +9,7 @@ export type RagChunkCandidate = {
   vectorScore?: number;
   fusedScore?: number;
   rrfScore?: number;
+  crossScore?: number;
 };
 
 const DEFAULT_RRF_K = 60;
@@ -21,6 +22,29 @@ function normalizeScores(values: number[]): number[] {
     return values.map((value) => (value > 0 ? 1 : 0));
   }
   return values.map((value) => (value - min) / (max - min));
+}
+
+function tokenize(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9à-ÿ\s]/gi, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+}
+
+function buildTokenSet(text: string): Set<string> {
+  return new Set(tokenize(text));
+}
+
+function overlapScore(queryTokens: Set<string>, text: string): number {
+  if (queryTokens.size === 0) return 0;
+  const tokens = buildTokenSet(text);
+  if (tokens.size === 0) return 0;
+  let overlap = 0;
+  queryTokens.forEach((token) => {
+    if (tokens.has(token)) overlap += 1;
+  });
+  return overlap / queryTokens.size;
 }
 
 export function fuseChunkScores(candidates: RagChunkCandidate[], alpha: number): RagChunkCandidate[] {
@@ -55,6 +79,41 @@ export function rerankChunksRrf(
     return {
       ...candidate,
       rrfScore: score,
+      score: Number(score.toFixed(6)),
+    };
+  });
+}
+
+export function rerankChunksCrossEncoder(
+  candidates: RagChunkCandidate[],
+  question: string,
+  weights: { lexical: number; vector: number; bm25: number } = {
+    lexical: 0.5,
+    vector: 0.25,
+    bm25: 0.25,
+  }
+): RagChunkCandidate[] {
+  const queryTokens = buildTokenSet(question);
+  const lexicalScores = candidates.map((candidate) => overlapScore(queryTokens, candidate.text));
+  const vectorScores = candidates.map((candidate) => candidate.vectorScore ?? 0);
+  const bm25Scores = candidates.map((candidate) => candidate.bm25Score ?? 0);
+  const normalizedLexical = normalizeScores(lexicalScores);
+  const normalizedVector = normalizeScores(vectorScores);
+  const normalizedBm25 = normalizeScores(bm25Scores);
+
+  const totalWeight = weights.lexical + weights.vector + weights.bm25 || 1;
+  const lexicalWeight = weights.lexical / totalWeight;
+  const vectorWeight = weights.vector / totalWeight;
+  const bm25Weight = weights.bm25 / totalWeight;
+
+  return candidates.map((candidate, index) => {
+    const score =
+      lexicalWeight * normalizedLexical[index] +
+      vectorWeight * normalizedVector[index] +
+      bm25Weight * normalizedBm25[index];
+    return {
+      ...candidate,
+      crossScore: score,
       score: Number(score.toFixed(6)),
     };
   });

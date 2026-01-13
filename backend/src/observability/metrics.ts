@@ -29,6 +29,12 @@ let ragRecallHistogram:
 let ragRecallSamples:
   | ReturnType<ReturnType<typeof getMeter>["createCounter"]>
   | null = null;
+let ragMrrHistogram:
+  | ReturnType<ReturnType<typeof getMeter>["createHistogram"]>
+  | null = null;
+let ragMrrSamples:
+  | ReturnType<ReturnType<typeof getMeter>["createCounter"]>
+  | null = null;
 
 function ensureMetrics() {
   if (
@@ -36,7 +42,9 @@ function ensureMetrics() {
     llmCounter &&
     discoveryCounter &&
     ragRecallHistogram &&
-    ragRecallSamples
+    ragRecallSamples &&
+    ragMrrHistogram &&
+    ragMrrSamples
   ) {
     return;
   }
@@ -56,6 +64,12 @@ function ensureMetrics() {
   ragRecallSamples = meter.createCounter("stronghold_rag_recall_samples_total", {
     description: "Total RAG recall@k samples.",
   });
+  ragMrrHistogram = meter.createHistogram("stronghold_rag_mrr", {
+    description: "RAG MRR distribution.",
+  });
+  ragMrrSamples = meter.createCounter("stronghold_rag_mrr_samples_total", {
+    description: "Total RAG MRR samples.",
+  });
 }
 
 const tenantCounters = new Map<string, CounterSet>();
@@ -64,6 +78,8 @@ const tenantRagRecallStats = new Map<
   string,
   Map<number, { sum: number; count: number; lastValue: number }>
 >();
+const ragMrrStats = { sum: 0, count: 0, lastValue: 0 };
+const tenantRagMrrStats = new Map<string, { sum: number; count: number; lastValue: number }>();
 
 function createCounterSet(): CounterSet {
   return {
@@ -99,6 +115,14 @@ function getTenantRecallMap(tenantId: string) {
   if (existing) return existing;
   const created = new Map<number, { sum: number; count: number; lastValue: number }>();
   tenantRagRecallStats.set(tenantId, created);
+  return created;
+}
+
+function getTenantMrrStats(tenantId: string) {
+  const existing = tenantRagMrrStats.get(tenantId);
+  if (existing) return existing;
+  const created = { sum: 0, count: 0, lastValue: 0 };
+  tenantRagMrrStats.set(tenantId, created);
   return created;
 }
 
@@ -205,6 +229,37 @@ export function recordRagRecall(params: {
   }
 }
 
+export function recordRagMrr(params: {
+  tenantId: string;
+  relevantDocumentIds: string[];
+  rankedDocumentIds: string[];
+}) {
+  const relevantSet = new Set(params.relevantDocumentIds);
+  if (relevantSet.size === 0) return;
+  const rankedUnique = Array.from(new Set(params.rankedDocumentIds));
+  let reciprocal = 0;
+  for (let index = 0; index < rankedUnique.length; index += 1) {
+    if (relevantSet.has(rankedUnique[index])) {
+      reciprocal = Number((1 / (index + 1)).toFixed(4));
+      break;
+    }
+  }
+
+  ragMrrStats.sum += reciprocal;
+  ragMrrStats.count += 1;
+  ragMrrStats.lastValue = reciprocal;
+
+  const tenantStats = getTenantMrrStats(params.tenantId);
+  tenantStats.sum += reciprocal;
+  tenantStats.count += 1;
+  tenantStats.lastValue = reciprocal;
+
+  ensureMetrics();
+  const attributes = { tenant_id: params.tenantId };
+  ragMrrHistogram!.record(reciprocal, attributes);
+  ragMrrSamples!.add(1, attributes);
+}
+
 export function getMetricsSnapshot() {
   const perTenant: Record<string, ReturnType<typeof snapshotCounterSet>> = {};
   for (const [tenantId, counterSet] of tenantCounters.entries()) {
@@ -219,6 +274,11 @@ export function getMetricsSnapshot() {
       lastValue: stats.lastValue,
     };
   }
+  const ragMrr = {
+    average: ragMrrStats.count === 0 ? 0 : Number((ragMrrStats.sum / ragMrrStats.count).toFixed(4)),
+    count: ragMrrStats.count,
+    lastValue: ragMrrStats.lastValue,
+  };
 
   const perTenantRecall: Record<
     string,
@@ -235,11 +295,21 @@ export function getMetricsSnapshot() {
     }
     perTenantRecall[tenantId] = tenantStats;
   }
+  const ragMrrPerTenant: Record<string, { average: number; count: number; lastValue: number }> = {};
+  for (const [tenantId, stats] of tenantRagMrrStats.entries()) {
+    ragMrrPerTenant[tenantId] = {
+      average: stats.count === 0 ? 0 : Number((stats.sum / stats.count).toFixed(4)),
+      count: stats.count,
+      lastValue: stats.lastValue,
+    };
+  }
 
   return {
     ...snapshotCounterSet(counters),
     perTenant,
     ragRecall,
+    ragMrr,
     ragRecallPerTenant: perTenantRecall,
+    ragMrrPerTenant,
   };
 }
