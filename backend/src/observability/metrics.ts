@@ -1,17 +1,62 @@
+import { getMeter } from "./telemetry.js";
+
 type Counter = {
   success: number;
   failure: number;
   lastFailureAt: Date | null;
 };
 
-type CounterKey = "extraction" | "llm";
+type CounterKey = "extraction" | "llm" | "discovery";
 
 type CounterSet = Record<CounterKey, Counter>;
 
 const counters: CounterSet = {
   extraction: { success: 0, failure: 0, lastFailureAt: null },
   llm: { success: 0, failure: 0, lastFailureAt: null },
+  discovery: { success: 0, failure: 0, lastFailureAt: null },
 };
+
+let extractionCounter:
+  | ReturnType<ReturnType<typeof getMeter>["createCounter"]>
+  | null = null;
+let llmCounter: ReturnType<ReturnType<typeof getMeter>["createCounter"]> | null = null;
+let discoveryCounter:
+  | ReturnType<ReturnType<typeof getMeter>["createCounter"]>
+  | null = null;
+let ragRecallHistogram:
+  | ReturnType<ReturnType<typeof getMeter>["createHistogram"]>
+  | null = null;
+let ragRecallSamples:
+  | ReturnType<ReturnType<typeof getMeter>["createCounter"]>
+  | null = null;
+
+function ensureMetrics() {
+  if (
+    extractionCounter &&
+    llmCounter &&
+    discoveryCounter &&
+    ragRecallHistogram &&
+    ragRecallSamples
+  ) {
+    return;
+  }
+  const meter = getMeter();
+  extractionCounter = meter.createCounter("stronghold_extraction_total", {
+    description: "Total extraction attempts.",
+  });
+  llmCounter = meter.createCounter("stronghold_llm_total", {
+    description: "Total LLM calls.",
+  });
+  discoveryCounter = meter.createCounter("stronghold_discovery_job_total", {
+    description: "Total discovery job outcomes.",
+  });
+  ragRecallHistogram = meter.createHistogram("stronghold_rag_recall", {
+    description: "RAG recall@k distribution.",
+  });
+  ragRecallSamples = meter.createCounter("stronghold_rag_recall_samples_total", {
+    description: "Total RAG recall@k samples.",
+  });
+}
 
 const tenantCounters = new Map<string, CounterSet>();
 const ragRecallStats = new Map<number, { sum: number; count: number; lastValue: number }>();
@@ -24,6 +69,7 @@ function createCounterSet(): CounterSet {
   return {
     extraction: { success: 0, failure: 0, lastFailureAt: null },
     llm: { success: 0, failure: 0, lastFailureAt: null },
+    discovery: { success: 0, failure: 0, lastFailureAt: null },
   };
 }
 
@@ -84,10 +130,29 @@ function failureRate(counter: Counter): number {
 
 export function recordExtractionResult(success: boolean, tenantId?: string) {
   incrementCounter("extraction", success, tenantId);
+  ensureMetrics();
+  extractionCounter!.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
 }
 
 export function recordLlmCall(success: boolean, tenantId?: string) {
   incrementCounter("llm", success, tenantId);
+  ensureMetrics();
+  llmCounter!.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
+}
+
+export function recordDiscoveryJobResult(success: boolean, tenantId?: string) {
+  incrementCounter("discovery", success, tenantId);
+  ensureMetrics();
+  discoveryCounter!.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
 }
 
 function snapshotCounterSet(counterSet: CounterSet) {
@@ -100,37 +165,11 @@ function snapshotCounterSet(counterSet: CounterSet) {
       ...counterSet.llm,
       failureRate: failureRate(counterSet.llm),
     },
+    discovery: {
+      ...counterSet.discovery,
+      failureRate: failureRate(counterSet.discovery),
+    },
   };
-}
-
-function escapeLabelValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-}
-
-function formatLabels(labels?: Record<string, string>): string {
-  if (!labels || Object.keys(labels).length === 0) return "";
-  const formatted = Object.entries(labels)
-    .map(([key, val]) => `${key}="${escapeLabelValue(val)}"`)
-    .join(",");
-  return `{${formatted}}`;
-}
-
-function appendCounterLine(
-  lines: string[],
-  name: string,
-  value: number,
-  labels?: Record<string, string>
-) {
-  lines.push(`${name}${formatLabels(labels)} ${value}`);
-}
-
-function appendGaugeLine(
-  lines: string[],
-  name: string,
-  value: number,
-  labels?: Record<string, string>
-) {
-  lines.push(`${name}${formatLabels(labels)} ${value}`);
 }
 
 export function recordRagRecall(params: {
@@ -158,6 +197,11 @@ export function recordRagRecall(params: {
     tenantBucket.sum += recall;
     tenantBucket.count += 1;
     tenantBucket.lastValue = recall;
+
+    ensureMetrics();
+    const attributes = { k: String(k), tenant_id: params.tenantId };
+    ragRecallHistogram!.record(recall, attributes);
+    ragRecallSamples!.add(1, attributes);
   }
 }
 
@@ -198,60 +242,4 @@ export function getMetricsSnapshot() {
     ragRecall,
     ragRecallPerTenant: perTenantRecall,
   };
-}
-
-export function getPrometheusMetrics() {
-  const lines: string[] = [];
-  lines.push("# HELP stronghold_extraction_success_total Total successful extractions.");
-  lines.push("# TYPE stronghold_extraction_success_total counter");
-  lines.push("# HELP stronghold_extraction_failure_total Total failed extractions.");
-  lines.push("# TYPE stronghold_extraction_failure_total counter");
-  lines.push("# HELP stronghold_llm_success_total Total successful LLM calls.");
-  lines.push("# TYPE stronghold_llm_success_total counter");
-  lines.push("# HELP stronghold_llm_failure_total Total failed LLM calls.");
-  lines.push("# TYPE stronghold_llm_failure_total counter");
-  lines.push("# HELP stronghold_rag_recall_at_k Average recall@k for RAG retrieval.");
-  lines.push("# TYPE stronghold_rag_recall_at_k gauge");
-  lines.push("# HELP stronghold_rag_recall_samples_total Total recall@k samples.");
-  lines.push("# TYPE stronghold_rag_recall_samples_total counter");
-
-  appendCounterLine(lines, "stronghold_extraction_success_total", counters.extraction.success);
-  appendCounterLine(lines, "stronghold_extraction_failure_total", counters.extraction.failure);
-  appendCounterLine(lines, "stronghold_llm_success_total", counters.llm.success);
-  appendCounterLine(lines, "stronghold_llm_failure_total", counters.llm.failure);
-
-  for (const [k, stats] of ragRecallStats.entries()) {
-    const average = stats.count === 0 ? 0 : stats.sum / stats.count;
-    appendGaugeLine(lines, "stronghold_rag_recall_at_k", average, { k: String(k) });
-    appendCounterLine(lines, "stronghold_rag_recall_samples_total", stats.count, { k: String(k) });
-  }
-
-  for (const [tenantId, counterSet] of tenantCounters.entries()) {
-    const labels = { tenant_id: tenantId };
-    appendCounterLine(
-      lines,
-      "stronghold_extraction_success_total",
-      counterSet.extraction.success,
-      labels
-    );
-    appendCounterLine(
-      lines,
-      "stronghold_extraction_failure_total",
-      counterSet.extraction.failure,
-      labels
-    );
-    appendCounterLine(lines, "stronghold_llm_success_total", counterSet.llm.success, labels);
-    appendCounterLine(lines, "stronghold_llm_failure_total", counterSet.llm.failure, labels);
-  }
-
-  for (const [tenantId, tenantMap] of tenantRagRecallStats.entries()) {
-    for (const [k, stats] of tenantMap.entries()) {
-      const labels = { tenant_id: tenantId, k: String(k) };
-      const average = stats.count === 0 ? 0 : stats.sum / stats.count;
-      appendGaugeLine(lines, "stronghold_rag_recall_at_k", average, labels);
-      appendCounterLine(lines, "stronghold_rag_recall_samples_total", stats.count, labels);
-    }
-  }
-
-  return `${lines.join("\n")}\n`;
 }

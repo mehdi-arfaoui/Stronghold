@@ -1,17 +1,46 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getPrometheusMetrics = exports.getMetricsSnapshot = exports.recordRagRecall = exports.recordLlmCall = exports.recordExtractionResult = void 0;
+exports.getMetricsSnapshot = exports.recordRagRecall = exports.recordDiscoveryJobResult = exports.recordLlmCall = exports.recordExtractionResult = void 0;
+const telemetry_1 = require("./telemetry");
 const counters = {
   extraction: { success: 0, failure: 0, lastFailureAt: null },
   llm: { success: 0, failure: 0, lastFailureAt: null },
+  discovery: { success: 0, failure: 0, lastFailureAt: null },
 };
 const tenantCounters = new Map();
 const ragRecallStats = new Map();
 const tenantRagRecallStats = new Map();
+let extractionCounter = null;
+let llmCounter = null;
+let discoveryCounter = null;
+let ragRecallHistogram = null;
+let ragRecallSamples = null;
+function ensureMetrics() {
+  if (extractionCounter && llmCounter && discoveryCounter && ragRecallHistogram && ragRecallSamples) {
+    return;
+  }
+  const meter = (0, telemetry_1.getMeter)();
+  extractionCounter = meter.createCounter("stronghold_extraction_total", {
+    description: "Total extraction attempts.",
+  });
+  llmCounter = meter.createCounter("stronghold_llm_total", {
+    description: "Total LLM calls.",
+  });
+  discoveryCounter = meter.createCounter("stronghold_discovery_job_total", {
+    description: "Total discovery job outcomes.",
+  });
+  ragRecallHistogram = meter.createHistogram("stronghold_rag_recall", {
+    description: "RAG recall@k distribution.",
+  });
+  ragRecallSamples = meter.createCounter("stronghold_rag_recall_samples_total", {
+    description: "Total RAG recall@k samples.",
+  });
+}
 function createCounterSet() {
   return {
     extraction: { success: 0, failure: 0, lastFailureAt: null },
     llm: { success: 0, failure: 0, lastFailureAt: null },
+    discovery: { success: 0, failure: 0, lastFailureAt: null },
   };
 }
 function getTenantCounterSet(tenantId) {
@@ -67,12 +96,31 @@ function failureRate(counter) {
 }
 function recordExtractionResult(success, tenantId) {
   incrementCounter("extraction", success, tenantId);
+  ensureMetrics();
+  extractionCounter.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
 }
 exports.recordExtractionResult = recordExtractionResult;
 function recordLlmCall(success, tenantId) {
   incrementCounter("llm", success, tenantId);
+  ensureMetrics();
+  llmCounter.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
 }
 exports.recordLlmCall = recordLlmCall;
+function recordDiscoveryJobResult(success, tenantId) {
+  incrementCounter("discovery", success, tenantId);
+  ensureMetrics();
+  discoveryCounter.add(1, {
+    result: success ? "success" : "failure",
+    ...(tenantId ? { tenant_id: tenantId } : {}),
+  });
+}
+exports.recordDiscoveryJobResult = recordDiscoveryJobResult;
 function snapshotCounterSet(counterSet) {
   return {
     extraction: {
@@ -83,24 +131,11 @@ function snapshotCounterSet(counterSet) {
       ...counterSet.llm,
       failureRate: failureRate(counterSet.llm),
     },
+    discovery: {
+      ...counterSet.discovery,
+      failureRate: failureRate(counterSet.discovery),
+    },
   };
-}
-function escapeLabelValue(value) {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-}
-function formatLabels(labels) {
-  if (!labels || Object.keys(labels).length === 0)
-    return "";
-  const formatted = Object.entries(labels)
-    .map(([key, val]) => `${key}="${escapeLabelValue(val)}"`)
-    .join(",");
-  return `{${formatted}}`;
-}
-function appendCounterLine(lines, name, value, labels) {
-  lines.push(`${name}${formatLabels(labels)} ${value}`);
-}
-function appendGaugeLine(lines, name, value, labels) {
-  lines.push(`${name}${formatLabels(labels)} ${value}`);
 }
 function recordRagRecall(params) {
   const relevantSet = new Set(params.relevantDocumentIds);
@@ -120,6 +155,10 @@ function recordRagRecall(params) {
     tenantBucket.sum += recall;
     tenantBucket.count += 1;
     tenantBucket.lastValue = recall;
+    ensureMetrics();
+    const attributes = { k: String(k), tenant_id: params.tenantId };
+    ragRecallHistogram.record(recall, attributes);
+    ragRecallSamples.add(1, attributes);
   }
 }
 exports.recordRagRecall = recordRagRecall;
@@ -156,44 +195,3 @@ function getMetricsSnapshot() {
   };
 }
 exports.getMetricsSnapshot = getMetricsSnapshot;
-function getPrometheusMetrics() {
-  const lines = [];
-  lines.push("# HELP stronghold_extraction_success_total Total successful extractions.");
-  lines.push("# TYPE stronghold_extraction_success_total counter");
-  lines.push("# HELP stronghold_extraction_failure_total Total failed extractions.");
-  lines.push("# TYPE stronghold_extraction_failure_total counter");
-  lines.push("# HELP stronghold_llm_success_total Total successful LLM calls.");
-  lines.push("# TYPE stronghold_llm_success_total counter");
-  lines.push("# HELP stronghold_llm_failure_total Total failed LLM calls.");
-  lines.push("# TYPE stronghold_llm_failure_total counter");
-  lines.push("# HELP stronghold_rag_recall_at_k Average recall@k for RAG retrieval.");
-  lines.push("# TYPE stronghold_rag_recall_at_k gauge");
-  lines.push("# HELP stronghold_rag_recall_samples_total Total recall@k samples.");
-  lines.push("# TYPE stronghold_rag_recall_samples_total counter");
-  appendCounterLine(lines, "stronghold_extraction_success_total", counters.extraction.success);
-  appendCounterLine(lines, "stronghold_extraction_failure_total", counters.extraction.failure);
-  appendCounterLine(lines, "stronghold_llm_success_total", counters.llm.success);
-  appendCounterLine(lines, "stronghold_llm_failure_total", counters.llm.failure);
-  for (const [k, stats] of ragRecallStats.entries()) {
-    const average = stats.count === 0 ? 0 : stats.sum / stats.count;
-    appendGaugeLine(lines, "stronghold_rag_recall_at_k", average, { k: String(k) });
-    appendCounterLine(lines, "stronghold_rag_recall_samples_total", stats.count, { k: String(k) });
-  }
-  for (const [tenantId, counterSet] of tenantCounters.entries()) {
-    const labels = { tenant_id: tenantId };
-    appendCounterLine(lines, "stronghold_extraction_success_total", counterSet.extraction.success, labels);
-    appendCounterLine(lines, "stronghold_extraction_failure_total", counterSet.extraction.failure, labels);
-    appendCounterLine(lines, "stronghold_llm_success_total", counterSet.llm.success, labels);
-    appendCounterLine(lines, "stronghold_llm_failure_total", counterSet.llm.failure, labels);
-  }
-  for (const [tenantId, tenantMap] of tenantRagRecallStats.entries()) {
-    for (const [k, stats] of tenantMap.entries()) {
-      const labels = { tenant_id: tenantId, k: String(k) };
-      const average = stats.count === 0 ? 0 : stats.sum / stats.count;
-      appendGaugeLine(lines, "stronghold_rag_recall_at_k", average, labels);
-      appendCounterLine(lines, "stronghold_rag_recall_samples_total", stats.count, labels);
-    }
-  }
-  return `${lines.join("\n")}\n`;
-}
-exports.getPrometheusMetrics = getPrometheusMetrics;

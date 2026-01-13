@@ -1,6 +1,10 @@
 import { Job, Worker } from "bullmq";
 import prisma from "../prismaClient.js";
 import { createRedisConnection } from "../queues/discoveryQueue.js";
+import { getTracer } from "../observability/telemetry.js";
+import { SpanStatusCode } from "@opentelemetry/api";
+import { recordDiscoveryJobResult } from "../observability/metrics.js";
+import { notifyN8nAlert } from "../services/n8nAlertService.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;
@@ -30,35 +34,67 @@ async function updateDiscoveryJob(tenantId: string, jobId: string, data: Record<
 
 async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
   const { jobId, tenantId } = job.data;
-  await updateDiscoveryJob(tenantId, jobId, {
-    status: "RUNNING",
-    step: "SCAN_NETWORK",
-    progress: 10,
-    startedAt: new Date(),
-    errorMessage: null,
-  });
+  const tracer = getTracer();
+  return tracer.startActiveSpan(
+    "discovery.job",
+    {
+      attributes: {
+        "tenant.id": tenantId,
+        "discovery.job_id": jobId,
+      },
+    },
+    async (span) => {
+      try {
+        await updateDiscoveryJob(tenantId, jobId, {
+          status: "RUNNING",
+          step: "SCAN_NETWORK",
+          progress: 10,
+          startedAt: new Date(),
+          errorMessage: null,
+        });
 
-  for (const step of discoverySteps) {
-    await updateDiscoveryJob(tenantId, jobId, {
-      step: step.step,
-      progress: step.progress,
-      status: "RUNNING",
-    });
-  }
+        for (const step of discoverySteps) {
+          span.addEvent("discovery.step", { step: step.step });
+          await updateDiscoveryJob(tenantId, jobId, {
+            step: step.step,
+            progress: step.progress,
+            status: "RUNNING",
+          });
+        }
 
-  await updateDiscoveryJob(tenantId, jobId, {
-    status: "COMPLETED",
-    step: "COMPLETED",
-    progress: 100,
-    completedAt: new Date(),
-    resultSummary: JSON.stringify({
-      discoveredHosts: 0,
-      createdServices: 0,
-      createdInfra: 0,
-      createdDependencies: 0,
-      createdInfraLinks: 0,
-    }),
-  });
+        await updateDiscoveryJob(tenantId, jobId, {
+          status: "COMPLETED",
+          step: "COMPLETED",
+          progress: 100,
+          completedAt: new Date(),
+          resultSummary: JSON.stringify({
+            discoveredHosts: 0,
+            createdServices: 0,
+            createdInfra: 0,
+            createdDependencies: 0,
+            createdInfraLinks: 0,
+          }),
+        });
+        recordDiscoveryJobResult(true, tenantId);
+        span.setStatus({ code: SpanStatusCode.OK });
+      } catch (error) {
+        recordDiscoveryJobResult(false, tenantId);
+        span.recordException(error as Error);
+        span.setStatus({
+          code: SpanStatusCode.ERROR,
+          message: error instanceof Error ? error.message : "Discovery job error",
+        });
+        void notifyN8nAlert({
+          event: "discovery.error",
+          tenantId,
+          message: error instanceof Error ? error.message : "Discovery job error",
+        });
+        throw error;
+      } finally {
+        span.end();
+      }
+    }
+  );
 }
 
 export function startDiscoveryWorker() {

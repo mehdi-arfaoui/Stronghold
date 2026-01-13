@@ -5,7 +5,8 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const prisma = require("./prismaClient");
 const { metricsConfig } = require("./config/observability");
-const { getMetricsSnapshot, getPrometheusMetrics } = require("./observability/metrics");
+const { getMetricsSnapshot } = require("./observability/metrics");
+const { getPrometheusMetricsHandler, initTelemetry } = require("./observability/telemetry");
 
 const serviceRoutes = require("./routes/serviceRoutes");
 const graphRoutes = require("./routes/graphRoutes");
@@ -29,6 +30,7 @@ const pricingRoutes = require("./routes/pricingRoutes");
 const { startDiscoveryWorker } = require("./workers/discoveryWorker");
 
 dotenv.config();
+initTelemetry();
 
 const app = express();
 
@@ -99,8 +101,8 @@ app.get("/health", async (_req, res) => {
 });
 
 app.get("/metrics", (_req, res) => {
-  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-  res.status(200).send(getPrometheusMetrics());
+  const handler = getPrometheusMetricsHandler();
+  return handler(_req, res);
 });
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId

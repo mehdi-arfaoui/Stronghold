@@ -1,5 +1,6 @@
 export declare function recordExtractionResult(success: boolean, tenantId?: string): void;
 export declare function recordLlmCall(success: boolean, tenantId?: string): void;
+export declare function recordDiscoveryJobResult(success: boolean, tenantId?: string): void;
 export declare function recordRagRecall(params: {
     tenantId: string;
     relevantDocumentIds: string[];
@@ -19,6 +20,12 @@ export declare function getMetricsSnapshot(): {
         failure: number;
         lastFailureAt: Date | null;
     };
+    discovery: {
+        failureRate: number;
+        success: number;
+        failure: number;
+        lastFailureAt: Date | null;
+    };
     perTenant: Record<string, {
         extraction: {
             failureRate: number;
@@ -27,6 +34,12 @@ export declare function getMetricsSnapshot(): {
             lastFailureAt: Date | null;
         };
         llm: {
+            failureRate: number;
+            success: number;
+            failure: number;
+            lastFailureAt: Date | null;
+        };
+        discovery: {
             failureRate: number;
             success: number;
             failure: number;
@@ -44,4 +57,3 @@ export declare function getMetricsSnapshot(): {
         lastValue: number;
     }>>;
 };
-export declare function getPrometheusMetrics(): string;

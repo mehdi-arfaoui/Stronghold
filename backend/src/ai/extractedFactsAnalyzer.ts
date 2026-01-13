@@ -1,6 +1,13 @@
 import { EXTRACTED_FACT_CATEGORIES } from "./extractedFactSchema.js";
 import type { ExtractedFactCategory } from "./extractedFactSchema.js";
 import { recordLlmCall } from "../observability/metrics.js";
+import { getTracer } from "../observability/telemetry.js";
+import { SpanStatusCode } from "@opentelemetry/api";
+import {
+  readCircuitBreakerState,
+  writeCircuitBreakerState,
+} from "./circuitBreakerStore.js";
+import { notifyN8nAlert } from "../services/n8nAlertService.js";
 
 export interface AiExtractedFact {
   type: string;
@@ -109,19 +116,9 @@ type CircuitBreakerConfig = {
   openDurationMs: number;
 };
 
-type CircuitBreakerState = {
-  failures: number;
-  openedAt: number | null;
-};
-
 const DEFAULT_CIRCUIT_CONFIG: CircuitBreakerConfig = {
   failureThreshold: 3,
   openDurationMs: 60_000,
-};
-
-const circuitBreakerState: CircuitBreakerState = {
-  failures: 0,
-  openedAt: null,
 };
 
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
@@ -193,8 +190,9 @@ function resolveCircuitConfig(): CircuitBreakerConfig {
   };
 }
 
-function ensureCircuitOpen(correlationId: string) {
+async function ensureCircuitOpen(correlationId: string, tenantId: string) {
   const config = resolveCircuitConfig();
+  const circuitBreakerState = await readCircuitBreakerState(tenantId);
   if (circuitBreakerState.openedAt === null) {
     return;
   }
@@ -210,19 +208,21 @@ function ensureCircuitOpen(correlationId: string) {
 
   circuitBreakerState.failures = 0;
   circuitBreakerState.openedAt = null;
+  await writeCircuitBreakerState(tenantId, circuitBreakerState);
 }
 
-function recordCircuitSuccess() {
-  circuitBreakerState.failures = 0;
-  circuitBreakerState.openedAt = null;
+async function recordCircuitSuccess(tenantId: string) {
+  await writeCircuitBreakerState(tenantId, { failures: 0, openedAt: null });
 }
 
-function recordCircuitFailure() {
+async function recordCircuitFailure(tenantId: string) {
   const config = resolveCircuitConfig();
+  const circuitBreakerState = await readCircuitBreakerState(tenantId);
   circuitBreakerState.failures += 1;
   if (circuitBreakerState.failures >= config.failureThreshold) {
     circuitBreakerState.openedAt = Date.now();
   }
+  await writeCircuitBreakerState(tenantId, circuitBreakerState);
 }
 
 function sleep(ms: number) {
@@ -233,9 +233,10 @@ async function callOpenAiWithRetry(
   requestBody: unknown,
   headers: Record<string, string>,
   correlationId: string,
+  tenantId: string,
   retryOverrides?: PartialRetryConfig
 ) {
-  ensureCircuitOpen(correlationId);
+  await ensureCircuitOpen(correlationId, tenantId);
   const config = resolveRetryConfig(retryOverrides);
   let attempt = 0;
   let delay = config.initialDelayMs;
@@ -262,13 +263,13 @@ async function callOpenAiWithRetry(
       }
 
       if (response.ok) {
-        recordCircuitSuccess();
+        await recordCircuitSuccess(tenantId);
         return response;
       }
 
       if (attempt >= config.maxAttempts) {
         const message = await response.text().catch(() => response.statusText);
-        recordCircuitFailure();
+        await recordCircuitFailure(tenantId);
         throw new OpenAiCallError(
           `OpenAI request failed (${response.status}) [correlationId=${correlationId}]: ${message}`,
           response.status,
@@ -282,7 +283,7 @@ async function callOpenAiWithRetry(
 
       if (attempt >= config.maxAttempts) {
         const message = err?.message || "OpenAI request failed";
-        recordCircuitFailure();
+        await recordCircuitFailure(tenantId);
         throw new OpenAiCallError(
           `${message} [correlationId=${correlationId}]`,
           err?.status ?? err?.code,
@@ -295,7 +296,7 @@ async function callOpenAiWithRetry(
     delay = Math.min(delay * 2, config.maxDelayMs);
   }
 
-  recordCircuitFailure();
+  await recordCircuitFailure(tenantId);
   throw new OpenAiCallError(
     `OpenAI request failed [correlationId=${correlationId}]`,
     undefined,
@@ -312,6 +313,7 @@ export async function analyzeExtractedFacts(
   }
 
   const correlationId = params.correlationId || "openai-analyzer";
+  const tenantId = params.tenantId ?? "global";
   const model = process.env.OPENAI_MODEL || "gpt-4.1-mini";
   const truncatedText = params.text.slice(0, 12000);
   const headers = {
@@ -348,16 +350,38 @@ export async function analyzeExtractedFacts(
     },
   };
 
+  const tracer = getTracer();
+  const span = tracer.startSpan("llm.openai.request", {
+    attributes: {
+      "llm.provider": "openai",
+      "llm.model": model,
+      "tenant.id": tenantId,
+      "correlation_id": correlationId,
+    },
+  });
+
   let response;
   try {
     response = await callOpenAiWithRetry(
       requestBody,
       headers,
       correlationId,
+      tenantId,
       params.retryConfig
     );
   } catch (err) {
     recordLlmCall(false, params.tenantId ?? undefined);
+    span.recordException(err as Error);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: (err as Error)?.message });
+    const status = err instanceof OpenAiCallError ? err.status : undefined;
+    void notifyN8nAlert({
+      event: status === 429 ? "llm.quota" : "llm.error",
+      tenantId,
+      correlationId,
+      status,
+      message: err instanceof Error ? err.message : "LLM error",
+    });
+    span.end();
     throw err;
   }
 
@@ -365,10 +389,21 @@ export async function analyzeExtractedFacts(
     const payload = await response.json();
     const parsed = extractJsonFromResponse(payload);
     recordLlmCall(true, params.tenantId ?? undefined);
+    span.setStatus({ code: SpanStatusCode.OK });
+    span.end();
     return parsed.facts;
   } catch (err: any) {
     recordLlmCall(false, params.tenantId ?? undefined);
+    span.recordException(err as Error);
+    span.setStatus({ code: SpanStatusCode.ERROR, message: err?.message });
+    span.end();
     const message = err?.message || "Failed to parse OpenAI response";
+    void notifyN8nAlert({
+      event: "llm.error",
+      tenantId,
+      correlationId,
+      message,
+    });
     throw new OpenAiCallError(
       `${message} [correlationId=${correlationId}]`,
       undefined,

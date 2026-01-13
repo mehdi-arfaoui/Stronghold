@@ -3,7 +3,8 @@ import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient.js";
 import { metricsConfig } from "./config/observability.js";
-import { getMetricsSnapshot, getPrometheusMetrics } from "./observability/metrics.js";
+import { getMetricsSnapshot } from "./observability/metrics.js";
+import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
 
 import serviceRoutes from "./routes/serviceRoutes.js";
 import graphRoutes from "./routes/graphRoutes.js";
@@ -27,6 +28,7 @@ import pricingRoutes from "./routes/pricingRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 
 dotenv.config();
+initTelemetry();
 
 const app = express();
 
@@ -98,8 +100,8 @@ app.get("/health", async (_req, res) => {
 });
 
 app.get("/metrics", (_req, res) => {
-  res.setHeader("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-  res.status(200).send(getPrometheusMetrics());
+  const handler = getPrometheusMetricsHandler();
+  return handler(_req, res);
 });
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
