@@ -9,6 +9,8 @@ import {
   buildJobResponse,
   buildDiscoverySuggestions,
   DiscoveryImportError,
+  DiscoveryGitHubImportError,
+  fetchDiscoveryImportFromGitHub,
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
 } from "../services/discoveryService.js";
@@ -29,7 +31,7 @@ function resolveCredentials(payload: any) {
  * POST /discovery/run
  * Lance un scan réseau/cloud pour le tenant courant.
  */
-router.post("/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+async function handleDiscoveryRun(req: TenantRequest, res: any) {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -132,7 +134,10 @@ router.post("/run", requireRole("OPERATOR"), async (req: TenantRequest, res) => 
     console.error("Error in POST /discovery/run:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
-});
+}
+
+router.post("/run", requireRole("OPERATOR"), handleDiscoveryRun);
+router.post("/scan", requireRole("OPERATOR"), handleDiscoveryRun);
 
 /**
  * GET /discovery/status/:jobId
@@ -305,5 +310,112 @@ router.post(
     }
   }
 );
+
+/**
+ * POST /discovery/github-import
+ * Import d'un export JSON depuis un dépôt GitHub public.
+ */
+router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  let jobId: string | null = null;
+  let tenantId: string | null = null;
+  try {
+    tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const repoUrl = parseOptionalString(payload.repoUrl, "repoUrl", issues, { allowNull: true });
+    const filePath = parseOptionalString(payload.filePath, "filePath", issues, { allowNull: true });
+    const ref = parseOptionalString(payload.ref, "ref", issues, { allowNull: true });
+    const rawUrl = parseOptionalString(payload.rawUrl, "rawUrl", issues, { allowNull: true });
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    if (!rawUrl && (!repoUrl || !filePath)) {
+      return res.status(400).json({
+        error: "Paramètres GitHub incomplets",
+        details: [
+          {
+            field: "repoUrl",
+            message: "repoUrl + filePath ou rawUrl sont requis",
+          },
+        ],
+      });
+    }
+
+    const job = await prisma.discoveryJob.create({
+      data: {
+        tenantId,
+        status: "RUNNING",
+        jobType: "GITHUB_IMPORT",
+        progress: 20,
+        parameters: JSON.stringify({
+          repoUrl: repoUrl || null,
+          filePath: filePath || null,
+          ref: ref || null,
+          rawUrl: rawUrl || null,
+        }),
+        requestedByApiKeyId: req.apiKeyId ?? null,
+        startedAt: new Date(),
+      },
+    });
+    jobId = job.id;
+
+    const { buffer, filename } = await fetchDiscoveryImportFromGitHub({
+      repoUrl: repoUrl || undefined,
+      filePath: filePath || undefined,
+      ref: ref || undefined,
+      rawUrl: rawUrl || undefined,
+    });
+
+    const { payload: importPayload, report } = parseDiscoveryImport(
+      buffer,
+      filename,
+      "application/json"
+    );
+    const summary = await applyDiscoveryImport(tenantId, importPayload);
+
+    await prisma.discoveryJob.updateMany({
+      where: { id: job.id, tenantId },
+      data: {
+        status: "COMPLETED",
+        progress: 100,
+        completedAt: new Date(),
+        resultSummary: JSON.stringify({ ...summary, importReport: report }),
+      },
+    });
+
+    const completed = await prisma.discoveryJob.findFirst({
+      where: { id: job.id, tenantId },
+    });
+
+    if (!completed) {
+      return res.status(404).json({ error: "Job de découverte introuvable" });
+    }
+
+    return res.status(201).json(buildJobResponse(completed));
+  } catch (error) {
+    console.error("Error in POST /discovery/github-import:", error);
+    if (error instanceof DiscoveryImportError || error instanceof DiscoveryGitHubImportError) {
+      if (jobId) {
+        await prisma.discoveryJob.updateMany({
+          where: { id: jobId, tenantId },
+          data: {
+            status: "FAILED",
+            step: "FAILED",
+            errorMessage: error.message,
+            completedAt: new Date(),
+          },
+        });
+      }
+      return res.status(400).json({ error: error.message, details: error.details });
+    }
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
 
 export default router;

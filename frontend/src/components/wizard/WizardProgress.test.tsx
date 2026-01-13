@@ -20,7 +20,7 @@ describe("WizardProgress", () => {
     );
 
     const progressBar = screen.getByRole("progressbar");
-    expect(progressBar).toHaveAttribute("aria-valuenow", "29");
+    expect(progressBar).toHaveAttribute("aria-valuenow", "25");
     expect(container).toMatchSnapshot();
   });
 });

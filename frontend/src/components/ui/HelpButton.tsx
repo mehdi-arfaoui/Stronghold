@@ -1,18 +1,18 @@
 import { useState, type ReactNode } from "react";
 
-interface HelpBoxProps {
+interface HelpButtonProps {
   title?: string;
   buttonLabel?: string;
   className?: string;
   children: ReactNode;
 }
 
-export function HelpBox({
+export function HelpButton({
   title = "Aide contextuelle",
   buttonLabel = "Aide ?",
   className,
   children,
-}: HelpBoxProps) {
+}: HelpButtonProps) {
   const [isOpen, setIsOpen] = useState(false);
 
   return (

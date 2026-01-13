@@ -63,6 +63,11 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
+  const [githubRepoUrl, setGithubRepoUrl] = useState("");
+  const [githubFilePath, setGithubFilePath] = useState("");
+  const [githubRef, setGithubRef] = useState("main");
+  const [githubImporting, setGithubImporting] = useState(false);
+  const [githubError, setGithubError] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<DiscoverySuggestionResponse | null>(null);
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState<string | null>(null);
@@ -135,7 +140,7 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
     }
 
     try {
-      const job = await apiFetch("/discovery/run", {
+      const job = await apiFetch("/discovery/scan", {
         method: "POST",
         body: JSON.stringify(payload),
       });
@@ -211,6 +216,34 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
     }
   };
 
+  const handleGitHubImport = async (event: FormEvent) => {
+    event.preventDefault();
+    setGithubError(null);
+    setActionMessage(null);
+    if (!githubRepoUrl || !githubFilePath) {
+      setGithubError("Renseignez l'URL du dépôt GitHub et le chemin du fichier.");
+      return;
+    }
+    setGithubImporting(true);
+    try {
+      const job = await apiFetch("/discovery/github-import", {
+        method: "POST",
+        body: JSON.stringify({
+          repoUrl: githubRepoUrl,
+          filePath: githubFilePath,
+          ref: githubRef || undefined,
+        }),
+      });
+      setCurrentJob(job);
+      setActionMessage("Import GitHub terminé et données insérées.");
+      await loadHistory();
+    } catch (err: any) {
+      setGithubError(err.message || "Erreur lors de l'import GitHub");
+    } finally {
+      setGithubImporting(false);
+    }
+  };
+
   const latestJobs = history.slice(0, 6);
   const progressValue = currentJob?.progress ?? (history.length > 0 ? 60 : 10);
   const progressLabel = currentJob
@@ -238,6 +271,7 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
         links={[
           { label: "Lancer un scan", href: "#discovery-run", description: "Réseau/Cloud" },
           { label: "Importer un export", href: "#discovery-import", description: "CSV/JSON" },
+          { label: "Importer depuis GitHub", href: "#discovery-github", description: "Repo public" },
           { label: "Wizard de mapping", href: "#discovery-wizard", description: "Suggestions" },
         ]}
         expectedData={[
@@ -250,6 +284,20 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
           label: progressLabel,
         }}
       />
+
+      {actionMessage && <div className="alert success">{actionMessage}</div>}
+
+      {!currentJob && history.length === 0 && !loadingHistory ? (
+        <SectionCard
+          eyebrow="Statut"
+          title="Aucune découverte en cours"
+          description="Lancez un scan ou importez un export pour remplir la cartographie."
+        >
+          <p className="muted small">
+            Les premiers résultats apparaîtront dans l'historique dès la fin du scan ou de l'import.
+          </p>
+        </SectionCard>
+      ) : null}
 
       <div id="discovery-run">
         <SectionCard
@@ -362,8 +410,6 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
           )}
 
           {runError && <div className="alert error">{runError}</div>}
-          {actionMessage && <div className="alert success">{actionMessage}</div>}
-
           <div className="button-group">
             <button className="primary" type="submit" disabled={running}>
               {running ? "Scan en cours..." : "Lancer la découverte"}
@@ -395,12 +441,54 @@ export function DiscoverySection({ configVersion }: DiscoverySectionProps) {
               }
             />
           </label>
-          {importError && <div className="alert error">{importError}</div>}
-          <button className="primary" type="submit" disabled={importing}>
-            {importing ? "Import en cours..." : "Importer l'export"}
-          </button>
+            {importError && <div className="alert error">{importError}</div>}
+            <button className="primary" type="submit" disabled={importing}>
+              {importing ? "Import en cours..." : "Importer l'export"}
+            </button>
         </form>
       </SectionCard>
+      </div>
+
+      <div id="discovery-github">
+        <SectionCard
+          eyebrow="Import GitHub"
+          title="Importer depuis un dépôt GitHub"
+          description="Récupérez un export JSON depuis un dépôt GitHub public pour alimenter la cartographie."
+        >
+          <form className="form-grid" onSubmit={handleGitHubImport}>
+            <label className="form-field">
+              <span>URL du dépôt GitHub</span>
+              <input
+                type="url"
+                value={githubRepoUrl}
+                onChange={(event) => setGithubRepoUrl(event.target.value)}
+                placeholder="https://github.com/organisation/infra-discovery"
+              />
+            </label>
+            <label className="form-field">
+              <span>Chemin du fichier JSON</span>
+              <input
+                type="text"
+                value={githubFilePath}
+                onChange={(event) => setGithubFilePath(event.target.value)}
+                placeholder="exports/discovery.json"
+              />
+            </label>
+            <label className="form-field">
+              <span>Branche ou tag</span>
+              <input
+                type="text"
+                value={githubRef}
+                onChange={(event) => setGithubRef(event.target.value)}
+                placeholder="main"
+              />
+            </label>
+            {githubError && <div className="alert error">{githubError}</div>}
+            <button className="primary" type="submit" disabled={githubImporting}>
+              {githubImporting ? "Import en cours..." : "Importer depuis GitHub"}
+            </button>
+          </form>
+        </SectionCard>
       </div>
 
       <div id="discovery-wizard">

@@ -91,3 +91,48 @@ Si les variables d'environnement ne sont pas chargées, vous pouvez configurer l
 
 La configuration est sauvegardée dans le localStorage du navigateur.
 
+## OCR indisponible (tesseract manquant)
+
+### Causes possibles
+
+- Tesseract n'est pas installé sur le serveur.
+- Le binaire `tesseract` n'est pas dans le `PATH` du service.
+
+### Solutions
+
+```bash
+# Installer via APT
+sudo apt-get update
+sudo apt-get install -y tesseract-ocr libtesseract-dev
+
+# Ou utiliser le script du dépôt
+sudo backend/scripts/install-ocr.sh
+
+# Vérifier l'installation
+tesseract --version
+```
+
+Si vous utilisez Docker, ajoutez le paquet dans l'image ou montez un binaire disponible sur l'hôte.
+
+## Problème : `Failed to resolve import "tslib" from "node_modules/.vite/deps/echarts-for-react.js"`
+
+### Causes possibles
+
+- Dépendances frontend non installées ou cache Vite obsolète.
+- Installation partielle (node_modules manquant).
+
+### Solutions
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Si l'erreur persiste, supprimez `.vite` et relancez Vite :
+
+```bash
+rm -rf frontend/node_modules/.vite
+cd frontend
+npm run dev
+```
