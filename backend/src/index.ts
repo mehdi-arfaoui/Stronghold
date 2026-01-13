@@ -11,6 +11,7 @@ import infraRoutes from "./routes/infraRoutes.js";
 import { tenantMiddleware } from "./middleware/tenantMiddleware.js";
 import scenarioRoutes from "./routes/scenarioRoutes.js";
 import scenarioCatalogRoutes from "./routes/scenarioCatalogRoutes.js";
+import cyberScenarioRoutes from "./routes/cyberScenarioRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
 import continuityRoutes from "./routes/continuityRoutes.js";
 import runbookRoutes from "./routes/runbookRoutes.js";
@@ -177,6 +178,7 @@ const routes = [
   { path: "/infra", handler: infraRoutes, name: "infraRoutes" },
   { path: "/scenarios", handler: scenarioRoutes, name: "scenarioRoutes" },
   { path: "/scenario-catalog", handler: scenarioCatalogRoutes, name: "scenarioCatalogRoutes" },
+  { path: "/cyber-scenarios", handler: cyberScenarioRoutes, name: "cyberScenarioRoutes" },
   { path: "/documents", handler: documentRoutes, name: "documentRoutes" },
   { path: "/continuity", handler: continuityRoutes, name: "continuityRoutes" },
   { path: "/runbooks", handler: runbookRoutes, name: "runbookRoutes" },

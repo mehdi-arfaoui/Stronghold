@@ -566,6 +566,7 @@ model Exercise {
   checklistItems ExerciseChecklistItem[]
   results        ExerciseResult[]
   analyses       ExerciseAnalysis[]
+  simulations    ExerciseSimulation[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -643,6 +644,28 @@ model ExerciseAnalysis {
   correctiveActions Json
 
   createdAt DateTime @default(now())
+}
+
+model ExerciseSimulation {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  exerciseId String
+  exercise   Exercise @relation(fields: [exerciseId], references: [id])
+
+  simulator     String
+  connectorType String?
+  status        String @default("COMPLETED")
+  configuration Json
+  results       Json
+  startedAt     DateTime?
+  completedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, exerciseId])
 }
 
 model ExtractedFact {
