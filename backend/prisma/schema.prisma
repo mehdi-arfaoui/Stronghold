@@ -59,6 +59,7 @@ model Tenant {
   exerciseChecklistItems ExerciseChecklistItem[]
   exerciseResults        ExerciseResult[]
   exerciseAnalyses       ExerciseAnalysis[]
+  exerciseSimulations    ExerciseSimulation[]
   discoveryJobs          DiscoveryJob[]
   discoveryScanAudits    DiscoveryScanAudit[]
   discoveryResources     DiscoveryResource[]
@@ -1032,6 +1033,7 @@ model DiscoveryJob {
   auditLogs DiscoveryScanAudit[]
   discoveryResources DiscoveryResource[]
   discoveryFlows DiscoveryFlow[]
+  resourceChanges DiscoveryResourceChange[]
 }
 
 model DiscoveryScanAudit {
