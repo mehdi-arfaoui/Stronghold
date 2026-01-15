@@ -157,26 +157,60 @@ const discoveryImportSchema = z
 
 const discoveryJsonNodeSchema = z
   .object({
-    id: z.string().min(1),
-    name: z.string().min(1),
-    type: z.string().min(1),
+    id: z.string().min(1).optional(),
+    name: z.string().min(1).optional(),
+    label: z.string().min(1).optional(),
+    type: z.string().min(1).optional(),
     kind: z.enum(["service", "infra"]).optional(),
+    nodeKind: z.string().optional(),
     criticality: z.string().nullable().optional(),
     provider: z.string().nullable().optional(),
     location: z.string().nullable().optional(),
     ip: z.string().nullable().optional(),
     hostname: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
+    payload: z
+      .object({
+        externalId: z.string().min(1).optional(),
+        id: z.string().min(1).optional(),
+        name: z.string().min(1).optional(),
+        label: z.string().min(1).optional(),
+        type: z.string().min(1).optional(),
+        kind: z.enum(["service", "infra"]).optional(),
+        nodeKind: z.string().optional(),
+        criticality: z.string().nullable().optional(),
+        provider: z.string().nullable().optional(),
+        location: z.string().nullable().optional(),
+        ip: z.string().nullable().optional(),
+        hostname: z.string().nullable().optional(),
+        description: z.string().nullable().optional(),
+        tags: z.any().optional(),
+        metadata: z.any().optional(),
+      })
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 const discoveryJsonEdgeSchema = z
   .object({
-    source: z.string().min(1),
-    target: z.string().min(1),
+    source: z.string().min(1).optional(),
+    target: z.string().min(1).optional(),
+    from: z.string().min(1).optional(),
+    to: z.string().min(1).optional(),
     dependency_type: z.string().nullable().optional(),
+    dependencyType: z.string().nullable().optional(),
+    payload: z
+      .object({
+        source: z.string().min(1).optional(),
+        target: z.string().min(1).optional(),
+        from: z.string().min(1).optional(),
+        to: z.string().min(1).optional(),
+        dependency_type: z.string().nullable().optional(),
+        dependencyType: z.string().nullable().optional(),
+      })
+      .optional(),
   })
-  .strict();
+  .passthrough();
 
 function formatZodError(error: ZodError, prefix = ""): DiscoveryImportErrorDetail[] {
   return error.issues.map((issue) => ({
@@ -538,19 +572,43 @@ function parseJsonPayload(content: string): DiscoveryImportResult {
         issues.push(...formatZodError(result.error, `nodes.${index}.`));
         return null;
       }
-      const rawKind = result.data.kind || result.data.type;
+      const payload = result.data.payload;
+      const rawKind =
+        result.data.kind ||
+        payload?.kind ||
+        result.data.nodeKind ||
+        payload?.nodeKind ||
+        result.data.type ||
+        payload?.type;
       const kind = classifyNodeKind(rawKind);
+      const name =
+        result.data.name || payload?.name || result.data.label || payload?.label || payload?.externalId;
+      const externalId =
+        result.data.id ||
+        payload?.externalId ||
+        payload?.id ||
+        name ||
+        `import-node-${index + 1}`;
+      const rawType = result.data.type || payload?.type || rawKind || "HOST";
+
+      if (!name) {
+        issues.push({
+          field: `nodes.${index}.name`,
+          message: "name manquant",
+        });
+        return null;
+      }
       return {
-        externalId: result.data.id,
-        name: result.data.name,
+        externalId,
+        name,
         kind,
-        type: normalizeNodeType(result.data.type, kind),
-        criticality: normalizeCriticality(result.data.criticality),
-        provider: result.data.provider || null,
-        location: result.data.location || null,
-        ip: result.data.ip || null,
-        hostname: result.data.hostname || null,
-        description: result.data.description || null,
+        type: normalizeNodeType(rawType, kind),
+        criticality: normalizeCriticality(result.data.criticality ?? payload?.criticality),
+        provider: result.data.provider ?? payload?.provider ?? null,
+        location: result.data.location ?? payload?.location ?? null,
+        ip: result.data.ip ?? payload?.ip ?? null,
+        hostname: result.data.hostname ?? payload?.hostname ?? null,
+        description: result.data.description ?? payload?.description ?? null,
       } as DiscoveryNode;
     })
     .filter(Boolean) as DiscoveryNode[];
@@ -562,10 +620,27 @@ function parseJsonPayload(content: string): DiscoveryImportResult {
         issues.push(...formatZodError(result.error, `edges.${index}.`));
         return null;
       }
+      const payload = result.data.payload;
+      const source =
+        result.data.source || payload?.source || result.data.from || payload?.from || null;
+      const target =
+        result.data.target || payload?.target || result.data.to || payload?.to || null;
+      if (!source || !target) {
+        issues.push({
+          field: `edges.${index}`,
+          message: "source ou target manquant",
+        });
+        return null;
+      }
       return {
-        source: result.data.source,
-        target: result.data.target,
-        dependencyType: result.data.dependency_type || null,
+        source,
+        target,
+        dependencyType:
+          result.data.dependency_type ||
+          result.data.dependencyType ||
+          payload?.dependency_type ||
+          payload?.dependencyType ||
+          null,
       } as DiscoveryEdge;
     })
     .filter(Boolean) as DiscoveryEdge[];
