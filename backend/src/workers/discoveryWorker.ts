@@ -8,6 +8,7 @@ import { notifyN8nAlert } from "../services/n8nAlertService.js";
 import { decryptDiscoveryCredentials } from "../services/discoveryService.js";
 import { runDiscoveryEngine } from "../services/discoveryEngine.js";
 import { resolveVaultCredentials } from "../services/discoveryVaultService.js";
+import { emitDiscoveryProgress } from "../services/discoveryProgressService.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;
@@ -35,6 +36,45 @@ async function updateDiscoveryJob(tenantId: string, jobId: string, data: Record<
   if (result.count === 0) {
     throw new Error("Discovery job not found for tenant");
   }
+
+  emitDiscoveryProgress({
+    tenantId,
+    jobId,
+    status: typeof data.status === "string" ? data.status : null,
+    step: typeof data.step === "string" ? data.step : null,
+    progress: typeof data.progress === "number" ? data.progress : null,
+  });
+}
+
+async function recordDiscoveryHistory({
+  tenantId,
+  jobId,
+  status,
+  summary,
+  errorMessage,
+}: {
+  tenantId: string;
+  jobId: string;
+  status: string;
+  summary?: Record<string, unknown> | null;
+  errorMessage?: string | null;
+}) {
+  const jobRecord = await prisma.discoveryJob.findFirst({
+    where: { id: jobId, tenantId },
+    select: { startedAt: true, completedAt: true, jobType: true },
+  });
+  await prisma.discoveryHistory.create({
+    data: {
+      tenantId,
+      jobId,
+      status,
+      jobType: jobRecord?.jobType ?? null,
+      startedAt: jobRecord?.startedAt ?? null,
+      completedAt: jobRecord?.completedAt ?? null,
+      summary: summary ?? undefined,
+      errorMessage: errorMessage ?? null,
+    },
+  });
 }
 
 async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
@@ -106,27 +146,50 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
           autoCreate: Boolean(parameters.autoCreate),
         });
 
+        const resultSummary = {
+          discoveredResources: summary.discoveredResources,
+          discoveredFlows: summary.discoveredFlows,
+          matchedResources: summary.matchedResources,
+          createdServices: summary.createdServices,
+          createdInfra: summary.createdInfra,
+          createdDependencies: summary.createdDependencies,
+          createdInfraLinks: summary.createdInfraLinks,
+          ignoredEdges: summary.ignoredEdges,
+          addedResources: summary.addedResources,
+          modifiedResources: summary.modifiedResources,
+          removedResources: summary.removedResources,
+          unmatchedResources: summary.unmatchedResources,
+          shadowFlows: summary.shadowFlows,
+          mergedDiscoveredResources: summary.mergedDiscoveredResources,
+          updatedDiscoveredResources: summary.updatedDiscoveredResources,
+          mergedServiceMatches: summary.mergedServiceMatches,
+          mergedInfraMatches: summary.mergedInfraMatches,
+          mergedServicesCreated: summary.mergedServicesCreated,
+          mergedInfraCreated: summary.mergedInfraCreated,
+          warnings: summary.warnings,
+        };
+
         await updateDiscoveryJob(tenantId, jobId, {
           status: "COMPLETED",
           step: "COMPLETED",
           progress: 100,
           completedAt: new Date(),
-          resultSummary: JSON.stringify({
-            discoveredResources: summary.discoveredResources,
-            discoveredFlows: summary.discoveredFlows,
-            matchedResources: summary.matchedResources,
-            createdServices: summary.createdServices,
-            createdInfra: summary.createdInfra,
-            createdDependencies: summary.createdDependencies,
-            createdInfraLinks: summary.createdInfraLinks,
-            ignoredEdges: summary.ignoredEdges,
-            addedResources: summary.addedResources,
-            modifiedResources: summary.modifiedResources,
-            removedResources: summary.removedResources,
-            unmatchedResources: summary.unmatchedResources,
-            shadowFlows: summary.shadowFlows,
-            warnings: summary.warnings,
-          }),
+          resultSummary: JSON.stringify(resultSummary),
+        });
+        await recordDiscoveryHistory({
+          tenantId,
+          jobId,
+          status: "COMPLETED",
+          summary: resultSummary,
+        });
+        emitDiscoveryProgress({
+          tenantId,
+          jobId,
+          status: "COMPLETED",
+          step: "COMPLETED",
+          progress: 100,
+          summary: resultSummary,
+          completedAt: new Date(),
         });
         recordDiscoveryJobResult(true, tenantId);
         void notifyN8nAlert({
@@ -200,6 +263,21 @@ export function startDiscoveryWorker() {
       } catch (error) {
         const message = error instanceof Error ? error.message : "Discovery worker error";
         await updateDiscoveryJob(job.data.tenantId, job.data.jobId, {
+          status: "FAILED",
+          step: "FAILED",
+          progress: 0,
+          errorMessage: message,
+          completedAt: new Date(),
+        });
+        await recordDiscoveryHistory({
+          tenantId: job.data.tenantId,
+          jobId: job.data.jobId,
+          status: "FAILED",
+          errorMessage: message,
+        });
+        emitDiscoveryProgress({
+          tenantId: job.data.tenantId,
+          jobId: job.data.jobId,
           status: "FAILED",
           step: "FAILED",
           progress: 0,

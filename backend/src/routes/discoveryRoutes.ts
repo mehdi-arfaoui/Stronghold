@@ -24,6 +24,7 @@ import {
   encryptDiscoveryCredentials,
   parseDiscoveryImport,
 } from "../services/discoveryService.js";
+import { mergeDiscoveredResources } from "../services/discoveryMergeService.js";
 import { discoveryQueue } from "../queues/discoveryQueue.js";
 import { createDiscoverySchedule } from "../services/discoveryScheduleService.js";
 import { importDiscoveryFlows } from "../services/discoveryFlowService.js";
@@ -195,7 +196,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
     }
 
     try {
-      await discoveryQueue.add("discovery-run", {
+      await discoveryQueue.add("discovery.run", {
         jobId: job.id,
         tenantId,
         ipRanges,
@@ -346,6 +347,40 @@ router.post("/flows/import", requireRole("OPERATOR"), async (req: TenantRequest,
 });
 
 /**
+ * GET /discovery/resources
+ * Liste des ressources découvertes (CMDB dynamique).
+ */
+router.get("/resources", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: { field: string; message: string }[] = [];
+    const limitRaw = parseOptionalNumber(req.query.limit, "limit", issues);
+    const offsetRaw = parseOptionalNumber(req.query.offset, "offset", issues);
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+    const limit = Math.min(limitRaw ?? 100, 500);
+    const offset = offsetRaw ?? 0;
+
+    const resources = await prisma.discoveredResource.findMany({
+      where: { tenantId },
+      orderBy: { lastSeenAt: "desc" },
+      take: limit,
+      skip: offset,
+    });
+
+    return res.json({ resources, limit, offset });
+  } catch (error) {
+    console.error("Error in GET /discovery/resources:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+/**
  * GET /discovery/status/:jobId
  * Statut d'un job de découverte.
  */
@@ -383,13 +418,26 @@ router.get("/history", async (req: TenantRequest, res) => {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
 
-    const jobs = await prisma.discoveryJob.findMany({
+    const history = await prisma.discoveryHistory.findMany({
       where: { tenantId },
       orderBy: { createdAt: "desc" },
       take: 20,
     });
 
-    return res.json(jobs.map(buildJobResponse));
+    return res.json(
+      history.map((entry) => ({
+        id: entry.id,
+        jobId: entry.jobId,
+        status: entry.status,
+        jobType: entry.jobType,
+        startedAt: entry.startedAt,
+        completedAt: entry.completedAt,
+        summary: entry.summary,
+        errorMessage: entry.errorMessage,
+        createdAt: entry.createdAt,
+        updatedAt: entry.updatedAt,
+      }))
+    );
   } catch (error) {
     console.error("Error in GET /discovery/history:", error);
     return res.status(500).json({ error: "Internal server error" });
@@ -482,6 +530,24 @@ router.post(
         req.file.mimetype
       );
       const summary = await applyDiscoveryImport(tenantId, payload);
+      const mergeSummary = await mergeDiscoveredResources(
+        tenantId,
+        payload.nodes.map((node) => ({
+          source: "import",
+          externalId: node.externalId,
+          name: node.name,
+          kind: node.kind,
+          type: node.type,
+          ip: node.ip ?? null,
+          hostname: node.hostname ?? null,
+          metadata: {
+            criticality: node.criticality ?? null,
+            provider: node.provider ?? null,
+            location: node.location ?? null,
+            description: node.description ?? null,
+          },
+        }))
+      );
 
       await prisma.discoveryJob.updateMany({
         where: { id: job.id, tenantId },
@@ -489,7 +555,7 @@ router.post(
           status: "COMPLETED",
           progress: 100,
           completedAt: new Date(),
-          resultSummary: JSON.stringify({ ...summary, importReport: report }),
+          resultSummary: JSON.stringify({ ...summary, mergeSummary, importReport: report }),
         },
       });
 
@@ -594,6 +660,24 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
       "application/json"
     );
     const summary = await applyDiscoveryImport(tenantId, importPayload);
+    const mergeSummary = await mergeDiscoveredResources(
+      tenantId,
+      importPayload.nodes.map((node) => ({
+        source: "github-import",
+        externalId: node.externalId,
+        name: node.name,
+        kind: node.kind,
+        type: node.type,
+        ip: node.ip ?? null,
+        hostname: node.hostname ?? null,
+        metadata: {
+          criticality: node.criticality ?? null,
+          provider: node.provider ?? null,
+          location: node.location ?? null,
+          description: node.description ?? null,
+        },
+      }))
+    );
 
     await prisma.discoveryJob.updateMany({
       where: { id: job.id, tenantId },
@@ -601,7 +685,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
         status: "COMPLETED",
         progress: 100,
         completedAt: new Date(),
-        resultSummary: JSON.stringify({ ...summary, importReport: report }),
+        resultSummary: JSON.stringify({ ...summary, mergeSummary, importReport: report }),
       },
     });
 

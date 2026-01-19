@@ -15,6 +15,7 @@ import type {
 } from "./discoveryTypes.js";
 import { correlateDiscoveryResources } from "./discoveryCorrelationService.js";
 import { applyDiscoveryImport } from "./discoveryService.js";
+import { mergeDiscoveredResources } from "./discoveryMergeService.js";
 
 type DiscoveryEngineSummary = {
   discoveredResources: number;
@@ -30,6 +31,12 @@ type DiscoveryEngineSummary = {
   removedResources: number;
   unmatchedResources: number;
   shadowFlows: number;
+  mergedDiscoveredResources: number;
+  updatedDiscoveredResources: number;
+  mergedServiceMatches: number;
+  mergedInfraMatches: number;
+  mergedServicesCreated: number;
+  mergedInfraCreated: number;
   newResourceSamples: Array<{ source: string; externalId: string; name: string }>;
   shadowFlowSamples: Array<{
     sourceIp: string | null;
@@ -446,6 +453,8 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
   let createdInfraLinks = 0;
   let ignoredEdges = 0;
 
+  const mergeSummary = await mergeDiscoveredResources(context.tenantId, resources);
+
   if (context.autoCreate && resources.length > 0) {
     const nodes = resources.map(toDiscoveryNode);
     const edges = flows
@@ -479,6 +488,12 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
     removedResources: changeSummary.removedResources.length,
     unmatchedResources: unmatchedAddedResources.length,
     shadowFlows: shadowFlows.length,
+    mergedDiscoveredResources: mergeSummary.createdDiscoveredResources,
+    updatedDiscoveredResources: mergeSummary.updatedDiscoveredResources,
+    mergedServiceMatches: mergeSummary.matchedServices,
+    mergedInfraMatches: mergeSummary.matchedInfra,
+    mergedServicesCreated: mergeSummary.createdServices,
+    mergedInfraCreated: mergeSummary.createdInfra,
     newResourceSamples: unmatchedAddedResources.slice(0, 20).map((resource) => ({
       source: resource.source,
       externalId: resource.externalId,
