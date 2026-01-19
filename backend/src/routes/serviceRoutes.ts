@@ -10,6 +10,7 @@ import {
   parseRequiredNumber,
   parseRequiredString,
 } from "../validation/common.js";
+import { recordUserFeedback } from "../services/userFeedbackService.js";
 
 const router = Router();
 
@@ -445,6 +446,14 @@ router.post(
         toServiceId,
         dependencyType,
       },
+    });
+
+    await recordUserFeedback({
+      tenantId,
+      resourceId: dependency.id,
+      type: "DEPENDENCY_ADDED",
+      rating: null,
+      comment: null,
     });
 
     return res.status(201).json(dependency);

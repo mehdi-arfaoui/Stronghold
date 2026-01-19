@@ -4,6 +4,7 @@ exports.__test__ = void 0;
 exports.recordDocumentClassificationFeedback = recordDocumentClassificationFeedback;
 exports.DocumentClassificationDocumentNotFoundError = void 0;
 const prismaClient_1 = require("../prismaClient");
+const userFeedbackService_1 = require("./userFeedbackService");
 class DocumentClassificationDocumentNotFoundError extends Error {
     status = 404;
     constructor() {
@@ -36,6 +37,13 @@ async function recordDocumentClassificationFeedback(params) {
     await prismaClient_1.default.document.updateMany({
         where: { id: params.documentId, tenantId: params.tenantId },
         data: { docType: correctedType },
+    });
+    await (0, userFeedbackService_1.recordUserFeedback)({
+        tenantId: params.tenantId,
+        resourceId: params.documentId,
+        type: "DOC_TYPE_CORRECTION",
+        rating: null,
+        comment: params.notes ?? null,
     });
     return feedback;
 }

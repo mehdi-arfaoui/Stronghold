@@ -46,8 +46,13 @@ import {
 import { buildFinancialReport } from "../services/costEstimator.js";
 import type { ResourceInput } from "../services/costEstimator.js";
 import { recordEntityFeedback, recordRecommendationFeedback } from "../services/feedbackService.js";
+import {
+  getOrCreateRagExperimentAssignment,
+  recordRagExperimentFeedback,
+} from "../services/ragExperimentService.js";
 import { runMlTrainingForTenant } from "../services/mlTrainingService.js";
 import { resolveRagRuntimeConfig } from "../services/ragTuningService.js";
+import { recordUserFeedback } from "../services/userFeedbackService.js";
 import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
 
 const router = Router();
@@ -1262,6 +1267,103 @@ router.post(
       return res.status(201).json({ feedback });
     } catch (error) {
       console.error("Error in POST /analysis/feedback/recommendations:", error);
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
+
+router.post("/feedback/user", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: ValidationIssue[] = [];
+    const resourceId = parseRequiredString(req.body?.resourceId, "resourceId", issues);
+    const type = parseRequiredString(req.body?.type, "type", issues);
+    const rating = parseOptionalNumber(req.body?.rating, "rating", issues);
+    const comment = parseOptionalString(req.body?.comment, "comment", issues, true);
+    const timestamp = parseOptionalString(req.body?.timestamp, "timestamp", issues, true);
+
+    let parsedTimestamp: Date | null = null;
+    if (timestamp) {
+      const parsed = new Date(timestamp);
+      if (Number.isNaN(parsed.getTime())) {
+        addIssue(issues, "timestamp", "format de date invalide");
+      } else {
+        parsedTimestamp = parsed;
+      }
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json({ error: "Payload invalide", details: issues });
+    }
+
+    const feedback = await recordUserFeedback({
+      tenantId,
+      resourceId: resourceId as string,
+      type: type as string,
+      rating,
+      comment,
+      timestamp: parsedTimestamp,
+    });
+
+    return res.status(201).json({ feedback });
+  } catch (error) {
+    console.error("Error in POST /analysis/feedback/user:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post(
+  "/feedback/rag-experiments",
+  requireRole("OPERATOR"),
+  async (req: TenantRequest, res) => {
+    try {
+      const tenantId = req.tenantId;
+      if (!tenantId) {
+        return res.status(500).json({ error: "Tenant not resolved" });
+      }
+
+      const issues: ValidationIssue[] = [];
+      const experimentKey = parseOptionalString(
+        req.body?.experimentKey,
+        "experimentKey",
+        issues,
+        true
+      );
+      const subjectId = parseOptionalString(req.body?.subjectId, "subjectId", issues, true);
+      const variant = parseOptionalString(req.body?.variant, "variant", issues, true);
+      const rating = parseOptionalNumber(req.body?.rating, "rating", issues);
+      const comment = parseOptionalString(req.body?.comment, "comment", issues, true);
+
+      if (rating === undefined) {
+        addIssue(issues, "rating", "champ requis");
+      }
+
+      if (issues.length > 0) {
+        return res.status(400).json({ error: "Payload invalide", details: issues });
+      }
+
+      const { assignment } = await getOrCreateRagExperimentAssignment({
+        tenantId,
+        subjectId,
+        experimentKey: experimentKey ?? undefined,
+      });
+
+      const feedback = await recordRagExperimentFeedback({
+        tenantId,
+        experimentKey: assignment.experimentKey,
+        subjectId: assignment.subjectId,
+        variant: variant ?? assignment.variant,
+        rating,
+        comment,
+      });
+
+      return res.status(201).json({ feedback });
+    } catch (error) {
+      console.error("Error in POST /analysis/feedback/rag-experiments:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

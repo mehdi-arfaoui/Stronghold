@@ -12,22 +12,27 @@ const DEFAULT_EXPERIMENT_KEY = "rag-retrieval-v1";
 const DEFAULT_SUBJECT_ID = "tenant";
 const VARIANTS: RagExperimentVariant[] = [
   {
-    key: "lexical-fixed",
-    label: "Lexical only with fixed chunk size",
+    key: "bm25-only",
+    label: "BM25 uniquement",
     runtimeConfig: {
       mode: "lexical",
-      chunkingStrategy: "fixed",
-      chunkSize: 720,
-      lexicalChunksPerDoc: 8,
+      rerankStrategy: "none",
     },
   },
   {
-    key: "hybrid-adaptive",
-    label: "Hybrid retrieval with adaptive chunking",
+    key: "bm25-embeddings",
+    label: "BM25 + embeddings",
     runtimeConfig: {
       mode: "hybrid",
-      chunkingStrategy: "adaptive",
-      lexicalChunksPerDoc: 12,
+      rerankStrategy: "none",
+    },
+  },
+  {
+    key: "rerank-rrf",
+    label: "Reranking RRF",
+    runtimeConfig: {
+      mode: "hybrid",
+      rerankStrategy: "rrf",
     },
   },
 ];
@@ -35,7 +40,8 @@ const VARIANTS: RagExperimentVariant[] = [
 function pickVariant(seed: string): RagExperimentVariant {
   const hash = crypto.createHash("sha256").update(seed).digest("hex");
   const bucket = parseInt(hash.slice(0, 8), 16) / 0xffffffff;
-  const index = bucket < 0.5 ? 0 : 1;
+  const segment = 1 / VARIANTS.length;
+  const index = bucket < segment ? 0 : bucket < segment * 2 ? 1 : 2;
   return VARIANTS[index] ?? VARIANTS[0];
 }
 
@@ -70,6 +76,26 @@ export async function getOrCreateRagExperimentAssignment(params: {
   });
 
   return { assignment, variant };
+}
+
+export async function recordRagExperimentFeedback(params: {
+  tenantId: string;
+  experimentKey: string;
+  subjectId: string;
+  variant: string;
+  rating?: number | null;
+  comment?: string | null;
+}) {
+  return prisma.ragExperimentFeedback.create({
+    data: {
+      tenantId: params.tenantId,
+      experimentKey: params.experimentKey,
+      subjectId: params.subjectId,
+      variant: params.variant,
+      rating: params.rating ?? null,
+      comment: params.comment ?? null,
+    },
+  });
 }
 
 export function buildRuntimeConfigFromVariant(
