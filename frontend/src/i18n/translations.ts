@@ -183,7 +183,7 @@ export const TRANSLATIONS: Record<Language, TranslationCopy> = {
 
 export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
   fr: {
-    services: { label: "Services", description: "Catalogue et criticité" },
+    services: { label: "Services & Applications", description: "Catalogue et criticité" },
     discovery: { label: "Découverte", description: "Scan réseau & imports" },
     architecture: { label: "Architecture", description: "Vue d'ensemble" },
     landing: { label: "Landing Zone", description: "Infrastructure" },
@@ -203,7 +203,7 @@ export const MODULE_LABELS: Record<Language, Record<string, ModuleLabel>> = {
     audit: { label: "Audit (ADMIN)", description: "Historique des appels API" },
   },
   en: {
-    services: { label: "Services", description: "Catalog and criticality" },
+    services: { label: "Services & Applications", description: "Catalog and criticality" },
     discovery: { label: "Discovery", description: "Network scan & imports" },
     architecture: { label: "Architecture", description: "Overview" },
     landing: { label: "Landing Zone", description: "Infrastructure" },
@@ -324,6 +324,12 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
         "Scannez le réseau ou importez la CMDB pour enrichir les dépendances et services.",
       actionLabel: "Lancer une découverte",
     },
+    services: {
+      title: "Consolider services & applications",
+      description:
+        "Validez la criticité, les RTO/RPO et les propriétaires pour finaliser le catalogue.",
+      actionLabel: "Ouvrir le catalogue",
+    },
     rag: {
       title: "Classifier les documents",
       description:
@@ -369,6 +375,12 @@ export const HOME_STEP_CONTENT: Record<Language, Record<string, { title: string;
       description:
         "Scan the network or import CMDB exports to enrich dependencies and services.",
       actionLabel: "Run discovery",
+    },
+    services: {
+      title: "Consolidate services & applications",
+      description:
+        "Validate criticality, RTO/RPO, and ownership to finalize the catalog.",
+      actionLabel: "Open the catalog",
     },
     rag: {
       title: "Classify documents",

@@ -84,7 +84,7 @@ router.post("/", (0, tenantMiddleware_1.requireRole)("OPERATOR"), async (req, re
         if (!tenantId) {
             return res.status(500).json({ error: "Tenant not resolved" });
         }
-        const { name, type, description, criticality, businessPriority, recoveryPriority, domain, rtoHours, rpoMinutes, mtpdHours, notes, } = req.body || {};
+        const { name, type, description, owner, criticality, businessPriority, recoveryPriority, domain, rtoHours, rpoMinutes, mtpdHours, notes, } = req.body || {};
         // Champs obligatoires minimum pour créer un service
         if (!name || !type || !criticality) {
             return res.status(400).json({
@@ -107,6 +107,7 @@ router.post("/", (0, tenantMiddleware_1.requireRole)("OPERATOR"), async (req, re
                 name: String(name).trim(),
                 type: String(type).trim(),
                 description: description ? String(description).trim() : null,
+                owner: owner ? String(owner).trim() : null,
                 criticality: String(criticality).toLowerCase(),
                 businessPriority: businessPriority
                     ? String(businessPriority).trim()

@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { DiscoverySection } from "./DiscoverySection";
+import { DiscoveryProvider } from "../context/DiscoveryContext";
 
 vi.mock("../utils/api", () => ({
   apiFetch: vi.fn().mockResolvedValue([]),
@@ -12,16 +13,20 @@ vi.mock("../utils/api", () => ({
 
 describe("DiscoverySection", () => {
   it("renders a non-empty discovery page", async () => {
-    render(<DiscoverySection configVersion={0} />);
+    render(
+      <DiscoveryProvider initialCompleted={false}>
+        <DiscoverySection configVersion={0} />
+      </DiscoveryProvider>
+    );
 
     expect(screen.getByText("Découverte")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Lancer un scan" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Lancer un scan on-prem & cloud" })).toBeInTheDocument();
     expect(
       screen.getByRole("heading", { name: "Importer un export CSV/JSON" })
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Importer depuis un dépôt GitHub" })
+      screen.getByRole("heading", { name: "Importer un export via GitHub" })
     ).toBeInTheDocument();
-    expect(await screen.findByText("Aucune découverte en cours")).toBeInTheDocument();
+    expect(await screen.findByText("Aucun scan lancé pour le moment.")).toBeInTheDocument();
   });
 });

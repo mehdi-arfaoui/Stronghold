@@ -24,6 +24,7 @@ export type Service = {
   name: string;
   type: string;
   description: string | null;
+  owner?: string | null;
   criticality: string;
   recoveryPriority: number | null;
   domain?: string | null;
@@ -299,6 +300,7 @@ export type DiscoveryJob = {
   status: string;
   jobType: string;
   progress: number;
+  step?: string | null;
   parameters?: {
     ipRanges?: string[];
     cloudProviders?: string[];

@@ -3,6 +3,7 @@ import type { TranslationCopy } from "../../i18n/translations";
 
 export type HomeStepId =
   | "discovery"
+  | "services"
   | "documents"
   | "rag"
   | "bia"
