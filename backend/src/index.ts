@@ -13,6 +13,7 @@ import { tenantMiddleware } from "./middleware/tenantMiddleware.js";
 import scenarioRoutes from "./routes/scenarioRoutes.js";
 import scenarioCatalogRoutes from "./routes/scenarioCatalogRoutes.js";
 import cyberScenarioRoutes from "./routes/cyberScenarioRoutes.js";
+import cyberExerciseRoutes from "./routes/cyberExerciseRoutes.js";
 import documentRoutes from "./routes/documentRoutes.js";
 import continuityRoutes from "./routes/continuityRoutes.js";
 import runbookRoutes from "./routes/runbookRoutes.js";
@@ -178,6 +179,7 @@ const routes = [
   { path: "/graph", handler: graphRoutes, name: "graphRoutes" },
   { path: "/analysis", handler: analysisRoutes, name: "analysisRoutes" },
   { path: "/infra", handler: infraRoutes, name: "infraRoutes" },
+  { path: "/scenarios/cyber", handler: cyberExerciseRoutes, name: "cyberExerciseRoutes" },
   { path: "/scenarios", handler: scenarioRoutes, name: "scenarioRoutes" },
   { path: "/scenario-catalog", handler: scenarioCatalogRoutes, name: "scenarioCatalogRoutes" },
   { path: "/cyber-scenarios", handler: cyberScenarioRoutes, name: "cyberScenarioRoutes" },

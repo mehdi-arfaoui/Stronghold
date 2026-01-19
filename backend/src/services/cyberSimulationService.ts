@@ -63,7 +63,7 @@ const SCENARIO_FINDINGS: Record<string, SimulationFindingTemplate[]> = {
       ],
     },
   ],
-  "credential-compromise": [
+  compromission: [
     {
       title: "Connexion suspecte à privilèges",
       severity: "high",
@@ -85,15 +85,27 @@ const SCENARIO_FINDINGS: Record<string, SimulationFindingTemplate[]> = {
       ],
     },
   ],
-  "vm-destruction": [
+  "panne-totale": [
     {
-      title: "Suppression de VMs",
+      title: "Indisponibilité globale",
       severity: "critical",
-      description: "Destruction non autorisée d'environnements critiques.",
-      indicators: ["Logs d'orchestration", "Alertes d'arrêt massif"],
+      description: "Perte de disponibilité sur les services critiques.",
+      indicators: ["Alertes supervision", "Absence de télémétrie"],
       recommendedActions: [
-        "Restaurer les images à partir des snapshots.",
-        "Limiter les droits d'administration cloud.",
+        "Activer le plan PCA et la cellule de crise.",
+        "Prioriser la restauration des services vitaux.",
+      ],
+    },
+  ],
+  incendie: [
+    {
+      title: "Sinistre physique majeur",
+      severity: "critical",
+      description: "Infrastructure locale indisponible suite au sinistre.",
+      indicators: ["Alertes bâtiment", "Coupure d'alimentation"],
+      recommendedActions: [
+        "Basculer vers le site de secours.",
+        "Coordonner les équipes HSE et IT.",
       ],
     },
   ],

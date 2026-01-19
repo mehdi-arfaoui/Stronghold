@@ -28,11 +28,14 @@ export function resolveCyberScenarioFromType(type?: string | null): CyberScenari
   const normalized = type.toLowerCase();
   if (normalized.includes("ransom")) return getCyberScenarioById("ransomware");
   if (normalized.includes("ddos")) return getCyberScenarioById("ddos");
-  if (normalized.includes("credential") || normalized.includes("identifiant")) {
-    return getCyberScenarioById("credential-compromise");
+  if (normalized.includes("compromis") || normalized.includes("identifiant")) {
+    return getCyberScenarioById("compromission");
   }
-  if (normalized.includes("vm") || normalized.includes("virtual") || normalized.includes("destruction")) {
-    return getCyberScenarioById("vm-destruction");
+  if (normalized.includes("panne") || normalized.includes("outage")) {
+    return getCyberScenarioById("panne-totale");
+  }
+  if (normalized.includes("incendie") || normalized.includes("feu") || normalized.includes("fire")) {
+    return getCyberScenarioById("incendie");
   }
   return null;
 }

@@ -1,0 +1,33 @@
+{
+  "id": "compromission",
+  "name": "Compromission d'identifiants",
+  "description": "Prise de contrôle d'identifiants sensibles entraînant des accès non autorisés.",
+  "incidentSteps": [
+    "Collecte d'identifiants via phishing ou fuite.",
+    "Connexion suspecte et contournement des contrôles MFA.",
+    "Élévation de privilèges et accès aux données critiques.",
+    "Exfiltration ou manipulation de données sensibles."
+  ],
+  "impacts": [
+    "Accès non autorisé aux données sensibles.",
+    "Risque de fraude ou de manipulation des transactions.",
+    "Perturbation des opérations internes."
+  ],
+  "detection": [
+    "Alertes IAM sur connexions inhabituelles.",
+    "Écarts de localisation ou d'horaires anormaux.",
+    "Anomalies sur les privilèges administratifs."
+  ],
+  "responseActions": [
+    "Désactiver immédiatement les comptes compromis.",
+    "Réinitialiser les accès et renforcer la MFA.",
+    "Inspecter les journaux et isoler les sessions actives."
+  ],
+  "recoveryPlan": [
+    "Révoquer les tokens actifs et surveiller les accès.",
+    "Réviser les droits d'accès et appliquer le moindre privilège.",
+    "Informer les parties prenantes et documenter l'incident."
+  ],
+  "defaultDurationHours": 3,
+  "tags": ["identity", "access"]
+}
