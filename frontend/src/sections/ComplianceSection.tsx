@@ -1,12 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../components/PageIntro";
-import { COMPLIANCE_REFERENTIAL } from "../constants/complianceReferential";
-import {
-  evaluateCompliance,
-  type ComplianceItem,
-  type ComplianceStatus,
-} from "../services/complianceEvaluator";
-import type { BusinessProcess, ExerciseFront, Risk, RunbookFront } from "../types";
+import type { ComplianceItem, ComplianceReport, ComplianceStatus } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface ComplianceSectionProps {
@@ -25,10 +19,7 @@ const escapeCsvValue = (value: string) => {
 };
 
 export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
-  const [processes, setProcesses] = useState<BusinessProcess[]>([]);
-  const [risks, setRisks] = useState<Risk[]>([]);
-  const [runbooks, setRunbooks] = useState<RunbookFront[]>([]);
-  const [exercises, setExercises] = useState<ExerciseFront[]>([]);
+  const [report, setReport] = useState<ComplianceReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
@@ -38,16 +29,8 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
       try {
         setLoading(true);
         setError(null);
-        const [processesData, risksData, runbooksData, exercisesData] = await Promise.all([
-          apiFetch("/bia/processes"),
-          apiFetch("/risks"),
-          apiFetch("/runbooks"),
-          apiFetch("/exercises"),
-        ]);
-        setProcesses(processesData);
-        setRisks(risksData);
-        setRunbooks(runbooksData);
-        setExercises(exercisesData);
+        const reportData = (await apiFetch("/analysis/compliance-report")) as ComplianceReport;
+        setReport(reportData);
       } catch (err: any) {
         setError(err.message || "Impossible de charger les données de conformité");
       } finally {
@@ -58,14 +41,11 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
     loadData();
   }, [configVersion]);
 
-  const compliance = useMemo(
-    () => evaluateCompliance({ processes, risks, runbooks, exercises }),
-    [processes, risks, runbooks, exercises]
-  );
+  const compliance = useMemo(() => report, [report]);
 
-  const scorePercent = Math.round(compliance.overallScore * 100);
-  const totalItems = compliance.counts.total;
-  const gapPreview = compliance.gaps.slice(0, 20);
+  const scorePercent = compliance ? Math.round(compliance.overallScore * 100) : 0;
+  const totalItems = compliance ? compliance.counts.total : 0;
+  const gapPreview = compliance ? compliance.gaps.slice(0, 20) : [];
 
   const renderStatusBadge = (status: ComplianceStatus) => {
     const meta = STATUS_LABELS[status];
@@ -74,26 +54,25 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
 
   const handleExportExcel = () => {
     setExportError(null);
+    if (!compliance) return;
     const rows: string[][] = [
       ["Standard", "Référence", "Exigence / Critère", "Domaine", "Statut", "Recommandation"],
     ];
 
-    compliance.isoChecklist.forEach((chapter) => {
-      chapter.requirements.forEach((req) => {
-        rows.push([
-          req.standard,
-          req.id,
-          req.label,
-          req.domain ?? "",
-          STATUS_LABELS[req.status].label,
-          req.recommendation,
-        ]);
-      });
+    compliance.standards.iso22301.clauses.forEach((clause) => {
+      rows.push([
+        compliance.standards.iso22301.standard,
+        clause.id,
+        clause.label,
+        clause.domain ?? "",
+        STATUS_LABELS[clause.status].label,
+        clause.recommendation,
+      ]);
     });
 
-    compliance.secNumCloudChecklist.forEach((criterion) => {
+    compliance.standards.secNumCloud.criteria.forEach((criterion) => {
       rows.push([
-        criterion.standard,
+        compliance.standards.secNumCloud.standard,
         criterion.id,
         criterion.label,
         criterion.domain ?? "",
@@ -117,18 +96,19 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
 
   const handleExportPdf = () => {
     setExportError(null);
+    if (!compliance) return;
     const reportWindow = window.open("", "_blank", "noopener,noreferrer");
     if (!reportWindow) {
       setExportError("Impossible d'ouvrir la fenêtre d'impression. Autorisez les popups.");
       return;
     }
 
-    const renderRows = (items: ComplianceItem[]) =>
+    const renderRows = (items: ComplianceItem[], standard: string) =>
       items
         .map(
           (item) => `
           <tr>
-            <td>${item.standard}</td>
+            <td>${standard}</td>
             <td>${item.id}</td>
             <td>${item.label}</td>
             <td>${item.domain ?? ""}</td>
@@ -140,9 +120,13 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
         .join("");
 
     const isoRows = renderRows(
-      compliance.isoChecklist.flatMap((chapter) => chapter.requirements)
+      compliance.standards.iso22301.clauses,
+      compliance.standards.iso22301.standard
     );
-    const secRows = renderRows(compliance.secNumCloudChecklist);
+    const secRows = renderRows(
+      compliance.standards.secNumCloud.criteria,
+      compliance.standards.secNumCloud.standard
+    );
 
     reportWindow.document.write(`
       <html>
@@ -202,6 +186,10 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
 
   if (loading) {
     return <div className="skeleton">Chargement du référentiel de conformité...</div>;
+  }
+
+  if (!compliance) {
+    return <p className="helper error">Aucune donnée de conformité disponible.</p>;
   }
 
   return (
@@ -287,22 +275,27 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
                   <tr>
                     <td>BIA</td>
                     <td>{renderStatusBadge(compliance.evidenceStatus.bia)}</td>
-                    <td>{processes.length} processus</td>
+                    <td>{compliance.totals.processes} processus</td>
                   </tr>
                   <tr>
                     <td>Risques</td>
                     <td>{renderStatusBadge(compliance.evidenceStatus.risks)}</td>
-                    <td>{risks.length} risques</td>
+                    <td>{compliance.totals.risks} risques</td>
+                  </tr>
+                  <tr>
+                    <td>Incidents</td>
+                    <td>{renderStatusBadge(compliance.evidenceStatus.incidents)}</td>
+                    <td>{compliance.totals.incidents} incidents</td>
                   </tr>
                   <tr>
                     <td>Runbooks</td>
                     <td>{renderStatusBadge(compliance.evidenceStatus.runbooks)}</td>
-                    <td>{runbooks.length} runbooks</td>
+                    <td>{compliance.totals.runbooks} runbooks</td>
                   </tr>
                   <tr>
                     <td>Exercices</td>
                     <td>{renderStatusBadge(compliance.evidenceStatus.exercises)}</td>
-                    <td>{exercises.length} exercices</td>
+                    <td>{compliance.totals.exercises} exercices</td>
                   </tr>
                 </tbody>
               </table>
@@ -316,13 +309,13 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
               <p className="eyebrow">Actions recommandées</p>
               <h3>Priorités immédiates</h3>
             </div>
-            <span className="pill subtle">{compliance.recommendedActions.length}</span>
+            <span className="pill subtle">{compliance.correctiveActions.length}</span>
           </div>
-          {compliance.recommendedActions.length === 0 ? (
+          {compliance.correctiveActions.length === 0 ? (
             <p className="empty-state">Toutes les exigences critiques sont couvertes.</p>
           ) : (
             <ul className="checklist">
-              {compliance.recommendedActions.map((action) => (
+              {compliance.correctiveActions.map((action) => (
                 <li key={action}>{action}</li>
               ))}
             </ul>
@@ -335,41 +328,24 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
           <div className="card-header">
             <div>
               <p className="eyebrow">Checklist</p>
-              <h3>{COMPLIANCE_REFERENTIAL.iso22301.standard}</h3>
+              <h3>{compliance.standards.iso22301.standard}</h3>
             </div>
-            <span className="pill subtle">
-              {COMPLIANCE_REFERENTIAL.iso22301.chapters.reduce(
-                (sum, chapter) => sum + chapter.requirements.length,
-                0
-              )}
-            </span>
+            <span className="pill subtle">{compliance.standards.iso22301.clauses.length}</span>
           </div>
           <div className="stack" style={{ gap: "12px" }}>
-            {compliance.isoChecklist.map((chapter) => (
-              <details key={chapter.chapterId} className="card">
-                <summary className="stack horizontal" style={{ gap: "12px", alignItems: "center" }}>
-                  <strong>
-                    {chapter.chapterId}. {chapter.title}
-                  </strong>
-                  <span className="muted small">
-                    {chapter.requirements.length} exigences
-                  </span>
-                </summary>
-                <ul className="checklist" style={{ marginTop: "12px" }}>
-                  {chapter.requirements.map((requirement) => (
-                    <li key={requirement.id}>
-                      <div className="stack horizontal" style={{ gap: "12px", alignItems: "center" }}>
-                        {renderStatusBadge(requirement.status)}
-                        <span>
-                          {requirement.id} — {requirement.label}
-                        </span>
-                      </div>
-                      <p className="muted small">{requirement.recommendation}</p>
-                    </li>
-                  ))}
-                </ul>
-              </details>
-            ))}
+            <ul className="checklist">
+              {compliance.standards.iso22301.clauses.map((clause) => (
+                <li key={clause.id}>
+                  <div className="stack horizontal" style={{ gap: "12px", alignItems: "center" }}>
+                    {renderStatusBadge(clause.status)}
+                    <span>
+                      {clause.id} — {clause.label}
+                    </span>
+                  </div>
+                  <p className="muted small">{clause.recommendation}</p>
+                </li>
+              ))}
+            </ul>
           </div>
         </div>
 
@@ -377,15 +353,17 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
           <div className="card-header">
             <div>
               <p className="eyebrow">Checklist</p>
-              <h3>{COMPLIANCE_REFERENTIAL.secNumCloud.standard}</h3>
+              <h3>{compliance.standards.secNumCloud.standard}</h3>
             </div>
-            <span className="pill subtle">{COMPLIANCE_REFERENTIAL.secNumCloud.totalCriteria}</span>
+            <span className="pill subtle">{compliance.standards.secNumCloud.criteria.length}</span>
           </div>
           <p className="muted small">
             Les critères SecNumCloud sont classés par domaine et alimentés par les données opérationnelles.
           </p>
           <details style={{ marginTop: "12px" }}>
-            <summary className="muted">Voir les {COMPLIANCE_REFERENTIAL.secNumCloud.totalCriteria} critères</summary>
+            <summary className="muted">
+              Voir les {compliance.standards.secNumCloud.criteria.length} critères
+            </summary>
             <div className="table-wrapper" style={{ marginTop: "12px" }}>
               <table className="data-table">
                 <thead>
@@ -396,7 +374,7 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
                   </tr>
                 </thead>
                 <tbody>
-                  {compliance.secNumCloudChecklist.map((criterion) => (
+                  {compliance.standards.secNumCloud.criteria.map((criterion) => (
                     <tr key={criterion.id}>
                       <td>{criterion.label}</td>
                       <td>{criterion.domain}</td>

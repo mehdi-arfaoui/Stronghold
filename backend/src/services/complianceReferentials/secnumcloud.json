@@ -1,0 +1,54 @@
+{
+  "standard": "SecNumCloud",
+  "version": "3.2",
+  "criteria": [
+    {
+      "id": "GOV-01",
+      "label": "Pilotage du programme de continuité et gouvernance",
+      "domain": "Gouvernance",
+      "evidence": ["runbooks"]
+    },
+    {
+      "id": "RIS-02",
+      "label": "Cartographie et traitement des risques",
+      "domain": "Gestion des risques",
+      "evidence": ["risks"]
+    },
+    {
+      "id": "BCM-03",
+      "label": "BIA formalisée pour les services critiques",
+      "domain": "Continuité & PRA",
+      "evidence": ["bia"]
+    },
+    {
+      "id": "BCM-04",
+      "label": "Plans de reprise et runbooks validés",
+      "domain": "Continuité & PRA",
+      "evidence": ["runbooks"]
+    },
+    {
+      "id": "OPS-05",
+      "label": "Gestion des incidents et retours d'expérience",
+      "domain": "Sécurité opérationnelle",
+      "evidence": ["incidents"]
+    },
+    {
+      "id": "OPS-06",
+      "label": "Procédures opérationnelles documentées",
+      "domain": "Sécurité opérationnelle",
+      "evidence": ["runbooks"]
+    },
+    {
+      "id": "TST-07",
+      "label": "Tests PRA périodiques",
+      "domain": "Tests & exercices",
+      "evidence": ["exercises"]
+    },
+    {
+      "id": "TST-08",
+      "label": "Traçabilité des résultats d'exercices",
+      "domain": "Tests & exercices",
+      "evidence": ["exercises", "incidents"]
+    }
+  ]
+}

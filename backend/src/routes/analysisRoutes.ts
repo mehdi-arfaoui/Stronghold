@@ -34,6 +34,7 @@ import {
   listComplianceChecklists,
   listComplianceTemplates,
 } from "../services/complianceReporting.js";
+import { evaluateCompliance } from "../services/complianceEvaluator.js";
 import {
   buildRagPrompt,
   draftAnswerFromContext,
@@ -802,6 +803,21 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
     });
   } catch (error) {
     console.error("Error in /analysis/pra-dashboard:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/compliance-report", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const report = await evaluateCompliance(prisma, tenantId);
+    return res.json(report);
+  } catch (error) {
+    console.error("Error in /analysis/compliance-report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -874,6 +874,59 @@ export type IncidentDashboard = {
   recentActions: IncidentAction[];
 };
 
+export type ComplianceStatus = "ok" | "partial" | "missing";
+export type ComplianceEvidenceKey = "bia" | "risks" | "incidents" | "runbooks" | "exercises";
+
+export type ComplianceItem = {
+  id: string;
+  standard: string;
+  label: string;
+  domain?: string;
+  evidence: ComplianceEvidenceKey[];
+  status: ComplianceStatus;
+  recommendation: string;
+};
+
+export type ComplianceReport = {
+  meta: {
+    tenantId: string;
+    generatedAt: string;
+  };
+  totals: {
+    processes: number;
+    risks: number;
+    incidents: number;
+    runbooks: number;
+    exercises: number;
+    completedExercises: number;
+    runbooksPublished: number;
+    risksWithMitigation: number;
+    incidentsWithActions: number;
+  };
+  evidenceStatus: Record<ComplianceEvidenceKey, ComplianceStatus>;
+  counts: {
+    ok: number;
+    partial: number;
+    missing: number;
+    total: number;
+  };
+  overallScore: number;
+  standards: {
+    iso22301: {
+      standard: string;
+      version: string;
+      clauses: ComplianceItem[];
+    };
+    secNumCloud: {
+      standard: string;
+      version: string;
+      criteria: ComplianceItem[];
+    };
+  };
+  gaps: ComplianceItem[];
+  correctiveActions: string[];
+};
+
 export type TabId =
   | "services"
   | "continuity"
