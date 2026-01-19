@@ -1,0 +1,54 @@
+{
+  "standard": "ISO 22301",
+  "version": "2019",
+  "clauses": [
+    {
+      "id": "4.1",
+      "title": "Comprendre l'organisation et son contexte",
+      "description": "Évaluation du contexte et des besoins des parties prenantes.",
+      "evidence": ["bia"]
+    },
+    {
+      "id": "4.3",
+      "title": "Déterminer le périmètre du système de management",
+      "description": "Définition du périmètre couvert par la continuité d'activité.",
+      "evidence": ["bia", "runbooks"]
+    },
+    {
+      "id": "6.1",
+      "title": "Actions pour traiter les risques et opportunités",
+      "description": "Cartographie et traitement des risques de continuité.",
+      "evidence": ["risks"]
+    },
+    {
+      "id": "8.2",
+      "title": "Analyse d'impact et évaluation des risques",
+      "description": "BIA et évaluation des risques associées aux processus critiques.",
+      "evidence": ["bia", "risks"]
+    },
+    {
+      "id": "8.4",
+      "title": "Plans et procédures de continuité",
+      "description": "Runbooks et procédures opérationnelles documentées.",
+      "evidence": ["runbooks"]
+    },
+    {
+      "id": "8.5",
+      "title": "Programme d'exercices et de tests",
+      "description": "Planification et exécution des exercices PRA.",
+      "evidence": ["exercises"]
+    },
+    {
+      "id": "9.1",
+      "title": "Surveillance et évaluation des performances",
+      "description": "Suivi des incidents et retours d'expérience.",
+      "evidence": ["incidents", "exercises"]
+    },
+    {
+      "id": "10.1",
+      "title": "Non-conformité et action corrective",
+      "description": "Mise en œuvre des actions correctives suite aux incidents.",
+      "evidence": ["incidents", "risks"]
+    }
+  ]
+}
