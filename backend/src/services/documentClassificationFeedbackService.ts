@@ -1,4 +1,5 @@
 import prisma from "../prismaClient.js";
+import { recordUserFeedback } from "./userFeedbackService.js";
 
 export class DocumentClassificationDocumentNotFoundError extends Error {
   status = 404;
@@ -42,6 +43,14 @@ export async function recordDocumentClassificationFeedback(params: {
   await prisma.document.updateMany({
     where: { id: params.documentId, tenantId: params.tenantId },
     data: { docType: correctedType },
+  });
+
+  await recordUserFeedback({
+    tenantId: params.tenantId,
+    resourceId: params.documentId,
+    type: "DOC_TYPE_CORRECTION",
+    rating: null,
+    comment: params.notes ?? null,
   });
 
   return feedback;

@@ -10,6 +10,7 @@ const prismaClient_1 = __importDefault(require("../prismaClient"));
 const extractedFactsAnalyzer_1 = require("../ai/extractedFactsAnalyzer");
 const extractedFactSchema_1 = require("../ai/extractedFactSchema");
 const classificationService_1 = require("./classificationService");
+const userFeedbackService_1 = require("./userFeedbackService");
 class DocumentNotFoundError extends Error {
     status = 404;
     constructor() {
@@ -119,6 +120,13 @@ async function recordAiExtractionError(params) {
     }
 }
 async function getOrCreateExtractedFacts(documentId, tenantId, force = false, prismaClient = prismaClient_1.default, factAnalyzer = extractedFactsAnalyzer_1.analyzeExtractedFacts) {
+    await (0, userFeedbackService_1.recordUserFeedback)({
+        tenantId,
+        resourceId: refreshed.id,
+        type: "EXTRACTED_FACT_CORRECTION",
+        rating: null,
+        comment: null,
+    }, prismaClient);
     const document = await prismaClient.document.findFirst({
         where: { id: documentId, tenantId },
     });

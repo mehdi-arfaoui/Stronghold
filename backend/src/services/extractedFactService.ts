@@ -10,6 +10,7 @@ import {
   updateCachedClassification,
 } from "./classificationService.js";
 import { resolveEncryptedDocumentText } from "./encryptionService.js";
+import { recordUserFeedback } from "./userFeedbackService.js";
 
 type PrismaClientOrTx = PrismaClient | Prisma.TransactionClient;
 
@@ -324,6 +325,17 @@ export async function applyClassificationFeedback(
   if (!refreshed) {
     throw new ExtractedFactNotFoundError();
   }
+
+  await recordUserFeedback(
+    {
+      tenantId,
+      resourceId: refreshed.id,
+      type: "EXTRACTED_FACT_CORRECTION",
+      rating: null,
+      comment: null,
+    },
+    prismaClient
+  );
 
   const document = await prismaClient.document.findFirst({
     where: { id: documentId, tenantId },

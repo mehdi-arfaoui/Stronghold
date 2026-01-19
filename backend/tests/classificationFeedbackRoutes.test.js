@@ -13,11 +13,13 @@ test("POST /analysis/documents/:id/classification-feedback updates fact", async 
   const tenantId = "tenant-feedback";
   const extractedFactDelegate = getOrCreateDelegate(prisma, "extractedFact");
   const documentDelegate = getOrCreateDelegate(prisma, "document");
+  const userFeedbackDelegate = getOrCreateDelegate(prisma, "userFeedback");
 
   const originalFindMany = extractedFactDelegate.findMany;
   const originalFindFirst = extractedFactDelegate.findFirst;
   const originalUpdateMany = extractedFactDelegate.updateMany;
   const originalDocumentFindFirst = documentDelegate.findFirst;
+  const originalUserFeedbackCreate = userFeedbackDelegate.create;
 
   const factRecord = {
     id: "fact-1",
@@ -63,12 +65,14 @@ test("POST /analysis/documents/:id/classification-feedback updates fact", async 
     originalName: "test.txt",
     docType: "ARCHI",
   });
+  userFeedbackDelegate.create = async () => ({});
 
   t.after(() => {
     extractedFactDelegate.findMany = originalFindMany;
     extractedFactDelegate.findFirst = originalFindFirst;
     extractedFactDelegate.updateMany = originalUpdateMany;
     documentDelegate.findFirst = originalDocumentFindFirst;
+    userFeedbackDelegate.create = originalUserFeedbackCreate;
   });
 
   const app = createTestApp(analysisRoutes, "/analysis", {

@@ -32,7 +32,9 @@ model Tenant {
   documentClassificationFeedbacks DocumentClassificationFeedback[]
   entityFeedbacks               EntityFeedback[]
   recommendationFeedbacks       RecommendationFeedback[]
+  userFeedbacks                 UserFeedback[]
   ragExperimentAssignments      RagExperimentAssignment[]
+  ragExperimentFeedbacks        RagExperimentFeedback[]
   ragTuningConfigs              RagTuningConfig[]
   mlTrainingRuns                MlTrainingRun[]
   backupStrategies              BackupStrategy[]
@@ -841,6 +843,22 @@ model RecommendationFeedback {
   @@index([tenantId, recommendationId])
 }
 
+model UserFeedback {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  resourceId String
+  type       String
+  rating     Int?
+  comment    String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, resourceId])
+  @@index([tenantId, type])
+}
+
 model RagExperimentAssignment {
   id       String @id @default(cuid())
   tenantId String
@@ -855,6 +873,24 @@ model RagExperimentAssignment {
 
   @@unique([tenantId, experimentKey, subjectId])
   @@index([tenantId, experimentKey])
+}
+
+model RagExperimentFeedback {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  experimentKey String
+  subjectId     String
+  variant       String
+  rating        Int?
+  comment       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, experimentKey])
+  @@index([tenantId, subjectId])
+  @@index([tenantId, variant])
 }
 
 model RagTuningConfig {

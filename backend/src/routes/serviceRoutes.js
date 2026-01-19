@@ -6,6 +6,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const express_1 = require("express");
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const tenantMiddleware_1 = require("../middleware/tenantMiddleware");
+const userFeedbackService_1 = require("../services/userFeedbackService");
 const router = (0, express_1.Router)();
 function buildContinuityAdvisory(rtoHours, rpoMinutes, mtpdHours) {
     const parts = [];
@@ -179,6 +180,13 @@ router.post("/:id/dependencies", (0, tenantMiddleware_1.requireRole)("OPERATOR")
                 toServiceId,
                 dependencyType: String(dependencyType).trim(),
             },
+        });
+        await (0, userFeedbackService_1.recordUserFeedback)({
+            tenantId,
+            resourceId: dependency.id,
+            type: "DEPENDENCY_ADDED",
+            rating: null,
+            comment: null,
         });
         return res.status(201).json(dependency);
     }

@@ -12,6 +12,8 @@ const dependencyRiskEngine_1 = require("../analysis/dependencyRiskEngine");
 const extractedFactService_1 = require("../services/extractedFactService");
 const extractedFactSchema_1 = require("../ai/extractedFactSchema");
 const ragService_1 = require("../ai/ragService");
+const ragExperimentService_1 = require("../services/ragExperimentService");
+const userFeedbackService_1 = require("../services/userFeedbackService");
 const router = (0, express_1.Router)();
 const CLASSIFICATION_CATEGORY_OPTIONS = extractedFactSchema_1.EXTRACTED_FACT_CATEGORIES.map((category) => category.toLowerCase());
 function addIssue(issues, field, message) {
@@ -53,6 +55,20 @@ function parseOptionalString(value, field, issues, allowNull = false) {
         return allowNull ? null : undefined;
     }
     return trimmed;
+}
+function parseOptionalNumber(value, field, issues) {
+    if (value === undefined) {
+        return undefined;
+    }
+    if (value === null || value === "") {
+        return null;
+    }
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        addIssue(issues, field, "doit être un nombre");
+        return undefined;
+    }
+    return parsed;
 }
 function parseOptionalCategory(value, field, issues) {
     if (value === undefined) {
@@ -901,6 +917,84 @@ router.post("/documents/:id/classification-feedback", (0, tenantMiddleware_1.req
             return res.status(error.status).json({ error: error.message });
         }
         console.error("Error in POST /analysis/documents/:id/classification-feedback:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+router.post("/feedback/user", (0, tenantMiddleware_1.requireRole)("OPERATOR"), async (req, res) => {
+    try {
+        const tenantId = req.tenantId;
+        if (!tenantId) {
+            return res.status(500).json({ error: "Tenant not resolved" });
+        }
+        const issues = [];
+        const resourceId = parseRequiredString(req.body?.resourceId, "resourceId", issues);
+        const type = parseRequiredString(req.body?.type, "type", issues);
+        const rating = parseOptionalNumber(req.body?.rating, "rating", issues);
+        const comment = parseOptionalString(req.body?.comment, "comment", issues, true);
+        const timestamp = parseOptionalString(req.body?.timestamp, "timestamp", issues, true);
+        let parsedTimestamp = null;
+        if (timestamp) {
+            const parsed = new Date(timestamp);
+            if (Number.isNaN(parsed.getTime())) {
+                addIssue(issues, "timestamp", "format de date invalide");
+            }
+            else {
+                parsedTimestamp = parsed;
+            }
+        }
+        if (issues.length > 0) {
+            return res.status(400).json({ error: "Payload invalide", details: issues });
+        }
+        const feedback = await (0, userFeedbackService_1.recordUserFeedback)({
+            tenantId,
+            resourceId: resourceId,
+            type: type,
+            rating,
+            comment,
+            timestamp: parsedTimestamp,
+        });
+        return res.status(201).json({ feedback });
+    }
+    catch (error) {
+        console.error("Error in POST /analysis/feedback/user:", error);
+        return res.status(500).json({ error: "Internal server error" });
+    }
+});
+router.post("/feedback/rag-experiments", (0, tenantMiddleware_1.requireRole)("OPERATOR"), async (req, res) => {
+    try {
+        const tenantId = req.tenantId;
+        if (!tenantId) {
+            return res.status(500).json({ error: "Tenant not resolved" });
+        }
+        const issues = [];
+        const experimentKey = parseOptionalString(req.body?.experimentKey, "experimentKey", issues, true);
+        const subjectId = parseOptionalString(req.body?.subjectId, "subjectId", issues, true);
+        const variant = parseOptionalString(req.body?.variant, "variant", issues, true);
+        const rating = parseOptionalNumber(req.body?.rating, "rating", issues);
+        const comment = parseOptionalString(req.body?.comment, "comment", issues, true);
+        if (rating === undefined) {
+            addIssue(issues, "rating", "champ requis");
+        }
+        if (issues.length > 0) {
+            return res.status(400).json({ error: "Payload invalide", details: issues });
+        }
+        const { assignment } = await (0, ragExperimentService_1.getOrCreateRagExperimentAssignment)({
+            tenantId,
+            subjectId,
+            experimentKey: experimentKey ?? undefined,
+        });
+        const feedback = await (0, ragExperimentService_1.recordRagExperimentFeedback)({
+            tenantId,
+            experimentKey: assignment.experimentKey,
+            subjectId: assignment.subjectId,
+            variant: variant ?? assignment.variant,
+            rating,
+            comment,
+        });
+        return res.status(201).json({ feedback });
+    }
+    catch (error) {
+        console.error("Error in POST /analysis/feedback/rag-experiments:", error);
         return res.status(500).json({ error: "Internal server error" });
     }
 });
