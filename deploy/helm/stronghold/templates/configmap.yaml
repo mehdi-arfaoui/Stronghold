@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "stronghold.fullname" . }}-config
+  labels:
+    app.kubernetes.io/name: {{ include "stronghold.name" . }}
+    app.kubernetes.io/instance: {{ .Release.Name }}
+data:
+  NODE_ENV: {{ .Values.env.nodeEnv | quote }}
+  DEPLOYMENT_MODE: {{ .Values.env.deploymentMode | quote }}
+  AUTO_UPDATE_ENABLED: {{ .Values.env.autoUpdateEnabled | quote }}
+  TENANT_SCHEMA_PREFIX: {{ .Values.env.tenantSchemaPrefix | quote }}
+  TENANT_MAX_USERS: {{ .Values.env.tenantMaxUsers | quote }}
+  TENANT_MAX_DOCUMENTS: {{ .Values.env.tenantMaxDocuments | quote }}
+  TENANT_MAX_STORAGE_GB: {{ .Values.env.tenantMaxStorageGb | quote }}
+  TENANT_MAX_RPM: {{ .Values.env.tenantMaxRpm | quote }}
+  TENANT_MAX_RUNBOOKS_PER_MONTH: {{ .Values.env.tenantMaxRunbooksPerMonth | quote }}
+  CHROMADB_URL: {{ .Values.env.chromaDbUrl | quote }}
+  CHROMADB_COLLECTION: {{ .Values.env.chromaDbCollection | quote }}
+  S3_ENDPOINT: {{ .Values.env.s3Endpoint | quote }}
+  S3_REGION: {{ .Values.env.s3Region | quote }}
+  S3_BUCKET_PREFIX: {{ .Values.env.s3BucketPrefix | quote }}
+  S3_FORCE_PATH_STYLE: {{ .Values.env.s3ForcePathStyle | quote }}
+  S3_SIGNED_URL_TTL_SECONDS: {{ .Values.env.s3SignedUrlTtlSeconds | quote }}
+  REDIS_URL: {{ .Values.env.redisUrl | quote }}

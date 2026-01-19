@@ -2,12 +2,15 @@ import type { Request, Response, NextFunction } from "express";
 import crypto from "crypto";
 import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient.js";
+import { buildTenantSchemaName, deploymentConfig, type ResourceQuotas } from "../config/deployment.js";
 
 export type TenantRequest = Request & {
   tenantId?: string;
   apiKeyId?: string;
   apiRole?: ApiRole;
   correlationId?: string;
+  tenantSchema?: string;
+  tenantQuotas?: ResourceQuotas | null;
 };
 
 export const tenantMiddleware = async (
@@ -60,6 +63,10 @@ export const tenantMiddleware = async (
     req.tenantId = resolvedTenant.id;
     req.apiKeyId = existingApiKey?.id;
     req.apiRole = apiRole;
+    if (deploymentConfig.multiTenant.enabled) {
+      req.tenantSchema = buildTenantSchemaName(resolvedTenant.id);
+      req.tenantQuotas = deploymentConfig.multiTenant.quotas;
+    }
 
     res.on("finish", async () => {
       try {
