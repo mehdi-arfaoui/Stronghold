@@ -1,23 +1,23 @@
 import { NavLink as RouterNavLink } from "react-router-dom";
 import type { NavGroup } from "../navigation/NavMenu";
-import type { TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
 
 interface FooterProps {
   groups: NavGroup[];
-  copy: TranslationCopy;
 }
 
-export function Footer({ groups, copy }: FooterProps) {
+export function Footer({ groups }: FooterProps) {
+  const { t } = useTranslation();
   return (
     <footer className="site-footer" aria-labelledby="footer-title">
       <div className="footer-inner">
         <div>
           <p id="footer-title" className="footer-title">
-            {copy.footerTitle}
+            {t("footerTitle")}
           </p>
-          <p className="muted">{copy.footerDescription}</p>
+          <p className="muted">{t("footerDescription")}</p>
         </div>
-        <nav className="footer-nav" aria-label={copy.footerNavLabel}>
+        <nav className="footer-nav" aria-label={t("footerNavLabel")}>
           <div className="footer-nav-groups">
             {groups.map((group) => (
               <div key={group.id} className="footer-nav-group">

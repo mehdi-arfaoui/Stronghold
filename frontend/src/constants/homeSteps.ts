@@ -1,6 +1,5 @@
+import type { TFunction } from "i18next";
 import type { HomeStep, HomeStepId } from "../components/home/HomePage";
-import type { Language } from "../i18n/translations";
-import { HOME_STEP_CONTENT } from "../i18n/translations";
 
 export const HOME_STEP_ORDER: HomeStepId[] = [
   "discovery",
@@ -14,9 +13,11 @@ export const HOME_STEP_ORDER: HomeStepId[] = [
   "analysis",
 ];
 
-export function getHomeSteps(language: Language): HomeStep[] {
+export function getHomeSteps(t: TFunction): HomeStep[] {
   return HOME_STEP_ORDER.map((stepId) => ({
     id: stepId,
-    ...HOME_STEP_CONTENT[language][stepId],
+    title: t(`homeSteps.${stepId}.title`),
+    description: t(`homeSteps.${stepId}.description`),
+    actionLabel: t(`homeSteps.${stepId}.actionLabel`),
   }));
 }

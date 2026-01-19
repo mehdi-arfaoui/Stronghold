@@ -1,11 +1,10 @@
 import { AssistantPanel } from "../components/assistant/AssistantPanel";
 import type { HomeStepId } from "../components/home/HomePage";
 import { HomePage } from "../components/home/HomePage";
-import type { TranslationCopy } from "../i18n/translations";
 import type { HomeStep } from "../components/home/HomePage";
+import { useTranslation } from "react-i18next";
 
 interface HomeRouteProps {
-  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -14,21 +13,20 @@ interface HomeRouteProps {
 }
 
 export function HomeRoute({
-  copy,
   steps,
   activeStepId,
   completedSteps,
   maxAllowedIndex,
   onStepAction,
 }: HomeRouteProps) {
+  const { t } = useTranslation();
   return (
     <section id="home" className="home-section" aria-labelledby="home-title">
       <div className="home-layout">
         <HomePage
-          copy={copy}
-          eyebrow={copy.homeEyebrow}
-          title={copy.homeTitle}
-          subtitle={copy.homeSubtitle}
+          eyebrow={t("homeEyebrow")}
+          title={t("homeTitle")}
+          subtitle={t("homeSubtitle")}
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}
@@ -36,7 +34,6 @@ export function HomeRoute({
           onStepAction={onStepAction}
         />
         <AssistantPanel
-          copy={copy}
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}

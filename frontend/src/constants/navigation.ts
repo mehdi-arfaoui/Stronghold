@@ -1,7 +1,6 @@
 import type { TabDefinition, TabId } from "../types";
 import type { NavGroup } from "../components/navigation/NavMenu";
-import type { Language } from "../i18n/translations";
-import { GENERAL_NAV_LABELS, MODULE_GROUP_LABELS, MODULE_LABELS } from "../i18n/translations";
+import type { TFunction } from "i18next";
 
 export type ModuleRoute = TabDefinition & {
   path: string;
@@ -33,6 +32,7 @@ const MODULE_ROUTE_BASE: Array<{ id: TabId; path: string }> = [
   { id: "incidents", path: "/incidents" },
   { id: "auth", path: "/auth" },
   { id: "audit", path: "/audit" },
+  { id: "branding", path: "/branding" },
 ];
 
 const MODULE_ROUTE_MAP = MODULE_ROUTE_BASE.reduce<Record<TabId, { id: TabId; path: string }>>(
@@ -63,7 +63,7 @@ const MODULE_GROUP_BASE = [
   createGroup("analyses-risks", ["bia", "risks", "analysis", "compliance", "financier"]),
   createGroup("scenarios-runbooks", ["scenarios", "runbooks"]),
   createGroup("incidents", ["incidents"]),
-  createGroup("administration", ["auth", "audit"]),
+  createGroup("administration", ["auth", "audit", "branding"]),
 ];
 
 export const WIZARD_STEP_ORDER: TabId[] = [
@@ -92,51 +92,52 @@ export const MODULE_PATH_TO_ID = MODULE_ROUTE_BASE.reduce<Record<string, TabId>>
 
 export const MODULE_ROUTES = MODULE_ROUTE_BASE;
 
-export const getModuleRoutes = (language: Language): ModuleRoute[] =>
+export const getModuleRoutes = (t: TFunction): ModuleRoute[] =>
   MODULE_ROUTE_BASE.map((module) => ({
     ...module,
-    ...MODULE_LABELS[language][module.id],
+    label: t(`modules.${module.id}.label`),
+    description: t(`modules.${module.id}.description`),
   }));
 
-export const getModuleGroups = (language: Language): ModuleGroup[] => {
-  const groupLabels = MODULE_GROUP_LABELS[language];
+export const getModuleGroups = (t: TFunction): ModuleGroup[] => {
   return MODULE_GROUP_BASE.map((group) => ({
     ...group,
-    label: groupLabels[group.id]?.label ?? group.id,
-    description: groupLabels[group.id]?.description ?? "",
+    label: t(`moduleGroups.${group.id}.label`, { defaultValue: group.id }),
+    description: t(`moduleGroups.${group.id}.description`, { defaultValue: "" }),
     tabs: group.tabs.map((tab) => ({
       ...tab,
-      ...MODULE_LABELS[language][tab.id],
+      label: t(`modules.${tab.id}.label`),
+      description: t(`modules.${tab.id}.description`),
     })),
   }));
 };
 
-export const getWizardStepGroup = (language: Language): ModuleGroup => {
-  const groupLabels = MODULE_GROUP_LABELS[language];
+export const getWizardStepGroup = (t: TFunction): ModuleGroup => {
   const tabs = WIZARD_STEP_ORDER.map((tabId) => ({
     ...MODULE_ROUTE_MAP[tabId],
-    ...MODULE_LABELS[language][tabId],
+    label: t(`modules.${tabId}.label`),
+    description: t(`modules.${tabId}.description`),
   }));
 
   return {
     id: WIZARD_STEP_GROUP_ID,
-    label: groupLabels[WIZARD_STEP_GROUP_ID]?.label ?? WIZARD_STEP_GROUP_ID,
-    description: groupLabels[WIZARD_STEP_GROUP_ID]?.description ?? "",
+    label: t(`moduleGroups.${WIZARD_STEP_GROUP_ID}.label`, {
+      defaultValue: WIZARD_STEP_GROUP_ID,
+    }),
+    description: t(`moduleGroups.${WIZARD_STEP_GROUP_ID}.description`, { defaultValue: "" }),
     tabs,
   };
 };
 
-export const getMainNavGroups = (language: Language): NavGroup[] => {
-  const groupLabels = MODULE_GROUP_LABELS[language];
-  const generalLabels = GENERAL_NAV_LABELS[language];
+export const getMainNavGroups = (t: TFunction): NavGroup[] => {
   return [
     {
       id: "general",
-      label: groupLabels.general?.label ?? "General",
+      label: t("moduleGroups.general.label", { defaultValue: "General" }),
       links: [
-        { id: "home", label: generalLabels.home, to: "/" },
-        { id: "configuration", label: generalLabels.configuration, to: "/configuration" },
-        { id: "compliance", label: generalLabels.compliance ?? "Conformité", to: "/compliance" },
+        { id: "home", label: t("generalNav.home"), to: "/" },
+        { id: "configuration", label: t("generalNav.configuration"), to: "/configuration" },
+        { id: "compliance", label: t("generalNav.compliance"), to: "/compliance" },
       ],
     },
   ];

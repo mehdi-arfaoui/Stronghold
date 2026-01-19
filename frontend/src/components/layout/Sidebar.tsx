@@ -2,11 +2,10 @@ import { NavMenu } from "../navigation/NavMenu";
 import { WizardProgress } from "../wizard/WizardProgress";
 import type { NavGroup } from "../navigation/NavMenu";
 import type { HomeStep, HomeStepId } from "../home/HomePage";
-import type { TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
 
 interface SidebarProps {
   groups: NavGroup[];
-  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -19,7 +18,6 @@ interface SidebarProps {
 
 export function Sidebar({
   groups,
-  copy,
   steps,
   activeStepId,
   completedSteps,
@@ -29,29 +27,29 @@ export function Sidebar({
   onClose,
   isNavigationLocked = false,
 }: SidebarProps) {
+  const { t } = useTranslation();
   return (
     <>
       <div className={`sidebar-backdrop ${isOpen ? "open" : ""}`} role="presentation" onClick={onClose} />
       <aside
         id="app-sidebar"
         className={`app-sidebar ${isOpen ? "open" : ""}`}
-        aria-label={copy.sidebarTitle}
+        aria-label={t("sidebarTitle")}
       >
         <div className="sidebar-header">
-          <p className="sidebar-title">{copy.navigation}</p>
+          <p className="sidebar-title">{t("navigation")}</p>
           <button type="button" className="btn subtle" onClick={onClose}>
-            {copy.closeLabel}
+            {t("closeLabel")}
           </button>
         </div>
         <NavMenu
           groups={groups}
           onNavigate={onClose}
           variant="vertical"
-          ariaLabel={copy.sidebarTitle}
+          ariaLabel={t("sidebarTitle")}
           disabled={isNavigationLocked}
         />
         <WizardProgress
-          copy={copy}
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}

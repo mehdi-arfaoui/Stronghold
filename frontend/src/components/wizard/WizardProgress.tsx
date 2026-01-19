@@ -1,8 +1,7 @@
 import type { HomeStep, HomeStepId } from "../home/HomePage";
-import type { TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
 
 interface WizardProgressProps {
-  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -11,22 +10,24 @@ interface WizardProgressProps {
 }
 
 export function WizardProgress({
-  copy,
   steps,
   activeStepId,
   completedSteps,
   maxAllowedIndex,
   onStepAction,
 }: WizardProgressProps) {
+  const { t } = useTranslation();
   const completedCount = completedSteps.length;
   const progressPercent = Math.min(100, Math.round((completedCount / steps.length) * 100));
 
   return (
     <section className="wizard-progress" aria-labelledby="wizard-progress-title">
       <div className="wizard-progress-header">
-        <p className="eyebrow">{copy.guidedJourney}</p>
-        <h3 id="wizard-progress-title">{copy.progressTitle}</h3>
-        <p className="muted small">{copy.progressSummary(completedCount, steps.length)}</p>
+        <p className="eyebrow">{t("guidedJourney")}</p>
+        <h3 id="wizard-progress-title">{t("progressTitle")}</h3>
+        <p className="muted small">
+          {t("progressSummary", { completed: completedCount, total: steps.length })}
+        </p>
       </div>
       <div
         className="wizard-progress-bar"
@@ -34,7 +35,7 @@ export function WizardProgress({
         aria-valuenow={progressPercent}
         aria-valuemin={0}
         aria-valuemax={100}
-        aria-label={copy.progressTitle}
+        aria-label={t("progressTitle")}
       >
         <span style={{ width: `${progressPercent}%` }} />
       </div>
@@ -45,10 +46,10 @@ export function WizardProgress({
           const isLocked = index > maxAllowedIndex;
           const statusLabel = isCompleted ? "✓" : `${index + 1}`;
           const statusText = isCompleted
-            ? copy.wizardStatusComplete
+            ? t("wizardStatusComplete")
             : isActive
-            ? copy.wizardStatusActive
-            : copy.wizardStatusPending;
+            ? t("wizardStatusActive")
+            : t("wizardStatusPending");
           return (
             <li key={step.id} className={isCompleted ? "completed" : isLocked ? "locked" : undefined}>
               <button

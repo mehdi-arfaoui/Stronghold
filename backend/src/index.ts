@@ -27,6 +27,7 @@ import exerciseRoutes from "./routes/exerciseRoutes.js";
 import discoveryRoutes from "./routes/discoveryRoutes.js";
 import pricingRoutes from "./routes/pricingRoutes.js";
 import vulnerabilityRoutes from "./routes/vulnerabilityRoutes.js";
+import brandingRoutes from "./routes/brandingRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -199,6 +200,7 @@ const routes = [
   { path: "/discovery", handler: discoveryRoutes, name: "discoveryRoutes" },
   { path: "/pricing", handler: pricingRoutes, name: "pricingRoutes" },
   { path: "/vulnerabilities", handler: vulnerabilityRoutes, name: "vulnerabilityRoutes" },
+  { path: "/branding", handler: brandingRoutes, name: "brandingRoutes" },
 ];
 
 for (const route of routes) {

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { NavMenu, type NavGroup } from "./NavMenu";
+import { useTranslation } from "react-i18next";
 import "./Header.css";
 
 interface HeaderProps {
@@ -17,14 +18,15 @@ export function Header({
   onNavigate,
   onQuickAction,
 }: HeaderProps) {
+  const { t } = useTranslation();
   return (
     <header className="site-header">
       <div className="header-inner">
-        <Link className="header-logo" to="/" aria-label="Stronghold" onClick={onNavigate}>
+        <Link className="header-logo" to="/" aria-label={t("appName")} onClick={onNavigate}>
           <span className="logo-mark" aria-hidden="true">
             SH
           </span>
-          <span className="logo-text">Stronghold</span>
+          <span className="logo-text">{t("appName")}</span>
         </Link>
 
         <div className="header-nav-desktop">
@@ -33,7 +35,7 @@ export function Header({
 
         <div className="header-actions">
           <button type="button" className="btn subtle" onClick={onQuickAction}>
-            Démarrer un PRA
+            {t("quickAction")}
           </button>
           <button
             type="button"
@@ -47,7 +49,7 @@ export function Header({
               <span />
               <span />
             </span>
-            <span>Menu</span>
+            <span>{t("menuLabel")}</span>
           </button>
         </div>
       </div>
@@ -64,14 +66,14 @@ export function Header({
         aria-hidden={!isMenuOpen}
       >
         <div className="mobile-menu-header">
-          <span className="mobile-menu-title">Navigation</span>
+          <span className="mobile-menu-title">{t("navigation")}</span>
           <button type="button" className="btn subtle" onClick={onMenuToggle}>
-            Fermer
+            {t("closeLabel")}
           </button>
         </div>
         <NavMenu groups={groups} onNavigate={onNavigate} variant="vertical" />
         <button type="button" className="btn primary" onClick={onQuickAction}>
-          Démarrer un PRA
+          {t("quickAction")}
         </button>
       </aside>
     </header>

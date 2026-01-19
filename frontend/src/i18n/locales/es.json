@@ -1,0 +1,189 @@
+{
+  "appName": "Stronghold",
+  "skipToContent": "Saltar al contenido principal",
+  "loadingModule": "Cargando módulo...",
+  "menuLabel": "Menú",
+  "quickAction": "Iniciar un PRD",
+  "navigation": "Navegación",
+  "guidedJourney": "Recorrido guiado",
+  "themeLabel": "Tema",
+  "languageLabel": "Idioma",
+  "lightMode": "Claro",
+  "darkMode": "Oscuro",
+  "sidebarTitle": "Navegación principal",
+  "progressTitle": "Progreso del recorrido",
+  "progressSummary": "{{completed}}/{{total}} pasos completados",
+  "homeEyebrow": "Inicio",
+  "homeTitle": "Primeros pasos hacia la resiliencia",
+  "homeSubtitle": "Sigue este recorrido guiado desde el descubrimiento hasta la clasificación documental y el informe PRD.",
+  "assistantTitle": "Tu recorrido PRD",
+  "assistantProgress": "{{completed}}/{{total}} pasos completados · {{percent}}% completado",
+  "assistantCurrentStep": "Paso actual",
+  "assistantNextStep": "Siguiente paso",
+  "assistantAdviceTitle": "Consejo",
+  "assistantAdviceBody": "Revisa los entregables en cada paso para mantener los runbooks consistentes.",
+  "assistantJumpTo": "Ir a {{actionLabel}}",
+  "assistantEyebrow": "Asistente",
+  "navigationTitle": "Resumen",
+  "navigationSubtitle": "Sigue los pasos guiados y avanza sin saltar de pestañas.",
+  "navigationEyebrow": "Navegación",
+  "navigationWizardTitle": "Avanza paso a paso",
+  "navigationWizardDescription": "Sigue el flujo recomendado para construir tu PRD completo.",
+  "navigationCatalogTitle": "Catálogo agrupado",
+  "navigationCatalogDescription": "Explora los módulos agrupados por dominios funcionales.",
+  "navigationDomainLabel": "pasos",
+  "navigationSearchLabel": "Buscar un módulo",
+  "navigationSearchPlaceholder": "Buscar un módulo",
+  "navigationEmptyState": "Ningún módulo coincide con esta búsqueda.",
+  "navigationGroupEmptyState": "Ningún grupo coincide con esta búsqueda.",
+  "configurationTitle": "Configuración",
+  "configurationSubtitle": "Conexión API",
+  "configurationBody": "Indica la URL y la clave API para activar los flujos de Stronghold.",
+  "configurationCardTitle": "Conexión API",
+  "configurationCardDescription": "Configura la URL y la clave API para desbloquear análisis y exportaciones.",
+  "wizardStatusComplete": "Completado",
+  "wizardStatusActive": "En curso",
+  "wizardStatusPending": "Pendiente",
+  "closeLabel": "Cerrar",
+  "footerTitle": "Stronghold PRD/BCP",
+  "footerDescription": "Plataforma de resiliencia para análisis continuo en organizaciones críticas.",
+  "footerNavLabel": "Navegación secundaria",
+  "progressStepTagComplete": "Completado",
+  "progressStepTagPending": "Paso",
+  "progressStepCompleted": "Completado",
+  "languageOptions": {
+    "fr": "Français",
+    "en": "English",
+    "es": "Español"
+  },
+  "modules": {
+    "services": { "label": "Servicios y Aplicaciones", "description": "Catálogo y criticidad" },
+    "discovery": { "label": "Descubrimiento", "description": "Escaneo de red e importaciones" },
+    "architecture": { "label": "Arquitectura", "description": "Visión general" },
+    "landing": { "label": "Landing Zone", "description": "Infraestructura" },
+    "graph": { "label": "Grafos", "description": "Dependencias" },
+    "continuity": { "label": "Continuidad", "description": "Copias y políticas" },
+    "documents": { "label": "Documentos", "description": "Carga y extracción" },
+    "rag": { "label": "Clasificación", "description": "Clasificación documental" },
+    "bia": { "label": "BIA", "description": "Procesos e impactos" },
+    "risks": { "label": "Riesgos", "description": "Amenazas y matrices" },
+    "analysis": { "label": "Análisis PRD", "description": "Controles y riesgos" },
+    "compliance": { "label": "Cumplimiento", "description": "ISO 22301 y SecNumCloud" },
+    "financier": { "label": "Costes", "description": "Comparativa multicloud" },
+    "scenarios": { "label": "Escenarios", "description": "Runbooks" },
+    "runbooks": { "label": "Runbooks", "description": "Generación y exportaciones" },
+    "incidents": { "label": "Incidentes", "description": "Crisis y notificaciones" },
+    "auth": { "label": "Auth (ADMIN)", "description": "Gestión de claves API (solo ADMIN)" },
+    "audit": { "label": "Auditoría (ADMIN)", "description": "Historial de llamadas API" },
+    "branding": { "label": "Branding", "description": "Logo y colores" }
+  },
+  "moduleGroups": {
+    "services-infra": {
+      "label": "Servicios + Infraestructura",
+      "description": "Mapa de servicios y bases técnicas."
+    },
+    "documents-ai": {
+      "label": "Documentos + IA",
+      "description": "Recopilación documental y motor RAG."
+    },
+    "analyses-risks": {
+      "label": "Análisis BIA + Riesgos",
+      "description": "Impactos de negocio, amenazas e informes PRD."
+    },
+    "scenarios-runbooks": {
+      "label": "Escenarios + Runbooks",
+      "description": "Planes de acción y orquestación de crisis."
+    },
+    "incidents": {
+      "label": "Incidentes",
+      "description": "Gestión de crisis y comunicaciones."
+    },
+    "administration": {
+      "label": "Administración",
+      "description": "Acceso, auditoría y cumplimiento."
+    },
+    "wizard": {
+      "label": "Recorrido guiado",
+      "description": "Sigue el orden recomendado para construir tu PRD."
+    },
+    "general": {
+      "label": "General",
+      "description": "Navegación básica."
+    }
+  },
+  "generalNav": {
+    "home": "Inicio",
+    "configuration": "Configuración",
+    "navigation": "Navegación",
+    "compliance": "Cumplimiento"
+  },
+  "homeSteps": {
+    "documents": {
+      "title": "Centralizar documentos",
+      "description": "Importa procedimientos y diagramas para impulsar el análisis BIA y de riesgos.",
+      "actionLabel": "Importar un documento"
+    },
+    "discovery": {
+      "title": "Descubrir la arquitectura",
+      "description": "Escanea la red o importa la CMDB para enriquecer dependencias y servicios.",
+      "actionLabel": "Iniciar descubrimiento"
+    },
+    "services": {
+      "title": "Consolidar servicios y aplicaciones",
+      "description": "Valida criticidad, RTO/RPO y propietarios para cerrar el catálogo.",
+      "actionLabel": "Abrir el catálogo"
+    },
+    "rag": {
+      "title": "Clasificar documentos",
+      "description": "Formula las preguntas correctas y organiza evidencias para el análisis.",
+      "actionLabel": "Iniciar clasificación"
+    },
+    "bia": {
+      "title": "Realizar el BIA",
+      "description": "Define procesos críticos y cuantifica impactos de negocio.",
+      "actionLabel": "Ir al BIA"
+    },
+    "risks": {
+      "title": "Calificar riesgos",
+      "description": "Analiza amenazas, probabilidades e impactos por proceso.",
+      "actionLabel": "Abrir riesgos"
+    },
+    "scenarios": {
+      "title": "Construir escenarios",
+      "description": "Planifica estrategias de recuperación y pasos de crisis.",
+      "actionLabel": "Crear un escenario"
+    },
+    "runbooks": {
+      "title": "Finalizar runbooks",
+      "description": "Publica procedimientos operativos y compártelos con los equipos.",
+      "actionLabel": "Acceder a runbooks"
+    },
+    "analysis": {
+      "title": "Generar el informe PRD",
+      "description": "Genera análisis consolidados y resúmenes para decisiones.",
+      "actionLabel": "Ver el informe"
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "subtitle": "Personalización",
+    "description": "Personaliza el logo y la paleta de colores aplicada a las interfaces del cliente.",
+    "logoUrlLabel": "URL del logo",
+    "logoUrlPlaceholder": "https://example.com/logo.svg",
+    "primaryColorLabel": "Color primario",
+    "secondaryColorLabel": "Color secundario",
+    "accentColorLabel": "Color de acento",
+    "previewTitle": "Vista previa",
+    "actions": {
+      "save": "Guardar",
+      "saving": "Guardando...",
+      "reset": "Restablecer"
+    },
+    "messages": {
+      "saved": "Branding actualizado.",
+      "loading": "Cargando branding...",
+      "error": "No se pudo cargar el branding.",
+      "updateError": "No se pudieron guardar los cambios."
+    }
+  }
+}

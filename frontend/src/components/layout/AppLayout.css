@@ -55,6 +55,13 @@
   text-transform: uppercase;
 }
 
+.logo-image {
+  height: 32px;
+  max-width: 140px;
+  object-fit: contain;
+  display: block;
+}
+
 .header-actions {
   display: flex;
   align-items: center;

@@ -1,8 +1,7 @@
 import type { HomeStep, HomeStepId } from "../home/HomePage";
-import type { TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
 
 interface AssistantPanelProps {
-  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -10,12 +9,12 @@ interface AssistantPanelProps {
 }
 
 export function AssistantPanel({
-  copy,
   steps,
   activeStepId,
   completedSteps,
   onStepAction,
 }: AssistantPanelProps) {
+  const { t } = useTranslation();
   const activeIndex = steps.findIndex((step) => step.id === activeStepId);
   const completedCount = completedSteps.length;
   const progressPercent = Math.min(100, Math.round((completedCount / steps.length) * 100));
@@ -26,10 +25,14 @@ export function AssistantPanel({
   return (
     <aside className="assistant-panel" aria-live="polite">
       <div className="assistant-panel-header">
-        <p className="assistant-eyebrow">{copy.assistantEyebrow}</p>
-        <h3>{copy.assistantTitle}</h3>
+        <p className="assistant-eyebrow">{t("assistantEyebrow")}</p>
+        <h3>{t("assistantTitle")}</h3>
         <p className="muted">
-          {copy.assistantProgress(completedCount, steps.length, progressPercent)}
+          {t("assistantProgress", {
+            completed: completedCount,
+            total: steps.length,
+            percent: progressPercent,
+          })}
         </p>
       </div>
 
@@ -41,7 +44,7 @@ export function AssistantPanel({
 
       {activeIndex !== -1 && (
         <div className="assistant-section">
-          <p className="assistant-label">{copy.assistantCurrentStep}</p>
+          <p className="assistant-label">{t("assistantCurrentStep")}</p>
           <p className="assistant-title">{steps[activeIndex].title}</p>
           <p className="muted small">{steps[activeIndex].description}</p>
         </div>
@@ -49,7 +52,7 @@ export function AssistantPanel({
 
       {nextStep && (
         <div className="assistant-section">
-          <p className="assistant-label">{copy.assistantNextStep}</p>
+          <p className="assistant-label">{t("assistantNextStep")}</p>
           <p className="assistant-title">{nextStep.title}</p>
           <p className="muted small">{nextStep.description}</p>
           {onStepAction && hasNextAction && (
@@ -58,15 +61,15 @@ export function AssistantPanel({
               className="btn primary"
               onClick={() => onStepAction(nextStep.id)}
             >
-              {copy.assistantJumpTo(nextStep.actionLabel)}
+              {t("assistantJumpTo", { actionLabel: nextStep.actionLabel })}
             </button>
           )}
         </div>
       )}
 
       <div className="assistant-section">
-        <p className="assistant-label">{copy.assistantAdviceTitle}</p>
-        <p className="muted small">{copy.assistantAdviceBody}</p>
+        <p className="assistant-label">{t("assistantAdviceTitle")}</p>
+        <p className="muted small">{t("assistantAdviceBody")}</p>
       </div>
     </aside>
   );

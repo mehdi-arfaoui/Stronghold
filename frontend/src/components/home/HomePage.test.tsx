@@ -3,20 +3,20 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { HomePage } from "./HomePage";
 import { getHomeSteps } from "../../constants/homeSteps";
-import { TRANSLATIONS } from "../../i18n/translations";
+import i18n from "../../i18n";
 
 describe("HomePage", () => {
   it("triggers the step action when clicking a step button", async () => {
     const onStepAction = vi.fn();
     const user = userEvent.setup();
-    const steps = getHomeSteps("fr");
+    const t = i18n.t.bind(i18n);
+    const steps = getHomeSteps(t);
 
     render(
       <HomePage
-        copy={TRANSLATIONS.fr}
-        eyebrow="Accueil"
-        title="Premiers pas"
-        subtitle="Suivez le guide"
+        eyebrow={t("homeEyebrow")}
+        title={t("homeTitle")}
+        subtitle={t("homeSubtitle")}
         steps={steps}
         activeStepId="discovery"
         completedSteps={[]}
@@ -25,7 +25,7 @@ describe("HomePage", () => {
       />
     );
 
-    const button = screen.getByRole("button", { name: "Lancer une découverte" });
+    const button = screen.getByRole("button", { name: t("homeSteps.discovery.actionLabel") });
     await user.click(button);
 
     expect(onStepAction).toHaveBeenCalledWith("discovery");

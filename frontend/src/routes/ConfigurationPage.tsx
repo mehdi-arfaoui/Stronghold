@@ -1,29 +1,29 @@
 import { ConfigBanner } from "../components/config/ConfigBanner";
 import { SectionCard } from "../components/ui/SectionCard";
-import type { TranslationCopy } from "../i18n/translations";
 import type { ApiConfig } from "../types";
+import { useTranslation } from "react-i18next";
 
 interface ConfigurationPageProps {
   apiConfig: ApiConfig;
   onSave: (config: ApiConfig) => void;
-  copy: TranslationCopy;
 }
 
-export function ConfigurationPage({ apiConfig, onSave, copy }: ConfigurationPageProps) {
+export function ConfigurationPage({ apiConfig, onSave }: ConfigurationPageProps) {
+  const { t } = useTranslation();
   return (
     <section className="workspace-section" aria-labelledby="configuration-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">{copy.configurationTitle}</p>
-          <h2 id="configuration-title">{copy.configurationSubtitle}</h2>
-          <p className="muted">{copy.configurationBody}</p>
+          <p className="eyebrow">{t("configurationTitle")}</p>
+          <h2 id="configuration-title">{t("configurationSubtitle")}</h2>
+          <p className="muted">{t("configurationBody")}</p>
         </div>
       </div>
 
       <SectionCard
-        eyebrow={copy.configurationTitle}
-        title={copy.configurationCardTitle}
-        description={copy.configurationCardDescription}
+        eyebrow={t("configurationTitle")}
+        title={t("configurationCardTitle")}
+        description={t("configurationCardDescription")}
       >
         <ConfigBanner config={apiConfig} onSave={onSave} />
       </SectionCard>

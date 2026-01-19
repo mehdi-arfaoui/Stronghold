@@ -4,11 +4,10 @@ import axe from "axe-core";
 import { describe, expect, test, vi } from "vitest";
 import { NavigationPage } from "./NavigationPage";
 import { getWizardStepGroup } from "../constants/navigation";
-import { getCopy } from "../i18n/utils";
+import i18n from "../i18n";
 
-const language = "fr";
-const copy = getCopy(language);
-const wizardGroup = getWizardStepGroup(language);
+const t = i18n.t.bind(i18n);
+const wizardGroup = getWizardStepGroup(t);
 
 describe("NavigationPage", () => {
   test("filtre les onglets via la recherche", async () => {
@@ -19,12 +18,11 @@ describe("NavigationPage", () => {
       <NavigationPage
         activeTab="discovery"
         onNavigateTab={handleNavigate}
-        copy={copy}
         wizardGroup={wizardGroup}
       />
     );
 
-    const searchInput = screen.getByLabelText(copy.navigationSearchLabel);
+    const searchInput = screen.getByLabelText(t("navigationSearchLabel"));
     const ragLabel = wizardGroup.tabs.find((route) => route.id === "rag")?.label ?? "RAG";
     const discoveryLabel =
       wizardGroup.tabs.find((route) => route.id === "discovery")?.label ?? "Découverte";
@@ -42,15 +40,14 @@ describe("NavigationPage", () => {
       <NavigationPage
         activeTab="discovery"
         onNavigateTab={vi.fn()}
-        copy={copy}
         wizardGroup={wizardGroup}
       />
     );
 
-    const searchInput = screen.getByLabelText(copy.navigationSearchLabel);
+    const searchInput = screen.getByLabelText(t("navigationSearchLabel"));
     await user.type(searchInput, "inexistant");
 
-    expect(screen.getByText(copy.navigationEmptyState)).toBeInTheDocument();
+    expect(screen.getByText(t("navigationEmptyState"))).toBeInTheDocument();
   });
 
   test("passe un audit axe sans violations critiques", async () => {
@@ -58,7 +55,6 @@ describe("NavigationPage", () => {
       <NavigationPage
         activeTab="discovery"
         onNavigateTab={vi.fn()}
-        copy={copy}
         wizardGroup={wizardGroup}
       />
     );

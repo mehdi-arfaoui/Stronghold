@@ -1,6 +1,7 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { Footer } from "./components/layout/Footer";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { HomeStepId } from "./components/home/HomePage";
@@ -15,22 +16,20 @@ import {
   getMainNavGroups,
   getWizardStepGroup,
 } from "./constants/navigation";
-import type { ApiConfig, TabId } from "./types";
-import { loadApiConfig } from "./utils/api";
+import type { ApiConfig, BrandingSettings, TabId } from "./types";
+import { SUPPORTED_LANGUAGES, type Language } from "./i18n/languages";
+import { apiFetch, loadApiConfig } from "./utils/api";
 import { getHomeSteps } from "./constants/homeSteps";
-import { getCopy } from "./i18n/utils";
-import type { Language } from "./i18n/translations";
 import {
-  getDefaultLanguage,
   getDefaultTheme,
-  getStoredLanguage,
   getStoredTheme,
   setStoredDiscoveryCompleted,
-  setStoredLanguage,
   setStoredTheme,
   type ThemeMode,
 } from "./utils/preferences";
 import { useDiscovery } from "./context/DiscoveryContext";
+import { applyBranding } from "./utils/branding";
+import { BrandingProvider } from "./context/BrandingContext";
 
 // Lazy-load module panels to reduce the initial bundle footprint.
 const ServicesSection = lazy(() =>
@@ -91,6 +90,9 @@ const AuditLogsSection = lazy(() =>
 const ComplianceSection = lazy(() =>
   import("./sections/ComplianceSection").then((module) => ({ default: module.ComplianceSection }))
 );
+const BrandingSection = lazy(() =>
+  import("./sections/BrandingSection").then((module) => ({ default: module.BrandingSection }))
+);
 
 const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> = {
   services: ServicesSection,
@@ -111,19 +113,22 @@ const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> 
   auth: AuthSection,
   audit: AuditLogsSection,
   compliance: ComplianceSection,
+  branding: BrandingSection,
 };
 
 function ModuleRoute({ tabId, configVersion }: { tabId: TabId; configVersion: number }) {
+  const { t } = useTranslation();
   const Panel = moduleComponents[tabId];
 
   return (
-    <Suspense fallback={<div className="skeleton">Chargement du module...</div>}>
+    <Suspense fallback={<div className="skeleton">{t("loadingModule")}</div>}>
       <Panel configVersion={configVersion} />
     </Suspense>
   );
 }
 
 function App() {
+  const { t, i18n } = useTranslation();
   const location = useLocation();
   const navigate = useNavigate();
   const [apiConfig, setApiConfig] = useState<ApiConfig>(() => loadApiConfig());
@@ -132,22 +137,26 @@ function App() {
   const [activeStep, setActiveStep] = useState<HomeStepId>("discovery");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
   const { discoveryCompleted } = useDiscovery();
-  const [language, setLanguage] = useState<Language>(
-    () => getStoredLanguage() ?? getDefaultLanguage()
-  );
   const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme() ?? getDefaultTheme());
+  const [branding, setBranding] = useState<BrandingSettings | null>(null);
+  const activeLanguage = useMemo(() => {
+    const resolvedLanguage = i18n.resolvedLanguage ?? i18n.language;
+    if (SUPPORTED_LANGUAGES.includes(resolvedLanguage as Language)) {
+      return resolvedLanguage as Language;
+    }
+    return "fr";
+  }, [i18n.language, i18n.resolvedLanguage]);
   const wizardSteps = useMemo<HomeStepId[]>(
     () => (discoveryCompleted ? (WIZARD_STEP_ORDER as HomeStepId[]) : ["discovery"]),
     [discoveryCompleted]
   );
-  const copy = useMemo(() => getCopy(language), [language]);
   const homeSteps = useMemo(
     () =>
-      getHomeSteps(language).filter((step) => discoveryCompleted || step.id === "discovery"),
-    [discoveryCompleted, language]
+      getHomeSteps(t).filter((step) => discoveryCompleted || step.id === "discovery"),
+    [discoveryCompleted, t]
   );
-  const navGroups = useMemo(() => getMainNavGroups(language), [language]);
-  const wizardGroup = useMemo(() => getWizardStepGroup(language), [language]);
+  const navGroups = useMemo(() => getMainNavGroups(t), [t]);
+  const wizardGroup = useMemo(() => getWizardStepGroup(t), [t]);
 
   const activeTab = useMemo<TabId>(() => {
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
@@ -254,9 +263,8 @@ function App() {
   }, [theme]);
 
   useEffect(() => {
-    document.documentElement.lang = language;
-    setStoredLanguage(language);
-  }, [language]);
+    document.documentElement.lang = activeLanguage;
+  }, [activeLanguage]);
 
   useEffect(() => {
     setStoredDiscoveryCompleted(discoveryCompleted);
@@ -269,93 +277,122 @@ function App() {
     }
   }, [activeStep, discoveryCompleted]);
 
-  return (
-    <div className="app-shell">
-      <a className="skip-link" href="#main-content">
-        {copy.skipToContent}
-      </a>
-      <AppLayout
-        groups={navGroups}
-        copy={copy}
-        steps={homeSteps}
-        activeStepId={activeStep}
-        completedSteps={completedSteps}
-        maxAllowedIndex={isNavigationLocked ? -1 : maxAllowedIndex}
-        onStepAction={handleStepAction}
-        onQuickAction={handleQuickAction}
-        theme={theme}
-        onToggleTheme={toggleTheme}
-        language={language}
-        onLanguageChange={setLanguage}
-        isMenuOpen={isMenuOpen}
-        onMenuToggle={() => setIsMenuOpen((open) => !open)}
-        onMenuClose={() => setIsMenuOpen(false)}
-        isNavigationLocked={isNavigationLocked}
-      >
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <HomeRoute
-                copy={copy}
-                steps={homeSteps}
-                activeStepId={activeStep}
-                completedSteps={completedSteps}
-                maxAllowedIndex={maxAllowedIndex}
-                onStepAction={handleStepAction}
-              />
-            }
-          />
-          <Route
-            path="/configuration"
-            element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />}
-          />
-          <Route
-            path="/navigation"
-            element={
-              <NavigationPage
-                activeTab={activeTab}
-                onNavigateTab={handleTabNavigation}
-                copy={copy}
-                wizardGroup={
-                  discoveryCompleted
-                    ? wizardGroup
-                    : { ...wizardGroup, tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery") }
-                }
-              />
-            }
-          />
-          <Route path="/discovery/scan" element={<Navigate to="/discovery" replace />} />
-          <Route path="/discovery/import" element={<Navigate to="/discovery" replace />} />
-          <Route path="/discovery/github-import" element={<Navigate to="/discovery" replace />} />
-          <Route path="/discovery/suggestions" element={<Navigate to="/discovery" replace />} />
-          {MODULE_ROUTES.map((module) => (
-            <Route
-              key={module.id}
-              path={module.path}
-              element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
-            />
-          ))}
-          <Route
-            path="*"
-            element={
-              <NavigationPage
-                activeTab={activeTab}
-                onNavigateTab={handleTabNavigation}
-                copy={copy}
-                wizardGroup={
-                  discoveryCompleted
-                    ? wizardGroup
-                    : { ...wizardGroup, tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery") }
-                }
-              />
-            }
-          />
-        </Routes>
-      </AppLayout>
+  useEffect(() => {
+    let isMounted = true;
+    const loadBranding = async () => {
+      try {
+        const data = (await apiFetch("/branding")) as BrandingSettings;
+        if (isMounted) setBranding(data);
+      } catch (error) {
+        if (isMounted) setBranding(null);
+      }
+    };
+    if (apiConfig.apiKey) {
+      void loadBranding();
+    } else {
+      setBranding(null);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [apiConfig.apiKey]);
 
-      <Footer groups={navGroups} copy={copy} />
-    </div>
+  useEffect(() => {
+    applyBranding(branding);
+  }, [branding]);
+
+  return (
+    <BrandingProvider value={{ branding, setBranding }}>
+      <div className="app-shell">
+        <a className="skip-link" href="#main-content">
+          {t("skipToContent")}
+        </a>
+        <AppLayout
+          groups={navGroups}
+          steps={homeSteps}
+          activeStepId={activeStep}
+          completedSteps={completedSteps}
+          maxAllowedIndex={isNavigationLocked ? -1 : maxAllowedIndex}
+          onStepAction={handleStepAction}
+          onQuickAction={handleQuickAction}
+          theme={theme}
+          onToggleTheme={toggleTheme}
+          language={activeLanguage}
+          onLanguageChange={(nextLanguage) => i18n.changeLanguage(nextLanguage)}
+          isMenuOpen={isMenuOpen}
+          onMenuToggle={() => setIsMenuOpen((open) => !open)}
+          onMenuClose={() => setIsMenuOpen(false)}
+          isNavigationLocked={isNavigationLocked}
+          branding={branding}
+        >
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <HomeRoute
+                  steps={homeSteps}
+                  activeStepId={activeStep}
+                  completedSteps={completedSteps}
+                  maxAllowedIndex={maxAllowedIndex}
+                  onStepAction={handleStepAction}
+                />
+              }
+            />
+            <Route
+              path="/configuration"
+              element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} />}
+            />
+            <Route
+              path="/navigation"
+              element={
+                <NavigationPage
+                  activeTab={activeTab}
+                  onNavigateTab={handleTabNavigation}
+                  wizardGroup={
+                    discoveryCompleted
+                      ? wizardGroup
+                      : {
+                          ...wizardGroup,
+                          tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery"),
+                        }
+                  }
+                />
+              }
+            />
+            <Route path="/discovery/scan" element={<Navigate to="/discovery" replace />} />
+            <Route path="/discovery/import" element={<Navigate to="/discovery" replace />} />
+            <Route path="/discovery/github-import" element={<Navigate to="/discovery" replace />} />
+            <Route path="/discovery/suggestions" element={<Navigate to="/discovery" replace />} />
+            {MODULE_ROUTES.map((module) => (
+              <Route
+                key={module.id}
+                path={module.path}
+                element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
+              />
+            ))}
+            <Route
+              path="*"
+              element={
+                <NavigationPage
+                  activeTab={activeTab}
+                  onNavigateTab={handleTabNavigation}
+                  wizardGroup={
+                    discoveryCompleted
+                      ? wizardGroup
+                      : {
+                          ...wizardGroup,
+                          tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery"),
+                        }
+                  }
+                />
+              }
+            />
+          </Routes>
+        </AppLayout>
+
+        <Footer groups={navGroups} />
+      </div>
+    </BrandingProvider>
   );
 }
 

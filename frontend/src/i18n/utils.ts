@@ -1,14 +1,13 @@
-import { TRANSLATIONS, type Language } from "./translations";
+import type { TFunction } from "i18next";
+import { SUPPORTED_LANGUAGES, type Language } from "./languages";
 
-export const LANGUAGE_OPTIONS: Array<{ value: Language; label: string }> = [
-  { value: "fr", label: "FR" },
-  { value: "en", label: "EN" },
-];
-
-export function getCopy(language: Language) {
-  return TRANSLATIONS[language];
+export function getLanguageOptions(t: TFunction) {
+  return SUPPORTED_LANGUAGES.map((language) => ({
+    value: language,
+    label: t(`languageOptions.${language}`),
+  }));
 }
 
 export function isLanguage(value: string): value is Language {
-  return value === "fr" || value === "en";
+  return SUPPORTED_LANGUAGES.includes(value as Language);
 }

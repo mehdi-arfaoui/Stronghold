@@ -1,24 +1,23 @@
 import { useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { InfoBadge } from "../components/ui/InfoBadge";
 import { SectionCard } from "../components/ui/SectionCard";
 import { TabNavigation } from "../components/navigation/TabNavigation";
 import type { ModuleGroup } from "../constants/navigation";
-import type { TranslationCopy } from "../i18n/translations";
 import type { TabId } from "../types";
 
 interface NavigationPageProps {
   activeTab: TabId;
   onNavigateTab: (tabId: TabId) => void;
-  copy: TranslationCopy;
   wizardGroup: ModuleGroup;
 }
 
 export function NavigationPage({
   activeTab,
   onNavigateTab,
-  copy,
   wizardGroup,
 }: NavigationPageProps) {
+  const { t } = useTranslation();
   const [tabQuery, setTabQuery] = useState("");
 
   const filteredWizardTabs = useMemo(() => {
@@ -37,31 +36,31 @@ export function NavigationPage({
     <section className="workspace-section" aria-labelledby="navigation-title">
       <div className="section-heading">
         <div>
-          <p className="eyebrow">{copy.navigationEyebrow}</p>
-          <h2 id="navigation-title">{copy.navigationTitle}</h2>
-          <p className="muted">{copy.navigationSubtitle}</p>
+          <p className="eyebrow">{t("navigationEyebrow")}</p>
+          <h2 id="navigation-title">{t("navigationTitle")}</h2>
+          <p className="muted">{t("navigationSubtitle")}</p>
         </div>
       </div>
 
       <SectionCard
-        eyebrow={copy.guidedJourney}
-        title={copy.navigationWizardTitle}
-        description={copy.navigationWizardDescription}
+        eyebrow={t("guidedJourney")}
+        title={t("navigationWizardTitle")}
+        description={t("navigationWizardDescription")}
         actions={
           <div className="tab-controls">
             <InfoBadge variant="subtle">
-              {filteredTabCount} {copy.navigationDomainLabel}
+              {filteredTabCount} {t("navigationDomainLabel")}
             </InfoBadge>
             <div className="tab-search">
               <label className="sr-only" htmlFor="tab-search">
-                {copy.navigationSearchLabel}
+                {t("navigationSearchLabel")}
               </label>
               <input
                 id="tab-search"
                 type="search"
                 value={tabQuery}
                 onChange={(event) => setTabQuery(event.target.value)}
-                placeholder={copy.navigationSearchPlaceholder}
+                placeholder={t("navigationSearchPlaceholder")}
               />
               <span className="muted small">
                 {filteredTabCount}/{wizardGroup.tabs.length}
@@ -78,7 +77,7 @@ export function NavigationPage({
             showIndex
           />
         ) : (
-          <p className="empty-state">{copy.navigationEmptyState}</p>
+          <p className="empty-state">{t("navigationEmptyState")}</p>
         )}
       </SectionCard>
     </section>

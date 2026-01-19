@@ -1,5 +1,5 @@
 import { ProgressStep } from "./ProgressStep";
-import type { TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
 
 export type HomeStepId =
   | "discovery"
@@ -20,7 +20,6 @@ export type HomeStep = {
 };
 
 interface HomePageProps {
-  copy: TranslationCopy;
   eyebrow: string;
   title: string;
   subtitle: string;
@@ -32,7 +31,6 @@ interface HomePageProps {
 }
 
 export function HomePage({
-  copy,
   eyebrow,
   title,
   subtitle,
@@ -42,6 +40,7 @@ export function HomePage({
   maxAllowedIndex,
   onStepAction,
 }: HomePageProps) {
+  const { t } = useTranslation();
   return (
     <div className="home-content">
       <header className="home-header">
@@ -60,9 +59,9 @@ export function HomePage({
             title={`${index + 1}. ${step.title}`}
             description={step.description}
             actionLabel={step.actionLabel}
-            tagCompleteLabel={copy.progressStepTagComplete}
-            tagPendingLabel={copy.progressStepTagPending}
-            completedLabel={copy.progressStepCompleted}
+            tagCompleteLabel={t("progressStepTagComplete")}
+            tagPendingLabel={t("progressStepTagPending")}
+            completedLabel={t("progressStepCompleted")}
             isActive={activeStepId === step.id}
             isComplete={completedSteps.includes(step.id)}
             isLocked={index > maxAllowedIndex}
