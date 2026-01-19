@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { PageIntro } from "../components/PageIntro";
 import { SectionCard } from "../components/ui/SectionCard";
 import { InfoBadge } from "../components/ui/InfoBadge";
 import type { DiscoveryJob } from "../types";
-import { apiFetch, apiFetchFormData } from "../utils/api";
+import { apiFetch, apiFetchFormData, getDiscoveryWebSocketUrl } from "../utils/api";
 import { useDiscovery } from "../context/DiscoveryContext";
 import { UploadDropzone } from "../components/discovery/UploadDropzone";
 import {
@@ -76,6 +76,8 @@ const DISCOVERY_STEPS = [
   },
 ];
 
+type DiscoveryAction = "scan" | "import" | "github";
+
 function parseIpRanges(raw: string) {
   return raw
     .split(/[\n,;]+/)
@@ -90,6 +92,7 @@ function normalizeProviderKey(provider: string) {
 export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
   const navigate = useNavigate();
   const { discoveryCompleted, setDiscoveryCompleted } = useDiscovery();
+  const [activeAction, setActiveAction] = useState<DiscoveryAction>("scan");
   const [ipRanges, setIpRanges] = useState("");
   const [providers, setProviders] = useState<CloudProviderState>({
     aws: false,
@@ -120,6 +123,7 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
   const [githubError, setGithubError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
 
   const cloudProviders = useMemo(
     () =>
@@ -137,7 +141,7 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
     [connectors]
   );
 
-  const loadHistory = async () => {
+  const loadHistory = useCallback(async () => {
     try {
       setLoadingHistory(true);
       const data = (await apiFetch("/discovery/history")) as DiscoveryJob[];
@@ -150,11 +154,11 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
     } finally {
       setLoadingHistory(false);
     }
-  };
+  }, [setDiscoveryCompleted]);
 
   useEffect(() => {
     loadHistory();
-  }, [configVersion]);
+  }, [configVersion, loadHistory]);
 
   useEffect(() => {
     if (!currentJob?.id) return;
@@ -166,6 +170,7 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
         setCurrentJob(job);
         if (job.status === "COMPLETED") {
           setDiscoveryCompleted(true);
+          void loadHistory();
         }
       } catch (error: any) {
         if (!isMounted) return;
@@ -174,20 +179,100 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
     };
 
     void pollStatus();
-    const interval = window.setInterval(pollStatus, 3000);
     return () => {
       isMounted = false;
-      window.clearInterval(interval);
     };
-  }, [currentJob?.id, setDiscoveryCompleted]);
+  }, [currentJob?.id, loadHistory, setDiscoveryCompleted]);
 
   useEffect(() => {
-    if (!discoveryCompleted || currentJob?.status !== "COMPLETED") return;
-    const timeout = window.setTimeout(() => {
-      navigate("/services");
-    }, 800);
-    return () => window.clearTimeout(timeout);
-  }, [currentJob?.status, discoveryCompleted, navigate]);
+    if (!currentJob?.id || realtimeConnected) return;
+    const interval = window.setInterval(async () => {
+      try {
+        const job = (await apiFetch(`/discovery/status/${currentJob.id}`)) as DiscoveryJob;
+        setCurrentJob(job);
+        if (job.status === "COMPLETED") {
+          setDiscoveryCompleted(true);
+          void loadHistory();
+        }
+      } catch (error: any) {
+        setRunError(error.message || "Impossible de rafraîchir le statut");
+      }
+    }, 3000);
+    return () => window.clearInterval(interval);
+  }, [currentJob?.id, loadHistory, realtimeConnected, setDiscoveryCompleted]);
+
+  useEffect(() => {
+    const wsUrl = getDiscoveryWebSocketUrl();
+    if (!wsUrl || typeof window === "undefined") return;
+    let isMounted = true;
+    const socket = new WebSocket(wsUrl);
+
+    const handleOpen = () => {
+      if (!isMounted) return;
+      setRealtimeConnected(true);
+    };
+
+    const handleClose = () => {
+      if (!isMounted) return;
+      setRealtimeConnected(false);
+    };
+
+    const handleMessage = (event: MessageEvent) => {
+      if (!isMounted) return;
+      try {
+        const payload = JSON.parse(event.data) as {
+          type?: string;
+          jobId?: string;
+          status?: string | null;
+          step?: string | null;
+          progress?: number | null;
+          summary?: DiscoveryJob["resultSummary"] | null;
+          errorMessage?: string | null;
+          completedAt?: string | null;
+        };
+        if (payload.type !== "discovery.progress" || !payload.jobId) return;
+
+        setCurrentJob((prev) => {
+          if (prev && prev.id !== payload.jobId) return prev;
+          const now = new Date().toISOString();
+          return {
+            id: payload.jobId,
+            status: payload.status ?? prev?.status ?? "RUNNING",
+            jobType: prev?.jobType ?? "DISCOVERY",
+            progress: payload.progress ?? prev?.progress ?? 0,
+            step: payload.step ?? prev?.step ?? null,
+            resultSummary: payload.summary ?? prev?.resultSummary ?? null,
+            errorMessage: payload.errorMessage ?? prev?.errorMessage ?? null,
+            createdAt: prev?.createdAt ?? now,
+            updatedAt: now,
+            startedAt: prev?.startedAt ?? now,
+            completedAt: payload.completedAt ?? prev?.completedAt ?? null,
+          };
+        });
+
+        if (payload.status === "COMPLETED") {
+          setDiscoveryCompleted(true);
+          void loadHistory();
+        }
+      } catch (_error) {
+        // Ignore malformed websocket payloads.
+      }
+    };
+
+    socket.addEventListener("open", handleOpen);
+    socket.addEventListener("close", handleClose);
+    socket.addEventListener("error", handleClose);
+    socket.addEventListener("message", handleMessage);
+
+    return () => {
+      isMounted = false;
+      socket.removeEventListener("open", handleOpen);
+      socket.removeEventListener("close", handleClose);
+      socket.removeEventListener("error", handleClose);
+      socket.removeEventListener("message", handleMessage);
+      socket.close();
+    };
+  }, [configVersion, loadHistory, setDiscoveryCompleted]);
 
   const handleRun = async (event: FormEvent) => {
     event.preventDefault();
@@ -326,26 +411,26 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
     currentJob?.resultSummary?.discoveredHosts ??
     history[0]?.resultSummary?.discoveredResources ??
     0;
+  const activeTabLabel = {
+    scan: "Scan réseau & cloud",
+    import: "Import CSV/JSON",
+    github: "Import GitHub",
+  } as const;
 
   return (
     <div className="section-stack discovery-page">
       <PageIntro
         title="Découverte"
-        objective="Rassemblez les scans réseau, imports et sources cloud sur une seule page de découverte."
+        objective="Unifiez scan réseau, imports et sources cloud sur un seul écran pour accélérer la cartographie."
         steps={[
-          "Définir les plages IP et connecteurs",
-          "Lancer un scan ou un import",
+          "Choisir un mode (scan, import ou GitHub)",
+          "Configurer les paramètres requis",
           "Suivre la progression en temps réel",
-          "Accéder à la consolidation des services",
+          "Déverrouiller les autres modules",
         ]}
         tips={[
+          "La progression temps réel est poussée via WebSocket quand disponible.",
           "Les imports CSV/JSON peuvent être glissés-déposés pour accélérer la collecte.",
-          "Les connecteurs cloud sont optionnels et ne sont interrogés que si activés.",
-        ]}
-        links={[
-          { label: "Lancer un scan", href: "#discovery-run", description: "Réseau/Cloud" },
-          { label: "Importer un export", href: "#discovery-import", description: "CSV/JSON" },
-          { label: "Importer depuis GitHub", href: "#discovery-github", description: "Repo public" },
         ]}
         expectedData={[
           "Plages IP ou exports CMDB/NetFlow",
@@ -359,148 +444,167 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
       />
 
       {actionMessage && <div className="alert success">{actionMessage}</div>}
+      {discoveryCompleted && (
+        <div className="alert success discovery-complete-banner">
+          <div>
+            <strong>Découverte terminée.</strong> Les autres onglets sont désormais déverrouillés.
+          </div>
+          <button type="button" className="primary" onClick={() => navigate("/services")}>
+            Aller aux services
+          </button>
+        </div>
+      )}
 
       <div className="discovery-layout">
         <div className="discovery-main">
-          <div id="discovery-run">
-            <SectionCard
-              eyebrow="Découverte réseau"
-              title="Lancer un scan on-prem & cloud"
-              description="Saisissez vos plages IP et activez les connecteurs nécessaires."
-            >
-              <form className="form-grid" onSubmit={handleRun}>
-                <label className="form-field">
-                  <span>Plages IP (CIDR, séparées par des virgules ou lignes)</span>
-                  <textarea
-                    rows={3}
-                    value={ipRanges}
-                    onChange={(event) => setIpRanges(event.target.value)}
-                    placeholder="10.0.0.0/24, 10.0.1.0/24"
-                  />
-                </label>
+          <DiscoveryProgress
+            job={currentJob}
+            steps={DISCOVERY_STEPS}
+            resourceCount={resourceCount}
+            statusNote={realtimeConnected ? "Temps réel" : "Polling"}
+          />
+          <SectionCard
+            eyebrow="Lancement"
+            title="Configurer la découverte"
+            description="Choisissez un mode de collecte puis lancez le scan ou l'import."
+          >
+            <div className="discovery-action-tabs" role="tablist" aria-label="Modes de découverte">
+              {(Object.keys(activeTabLabel) as DiscoveryAction[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeAction === mode}
+                  className={activeAction === mode ? "active" : undefined}
+                  onClick={() => setActiveAction(mode)}
+                >
+                  <span>{activeTabLabel[mode]}</span>
+                </button>
+              ))}
+            </div>
+            <div className="discovery-action-panel" role="tabpanel">
+              {activeAction === "scan" && (
+                <form className="form-grid" onSubmit={handleRun}>
+                  <label className="form-field">
+                    <span>Plages IP (CIDR, séparées par des virgules ou lignes)</span>
+                    <textarea
+                      rows={3}
+                      value={ipRanges}
+                      onChange={(event) => setIpRanges(event.target.value)}
+                      placeholder="10.0.0.0/24, 10.0.1.0/24"
+                    />
+                  </label>
 
-                <div className="form-field">
-                  <span>Connecteurs on-prem</span>
-                  <div className="checkbox-grid">
-                    {[
-                      { key: "snmp", label: "SNMP" },
-                      { key: "ssh", label: "SSH" },
-                      { key: "wmi", label: "WMI" },
-                      { key: "hyperv", label: "Hyper-V" },
-                      { key: "vmware", label: "VMware" },
-                      { key: "k8s", label: "Kubernetes" },
-                    ].map((connector) => (
-                      <label key={connector.key} className="checkbox">
-                        <input
-                          type="checkbox"
-                          checked={connectors[connector.key as keyof ConnectorState]}
-                          onChange={() =>
-                            handleConnectorChange(connector.key as keyof ConnectorState)
-                          }
-                        />
-                        {connector.label}
-                      </label>
-                    ))}
+                  <div className="form-field">
+                    <span>Connecteurs on-prem</span>
+                    <div className="checkbox-grid">
+                      {[
+                        { key: "snmp", label: "SNMP" },
+                        { key: "ssh", label: "SSH" },
+                        { key: "wmi", label: "WMI" },
+                        { key: "hyperv", label: "Hyper-V" },
+                        { key: "vmware", label: "VMware" },
+                        { key: "k8s", label: "Kubernetes" },
+                      ].map((connector) => (
+                        <label key={connector.key} className="checkbox">
+                          <input
+                            type="checkbox"
+                            checked={connectors[connector.key as keyof ConnectorState]}
+                            onChange={() =>
+                              handleConnectorChange(connector.key as keyof ConnectorState)
+                            }
+                          />
+                          {connector.label}
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                </div>
 
-                <CloudCredentialsFields
-                  providers={providers}
-                  credentials={credentials}
-                  onToggleProvider={handleProviderChange}
-                  onCredentialChange={handleCredentialChange}
-                />
+                  <CloudCredentialsFields
+                    providers={providers}
+                    credentials={credentials}
+                    onToggleProvider={handleProviderChange}
+                    onCredentialChange={handleCredentialChange}
+                  />
 
-                {runError && <div className="alert error">{runError}</div>}
-                <div className="button-group">
-                  <button className="primary" type="submit" disabled={running}>
-                    {running ? "Scan en cours..." : "Lancer la découverte"}
-                  </button>
-                  {currentJob && (
-                    <button type="button" className="ghost" onClick={handleRefreshStatus}>
-                      Rafraîchir
+                  {runError && <div className="alert error">{runError}</div>}
+                  <div className="button-group">
+                    <button className="primary" type="submit" disabled={running}>
+                      {running ? "Scan en cours..." : "Lancer la découverte"}
                     </button>
-                  )}
-                </div>
-              </form>
-            </SectionCard>
-          </div>
+                    {currentJob && (
+                      <button type="button" className="ghost" onClick={handleRefreshStatus}>
+                        Rafraîchir
+                      </button>
+                    )}
+                  </div>
+                </form>
+              )}
 
-          <div id="discovery-import">
-            <SectionCard
-              eyebrow="Import"
-              title="Importer un export CSV/JSON"
-              description="Chargez un export CMDB ou NetFlow pour alimenter la cartographie."
-            >
-              <form className="form-grid" onSubmit={handleImport}>
-                <UploadDropzone
-                  label="Fichier d'export"
-                  helper="CSV ou JSON, 10 Mo max"
-                  accept={[".csv", ".json"]}
-                  maxSizeMb={10}
-                  file={importFile}
-                  onFileChange={(file) => {
-                    setImportFile(file);
-                    setValidationError(null);
-                  }}
-                  onValidationError={setValidationError}
-                />
-                {validationError && <div className="alert error">{validationError}</div>}
-                {importError && <div className="alert error">{importError}</div>}
-                <button className="primary" type="submit" disabled={importing}>
-                  {importing ? "Import en cours..." : "Importer l'export"}
-                </button>
-              </form>
-            </SectionCard>
-          </div>
+              {activeAction === "import" && (
+                <form className="form-grid" onSubmit={handleImport}>
+                  <UploadDropzone
+                    label="Fichier d'export"
+                    helper="CSV ou JSON, 10 Mo max"
+                    accept={[".csv", ".json"]}
+                    maxSizeMb={10}
+                    file={importFile}
+                    onFileChange={(file) => {
+                      setImportFile(file);
+                      setValidationError(null);
+                    }}
+                    onValidationError={setValidationError}
+                  />
+                  {validationError && <div className="alert error">{validationError}</div>}
+                  {importError && <div className="alert error">{importError}</div>}
+                  <button className="primary" type="submit" disabled={importing}>
+                    {importing ? "Import en cours..." : "Importer l'export"}
+                  </button>
+                </form>
+              )}
 
-          <div id="discovery-github">
-            <SectionCard
-              eyebrow="Import GitHub"
-              title="Importer un export via GitHub"
-              description="Récupérez un export JSON depuis un dépôt GitHub public."
-            >
-              <form className="form-grid" onSubmit={handleGitHubImport}>
-                <label className="form-field">
-                  <span>URL du dépôt GitHub</span>
-                  <input
-                    type="url"
-                    value={githubRepoUrl}
-                    onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                      setGithubRepoUrl(event.target.value)
-                    }
-                    placeholder="https://github.com/organisation/infra-discovery"
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Chemin du fichier JSON</span>
-                  <input
-                    type="text"
-                    value={githubFilePath}
-                    onChange={(event) => setGithubFilePath(event.target.value)}
-                    placeholder="exports/discovery.json"
-                  />
-                </label>
-                <label className="form-field">
-                  <span>Branche ou tag</span>
-                  <input
-                    type="text"
-                    value={githubRef}
-                    onChange={(event) => setGithubRef(event.target.value)}
-                    placeholder="main"
-                  />
-                </label>
-                {githubError && <div className="alert error">{githubError}</div>}
-                <button className="primary" type="submit" disabled={githubImporting}>
-                  {githubImporting ? "Import en cours..." : "Importer depuis GitHub"}
-                </button>
-              </form>
-            </SectionCard>
-          </div>
+              {activeAction === "github" && (
+                <form className="form-grid" onSubmit={handleGitHubImport}>
+                  <label className="form-field">
+                    <span>URL du dépôt GitHub</span>
+                    <input
+                      type="url"
+                      value={githubRepoUrl}
+                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                        setGithubRepoUrl(event.target.value)
+                      }
+                      placeholder="https://github.com/organisation/infra-discovery"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Chemin du fichier JSON</span>
+                    <input
+                      type="text"
+                      value={githubFilePath}
+                      onChange={(event) => setGithubFilePath(event.target.value)}
+                      placeholder="exports/discovery.json"
+                    />
+                  </label>
+                  <label className="form-field">
+                    <span>Branche ou tag</span>
+                    <input
+                      type="text"
+                      value={githubRef}
+                      onChange={(event) => setGithubRef(event.target.value)}
+                      placeholder="main"
+                    />
+                  </label>
+                  {githubError && <div className="alert error">{githubError}</div>}
+                  <button className="primary" type="submit" disabled={githubImporting}>
+                    {githubImporting ? "Import en cours..." : "Importer depuis GitHub"}
+                  </button>
+                </form>
+              )}
+            </div>
+          </SectionCard>
         </div>
 
         <div className="discovery-side">
-          <DiscoveryProgress job={currentJob} steps={DISCOVERY_STEPS} resourceCount={resourceCount} />
           <SectionCard
             eyebrow="Suivi"
             title="Dernières opérations"
