@@ -8,6 +8,7 @@ exports.requireRole = requireRole;
 const express_1 = require("express");
 const crypto_1 = __importDefault(require("crypto"));
 const prismaClient_1 = __importDefault(require("../prismaClient"));
+const deployment_1 = require("../config/deployment");
 const tenantMiddleware = async (req, res, next) => {
     try {
         // laisser passer /health sans auth
@@ -43,6 +44,10 @@ const tenantMiddleware = async (req, res, next) => {
         req.tenantId = resolvedTenant.id;
         req.apiKeyId = existingApiKey?.id;
         req.apiRole = apiRole;
+        if (deployment_1.deploymentConfig.multiTenant.enabled) {
+            req.tenantSchema = (0, deployment_1.buildTenantSchemaName)(resolvedTenant.id);
+            req.tenantQuotas = deployment_1.deploymentConfig.multiTenant.quotas;
+        }
         res.on("finish", async () => {
             try {
                 if (!req.tenantId)

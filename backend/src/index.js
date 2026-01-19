@@ -30,9 +30,12 @@ const { startDiscoveryWorker } = require("./workers/discoveryWorker");
 const { startDocumentIngestionWorker } = require("./workers/documentIngestionWorker");
 const { startDiscoveryScheduler } = require("./workers/discoveryScheduler");
 const { initDiscoveryWebSocket } = require("./websockets/discoveryWebsocket");
+const { deploymentConfig } = require("./config/deployment");
+const { ensureOnPremiseLicense } = require("./services/licenseService");
 
 dotenv.config();
 initTelemetry();
+const onPremiseLicense = ensureOnPremiseLicense();
 
 const app = express();
 
@@ -162,4 +165,12 @@ server.listen(Number(PORT), HOST, () => {
     }`
   );
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
+  if (deploymentConfig.mode === "saas") {
+    console.log("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
+  } else {
+    console.log("Deployment mode: On-premise (auto-mise à jour désactivée).");
+    if (onPremiseLicense) {
+      console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
+    }
+  }
 });

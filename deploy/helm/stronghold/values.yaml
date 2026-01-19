@@ -1,0 +1,41 @@
+image:
+  repository: stronghold/backend
+  tag: latest
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+service:
+  type: ClusterIP
+  port: 4000
+
+resources: {}
+
+env:
+  nodeEnv: production
+  deploymentMode: saas
+  autoUpdateEnabled: "true"
+  tenantSchemaPrefix: tenant
+  tenantMaxUsers: "50"
+  tenantMaxDocuments: "5000"
+  tenantMaxStorageGb: "200"
+  tenantMaxRpm: "1200"
+  tenantMaxRunbooksPerMonth: "200"
+  chromaDbUrl: "http://chroma:8000"
+  chromaDbCollection: "pra-documents"
+  s3Endpoint: "http://minio:9000"
+  s3Region: "us-east-1"
+  s3BucketPrefix: stronghold-docs
+  s3ForcePathStyle: "true"
+  s3SignedUrlTtlSeconds: "900"
+  redisUrl: "redis://redis:6379"
+
+secrets:
+  databaseUrl: ""
+  openaiApiKey: ""
+  s3AccessKeyId: ""
+  s3SecretAccessKey: ""
+
+serviceAccount:
+  create: false
+  name: ""

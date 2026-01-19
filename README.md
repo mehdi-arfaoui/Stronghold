@@ -19,6 +19,10 @@
   - Forcer un provider : `OCR_PROVIDER=aws_textract` ou `OCR_PROVIDER=tesseract`.
   - En cas d'erreur "tesseract manquant", consultez `TROUBLESHOOTING.md` (section OCR) pour la marche à suivre.
 
+## Déploiement SaaS / On‑premise
+
+La configuration `DEPLOYMENT_MODE` active le mode SaaS (multi‑tenant mutualisé, schéma par tenant, quotas) ou on‑premise (licence unique, auto‑mise à jour désactivée). Le guide d’installation automatisée avec Helm est détaillé dans `DEPLOYMENT.md`.
+
 ## Schémas de données (backend)
 Les modèles sont définis dans `backend/prisma/schema.prisma`. Les principaux objets utilisés par les endpoints récents :
 

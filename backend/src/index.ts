@@ -31,9 +31,12 @@ import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
+import { deploymentConfig } from "./config/deployment.js";
+import { ensureOnPremiseLicense } from "./services/licenseService.js";
 
 dotenv.config();
 initTelemetry();
+const onPremiseLicense = ensureOnPremiseLicense();
 
 const app = express();
 
@@ -242,4 +245,12 @@ server.listen(Number(PORT), HOST, () => {
     `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
   );
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
+  if (deploymentConfig.mode === "saas") {
+    console.log("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
+  } else {
+    console.log("Deployment mode: On-premise (auto-mise à jour désactivée).");
+    if (onPremiseLicense) {
+      console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
+    }
+  }
 });
