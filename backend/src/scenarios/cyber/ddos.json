@@ -1,0 +1,33 @@
+{
+  "id": "ddos",
+  "name": "DDoS",
+  "description": "Saturation des services exposés par un trafic volumétrique ou applicatif.",
+  "incidentSteps": [
+    "Montée en charge anormale sur les points d'entrée publics.",
+    "Saturation des capacités réseau ou des équilibreurs.",
+    "Dégradation progressive des SLA et erreurs applicatives.",
+    "Blocage partiel ou total des services en ligne."
+  ],
+  "impacts": [
+    "Indisponibilité des services exposés.",
+    "Perte de chiffre d'affaires et insatisfaction client.",
+    "Surconsommation de ressources cloud."
+  ],
+  "detection": [
+    "Alertes WAF/CDN sur volumes de requêtes.",
+    "Surveillance NOC et dashboards de latence.",
+    "Pics inhabituels sur les métriques d'entrée/sortie."
+  ],
+  "responseActions": [
+    "Activer les protections anti-DDoS en amont.",
+    "Mettre en place un rate-limiting et des règles WAF.",
+    "Coordonner avec le fournisseur réseau et le SOC."
+  ],
+  "recoveryPlan": [
+    "Basculer vers des capacités supplémentaires temporaires.",
+    "Revenir à une configuration standard après stabilisation.",
+    "Documenter les enseignements et ajuster les seuils."
+  ],
+  "defaultDurationHours": 4,
+  "tags": ["availability", "network"]
+}

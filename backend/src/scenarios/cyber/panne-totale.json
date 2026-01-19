@@ -1,0 +1,33 @@
+{
+  "id": "panne-totale",
+  "name": "Panne totale",
+  "description": "Arrêt complet des infrastructures critiques suite à une défaillance majeure.",
+  "incidentSteps": [
+    "Défaillance simultanée des composants critiques (énergie, réseau, stockage).",
+    "Perte des services centraux et des outils de supervision.",
+    "Interruption des processus métier dépendants.",
+    "Activation des procédures d'urgence et bascule vers un mode dégradé."
+  ],
+  "impacts": [
+    "Arrêt des opérations critiques.",
+    "Perte de visibilité sur l'état des systèmes.",
+    "Risque de non-conformité réglementaire."
+  ],
+  "detection": [
+    "Alertes de supervision sur indisponibilité globale.",
+    "Signalements métiers d'interruption totale.",
+    "Perte de télémetrie ou de logs."
+  ],
+  "responseActions": [
+    "Déclencher la cellule de crise et les plans PCA.",
+    "Prioriser les services vitaux à restaurer.",
+    "Coordonner les équipes IT, sécurité et fournisseurs."
+  ],
+  "recoveryPlan": [
+    "Restaurer les infrastructures cœur en priorité.",
+    "Redéployer les services critiques et valider les dépendances.",
+    "Documenter les écarts et mettre à jour les procédures."
+  ],
+  "defaultDurationHours": 8,
+  "tags": ["resilience", "infrastructure", "outage"]
+}

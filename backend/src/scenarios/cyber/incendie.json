@@ -1,0 +1,33 @@
+{
+  "id": "incendie",
+  "name": "Incendie",
+  "description": "Sinistre physique affectant un site critique et provoquant la perte d'infrastructures.",
+  "incidentSteps": [
+    "Détection d'un départ de feu et déclenchement des alarmes.",
+    "Évacuation du site et coupure des alimentations.",
+    "Arrêt des systèmes hébergés localement.",
+    "Activation des plans de continuité et de relocalisation."
+  ],
+  "impacts": [
+    "Perte de disponibilité des infrastructures locales.",
+    "Dommages matériels et immobilisation du site.",
+    "Risque de rupture de service prolongée."
+  ],
+  "detection": [
+    "Alertes sécurité bâtiment et capteurs incendie.",
+    "Signalements physiques par les équipes sur site.",
+    "Perte soudaine de télémétrie locale."
+  ],
+  "responseActions": [
+    "Assurer la sécurité du personnel et activer les procédures HSE.",
+    "Basculer vers le site de secours ou le cloud.",
+    "Informer les parties prenantes et les autorités."
+  ],
+  "recoveryPlan": [
+    "Évaluer les dommages et sécuriser le site.",
+    "Reconstituer les infrastructures et valider les sauvegardes.",
+    "Mettre à jour le plan de continuité avec le retour d'expérience."
+  ],
+  "defaultDurationHours": 12,
+  "tags": ["physical", "disaster", "site"]
+}

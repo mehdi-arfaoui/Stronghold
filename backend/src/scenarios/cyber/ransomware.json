@@ -1,0 +1,35 @@
+{
+  "id": "ransomware",
+  "name": "Ransomware",
+  "description": "Chiffrement des données critiques avec demande de rançon et indisponibilité des services clés.",
+  "incidentSteps": [
+    "Intrusion initiale via phishing ou exploitation d'une vulnérabilité.",
+    "Exécution du payload et élévation de privilèges.",
+    "Propagation latérale vers serveurs et postes de travail.",
+    "Chiffrement massif des fichiers et perturbation des sauvegardes.",
+    "Affichage de la note de rançon et arrêt des opérations critiques."
+  ],
+  "impacts": [
+    "Indisponibilité des applications métier.",
+    "Perte de productivité et arrêt de production.",
+    "Exposition réglementaire et réputationnelle."
+  ],
+  "detection": [
+    "Alertes EDR sur comportements de chiffrement.",
+    "Pics d'accès fichiers anormaux sur les partages.",
+    "Détections SIEM sur escalades de privilèges."
+  ],
+  "responseActions": [
+    "Isoler immédiatement les hôtes compromis.",
+    "Désactiver les comptes impactés et forcer la rotation des mots de passe.",
+    "Bloquer les flux réseau vers les IOC identifiés.",
+    "Activer le plan de continuité et les communications de crise."
+  ],
+  "recoveryPlan": [
+    "Restaurer les sauvegardes hors ligne vérifiées.",
+    "Rebuild des environnements critiques et validation applicative.",
+    "Revue post-incident et renforcement des contrôles."
+  ],
+  "defaultDurationHours": 6,
+  "tags": ["malware", "critical", "data"]
+}
