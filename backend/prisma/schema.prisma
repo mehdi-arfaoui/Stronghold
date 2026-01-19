@@ -154,6 +154,8 @@ model Vulnerability {
 
   serviceId String
   service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  resourceId String?
+  resource   DiscoveredResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
 
   fingerprint   String
   cveId         String
@@ -174,6 +176,7 @@ model Vulnerability {
   updatedAt    DateTime @updatedAt
 
   @@index([tenantId, serviceId])
+  @@index([tenantId, resourceId])
   @@index([tenantId, cveId])
   @@unique([tenantId, fingerprint])
 }
@@ -1204,6 +1207,8 @@ model DiscoveredResource {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  vulnerabilities Vulnerability[]
 
   @@unique([tenantId, source, externalId])
   @@index([tenantId, lastSeenAt])
