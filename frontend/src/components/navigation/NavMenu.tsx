@@ -1,4 +1,5 @@
 import { NavLink as RouterNavLink } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import "./NavMenu.css";
 
 export interface NavLink {
@@ -27,9 +28,10 @@ export function NavMenu({
   groups = [],
   onNavigate,
   variant = "horizontal",
-  ariaLabel = "Navigation principale",
+  ariaLabel,
   disabled = false,
 }: NavMenuProps) {
+  const { t } = useTranslation();
   const hasGroups = groups.length > 0;
   const renderLinks = (items: NavLink[]) => (
     <ul>
@@ -54,7 +56,7 @@ export function NavMenu({
   );
 
   return (
-    <nav className={`nav-menu ${variant}`} aria-label={ariaLabel}>
+    <nav className={`nav-menu ${variant}`} aria-label={ariaLabel ?? t("sidebarTitle")}>
       {hasGroups ? (
         <div className="nav-menu-groups">
           {groups.map((group) => (

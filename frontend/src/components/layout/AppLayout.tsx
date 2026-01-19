@@ -3,15 +3,16 @@ import { Link } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import type { NavGroup } from "../navigation/NavMenu";
 import type { HomeStep, HomeStepId } from "../home/HomePage";
-import type { Language, TranslationCopy } from "../../i18n/translations";
+import { useTranslation } from "react-i18next";
+import type { Language } from "../../i18n/languages";
 import type { ThemeMode } from "../../utils/preferences";
-import { LANGUAGE_OPTIONS } from "../../i18n/utils";
+import { getLanguageOptions } from "../../i18n/utils";
+import type { BrandingSettings } from "../../types";
 import "./AppLayout.css";
 
 interface AppLayoutProps {
   children: ReactNode;
   groups: NavGroup[];
-  copy: TranslationCopy;
   steps: HomeStep[];
   activeStepId: HomeStepId;
   completedSteps: HomeStepId[];
@@ -26,12 +27,12 @@ interface AppLayoutProps {
   onMenuToggle: () => void;
   onMenuClose: () => void;
   isNavigationLocked?: boolean;
+  branding?: BrandingSettings | null;
 }
 
 export function AppLayout({
   children,
   groups,
-  copy,
   steps,
   activeStepId,
   completedSteps,
@@ -46,7 +47,10 @@ export function AppLayout({
   onMenuToggle,
   onMenuClose,
   isNavigationLocked = false,
+  branding,
 }: AppLayoutProps) {
+  const { t } = useTranslation();
+  const languageOptions = getLanguageOptions(t);
   return (
     <div className="app-layout">
       <header className="app-header">
@@ -64,13 +68,17 @@ export function AppLayout({
                 <span />
                 <span />
               </span>
-              <span className="sr-only">{copy.navigation}</span>
+              <span className="sr-only">{t("navigation")}</span>
             </button>
-            <Link className="header-logo" to="/" aria-label={copy.appName}>
+            <Link className="header-logo" to="/" aria-label={t("appName")}>
               <span className="logo-mark" aria-hidden="true">
                 SH
               </span>
-              <span className="logo-text">{copy.appName}</span>
+              {branding?.logoUrl ? (
+                <img className="logo-image" src={branding.logoUrl} alt={t("appName")} />
+              ) : (
+                <span className="logo-text">{t("appName")}</span>
+              )}
             </Link>
           </div>
 
@@ -82,19 +90,19 @@ export function AppLayout({
               disabled={isNavigationLocked}
               aria-disabled={isNavigationLocked}
             >
-              {copy.quickAction}
+              {t("quickAction")}
             </button>
             <div className="header-control">
               <label className="sr-only" htmlFor="language-switch">
-                {copy.languageLabel}
+                {t("languageLabel")}
               </label>
               <select
                 id="language-switch"
                 value={language}
                 onChange={(event) => onLanguageChange(event.target.value as Language)}
-                aria-label={copy.languageLabel}
+                aria-label={t("languageLabel")}
               >
-                {LANGUAGE_OPTIONS.map((option) => (
+                {languageOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -106,9 +114,9 @@ export function AppLayout({
               className="btn subtle"
               onClick={onToggleTheme}
               aria-pressed={theme === "dark"}
-              aria-label={copy.themeLabel}
+              aria-label={t("themeLabel")}
             >
-              {theme === "dark" ? copy.darkMode : copy.lightMode}
+              {theme === "dark" ? t("darkMode") : t("lightMode")}
             </button>
           </div>
         </div>
@@ -117,7 +125,6 @@ export function AppLayout({
       <div className={`app-body ${isMenuOpen ? "sidebar-open" : "sidebar-closed"}`}>
         <Sidebar
           groups={groups}
-          copy={copy}
           steps={steps}
           activeStepId={activeStepId}
           completedSteps={completedSteps}

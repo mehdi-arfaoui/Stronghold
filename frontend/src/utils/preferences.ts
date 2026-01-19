@@ -1,4 +1,4 @@
-import type { Language } from "../i18n/translations";
+import type { Language } from "../i18n/languages";
 
 export type ThemeMode = "light" | "dark";
 
@@ -16,7 +16,7 @@ export function getStoredTheme(): ThemeMode | null {
 export function getStoredLanguage(): Language | null {
   if (typeof window === "undefined") return null;
   const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
-  if (stored === "fr" || stored === "en") return stored;
+  if (stored === "fr" || stored === "en" || stored === "es") return stored;
   return null;
 }
 
@@ -49,5 +49,7 @@ export function getDefaultTheme(): ThemeMode {
 export function getDefaultLanguage(): Language {
   if (typeof navigator === "undefined") return "fr";
   const candidate = navigator.language.toLowerCase();
-  return candidate.startsWith("en") ? "en" : "fr";
+  if (candidate.startsWith("en")) return "en";
+  if (candidate.startsWith("es")) return "es";
+  return "fr";
 }

@@ -5,18 +5,18 @@ import userEvent from "@testing-library/user-event";
 import { AppLayout } from "./AppLayout";
 import { getHomeSteps } from "../../constants/homeSteps";
 import { getMainNavGroups } from "../../constants/navigation";
-import { TRANSLATIONS } from "../../i18n/translations";
+import i18n from "../../i18n";
 
 describe("AppLayout", () => {
   it("renders sidebar navigation and layout structure", () => {
-    const steps = getHomeSteps("fr");
-    const groups = getMainNavGroups("fr");
+    const t = i18n.t.bind(i18n);
+    const steps = getHomeSteps(t);
+    const groups = getMainNavGroups(t);
 
     render(
       <MemoryRouter>
         <AppLayout
           groups={groups}
-          copy={TRANSLATIONS.fr}
           steps={steps}
           activeStepId={steps[0].id}
           completedSteps={[steps[0].id]}
@@ -35,16 +35,17 @@ describe("AppLayout", () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByRole("button", { name: TRANSLATIONS.fr.navigation })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: t("navigation") })).toBeInTheDocument();
     expect(
-      screen.getByRole("navigation", { name: TRANSLATIONS.fr.sidebarTitle })
+      screen.getByRole("navigation", { name: t("sidebarTitle") })
     ).toBeInTheDocument();
     expect(document.querySelector(".app-body")).toHaveClass("sidebar-closed");
   });
 
   it("toggles the menu button", async () => {
-    const steps = getHomeSteps("fr");
-    const groups = getMainNavGroups("fr");
+    const t = i18n.t.bind(i18n);
+    const steps = getHomeSteps(t);
+    const groups = getMainNavGroups(t);
     const onMenuToggle = vi.fn();
     const user = userEvent.setup();
 
@@ -52,7 +53,6 @@ describe("AppLayout", () => {
       <MemoryRouter>
         <AppLayout
           groups={groups}
-          copy={TRANSLATIONS.fr}
           steps={steps}
           activeStepId={steps[0].id}
           completedSteps={[steps[0].id]}
@@ -71,7 +71,7 @@ describe("AppLayout", () => {
       </MemoryRouter>
     );
 
-    await user.click(screen.getByRole("button", { name: TRANSLATIONS.fr.navigation }));
+    await user.click(screen.getByRole("button", { name: t("navigation") }));
     expect(onMenuToggle).toHaveBeenCalledTimes(1);
   });
 });

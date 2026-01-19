@@ -3,6 +3,13 @@ export type ApiConfig = {
   apiKey: string;
 };
 
+export type BrandingSettings = {
+  logoUrl: string | null;
+  primaryColor: string | null;
+  secondaryColor: string | null;
+  accentColor: string | null;
+};
+
 export type Continuity = {
   rtoHours: number;
   rpoMinutes: number;
@@ -945,7 +952,8 @@ export type TabId =
   | "risks"
   | "auth"
   | "audit"
-  | "compliance";
+  | "compliance"
+  | "branding";
 
 export type TabDefinition = {
   id: TabId;

@@ -2,16 +2,15 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { WizardProgress } from "./WizardProgress";
 import { getHomeSteps } from "../../constants/homeSteps";
-import { TRANSLATIONS } from "../../i18n/translations";
+import i18n from "../../i18n";
 
 describe("WizardProgress", () => {
   it("renders progress summary and matches snapshot", () => {
-    const steps = getHomeSteps("fr");
+    const steps = getHomeSteps(i18n.t.bind(i18n));
     const completedSteps = steps.slice(0, 2).map((step) => step.id);
 
     const { container } = render(
       <WizardProgress
-        copy={TRANSLATIONS.fr}
         steps={steps}
         activeStepId={steps[1].id}
         completedSteps={completedSteps}

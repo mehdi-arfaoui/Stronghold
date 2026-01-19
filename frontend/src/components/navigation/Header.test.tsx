@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it, vi } from "vitest";
 import { Header } from "./Header";
 import type { NavGroup } from "./NavMenu";
+import i18n from "../../i18n";
 
 const groups: NavGroup[] = [
   {
@@ -18,6 +19,7 @@ const groups: NavGroup[] = [
 
 describe("Header", () => {
   it("calls navigation handlers", async () => {
+    const t = i18n.t.bind(i18n);
     const onNavigate = vi.fn();
     const onMenuToggle = vi.fn();
     const onQuickAction = vi.fn();
@@ -38,10 +40,10 @@ describe("Header", () => {
     await user.click(screen.getByRole("link", { name: "Services" }));
     expect(onNavigate).toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Menu" }));
+    await user.click(screen.getByRole("button", { name: t("menuLabel") }));
     expect(onMenuToggle).toHaveBeenCalled();
 
-    await user.click(screen.getByRole("button", { name: "Démarrer un PRA" }));
+    await user.click(screen.getByRole("button", { name: t("quickAction") }));
     expect(onQuickAction).toHaveBeenCalled();
   });
 });

@@ -1,0 +1,189 @@
+{
+  "appName": "Stronghold",
+  "skipToContent": "Aller au contenu principal",
+  "loadingModule": "Chargement du module...",
+  "menuLabel": "Menu",
+  "quickAction": "Démarrer un PRA",
+  "navigation": "Navigation",
+  "guidedJourney": "Parcours guidé",
+  "themeLabel": "Thème",
+  "languageLabel": "Langue",
+  "lightMode": "Clair",
+  "darkMode": "Sombre",
+  "sidebarTitle": "Navigation principale",
+  "progressTitle": "Progression du parcours",
+  "progressSummary": "{{completed}}/{{total}} étapes complétées",
+  "homeEyebrow": "Accueil",
+  "homeTitle": "Premiers pas vers la résilience",
+  "homeSubtitle": "Suivez ce parcours guidé pour aller de la découverte à la classification documentaire, puis jusqu'au rapport PRA.",
+  "assistantTitle": "Votre parcours PRA",
+  "assistantProgress": "{{completed}}/{{total}} étapes complétées · {{percent}}% terminé",
+  "assistantCurrentStep": "Étape en cours",
+  "assistantNextStep": "Prochaine étape",
+  "assistantAdviceTitle": "Conseil",
+  "assistantAdviceBody": "Révisez les livrables à chaque étape pour assurer la cohérence des runbooks.",
+  "assistantJumpTo": "Passer à {{actionLabel}}",
+  "assistantEyebrow": "Assistant",
+  "navigationTitle": "Vue d'ensemble",
+  "navigationSubtitle": "Suivez le parcours guidé et avancez étape par étape sans navigation libre.",
+  "navigationEyebrow": "Navigation",
+  "navigationWizardTitle": "Avancez étape par étape",
+  "navigationWizardDescription": "Suivez le flux recommandé pour générer votre PRA complet.",
+  "navigationCatalogTitle": "Catalogue regroupé",
+  "navigationCatalogDescription": "Explorez les modules par grands ensembles fonctionnels.",
+  "navigationDomainLabel": "étapes",
+  "navigationSearchLabel": "Rechercher un module",
+  "navigationSearchPlaceholder": "Rechercher un module",
+  "navigationEmptyState": "Aucun module ne correspond à cette recherche.",
+  "navigationGroupEmptyState": "Aucun groupe ne correspond à cette recherche.",
+  "configurationTitle": "Configuration",
+  "configurationSubtitle": "Connexion API",
+  "configurationBody": "Renseignez l'URL et la clé API pour activer les workflows Stronghold.",
+  "configurationCardTitle": "Connexion API",
+  "configurationCardDescription": "Paramétrez l'URL et la clé API pour débloquer les analyses et exports.",
+  "wizardStatusComplete": "Terminé",
+  "wizardStatusActive": "En cours",
+  "wizardStatusPending": "À venir",
+  "closeLabel": "Fermer",
+  "footerTitle": "Stronghold PRA/PCA",
+  "footerDescription": "Plateforme de résilience et d'analyse continue pour les organisations critiques.",
+  "footerNavLabel": "Navigation secondaire",
+  "progressStepTagComplete": "Terminé",
+  "progressStepTagPending": "Étape",
+  "progressStepCompleted": "Complété",
+  "languageOptions": {
+    "fr": "Français",
+    "en": "English",
+    "es": "Español"
+  },
+  "modules": {
+    "services": { "label": "Services & Applications", "description": "Catalogue et criticité" },
+    "discovery": { "label": "Découverte", "description": "Scan réseau & imports" },
+    "architecture": { "label": "Architecture", "description": "Vue d'ensemble" },
+    "landing": { "label": "Landing Zone", "description": "Infrastructure" },
+    "graph": { "label": "Graphes", "description": "Dépendances" },
+    "continuity": { "label": "Continuité", "description": "Sauvegardes & politiques" },
+    "documents": { "label": "Documents", "description": "Upload & extraction" },
+    "rag": { "label": "Classification", "description": "Qualification documentaire" },
+    "bia": { "label": "BIA", "description": "Processus & impacts" },
+    "risks": { "label": "Risques", "description": "Menaces & matrices" },
+    "analysis": { "label": "Analyse PRA", "description": "Contrôles et risques" },
+    "compliance": { "label": "Conformité", "description": "ISO 22301 & SecNumCloud" },
+    "financier": { "label": "Coûts", "description": "Comparatif multi-cloud" },
+    "scenarios": { "label": "Scénarios", "description": "Runbooks" },
+    "runbooks": { "label": "Runbooks", "description": "Génération & exports" },
+    "incidents": { "label": "Incidents", "description": "Crises & notifications" },
+    "auth": { "label": "Auth (ADMIN)", "description": "Gestion des clés API (ADMIN only)" },
+    "audit": { "label": "Audit (ADMIN)", "description": "Historique des appels API" },
+    "branding": { "label": "Branding", "description": "Logo & couleurs" }
+  },
+  "moduleGroups": {
+    "services-infra": {
+      "label": "Services + Infrastructure",
+      "description": "Cartographie des services et fondations techniques."
+    },
+    "documents-ai": {
+      "label": "Documents + IA",
+      "description": "Collecte documentaire et moteur RAG."
+    },
+    "analyses-risks": {
+      "label": "Analyses BIA + Risques",
+      "description": "Impacts métiers, menaces et rapports PRA."
+    },
+    "scenarios-runbooks": {
+      "label": "Scénarios + Runbooks",
+      "description": "Plans d'action et orchestration de crise."
+    },
+    "incidents": {
+      "label": "Incidents",
+      "description": "Gestion de crise et communications."
+    },
+    "administration": {
+      "label": "Administration",
+      "description": "Accès, audit et conformité."
+    },
+    "wizard": {
+      "label": "Parcours guidé",
+      "description": "Suivez l'ordre recommandé pour construire votre PRA."
+    },
+    "general": {
+      "label": "Général",
+      "description": "Navigation de base."
+    }
+  },
+  "generalNav": {
+    "home": "Accueil",
+    "configuration": "Configuration",
+    "navigation": "Navigation",
+    "compliance": "Conformité"
+  },
+  "homeSteps": {
+    "documents": {
+      "title": "Centraliser les documents",
+      "description": "Importez procédures et schémas pour alimenter les analyses BIA et risques.",
+      "actionLabel": "Importer un document"
+    },
+    "discovery": {
+      "title": "Découvrir l'architecture",
+      "description": "Scannez le réseau ou importez la CMDB pour enrichir les dépendances et services.",
+      "actionLabel": "Lancer une découverte"
+    },
+    "services": {
+      "title": "Consolider services & applications",
+      "description": "Validez la criticité, les RTO/RPO et les propriétaires pour finaliser le catalogue.",
+      "actionLabel": "Ouvrir le catalogue"
+    },
+    "rag": {
+      "title": "Classifier les documents",
+      "description": "Posez les bonnes questions et organisez les preuves pour alimenter les analyses.",
+      "actionLabel": "Lancer la classification"
+    },
+    "bia": {
+      "title": "Conduire le BIA",
+      "description": "Définissez les processus critiques et mesurez les impacts métier.",
+      "actionLabel": "Accéder au BIA"
+    },
+    "risks": {
+      "title": "Qualifier les risques",
+      "description": "Analysez les menaces, probabilités et impacts pour chaque processus.",
+      "actionLabel": "Ouvrir les risques"
+    },
+    "scenarios": {
+      "title": "Construire les scénarios",
+      "description": "Planifiez les stratégies de reprise et les étapes de crise.",
+      "actionLabel": "Créer un scénario"
+    },
+    "runbooks": {
+      "title": "Finaliser les runbooks",
+      "description": "Publiez les procédures opérationnelles et partagez-les aux équipes.",
+      "actionLabel": "Accéder aux runbooks"
+    },
+    "analysis": {
+      "title": "Produire le rapport PRA",
+      "description": "Générez les analyses consolidées et les synthèses décisionnelles.",
+      "actionLabel": "Voir le rapport"
+    }
+  },
+  "branding": {
+    "title": "Branding",
+    "subtitle": "Personnalisation",
+    "description": "Personnalisez le logo et la palette de couleurs appliqués aux interfaces client.",
+    "logoUrlLabel": "URL du logo",
+    "logoUrlPlaceholder": "https://example.com/logo.svg",
+    "primaryColorLabel": "Couleur primaire",
+    "secondaryColorLabel": "Couleur secondaire",
+    "accentColorLabel": "Couleur d'accent",
+    "previewTitle": "Aperçu",
+    "actions": {
+      "save": "Enregistrer",
+      "saving": "Enregistrement...",
+      "reset": "Réinitialiser"
+    },
+    "messages": {
+      "saved": "Branding mis à jour.",
+      "loading": "Chargement du branding...",
+      "error": "Impossible de charger le branding.",
+      "updateError": "Impossible d'enregistrer les modifications."
+    }
+  }
+}
