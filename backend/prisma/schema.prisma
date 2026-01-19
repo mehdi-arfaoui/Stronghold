@@ -78,6 +78,7 @@ model Service {
   name             String
   type             String
   description      String?
+  owner            String?
   criticality      String
   businessPriority String? // priorité métier fournie par le client
   recoveryPriority Int?

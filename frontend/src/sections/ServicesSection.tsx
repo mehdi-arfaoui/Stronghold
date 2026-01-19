@@ -18,6 +18,7 @@ const defaultServicePayload = {
   rpoMinutes: 60,
   mtpdHours: 24,
   domain: "APP",
+  owner: "",
 };
 
 export function ServicesSection({ configVersion }: ServicesSectionProps) {
@@ -36,6 +37,8 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
     ...defaultServicePayload,
     description: "",
   });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [criticalityFilter, setCriticalityFilter] = useState("all");
   const [updating, setUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -85,6 +88,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
         body: JSON.stringify({
           name: newService.name,
           type: newService.type,
+          owner: newService.owner || null,
           criticality: newService.criticality,
           recoveryPriority: newService.recoveryPriority,
           rtoHours: newService.rtoHours,
@@ -135,6 +139,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
       rpoMinutes: service.continuity?.rpoMinutes ?? 0,
       mtpdHours: service.continuity?.mtpdHours ?? 0,
       domain: service.domain ?? "APP",
+      owner: service.owner ?? "",
       description: service.description ?? "",
     });
     setUpdateError(null);
@@ -151,6 +156,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
         body: JSON.stringify({
           name: editService.name,
           type: editService.type,
+          owner: editService.owner || null,
           criticality: editService.criticality,
           recoveryPriority: editService.recoveryPriority,
           rtoHours: editService.rtoHours,
@@ -199,12 +205,23 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
 
+  const filteredServices = services.filter((service) => {
+    const query = searchQuery.trim().toLowerCase();
+    const matchesQuery =
+      !query ||
+      service.name.toLowerCase().includes(query) ||
+      (service.owner ?? "").toLowerCase().includes(query);
+    const matchesCriticality =
+      criticalityFilter === "all" || service.criticality === criticalityFilter;
+    return matchesQuery && matchesCriticality;
+  });
+
   return (
     <section id="services-panel" className="panel" aria-labelledby="services-title">
       <div className="panel-header">
         <div>
           <p className="eyebrow">Catalogue</p>
-          <h2 id="services-title">Services</h2>
+          <h2 id="services-title">Services & Applications</h2>
           <p className="muted">
             Vue consolidée des services, priorités PRA et rattachements à la Landing Zone.
           </p>
@@ -263,6 +280,14 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               value={newService.name}
               onChange={(e) => setNewService((s) => ({ ...s, name: e.target.value }))}
               required
+            />
+          </label>
+          <label className="form-field">
+            <span>Propriétaire</span>
+            <input
+              type="text"
+              value={newService.owner}
+              onChange={(e) => setNewService((s) => ({ ...s, owner: e.target.value }))}
             />
           </label>
           <label className="form-field">
@@ -408,6 +433,38 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
       </form>
 
       <div id="services-table" className="card">
+        <div className="card-header">
+          <div>
+            <p className="eyebrow">Catalogue consolidé</p>
+            <h3>Services & applications</h3>
+            <p className="muted small">
+              Filtrez les services importés ou détectés pour compléter les métadonnées clés.
+            </p>
+          </div>
+          <div className="stack horizontal" style={{ gap: "12px" }}>
+            <label className="form-field" style={{ minWidth: "160px" }}>
+              <span>Criticité</span>
+              <select
+                value={criticalityFilter}
+                onChange={(event) => setCriticalityFilter(event.target.value)}
+              >
+                <option value="all">Toutes</option>
+                <option value="low">low</option>
+                <option value="medium">medium</option>
+                <option value="high">high</option>
+              </select>
+            </label>
+            <label className="form-field" style={{ minWidth: "220px" }}>
+              <span>Recherche</span>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Nom ou propriétaire"
+              />
+            </label>
+          </div>
+        </div>
         <div className="table-wrapper">
           <table className="data-table">
             <thead>
@@ -415,6 +472,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 <th>Service</th>
                 <th>Domaine</th>
                 <th>Type</th>
+                <th>Propriétaire</th>
                 <th>Criticité</th>
                 <th>Priorité</th>
                 <th>RTO (h)</th>
@@ -425,7 +483,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               </tr>
             </thead>
             <tbody>
-              {services.map((service) => {
+              {filteredServices.map((service) => {
                 const infraNames =
                   service.infraLinks?.map((link) => link.infra.name).join(", ") || "-";
                 const domainMeta = service.domain ? domainMetaByValue[service.domain] : null;
@@ -449,6 +507,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                     </td>
                     <td>{domainMeta ? domainMeta.label : "-"}</td>
                     <td>{service.type}</td>
+                    <td>{service.owner || "-"}</td>
                     <td>
                       <span className={`pill criticality-${service.criticality}`}>
                         {service.criticality}
@@ -505,6 +564,14 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 value={editService.name}
                 onChange={(e) => setEditService((s) => ({ ...s, name: e.target.value }))}
                 required
+              />
+            </label>
+            <label className="form-field">
+              <span>Propriétaire</span>
+              <input
+                type="text"
+                value={editService.owner}
+                onChange={(e) => setEditService((s) => ({ ...s, owner: e.target.value }))}
               />
             </label>
             <label className="form-field">

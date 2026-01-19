@@ -1,0 +1,111 @@
+.discovery-page {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.discovery-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+}
+
+.discovery-side {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.checkbox-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.upload-dropzone {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upload-dropzone .form-label {
+  font-weight: 600;
+}
+
+.dropzone {
+  position: relative;
+  border: 1px dashed var(--card-border, rgba(255, 255, 255, 0.2));
+  border-radius: 12px;
+  padding: 16px;
+  background: var(--card-bg, rgba(255, 255, 255, 0.02));
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.dropzone.active {
+  border-color: var(--accent, #59b0ff);
+  background: rgba(89, 176, 255, 0.08);
+}
+
+.dropzone input[type="file"] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.dropzone-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dropzone-title {
+  font-weight: 600;
+}
+
+.discovery-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.progress-timeline {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.progress-timeline li {
+  display: grid;
+  grid-template-columns: 16px 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+.timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--border-subtle, rgba(255, 255, 255, 0.2));
+  margin-top: 6px;
+}
+
+.progress-timeline li.done .timeline-dot,
+.progress-timeline li.active .timeline-dot {
+  background: var(--accent, #59b0ff);
+}
+
+.timeline-title {
+  font-weight: 600;
+  display: block;
+}
+
+@media (max-width: 1100px) {
+  .discovery-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

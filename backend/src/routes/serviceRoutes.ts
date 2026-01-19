@@ -110,6 +110,9 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     const description = parseOptionalString(payload.description, "description", issues, {
       allowNull: true,
     });
+    const owner = parseOptionalString(payload.owner, "owner", issues, {
+      allowNull: true,
+    });
     const criticality = parseOptionalEnum(
       payload.criticality,
       "criticality",
@@ -163,6 +166,10 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     if (description !== undefined) {
       data.description = description;
+    }
+
+    if (owner !== undefined) {
+      data.owner = owner;
     }
 
     if (criticality !== undefined) {
@@ -309,6 +316,9 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     const description = parseOptionalString(payload.description, "description", issues, {
       allowNull: true,
     });
+    const owner = parseOptionalString(payload.owner, "owner", issues, {
+      allowNull: true,
+    });
     const businessPriority = parseOptionalString(
       payload.businessPriority,
       "businessPriority",
@@ -348,6 +358,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         name,
         type,
         description,
+        owner,
         criticality,
         businessPriority,
         recoveryPriority,

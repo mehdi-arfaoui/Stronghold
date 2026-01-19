@@ -1,12 +1,11 @@
 import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from "react";
 import type { ComponentType } from "react";
-import { Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { Footer } from "./components/layout/Footer";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { HomeStepId } from "./components/home/HomePage";
 import { ConfigurationPage } from "./routes/ConfigurationPage";
 import { HomeRoute } from "./routes/HomeRoute";
-import { InitialScanPage } from "./routes/InitialScanPage";
 import { NavigationPage } from "./routes/NavigationPage";
 import {
   MODULE_PATH_TO_ID,
@@ -25,13 +24,13 @@ import {
   getDefaultLanguage,
   getDefaultTheme,
   getStoredLanguage,
-  getStoredScanCompleted,
   getStoredTheme,
+  setStoredDiscoveryCompleted,
   setStoredLanguage,
-  setStoredScanCompleted,
   setStoredTheme,
   type ThemeMode,
 } from "./utils/preferences";
+import { useDiscovery } from "./context/DiscoveryContext";
 
 // Lazy-load module panels to reduce the initial bundle footprint.
 const ServicesSection = lazy(() =>
@@ -132,14 +131,21 @@ function App() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [activeStep, setActiveStep] = useState<HomeStepId>("discovery");
   const [completedSteps, setCompletedSteps] = useState<HomeStepId[]>([]);
-  const [scanCompleted, setScanCompleted] = useState<boolean>(() => getStoredScanCompleted());
+  const { discoveryCompleted } = useDiscovery();
   const [language, setLanguage] = useState<Language>(
     () => getStoredLanguage() ?? getDefaultLanguage()
   );
   const [theme, setTheme] = useState<ThemeMode>(() => getStoredTheme() ?? getDefaultTheme());
-  const wizardSteps = useMemo(() => WIZARD_STEP_ORDER as HomeStepId[], []);
+  const wizardSteps = useMemo<HomeStepId[]>(
+    () => (discoveryCompleted ? (WIZARD_STEP_ORDER as HomeStepId[]) : ["discovery"]),
+    [discoveryCompleted]
+  );
   const copy = useMemo(() => getCopy(language), [language]);
-  const homeSteps = useMemo(() => getHomeSteps(language), [language]);
+  const homeSteps = useMemo(
+    () =>
+      getHomeSteps(language).filter((step) => discoveryCompleted || step.id === "discovery"),
+    [discoveryCompleted, language]
+  );
   const navGroups = useMemo(() => getMainNavGroups(language), [language]);
   const wizardGroup = useMemo(() => getWizardStepGroup(language), [language]);
 
@@ -163,7 +169,7 @@ function App() {
     return Math.min(wizardSteps.length - 1, furthestIndex + 1);
   }, [activeStep, completedSteps, wizardSteps]);
 
-  const isNavigationLocked = !scanCompleted;
+  const isNavigationLocked = !discoveryCompleted;
 
   const isStepAllowed = useCallback(
     (stepId: HomeStepId) => wizardSteps.indexOf(stepId) <= maxAllowedIndex,
@@ -172,7 +178,7 @@ function App() {
 
   const handleTabNavigation = useCallback(
     (tabId: TabId) => {
-      if (!scanCompleted) return;
+      if (!discoveryCompleted) return;
       const stepId = tabId as HomeStepId;
       const stepIndex = wizardSteps.indexOf(stepId);
       if (stepIndex === -1 || !isStepAllowed(stepId)) return;
@@ -184,12 +190,12 @@ function App() {
         wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step))
       );
     },
-    [isStepAllowed, navigate, scanCompleted, wizardSteps]
+    [isStepAllowed, navigate, discoveryCompleted, wizardSteps]
   );
 
   const handleStepAction = useCallback(
     (stepId: HomeStepId) => {
-      if (!scanCompleted) return;
+      if (!discoveryCompleted) return;
       if (!isStepAllowed(stepId)) return;
       const stepIndex = wizardSteps.indexOf(stepId);
       setActiveStep(stepId);
@@ -204,25 +210,20 @@ function App() {
       navigate(MODULE_PATHS[stepId]);
       setIsMenuOpen(false);
     },
-    [isStepAllowed, navigate, scanCompleted, wizardSteps]
+    [isStepAllowed, navigate, discoveryCompleted, wizardSteps]
   );
 
   const handleQuickAction = useCallback(() => {
-    if (!scanCompleted) return;
+    if (!discoveryCompleted) return;
     navigate(MODULE_PATHS.analysis);
-  }, [navigate, scanCompleted]);
-
-  const handleInitialScanContinue = useCallback(() => {
-    setScanCompleted(true);
-    navigate(MODULE_PATHS.discovery);
-  }, [navigate]);
+  }, [navigate, discoveryCompleted]);
 
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, []);
 
   useEffect(() => {
-    if (!scanCompleted) return;
+    if (!discoveryCompleted) return;
     const tabFromPath = MODULE_PATH_TO_ID[location.pathname];
     if (!tabFromPath) return;
     const stepIndex = wizardSteps.indexOf(tabFromPath as HomeStepId);
@@ -236,19 +237,16 @@ function App() {
       const nextCompleted = wizardSteps.slice(0, stepIndex + 1);
       return wizardSteps.filter((step) => prev.includes(step) || nextCompleted.includes(step));
     });
-  }, [isStepAllowed, location.pathname, maxAllowedIndex, navigate, scanCompleted, wizardSteps]);
+  }, [isStepAllowed, location.pathname, maxAllowedIndex, navigate, discoveryCompleted, wizardSteps]);
 
   useEffect(() => {
-    if (scanCompleted) {
-      if (location.pathname === "/initial-scan") {
-        navigate(MODULE_PATHS.discovery, { replace: true });
-      }
-      return;
+    if (discoveryCompleted) return;
+    const isConfigPath = location.pathname === "/configuration";
+    if (isConfigPath) return;
+    if (location.pathname !== "/discovery") {
+      navigate(MODULE_PATHS.discovery, { replace: true });
     }
-    if (location.pathname !== "/initial-scan") {
-      navigate("/initial-scan", { replace: true });
-    }
-  }, [location.pathname, navigate, scanCompleted]);
+  }, [discoveryCompleted, location.pathname, navigate]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -261,8 +259,15 @@ function App() {
   }, [language]);
 
   useEffect(() => {
-    setStoredScanCompleted(scanCompleted);
-  }, [scanCompleted]);
+    setStoredDiscoveryCompleted(discoveryCompleted);
+  }, [discoveryCompleted]);
+
+  useEffect(() => {
+    if (!discoveryCompleted && activeStep !== "discovery") {
+      setActiveStep("discovery");
+      setCompletedSteps([]);
+    }
+  }, [activeStep, discoveryCompleted]);
 
   return (
     <div className="app-shell">
@@ -287,63 +292,66 @@ function App() {
         onMenuClose={() => setIsMenuOpen(false)}
         isNavigationLocked={isNavigationLocked}
       >
-        {scanCompleted ? (
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <HomeRoute
-                  copy={copy}
-                  steps={homeSteps}
-                  activeStepId={activeStep}
-                  completedSteps={completedSteps}
-                  maxAllowedIndex={maxAllowedIndex}
-                  onStepAction={handleStepAction}
-                />
-              }
-            />
-            <Route
-              path="/configuration"
-              element={
-                <ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />
-              }
-            />
-            <Route
-              path="/navigation"
-              element={
-                <NavigationPage
-                  activeTab={activeTab}
-                  onNavigateTab={handleTabNavigation}
-                  copy={copy}
-                  wizardGroup={wizardGroup}
-                />
-              }
-            />
-            {MODULE_ROUTES.map((module) => (
-              <Route
-                key={module.id}
-                path={module.path}
-                element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <HomeRoute
+                copy={copy}
+                steps={homeSteps}
+                activeStepId={activeStep}
+                completedSteps={completedSteps}
+                maxAllowedIndex={maxAllowedIndex}
+                onStepAction={handleStepAction}
               />
-            ))}
+            }
+          />
+          <Route
+            path="/configuration"
+            element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} copy={copy} />}
+          />
+          <Route
+            path="/navigation"
+            element={
+              <NavigationPage
+                activeTab={activeTab}
+                onNavigateTab={handleTabNavigation}
+                copy={copy}
+                wizardGroup={
+                  discoveryCompleted
+                    ? wizardGroup
+                    : { ...wizardGroup, tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery") }
+                }
+              />
+            }
+          />
+          <Route path="/discovery/scan" element={<Navigate to="/discovery" replace />} />
+          <Route path="/discovery/import" element={<Navigate to="/discovery" replace />} />
+          <Route path="/discovery/github-import" element={<Navigate to="/discovery" replace />} />
+          <Route path="/discovery/suggestions" element={<Navigate to="/discovery" replace />} />
+          {MODULE_ROUTES.map((module) => (
             <Route
-              path="*"
-              element={
-                <NavigationPage
-                  activeTab={activeTab}
-                  onNavigateTab={handleTabNavigation}
-                  copy={copy}
-                  wizardGroup={wizardGroup}
-                />
-              }
+              key={module.id}
+              path={module.path}
+              element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
             />
-          </Routes>
-        ) : (
-          <Routes>
-            <Route path="/initial-scan" element={<InitialScanPage onContinue={handleInitialScanContinue} />} />
-            <Route path="*" element={<InitialScanPage onContinue={handleInitialScanContinue} />} />
-          </Routes>
-        )}
+          ))}
+          <Route
+            path="*"
+            element={
+              <NavigationPage
+                activeTab={activeTab}
+                onNavigateTab={handleTabNavigation}
+                copy={copy}
+                wizardGroup={
+                  discoveryCompleted
+                    ? wizardGroup
+                    : { ...wizardGroup, tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery") }
+                }
+              />
+            }
+          />
+        </Routes>
       </AppLayout>
 
       <Footer groups={navGroups} copy={copy} />
