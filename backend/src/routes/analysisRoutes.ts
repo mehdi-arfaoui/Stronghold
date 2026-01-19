@@ -42,6 +42,8 @@ import {
   recommendScenariosWithRag,
   retrieveRagContext,
 } from "../ai/ragService.js";
+import { buildFinancialReport } from "../services/costEstimator.js";
+import type { ResourceInput } from "../services/costEstimator.js";
 import { recordEntityFeedback, recordRecommendationFeedback } from "../services/feedbackService.js";
 import { runMlTrainingForTenant } from "../services/mlTrainingService.js";
 import { resolveRagRuntimeConfig } from "../services/ragTuningService.js";
@@ -52,6 +54,7 @@ const router = Router();
 const CLASSIFICATION_CATEGORY_OPTIONS = EXTRACTED_FACT_CATEGORIES.map((category) =>
   category.toLowerCase()
 );
+const FINANCIAL_SCENARIOS = ["backup_restore", "pilot_light", "warm_standby", "multi_site"];
 
 type FeedbackPayload = {
   factId: string;
@@ -170,6 +173,17 @@ function parseOptionalObject(
     return undefined;
   }
   return value as Record<string, unknown>;
+}
+
+function parseOptionalArray(value: unknown, field: string, issues: ValidationIssue[]): any[] | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    addIssue(issues, field, "doit être un tableau");
+    return undefined;
+  }
+  return value;
 }
 
 function parseOptionalCategory(
@@ -524,6 +538,49 @@ async function renderReportPdf(text: string) {
 
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
+}
+
+function buildFinancialReportText(report: Awaited<ReturnType<typeof buildFinancialReport>>) {
+  const lines: string[] = [];
+  lines.push("Rapport financier multi-cloud");
+  lines.push("=============================");
+  lines.push(`Scénario : ${report.scenario.label}`);
+  lines.push(report.scenario.description);
+  lines.push("");
+  lines.push(`Ressources analysées : ${report.inputs.resources.length}`);
+  report.inputs.resources.forEach((resource, index) => {
+    lines.push(
+      `- Ressource ${index + 1}${resource.name ? ` (${resource.name})` : ""} : ${resource.vcpu} vCPU, ${
+        resource.ramGb
+      } Go RAM, ${resource.storageGb} Go stockage, ${resource.transferGb} Go transfert, ${
+        resource.durationHours
+      } h/mois`
+    );
+  });
+  lines.push("");
+  lines.push("Synthèse par fournisseur");
+  lines.push("------------------------");
+  report.providers.forEach((provider) => {
+    lines.push(`Fournisseur: ${provider.provider.toUpperCase()}`);
+    lines.push(`- CAPEX estimé : ${provider.capex.toFixed(0)} ${provider.currency}`);
+    lines.push(`- OPEX mensuel : ${provider.opexMonthly.toFixed(0)} ${provider.currency}`);
+    lines.push(
+      `- Détail OPEX : compute ${provider.breakdown.compute.toFixed(0)}, stockage ${provider.breakdown.storage.toFixed(
+        0
+      )}, transfert ${provider.breakdown.dataTransfer.toFixed(0)}`
+    );
+    if (provider.recommendations.length) {
+      lines.push("- Recommandations :");
+      provider.recommendations.forEach((tip) => lines.push(`  • ${tip}`));
+    }
+    lines.push("");
+  });
+  return lines.join("\n");
+}
+
+async function renderFinancialReportPdf(report: Awaited<ReturnType<typeof buildFinancialReport>>) {
+  const text = buildFinancialReportText(report);
+  return renderReportPdf(text);
 }
 
 /* ========= Helpers d'analyse infra ========= */
@@ -1305,6 +1362,117 @@ router.get("/report/pdf", requireRole("READER"), async (req: TenantRequest, res)
   } catch (error) {
     console.error("Error in /analysis/report/pdf:", error);
     return res.status(500).send("Internal server error");
+  }
+});
+
+router.post("/financial-report", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const issues: ValidationIssue[] = [];
+    const scenarioRaw = parseRequiredString(req.body?.scenarioId ?? req.body?.scenario, "scenarioId", issues);
+    const scenarioId = scenarioRaw?.toLowerCase();
+    if (scenarioId && !FINANCIAL_SCENARIOS.includes(scenarioId)) {
+      addIssue(issues, "scenarioId", `doit être l'une des valeurs: ${FINANCIAL_SCENARIOS.join("|")}`);
+    }
+
+    const resourcesInput = parseOptionalArray(req.body?.resources, "resources", issues);
+    if (!resourcesInput || resourcesInput.length === 0) {
+      addIssue(issues, "resources", "au moins une ressource est requise");
+    }
+
+    const resources: Array<ResourceInput | null> =
+      resourcesInput?.map((resource, index) => {
+        if (!resource || typeof resource !== "object") {
+          addIssue(issues, `resources[${index}]`, "doit être un objet");
+          return null;
+        }
+        const vcpu = parseOptionalNumber(resource.vcpu, `resources[${index}].vcpu`, issues);
+        const ramGb = parseOptionalNumber(resource.ramGb, `resources[${index}].ramGb`, issues);
+        const storageGb = parseOptionalNumber(
+          resource.storageGb,
+          `resources[${index}].storageGb`,
+          issues
+        );
+        const transferGb = parseOptionalNumber(
+          resource.transferGb,
+          `resources[${index}].transferGb`,
+          issues
+        );
+        const durationHours = parseOptionalNumber(
+          resource.durationHours,
+          `resources[${index}].durationHours`,
+          issues
+        );
+        if (vcpu === undefined) addIssue(issues, `resources[${index}].vcpu`, "champ requis");
+        if (ramGb === undefined) addIssue(issues, `resources[${index}].ramGb`, "champ requis");
+        if (storageGb === undefined) addIssue(issues, `resources[${index}].storageGb`, "champ requis");
+        if (transferGb === undefined) addIssue(issues, `resources[${index}].transferGb`, "champ requis");
+        if (durationHours === undefined)
+          addIssue(issues, `resources[${index}].durationHours`, "champ requis");
+        const name = parseOptionalString(resource.name, `resources[${index}].name`, issues, true);
+        return {
+          name: typeof name === "string" ? name : undefined,
+          vcpu: vcpu ?? 0,
+          ramGb: ramGb ?? 0,
+          storageGb: storageGb ?? 0,
+          transferGb: transferGb ?? 0,
+          durationHours: durationHours ?? 0,
+        };
+      }) ?? [];
+
+    const currency = parseOptionalString(req.body?.currency, "currency", issues);
+    const awsRegion = parseOptionalString(req.body?.awsRegion, "awsRegion", issues);
+    const azureRegion = parseOptionalString(req.body?.azureRegion, "azureRegion", issues);
+    const gcpRegion = parseOptionalString(req.body?.gcpRegion, "gcpRegion", issues);
+    const awsLocation = parseOptionalString(req.body?.awsLocation, "awsLocation", issues);
+    const gcpComputeServiceId = parseOptionalString(
+      req.body?.gcpComputeServiceId,
+      "gcpComputeServiceId",
+      issues
+    );
+    const gcpStorageServiceId = parseOptionalString(
+      req.body?.gcpStorageServiceId,
+      "gcpStorageServiceId",
+      issues
+    );
+    const gcpNetworkServiceId = parseOptionalString(
+      req.body?.gcpNetworkServiceId,
+      "gcpNetworkServiceId",
+      issues
+    );
+    const providers = Array.isArray(req.body?.providers)
+      ? req.body.providers.filter((provider: unknown) => typeof provider === "string")
+      : undefined;
+    const format = parseOptionalString(req.body?.format, "format", issues) ?? "json";
+
+    if (issues.length > 0) {
+      return res.status(400).json({ error: "Payload invalide", details: issues });
+    }
+
+    const report = await buildFinancialReport({
+      resources: resources.filter((resource): resource is ResourceInput => Boolean(resource)),
+      scenarioId: scenarioId as any,
+      currency: currency ?? "EUR",
+      awsRegion: awsRegion ?? "eu-west-1",
+      azureRegion: azureRegion ?? "westeurope",
+      gcpRegion: gcpRegion ?? "europe-west1",
+      awsLocation: awsLocation ?? undefined,
+      gcpComputeServiceId: gcpComputeServiceId ?? undefined,
+      gcpStorageServiceId: gcpStorageServiceId ?? undefined,
+      gcpNetworkServiceId: gcpNetworkServiceId ?? undefined,
+      providers: providers as any,
+    });
+
+    if (format?.toLowerCase() === "pdf") {
+      const pdfBuffer = await renderFinancialReportPdf(report);
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", "attachment; filename=\"rapport-financier.pdf\"");
+      return res.send(pdfBuffer);
+    }
+
+    return res.json(report);
+  } catch (error: any) {
+    console.error("Error in POST /analysis/financial-report:", error);
+    return res.status(500).json({ error: "Internal server error" });
   }
 });
 

@@ -160,7 +160,7 @@ export function FinancialSection({ configVersion }: FinancialSectionProps) {
   return (
     <section className="page">
       <PageIntro
-        title="Comparatif financier"
+        title="Coûts"
         subtitle="Comparez les coûts CAPEX/OPEX multi-cloud par scénario de reprise."
       />
 
