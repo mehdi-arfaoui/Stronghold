@@ -1,6 +1,7 @@
 "use strict";
 
 const express = require("express");
+const http = require("http");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const prisma = require("./prismaClient");
@@ -27,7 +28,8 @@ const discoveryRoutes = require("./routes/discoveryRoutes");
 const pricingRoutes = require("./routes/pricingRoutes");
 const { startDiscoveryWorker } = require("./workers/discoveryWorker");
 const { startDocumentIngestionWorker } = require("./workers/documentIngestionWorker");
-const { startDiscoveryScheduler } = require("./services/discoveryScheduleService");
+const { startDiscoveryScheduler } = require("./workers/discoveryScheduler");
+const { initDiscoveryWebSocket } = require("./websockets/discoveryWebsocket");
 
 dotenv.config();
 initTelemetry();
@@ -149,7 +151,10 @@ app.use((req, res) => {
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-app.listen(PORT, HOST, () => {
+const server = http.createServer(app);
+initDiscoveryWebSocket(server);
+
+server.listen(Number(PORT), HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
   console.log(
     `CORS enabled for origins: ${

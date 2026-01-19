@@ -62,7 +62,7 @@ export async function createDiscoverySchedule(input: CreateScheduleInput) {
   });
 }
 
-async function enqueueScheduledJob(schedule: any) {
+export async function enqueueScheduledJob(schedule: any) {
   const job = await prisma.discoveryJob.create({
     data: {
       tenantId: schedule.tenantId,
@@ -79,7 +79,7 @@ async function enqueueScheduledJob(schedule: any) {
     },
   });
 
-  await discoveryQueue.add("discovery-run", {
+  await discoveryQueue.add("discovery.run", {
     jobId: job.id,
     tenantId: schedule.tenantId,
     ipRanges: schedule.ipRanges,
@@ -109,16 +109,20 @@ async function enqueueScheduledJob(schedule: any) {
   });
 }
 
+export async function listDueDiscoverySchedules(now: Date) {
+  return prisma.discoverySchedule.findMany({
+    where: {
+      active: true,
+      nextRunAt: { lte: now },
+    },
+  });
+}
+
 export function startDiscoveryScheduler() {
   const intervalMs = Number(process.env.DISCOVERY_SCHEDULER_INTERVAL_MS || "60000");
   const timer = setInterval(async () => {
     const now = new Date();
-    const dueSchedules = await prisma.discoverySchedule.findMany({
-      where: {
-        active: true,
-        nextRunAt: { lte: now },
-      },
-    });
+    const dueSchedules = await listDueDiscoverySchedules(now);
 
     for (const schedule of dueSchedules) {
       await enqueueScheduledJob(schedule);

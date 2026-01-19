@@ -67,6 +67,8 @@ model Tenant {
   discoverySchedules     DiscoverySchedule[]
   discoveryFlows         DiscoveryFlow[]
   discoveryResourceChanges DiscoveryResourceChange[]
+  discoveredResources    DiscoveredResource[]
+  discoveryHistory       DiscoveryHistory[]
   vulnerabilities            Vulnerability[]
 }
 
@@ -98,6 +100,7 @@ model Service {
   vulnerabilities      Vulnerability[]
   businessProcessLinks BusinessProcessService[]
   incidentServices     IncidentService[]
+  discoveredResources DiscoveredResource[] @relation("DiscoveredResourceService")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -265,6 +268,7 @@ model InfraComponent {
   notes       String?
 
   services ServiceInfraLink[]
+  discoveredResources DiscoveredResource[] @relation("DiscoveredResourceInfra")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1035,6 +1039,7 @@ model DiscoveryJob {
   discoveryResources DiscoveryResource[]
   discoveryFlows DiscoveryFlow[]
   resourceChanges DiscoveryResourceChange[]
+  historyEntries DiscoveryHistory[]
 }
 
 model DiscoveryScanAudit {
@@ -1172,4 +1177,58 @@ model DiscoveryFlow {
   createdAt DateTime @default(now())
 
   @@index([tenantId, observedAt])
+}
+
+model DiscoveredResource {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  source     String
+  externalId String
+  name       String
+  kind       String
+  type       String
+  ip         String?
+  hostname   String?
+  tags       Json?
+  metadata   Json?
+
+  serviceId String?
+  service   Service? @relation("DiscoveredResourceService", fields: [serviceId], references: [id], onDelete: SetNull)
+  infraId String?
+  infra   InfraComponent? @relation("DiscoveredResourceInfra", fields: [infraId], references: [id], onDelete: SetNull)
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, source, externalId])
+  @@index([tenantId, lastSeenAt])
+  @@index([tenantId, kind])
+}
+
+model DiscoveryHistory {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id])
+
+  jobId String?
+  job   DiscoveryJob? @relation(fields: [jobId], references: [id])
+
+  status  String
+  jobType String?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  summary     Json?
+  errorMessage String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, status])
 }

@@ -1,4 +1,5 @@
 import express from "express";
+import http from "http";
 import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
 import prisma from "./prismaClient.js";
@@ -27,7 +28,8 @@ import pricingRoutes from "./routes/pricingRoutes.js";
 import vulnerabilityRoutes from "./routes/vulnerabilityRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
-import { startDiscoveryScheduler } from "./services/discoveryScheduleService.js";
+import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
+import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 
 dotenv.config();
 initTelemetry();
@@ -228,7 +230,10 @@ app.use((req: express.Request, res: express.Response) => {
 const PORT = process.env.PORT || 4000;
 const HOST = process.env.HOST || "0.0.0.0";
 
-app.listen(PORT, HOST, () => {
+const server = http.createServer(app);
+initDiscoveryWebSocket(server);
+
+server.listen(Number(PORT), HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
   const originList = [...allowedOrigins.values()];
   console.log(
