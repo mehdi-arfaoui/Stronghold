@@ -10,6 +10,7 @@ interface DiscoveryProgressProps {
   job: DiscoveryJob | null;
   steps: ProgressStep[];
   resourceCount: number;
+  statusNote?: string | null;
 }
 
 function getStepIndex(steps: ProgressStep[], currentStep?: string | null) {
@@ -18,7 +19,12 @@ function getStepIndex(steps: ProgressStep[], currentStep?: string | null) {
   return index >= 0 ? index : 0;
 }
 
-export function DiscoveryProgress({ job, steps, resourceCount }: DiscoveryProgressProps) {
+export function DiscoveryProgress({
+  job,
+  steps,
+  resourceCount,
+  statusNote,
+}: DiscoveryProgressProps) {
   const progressValue = job?.progress ?? 0;
   const statusLabel = job ? `${job.status} · ${progressValue}%` : "En attente";
   const activeIndex = getStepIndex(steps, job?.step ?? null);
@@ -31,7 +37,10 @@ export function DiscoveryProgress({ job, steps, resourceCount }: DiscoveryProgre
           <h3>Suivi de la découverte</h3>
           <p className="muted small">{statusLabel}</p>
         </div>
-        <div className="badge subtle">{resourceCount} ressources</div>
+        <div className="progress-meta">
+          {statusNote && <div className="badge subtle">{statusNote}</div>}
+          <div className="badge subtle">{resourceCount} ressources</div>
+        </div>
       </div>
       <div
         className="progress-track"

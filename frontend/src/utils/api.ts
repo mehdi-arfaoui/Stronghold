@@ -138,6 +138,20 @@ export const DEFAULTS = {
   backendUrl: DEFAULT_BACKEND_URL,
 };
 
+export function getDiscoveryWebSocketUrl() {
+  const { backendUrl, apiKey } = loadApiConfig();
+  if (!backendUrl || !apiKey) return null;
+  try {
+    const url = new URL(backendUrl);
+    url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
+    url.pathname = "/discovery/ws";
+    url.searchParams.set("apiKey", apiKey);
+    return url.toString();
+  } catch (_error) {
+    return null;
+  }
+}
+
 export async function apiFetchFormData(path: string, formData: FormData, options: RequestInit = {}) {
   const { backendUrl, apiKey } = assertApiConfig();
   const normalizedPath = normalizePath(path);

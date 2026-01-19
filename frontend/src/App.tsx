@@ -5,9 +5,6 @@ import { useTranslation } from "react-i18next";
 import { Footer } from "./components/layout/Footer";
 import { AppLayout } from "./components/layout/AppLayout";
 import type { HomeStepId } from "./components/home/HomePage";
-import { ConfigurationPage } from "./routes/ConfigurationPage";
-import { HomeRoute } from "./routes/HomeRoute";
-import { NavigationPage } from "./routes/NavigationPage";
 import {
   MODULE_PATH_TO_ID,
   MODULE_ROUTES,
@@ -92,6 +89,15 @@ const ComplianceSection = lazy(() =>
 );
 const BrandingSection = lazy(() =>
   import("./sections/BrandingSection").then((module) => ({ default: module.BrandingSection }))
+);
+const HomeRoute = lazy(() =>
+  import("./routes/HomeRoute").then((module) => ({ default: module.HomeRoute }))
+);
+const ConfigurationPage = lazy(() =>
+  import("./routes/ConfigurationPage").then((module) => ({ default: module.ConfigurationPage }))
+);
+const NavigationPage = lazy(() =>
+  import("./routes/NavigationPage").then((module) => ({ default: module.NavigationPage }))
 );
 
 const moduleComponents: Record<TabId, ComponentType<{ configVersion: number }>> = {
@@ -227,6 +233,24 @@ function App() {
     navigate(MODULE_PATHS.analysis);
   }, [navigate, discoveryCompleted]);
 
+  const routeFallback = <div className="skeleton">{t("loadingModule")}</div>;
+  const navigationElement = (
+    <Suspense fallback={routeFallback}>
+      <NavigationPage
+        activeTab={activeTab}
+        onNavigateTab={handleTabNavigation}
+        wizardGroup={
+          discoveryCompleted
+            ? wizardGroup
+            : {
+                ...wizardGroup,
+                tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery"),
+              }
+        }
+      />
+    </Suspense>
+  );
+
   const toggleTheme = useCallback(() => {
     setTheme((current) => (current === "dark" ? "light" : "dark"));
   }, []);
@@ -329,36 +353,26 @@ function App() {
             <Route
               path="/"
               element={
-                <HomeRoute
-                  steps={homeSteps}
-                  activeStepId={activeStep}
-                  completedSteps={completedSteps}
-                  maxAllowedIndex={maxAllowedIndex}
-                  onStepAction={handleStepAction}
-                />
+                <Suspense fallback={routeFallback}>
+                  <HomeRoute
+                    steps={homeSteps}
+                    activeStepId={activeStep}
+                    completedSteps={completedSteps}
+                    maxAllowedIndex={maxAllowedIndex}
+                    onStepAction={handleStepAction}
+                  />
+                </Suspense>
               }
             />
             <Route
               path="/configuration"
-              element={<ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} />}
-            />
-            <Route
-              path="/navigation"
               element={
-                <NavigationPage
-                  activeTab={activeTab}
-                  onNavigateTab={handleTabNavigation}
-                  wizardGroup={
-                    discoveryCompleted
-                      ? wizardGroup
-                      : {
-                          ...wizardGroup,
-                          tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery"),
-                        }
-                  }
-                />
+                <Suspense fallback={routeFallback}>
+                  <ConfigurationPage apiConfig={apiConfig} onSave={handleConfigSave} />
+                </Suspense>
               }
             />
+            <Route path="/navigation" element={navigationElement} />
             <Route path="/discovery/scan" element={<Navigate to="/discovery" replace />} />
             <Route path="/discovery/import" element={<Navigate to="/discovery" replace />} />
             <Route path="/discovery/github-import" element={<Navigate to="/discovery" replace />} />
@@ -370,23 +384,7 @@ function App() {
                 element={<ModuleRoute tabId={module.id} configVersion={configVersion} />}
               />
             ))}
-            <Route
-              path="*"
-              element={
-                <NavigationPage
-                  activeTab={activeTab}
-                  onNavigateTab={handleTabNavigation}
-                  wizardGroup={
-                    discoveryCompleted
-                      ? wizardGroup
-                      : {
-                          ...wizardGroup,
-                          tabs: wizardGroup.tabs.filter((tab) => tab.id === "discovery"),
-                        }
-                  }
-                />
-              }
-            />
+            <Route path="*" element={navigationElement} />
           </Routes>
         </AppLayout>
 

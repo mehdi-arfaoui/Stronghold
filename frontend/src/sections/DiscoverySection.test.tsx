@@ -9,6 +9,7 @@ vi.mock("../utils/api", () => ({
     summary: { totalNodes: 0, serviceNodes: 0, infraNodes: 0, edges: 0 },
     suggestions: [],
   }),
+  getDiscoveryWebSocketUrl: vi.fn().mockReturnValue(null),
 }));
 
 describe("DiscoverySection", () => {
@@ -20,13 +21,10 @@ describe("DiscoverySection", () => {
     );
 
     expect(screen.getByText("Découverte")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Lancer un scan on-prem & cloud" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Importer un export CSV/JSON" })
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "Importer un export via GitHub" })
-    ).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Configurer la découverte" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Scan réseau & cloud" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Import CSV/JSON" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Import GitHub" })).toBeInTheDocument();
     expect(await screen.findByText("Aucun scan lancé pour le moment.")).toBeInTheDocument();
   });
 });
