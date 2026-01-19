@@ -2,8 +2,23 @@ import { normalizeAwsPriceListEntries } from "../clients/awsPricingClient.js";
 import { normalizeAzurePricingResponse } from "../clients/azurePricingClient.js";
 import { normalizeGcpPricingResponse } from "../clients/gcpPricingClient.js";
 import type { NormalizedPricingItem } from "../clients/pricingTypes.js";
+import {
+  fetchAwsComputePricePerHour,
+  fetchAwsStoragePricePerGbMonth,
+  fetchAwsTransferPricePerGb,
+} from "./awsPricing.js";
 import { fetchAwsPricingProducts } from "./awsPricingService.js";
+import {
+  fetchAzureComputePricePerHour,
+  fetchAzureStoragePricePerGbMonth,
+  fetchAzureTransferPricePerGb,
+} from "./azurePricing.js";
 import { fetchAzureRetailPrices } from "./azurePricingService.js";
+import {
+  fetchGcpComputePricePerHour,
+  fetchGcpStoragePricePerGbMonth,
+  fetchGcpTransferPricePerGb,
+} from "./gcpPricing.js";
 import { fetchGcpSkus } from "./gcpPricingService.js";
 
 export type DisasterRecoveryScenarioId =
@@ -82,6 +97,69 @@ export type ScenarioComparisonResponse = {
   scenarios: ScenarioEstimate[];
 };
 
+export type ResourceInput = {
+  name?: string;
+  vcpu: number;
+  ramGb: number;
+  storageGb: number;
+  transferGb: number;
+  durationHours: number;
+};
+
+export type FinancialReportInput = {
+  resources: ResourceInput[];
+  scenarioId: DisasterRecoveryScenarioId;
+  currency: string;
+  awsRegion: string;
+  azureRegion: string;
+  gcpRegion: string;
+  awsLocation?: string;
+  gcpComputeServiceId?: string;
+  gcpStorageServiceId?: string;
+  gcpNetworkServiceId?: string;
+  providers?: Array<"aws" | "azure" | "gcp">;
+};
+
+export type FinancialProviderReport = {
+  provider: "aws" | "azure" | "gcp";
+  capex: number;
+  opexMonthly: number;
+  currency: string;
+  breakdown: {
+    compute: number;
+    storage: number;
+    dataTransfer: number;
+  };
+  unitPrices: {
+    computePerHour: number;
+    storagePerGbMonth: number;
+    transferPerGb: number;
+    currency: string;
+  };
+  usage: {
+    computeHours: number;
+    storageGbMonth: number;
+    dataTransferGb: number;
+  };
+  recommendations: string[];
+  sources: {
+    compute?: string;
+    storage?: string;
+    dataTransfer?: string;
+  };
+};
+
+export type FinancialReport = {
+  generatedAt: string;
+  scenario: {
+    id: DisasterRecoveryScenarioId;
+    label: string;
+    description: string;
+  };
+  inputs: FinancialReportInput;
+  providers: FinancialProviderReport[];
+};
+
 const DEFAULT_SCENARIOS: ScenarioProfile[] = [
   {
     id: "backup_restore",
@@ -154,6 +232,12 @@ const GCP_DEFAULT_SERVICE_IDS = {
   network: "4E27-9D80-5BD9",
 };
 
+const BASE_INSTANCE_SPECS = {
+  aws: { instanceType: "m5.large", vcpu: 2, ramGb: 8 },
+  azure: { instanceType: "D2s v5", vcpu: 2, ramGb: 8 },
+  gcp: { instanceDescriptor: "e2-standard-2", vcpu: 2, ramGb: 8 },
+};
+
 function toNumber(value: unknown, fallback = 0): number {
   if (value == null) return fallback;
   const parsed = Number(value);
@@ -203,6 +287,19 @@ function calcCapex(profile: ScenarioProfile, input: ScenarioInput): number {
   return base * profile.capexMultiplier;
 }
 
+function calcResourceCapex(profile: ScenarioProfile, resources: ResourceInput[]): number {
+  const base = resources.reduce((acc, resource) => {
+    return (
+      acc +
+      resource.vcpu * 380 +
+      resource.ramGb * 45 +
+      resource.storageGb * 1.1 +
+      resource.transferGb * 0.25
+    );
+  }, 0);
+  return base * profile.capexMultiplier;
+}
+
 function estimateProviderCosts(
   provider: "aws" | "azure" | "gcp",
   profile: ScenarioProfile,
@@ -230,6 +327,201 @@ function estimateProviderCosts(
     unitPrices,
     usage,
     sources,
+  };
+}
+
+function buildOptimizationRecommendations(breakdown: {
+  compute: number;
+  storage: number;
+  dataTransfer: number;
+}, opexMonthly: number): string[] {
+  const suggestions: string[] = [];
+  const safeTotal = opexMonthly || 1;
+  const computeShare = breakdown.compute / safeTotal;
+  const storageShare = breakdown.storage / safeTotal;
+  const transferShare = breakdown.dataTransfer / safeTotal;
+
+  if (computeShare >= 0.45) {
+    suggestions.push("Right-sizing des instances et automatisation de la mise en veille.");
+  }
+  if (storageShare >= 0.4) {
+    suggestions.push("Tiering objet et politiques de rétention pour réduire le stockage chaud.");
+  }
+  if (transferShare >= 0.35) {
+    suggestions.push("Optimiser la réplication inter-région et le cache CDN.");
+  }
+  if (opexMonthly >= 5000) {
+    suggestions.push("Négocier des engagements (Savings Plans / Reservations).");
+  }
+  if (suggestions.length === 0) {
+    suggestions.push("Coûts équilibrés : monitorer la croissance et ajuster trimestriellement.");
+  }
+  return suggestions;
+}
+
+function accumulateResourceUsage(resources: ResourceInput[]) {
+  return resources.reduce(
+    (acc, resource) => {
+      const scalingFactor = Math.max(
+        resource.vcpu / BASE_INSTANCE_SPECS.aws.vcpu,
+        resource.ramGb / BASE_INSTANCE_SPECS.aws.ramGb
+      );
+      acc.computeHours += resource.durationHours * scalingFactor;
+      acc.storageGbMonth += resource.storageGb;
+      acc.dataTransferGb += resource.transferGb;
+      return acc;
+    },
+    { computeHours: 0, storageGbMonth: 0, dataTransferGb: 0 }
+  );
+}
+
+function estimateComputeCost(
+  resource: ResourceInput,
+  baseInstance: { vcpu: number; ramGb: number; hourlyPrice: number }
+): number {
+  if (baseInstance.hourlyPrice <= 0) return 0;
+  const scaling = Math.max(resource.vcpu / baseInstance.vcpu, resource.ramGb / baseInstance.ramGb);
+  return resource.durationHours * baseInstance.hourlyPrice * scaling;
+}
+
+async function buildFinancialProviderReport(
+  provider: "aws" | "azure" | "gcp",
+  profile: ScenarioProfile,
+  input: FinancialReportInput
+): Promise<FinancialProviderReport> {
+  if (provider === "aws") {
+    const base = BASE_INSTANCE_SPECS.aws;
+    const computePrice = await fetchAwsComputePricePerHour({
+      instanceType: base.instanceType,
+      region: input.awsRegion,
+      location: input.awsLocation,
+    });
+    const storagePrice = await fetchAwsStoragePricePerGbMonth(input.awsRegion, input.awsLocation);
+    const transferPrice = await fetchAwsTransferPricePerGb(input.awsRegion, input.awsLocation);
+
+    const compute = input.resources.reduce(
+      (sum, resource) =>
+        sum + estimateComputeCost(resource, { ...base, hourlyPrice: computePrice.pricePerUnit }),
+      0
+    );
+    const storage = input.resources.reduce((sum, resource) => sum + resource.storageGb, 0);
+    const transfer = input.resources.reduce((sum, resource) => sum + resource.transferGb, 0);
+    const breakdown = {
+      compute: compute * profile.computeMultiplier,
+      storage: storage * storagePrice.pricePerUnit * profile.storageMultiplier,
+      dataTransfer: transfer * transferPrice.pricePerUnit * profile.transferMultiplier,
+    };
+    const opexMonthly = breakdown.compute + breakdown.storage + breakdown.dataTransfer;
+
+    return {
+      provider,
+      capex: calcResourceCapex(profile, input.resources),
+      opexMonthly,
+      currency: computePrice.currency || input.currency,
+      breakdown,
+      unitPrices: {
+        computePerHour: computePrice.pricePerUnit,
+        storagePerGbMonth: storagePrice.pricePerUnit,
+        transferPerGb: transferPrice.pricePerUnit,
+        currency: computePrice.currency || input.currency,
+      },
+      usage: accumulateResourceUsage(input.resources),
+      recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
+      sources: {
+        compute: computePrice.source,
+        storage: storagePrice.source,
+        dataTransfer: transferPrice.source,
+      },
+    };
+  }
+
+  if (provider === "azure") {
+    const base = BASE_INSTANCE_SPECS.azure;
+    const computePrice = await fetchAzureComputePricePerHour({
+      skuName: base.instanceType,
+      region: input.azureRegion,
+    });
+    const storagePrice = await fetchAzureStoragePricePerGbMonth(input.azureRegion);
+    const transferPrice = await fetchAzureTransferPricePerGb(input.azureRegion);
+    const compute = input.resources.reduce(
+      (sum, resource) =>
+        sum + estimateComputeCost(resource, { ...base, hourlyPrice: computePrice.pricePerUnit }),
+      0
+    );
+    const storage = input.resources.reduce((sum, resource) => sum + resource.storageGb, 0);
+    const transfer = input.resources.reduce((sum, resource) => sum + resource.transferGb, 0);
+    const breakdown = {
+      compute: compute * profile.computeMultiplier,
+      storage: storage * storagePrice.pricePerUnit * profile.storageMultiplier,
+      dataTransfer: transfer * transferPrice.pricePerUnit * profile.transferMultiplier,
+    };
+    const opexMonthly = breakdown.compute + breakdown.storage + breakdown.dataTransfer;
+
+    return {
+      provider,
+      capex: calcResourceCapex(profile, input.resources),
+      opexMonthly,
+      currency: computePrice.currency || input.currency,
+      breakdown,
+      unitPrices: {
+        computePerHour: computePrice.pricePerUnit,
+        storagePerGbMonth: storagePrice.pricePerUnit,
+        transferPerGb: transferPrice.pricePerUnit,
+        currency: computePrice.currency || input.currency,
+      },
+      usage: accumulateResourceUsage(input.resources),
+      recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
+      sources: {
+        compute: computePrice.source,
+        storage: storagePrice.source,
+        dataTransfer: transferPrice.source,
+      },
+    };
+  }
+
+  const base = BASE_INSTANCE_SPECS.gcp;
+  const computeServiceId = input.gcpComputeServiceId ?? GCP_DEFAULT_SERVICE_IDS.compute;
+  const storageServiceId = input.gcpStorageServiceId ?? GCP_DEFAULT_SERVICE_IDS.storage;
+  const networkServiceId = input.gcpNetworkServiceId ?? GCP_DEFAULT_SERVICE_IDS.network;
+  const computePrice = await fetchGcpComputePricePerHour({
+    serviceId: computeServiceId,
+    instanceDescriptor: base.instanceDescriptor,
+  });
+  const storagePrice = await fetchGcpStoragePricePerGbMonth(storageServiceId);
+  const transferPrice = await fetchGcpTransferPricePerGb(networkServiceId);
+  const compute = input.resources.reduce(
+    (sum, resource) =>
+      sum + estimateComputeCost(resource, { ...base, hourlyPrice: computePrice.pricePerUnit }),
+    0
+  );
+  const storage = input.resources.reduce((sum, resource) => sum + resource.storageGb, 0);
+  const transfer = input.resources.reduce((sum, resource) => sum + resource.transferGb, 0);
+  const breakdown = {
+    compute: compute * profile.computeMultiplier,
+    storage: storage * storagePrice.pricePerUnit * profile.storageMultiplier,
+    dataTransfer: transfer * transferPrice.pricePerUnit * profile.transferMultiplier,
+  };
+  const opexMonthly = breakdown.compute + breakdown.storage + breakdown.dataTransfer;
+
+  return {
+    provider,
+    capex: calcResourceCapex(profile, input.resources),
+    opexMonthly,
+    currency: computePrice.currency || input.currency,
+    breakdown,
+    unitPrices: {
+      computePerHour: computePrice.pricePerUnit,
+      storagePerGbMonth: storagePrice.pricePerUnit,
+      transferPerGb: transferPrice.pricePerUnit,
+      currency: computePrice.currency || input.currency,
+    },
+    usage: accumulateResourceUsage(input.resources),
+    recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
+    sources: {
+      compute: computePrice.source,
+      storage: storagePrice.source,
+      dataTransfer: transferPrice.source,
+    },
   };
 }
 
@@ -468,5 +760,45 @@ export async function buildScenarioComparison(
   return {
     generatedAt: new Date().toISOString(),
     scenarios,
+  };
+}
+
+export async function buildFinancialReport(input: FinancialReportInput): Promise<FinancialReport> {
+  const scenario =
+    DEFAULT_SCENARIOS.find((profile) => profile.id === input.scenarioId) ?? DEFAULT_SCENARIOS[0];
+  const providers = input.providers?.length ? input.providers : ["aws", "azure", "gcp"];
+  const sanitizedResources = input.resources.map((resource) => ({
+    ...resource,
+    vcpu: clampPositive(toNumber(resource.vcpu, 1), 1, 256),
+    ramGb: clampPositive(toNumber(resource.ramGb, 1), 1, 4096),
+    storageGb: clampPositive(toNumber(resource.storageGb, 0), 0, 100000),
+    transferGb: clampPositive(toNumber(resource.transferGb, 0), 0, 100000),
+    durationHours: clampPositive(toNumber(resource.durationHours, 0), 0, 8760),
+  }));
+
+  const normalizedInput: FinancialReportInput = {
+    ...input,
+    resources: sanitizedResources,
+    currency: input.currency?.trim() || DEFAULT_INPUTS.currency,
+    awsRegion: input.awsRegion?.trim() || DEFAULT_INPUTS.awsRegion,
+    azureRegion: input.azureRegion?.trim() || DEFAULT_INPUTS.azureRegion,
+    gcpRegion: input.gcpRegion?.trim() || DEFAULT_INPUTS.gcpRegion,
+  };
+
+  const providersReports: FinancialProviderReport[] = [];
+
+  for (const provider of providers) {
+    providersReports.push(await buildFinancialProviderReport(provider, scenario, normalizedInput));
+  }
+
+  return {
+    generatedAt: new Date().toISOString(),
+    scenario: {
+      id: scenario.id,
+      label: scenario.label,
+      description: scenario.description,
+    },
+    inputs: normalizedInput,
+    providers: providersReports,
   };
 }
