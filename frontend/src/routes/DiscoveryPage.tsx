@@ -428,6 +428,23 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
           "Suivre la progression en temps réel",
           "Déverrouiller les autres modules",
         ]}
+        links={[
+          {
+            label: "Voir la progression",
+            href: "#discovery-progress",
+            description: "Statut du dernier job",
+          },
+          {
+            label: "Configurer un scan",
+            href: "#discovery-actions",
+            description: "Scan, import ou GitHub",
+          },
+          {
+            label: "Consulter l'historique",
+            href: "#discovery-history",
+            description: "Derniers jobs",
+          },
+        ]}
         tips={[
           "La progression temps réel est poussée via WebSocket quand disponible.",
           "Les imports CSV/JSON peuvent être glissés-déposés pour accélérer la collecte.",
@@ -457,180 +474,186 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
 
       <div className="discovery-layout">
         <div className="discovery-main">
-          <DiscoveryProgress
-            job={currentJob}
-            steps={DISCOVERY_STEPS}
-            resourceCount={resourceCount}
-            statusNote={realtimeConnected ? "Temps réel" : "Polling"}
-          />
-          <SectionCard
-            eyebrow="Lancement"
-            title="Configurer la découverte"
-            description="Choisissez un mode de collecte puis lancez le scan ou l'import."
-          >
-            <div className="discovery-action-tabs" role="tablist" aria-label="Modes de découverte">
-              {(Object.keys(activeTabLabel) as DiscoveryAction[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  role="tab"
-                  aria-selected={activeAction === mode}
-                  className={activeAction === mode ? "active" : undefined}
-                  onClick={() => setActiveAction(mode)}
-                >
-                  <span>{activeTabLabel[mode]}</span>
-                </button>
-              ))}
-            </div>
-            <div className="discovery-action-panel" role="tabpanel">
-              {activeAction === "scan" && (
-                <form className="form-grid" onSubmit={handleRun}>
-                  <label className="form-field">
-                    <span>Plages IP (CIDR, séparées par des virgules ou lignes)</span>
-                    <textarea
-                      rows={3}
-                      value={ipRanges}
-                      onChange={(event) => setIpRanges(event.target.value)}
-                      placeholder="10.0.0.0/24, 10.0.1.0/24"
-                    />
-                  </label>
+          <div id="discovery-progress">
+            <DiscoveryProgress
+              job={currentJob}
+              steps={DISCOVERY_STEPS}
+              resourceCount={resourceCount}
+              statusNote={realtimeConnected ? "Temps réel" : "Polling"}
+            />
+          </div>
+          <div id="discovery-actions">
+            <SectionCard
+              eyebrow="Lancement"
+              title="Configurer la découverte"
+              description="Choisissez un mode de collecte puis lancez le scan ou l'import."
+            >
+              <div className="discovery-action-tabs" role="tablist" aria-label="Modes de découverte">
+                {(Object.keys(activeTabLabel) as DiscoveryAction[]).map((mode) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeAction === mode}
+                    className={activeAction === mode ? "active" : undefined}
+                    onClick={() => setActiveAction(mode)}
+                  >
+                    <span>{activeTabLabel[mode]}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="discovery-action-panel" role="tabpanel">
+                {activeAction === "scan" && (
+                  <form className="form-grid" onSubmit={handleRun}>
+                    <label className="form-field">
+                      <span>Plages IP (CIDR, séparées par des virgules ou lignes)</span>
+                      <textarea
+                        rows={3}
+                        value={ipRanges}
+                        onChange={(event) => setIpRanges(event.target.value)}
+                        placeholder="10.0.0.0/24, 10.0.1.0/24"
+                      />
+                    </label>
 
-                  <div className="form-field">
-                    <span>Connecteurs on-prem</span>
-                    <div className="checkbox-grid">
-                      {[
-                        { key: "snmp", label: "SNMP" },
-                        { key: "ssh", label: "SSH" },
-                        { key: "wmi", label: "WMI" },
-                        { key: "hyperv", label: "Hyper-V" },
-                        { key: "vmware", label: "VMware" },
-                        { key: "k8s", label: "Kubernetes" },
-                      ].map((connector) => (
-                        <label key={connector.key} className="checkbox">
-                          <input
-                            type="checkbox"
-                            checked={connectors[connector.key as keyof ConnectorState]}
-                            onChange={() =>
-                              handleConnectorChange(connector.key as keyof ConnectorState)
-                            }
-                          />
-                          {connector.label}
-                        </label>
-                      ))}
+                    <div className="form-field">
+                      <span>Connecteurs on-prem</span>
+                      <div className="checkbox-grid">
+                        {[
+                          { key: "snmp", label: "SNMP" },
+                          { key: "ssh", label: "SSH" },
+                          { key: "wmi", label: "WMI" },
+                          { key: "hyperv", label: "Hyper-V" },
+                          { key: "vmware", label: "VMware" },
+                          { key: "k8s", label: "Kubernetes" },
+                        ].map((connector) => (
+                          <label key={connector.key} className="checkbox">
+                            <input
+                              type="checkbox"
+                              checked={connectors[connector.key as keyof ConnectorState]}
+                              onChange={() =>
+                                handleConnectorChange(connector.key as keyof ConnectorState)
+                              }
+                            />
+                            {connector.label}
+                          </label>
+                        ))}
+                      </div>
                     </div>
-                  </div>
 
-                  <CloudCredentialsFields
-                    providers={providers}
-                    credentials={credentials}
-                    onToggleProvider={handleProviderChange}
-                    onCredentialChange={handleCredentialChange}
-                  />
+                    <CloudCredentialsFields
+                      providers={providers}
+                      credentials={credentials}
+                      onToggleProvider={handleProviderChange}
+                      onCredentialChange={handleCredentialChange}
+                    />
 
-                  {runError && <div className="alert error">{runError}</div>}
-                  <div className="button-group">
-                    <button className="primary" type="submit" disabled={running}>
-                      {running ? "Scan en cours..." : "Lancer la découverte"}
-                    </button>
-                    {currentJob && (
-                      <button type="button" className="ghost" onClick={handleRefreshStatus}>
-                        Rafraîchir
+                    {runError && <div className="alert error">{runError}</div>}
+                    <div className="button-group">
+                      <button className="primary" type="submit" disabled={running}>
+                        {running ? "Scan en cours..." : "Lancer la découverte"}
                       </button>
-                    )}
-                  </div>
-                </form>
-              )}
+                      {currentJob && (
+                        <button type="button" className="ghost" onClick={handleRefreshStatus}>
+                          Rafraîchir
+                        </button>
+                      )}
+                    </div>
+                  </form>
+                )}
 
-              {activeAction === "import" && (
-                <form className="form-grid" onSubmit={handleImport}>
-                  <UploadDropzone
-                    label="Fichier d'export"
-                    helper="CSV ou JSON, 10 Mo max"
-                    accept={[".csv", ".json"]}
-                    maxSizeMb={10}
-                    file={importFile}
-                    onFileChange={(file) => {
-                      setImportFile(file);
-                      setValidationError(null);
-                    }}
-                    onValidationError={setValidationError}
-                  />
-                  {validationError && <div className="alert error">{validationError}</div>}
-                  {importError && <div className="alert error">{importError}</div>}
-                  <button className="primary" type="submit" disabled={importing}>
-                    {importing ? "Import en cours..." : "Importer l'export"}
-                  </button>
-                </form>
-              )}
+                {activeAction === "import" && (
+                  <form className="form-grid" onSubmit={handleImport}>
+                    <UploadDropzone
+                      label="Fichier d'export"
+                      helper="CSV ou JSON, 10 Mo max"
+                      accept={[".csv", ".json"]}
+                      maxSizeMb={10}
+                      file={importFile}
+                      onFileChange={(file) => {
+                        setImportFile(file);
+                        setValidationError(null);
+                      }}
+                      onValidationError={setValidationError}
+                    />
+                    {validationError && <div className="alert error">{validationError}</div>}
+                    {importError && <div className="alert error">{importError}</div>}
+                    <button className="primary" type="submit" disabled={importing}>
+                      {importing ? "Import en cours..." : "Importer l'export"}
+                    </button>
+                  </form>
+                )}
 
-              {activeAction === "github" && (
-                <form className="form-grid" onSubmit={handleGitHubImport}>
-                  <label className="form-field">
-                    <span>URL du dépôt GitHub</span>
-                    <input
-                      type="url"
-                      value={githubRepoUrl}
-                      onChange={(event: ChangeEvent<HTMLInputElement>) =>
-                        setGithubRepoUrl(event.target.value)
-                      }
-                      placeholder="https://github.com/organisation/infra-discovery"
-                    />
-                  </label>
-                  <label className="form-field">
-                    <span>Chemin du fichier JSON</span>
-                    <input
-                      type="text"
-                      value={githubFilePath}
-                      onChange={(event) => setGithubFilePath(event.target.value)}
-                      placeholder="exports/discovery.json"
-                    />
-                  </label>
-                  <label className="form-field">
-                    <span>Branche ou tag</span>
-                    <input
-                      type="text"
-                      value={githubRef}
-                      onChange={(event) => setGithubRef(event.target.value)}
-                      placeholder="main"
-                    />
-                  </label>
-                  {githubError && <div className="alert error">{githubError}</div>}
-                  <button className="primary" type="submit" disabled={githubImporting}>
-                    {githubImporting ? "Import en cours..." : "Importer depuis GitHub"}
-                  </button>
-                </form>
-              )}
-            </div>
-          </SectionCard>
+                {activeAction === "github" && (
+                  <form className="form-grid" onSubmit={handleGitHubImport}>
+                    <label className="form-field">
+                      <span>URL du dépôt GitHub</span>
+                      <input
+                        type="url"
+                        value={githubRepoUrl}
+                        onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                          setGithubRepoUrl(event.target.value)
+                        }
+                        placeholder="https://github.com/organisation/infra-discovery"
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Chemin du fichier JSON</span>
+                      <input
+                        type="text"
+                        value={githubFilePath}
+                        onChange={(event) => setGithubFilePath(event.target.value)}
+                        placeholder="exports/discovery.json"
+                      />
+                    </label>
+                    <label className="form-field">
+                      <span>Branche ou tag</span>
+                      <input
+                        type="text"
+                        value={githubRef}
+                        onChange={(event) => setGithubRef(event.target.value)}
+                        placeholder="main"
+                      />
+                    </label>
+                    {githubError && <div className="alert error">{githubError}</div>}
+                    <button className="primary" type="submit" disabled={githubImporting}>
+                      {githubImporting ? "Import en cours..." : "Importer depuis GitHub"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </SectionCard>
+          </div>
         </div>
 
         <div className="discovery-side">
-          <SectionCard
-            eyebrow="Suivi"
-            title="Dernières opérations"
-            description="Historique des scans et imports."
-          >
-            {loadingHistory ? (
-              <div className="skeleton">Chargement...</div>
-            ) : latestJobs.length === 0 ? (
-              <div className="empty-state">Aucun scan lancé pour le moment.</div>
-            ) : (
-              <div className="stack">
-                {latestJobs.map((job) => (
-                  <div key={job.id} className="inline-card">
-                    <div>
-                      <strong>{job.jobType}</strong>
-                      <div className="muted small">{job.id.slice(0, 8)}</div>
+          <div id="discovery-history">
+            <SectionCard
+              eyebrow="Suivi"
+              title="Dernières opérations"
+              description="Historique des scans et imports."
+            >
+              {loadingHistory ? (
+                <div className="skeleton">Chargement...</div>
+              ) : latestJobs.length === 0 ? (
+                <div className="empty-state">Aucun scan lancé pour le moment.</div>
+              ) : (
+                <div className="stack">
+                  {latestJobs.map((job) => (
+                    <div key={job.id} className="inline-card">
+                      <div>
+                        <strong>{job.jobType}</strong>
+                        <div className="muted small">{job.id.slice(0, 8)}</div>
+                      </div>
+                      <div className="inline-info">
+                        <InfoBadge variant="subtle">{job.status}</InfoBadge>
+                        <span>{job.progress}%</span>
+                      </div>
                     </div>
-                    <div className="inline-info">
-                      <InfoBadge variant="subtle">{job.status}</InfoBadge>
-                      <span>{job.progress}%</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          </div>
         </div>
       </div>
     </div>
