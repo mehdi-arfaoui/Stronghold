@@ -71,7 +71,8 @@ services:
     image: stronghold-backend-migrate
     container_name: pra_backend_migrate
     restart: "no"
-    command: ["bash", "scripts/migrate-and-seed.sh"]
+    entrypoint: ["bash", "-lc"]
+    command: ["./scripts/migrate-and-seed.sh"]
     environment:
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       S3_ENDPOINT: http://minio:9000
