@@ -14,7 +14,9 @@ RUN npx prisma generate
 RUN npm run build
 
 FROM build AS migrate
-RUN apt-get update && apt-get install -y bash && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends bash openssl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 CMD ["bash", "scripts/migrate-and-seed.sh"]
 
 FROM node:20-bookworm-slim AS runtime
