@@ -1,11 +1,11 @@
 import crypto from "node:crypto";
-import IORedis from "ioredis";
+import { Redis } from "ioredis";
 import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
 import type { AiExtractedFact } from "../ai/extractedFactsAnalyzer.js";
 import { EXTRACTED_FACT_CATEGORIES } from "../ai/extractedFactSchema.js";
 import type { ExtractedFactCategory } from "../ai/extractedFactSchema.js";
 
-type CacheClient = Pick<IORedis, "get" | "set">;
+type CacheClient = Pick<Redis, "get" | "set">;
 
 const CACHE_PREFIX = "classification";
 const CACHE_SCHEMA_VERSION = 1;
@@ -34,7 +34,7 @@ function getRedisClient(): CacheClient | null {
     return null;
   }
   if (!redisClient) {
-    redisClient = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
   }
   return redisClient;
 }
@@ -127,10 +127,10 @@ export async function classifyDocumentFacts(params: {
   const analyzer = params.factAnalyzer ?? analyzeExtractedFacts;
   const facts = await analyzer({
     text: params.text,
-    documentName: params.documentName,
-    docType: params.docType,
     correlationId: params.correlationId,
     tenantId: params.tenantId,
+    ...(params.documentName !== undefined ? { documentName: params.documentName } : {}),
+    ...(params.docType !== undefined ? { docType: params.docType } : {}),
   });
 
   if (cacheClient) {
@@ -186,14 +186,17 @@ export async function updateCachedClassification(params: {
 
   const updatedFacts = [...cached.facts];
   const current = updatedFacts[index];
+  if (!current) {
+    return false;
+  }
   updatedFacts[index] = {
     ...current,
     type: params.updatedFact.type ?? current.type,
     category: params.updatedFact.category ?? current.category,
     label: params.updatedFact.label ?? current.label,
     data: params.updatedFact.data ?? current.data,
-    source: params.updatedFact.source ?? current.source,
-    confidence: params.updatedFact.confidence ?? current.confidence,
+    source: params.updatedFact.source ?? current.source ?? null,
+    confidence: params.updatedFact.confidence ?? current.confidence ?? null,
   };
 
   await writeCache(cacheClient, cacheKey, {

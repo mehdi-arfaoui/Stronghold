@@ -17,7 +17,7 @@ import { ComputeManagementClient } from "@azure/arm-compute";
 import { ContainerServiceClient } from "@azure/arm-containerservice";
 import { StorageManagementClient } from "@azure/arm-storage";
 
-import { InstancesClient } from "@google-cloud/compute";
+import { InstancesClient, type protos } from "@google-cloud/compute";
 import { ClusterManagerClient } from "@google-cloud/container";
 import { SqlInstancesServiceClient } from "@google-cloud/sql";
 
@@ -240,9 +240,11 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
     credentials: { client_email: clientEmail, private_key: privateKey },
     projectId,
   });
-  const [aggregated] = await instancesClient.aggregatedListAsync({ project: projectId });
-  for await (const [zone, response] of aggregated) {
-    response.instances?.forEach((instance) => {
+  const aggregatedIterable: AsyncIterable<
+    [string, protos.google.cloud.compute.v1.IInstancesScopedList]
+  > = instancesClient.aggregatedListAsync({ project: projectId });
+  for await (const [zone, response] of aggregatedIterable) {
+    response.instances?.forEach((instance: any) => {
       resources.push(
         buildResource({
           source: "gcp",

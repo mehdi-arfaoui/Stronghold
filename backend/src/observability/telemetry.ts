@@ -1,7 +1,7 @@
 import { metrics, trace } from "@opentelemetry/api";
 import { Resource } from "@opentelemetry/resources";
 import { SemanticResourceAttributes } from "@opentelemetry/semantic-conventions";
-import { MeterProvider } from "@opentelemetry/sdk-metrics";
+import { MeterProvider, type MetricReader } from "@opentelemetry/sdk-metrics";
 import { PrometheusExporter } from "@opentelemetry/exporter-prometheus";
 import { NodeTracerProvider } from "@opentelemetry/sdk-trace-node";
 import { BatchSpanProcessor } from "@opentelemetry/sdk-trace-base";
@@ -21,7 +21,7 @@ export function initTelemetry() {
 
   prometheusExporter = new PrometheusExporter({ preventServerStart: true });
   const meterProvider = new MeterProvider({ resource });
-  meterProvider.addMetricReader(prometheusExporter);
+  meterProvider.addMetricReader(prometheusExporter as unknown as MetricReader);
   metrics.setGlobalMeterProvider(meterProvider);
 
   const tracerProvider = new NodeTracerProvider({ resource });
@@ -33,7 +33,11 @@ export function getPrometheusMetricsHandler() {
   if (!prometheusExporter) {
     throw new Error("Telemetry has not been initialized");
   }
-  return prometheusExporter.getMetricsRequestHandler();
+  const exporter = prometheusExporter;
+  return (
+    req: Parameters<PrometheusExporter["getMetricsRequestHandler"]>[0],
+    res: Parameters<PrometheusExporter["getMetricsRequestHandler"]>[1]
+  ) => exporter.getMetricsRequestHandler(req, res);
 }
 
 export function getMeter() {

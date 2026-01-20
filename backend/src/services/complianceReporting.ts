@@ -415,9 +415,10 @@ function ratio(numerator: number, denominator: number) {
   return Number((numerator / denominator).toFixed(2));
 }
 
-function toIsoDate(value?: Date | null) {
+function toIsoDate(value?: Date | null): string | null {
   if (!value) return null;
-  return value.toISOString().split("T")[0];
+  const iso = value.toISOString().split("T")[0];
+  return iso ?? null;
 }
 
 function normalizeIncidentStatus(status: string) {
@@ -527,7 +528,11 @@ export async function buildComplianceReport(
   tenantId: string,
   templateId?: string
 ): Promise<ComplianceReport> {
-  const template = COMPLIANCE_TEMPLATES.find((item) => item.id === templateId) ?? COMPLIANCE_TEMPLATES[0];
+  const template =
+    COMPLIANCE_TEMPLATES.find((item) => item.id === templateId) ?? COMPLIANCE_TEMPLATES[0];
+  if (!template) {
+    throw new Error("No compliance templates configured");
+  }
 
   const [tenant, indicators, risks, incidents, exercises, processes] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: tenantId } }),

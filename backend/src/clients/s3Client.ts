@@ -67,7 +67,7 @@ function buildSseParams(): Record<string, string | undefined> {
   if (!sseAlgorithm) return {};
   return {
     ServerSideEncryption: sseAlgorithm,
-    SSEKMSKeyId: sseAlgorithm === "aws:kms" ? sseKmsKeyId : undefined,
+    ...(sseAlgorithm === "aws:kms" && sseKmsKeyId ? { SSEKMSKeyId: sseKmsKeyId } : {}),
   };
 }
 

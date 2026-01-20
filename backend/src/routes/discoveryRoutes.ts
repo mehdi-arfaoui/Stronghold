@@ -3,6 +3,7 @@ import multer from "multer";
 import * as os from "os";
 import path from "path";
 import * as fs from "fs";
+import type { MulterFile } from "multer";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -34,8 +35,12 @@ const uploadDir = path.join(os.tmpdir(), "discovery-imports");
 fs.mkdirSync(uploadDir, { recursive: true });
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) => {
+    destination: (
+      _req: unknown,
+      _file: MulterFile,
+      cb: (error: Error | null, destination: string) => void
+    ) => cb(null, uploadDir),
+    filename: (_req: unknown, file: MulterFile, cb: (error: Error | null, filename: string) => void) => {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
       cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
     },
@@ -177,9 +182,13 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
           requestedBy: requestedBy || req.apiKeyId || null,
           autoCreate: Boolean(autoCreate),
         }),
-        credentialsCiphertext: encryptedCredentials?.ciphertext,
-        credentialsIv: encryptedCredentials?.iv,
-        credentialsTag: encryptedCredentials?.tag,
+        ...(encryptedCredentials
+          ? {
+              credentialsCiphertext: encryptedCredentials.ciphertext,
+              credentialsIv: encryptedCredentials.iv,
+              credentialsTag: encryptedCredentials.tag,
+            }
+          : {}),
         requestedByApiKeyId: req.apiKeyId ?? null,
       },
     });
@@ -270,10 +279,10 @@ router.post("/schedules", requireRole("OPERATOR"), async (req: TenantRequest, re
       cloudProviders,
       frequency: frequency.toUpperCase() as "DAILY" | "WEEKLY",
       scheduleConfig: {
-        dayOfWeek: typeof dayOfWeek === "number" ? dayOfWeek : undefined,
-        hour: typeof hour === "number" ? hour : undefined,
-        minute: typeof minute === "number" ? minute : undefined,
-        timezone: payload.timezone ? String(payload.timezone) : undefined,
+        ...(typeof dayOfWeek === "number" ? { dayOfWeek } : {}),
+        ...(typeof hour === "number" ? { hour } : {}),
+        ...(typeof minute === "number" ? { minute } : {}),
+        ...(payload.timezone ? { timezone: String(payload.timezone) } : {}),
       },
       requestedByApiKeyId: req.apiKeyId ?? null,
     });
@@ -336,7 +345,7 @@ router.post("/flows/import", requireRole("OPERATOR"), async (req: TenantRequest,
         packets: flow.packets ?? flow.pkt ?? null,
         observedAt: flow.observedAt ? new Date(flow.observedAt) : null,
       }))
-      .filter((flow) => flow.sourceIp && flow.targetIp);
+      .filter((flow: { sourceIp?: string; targetIp?: string }) => Boolean(flow.sourceIp && flow.targetIp));
 
     const result = await importDiscoveryFlows(tenantId, payload.jobId || null, records);
     return res.status(201).json(result);
@@ -392,6 +401,9 @@ router.get("/status/:jobId", async (req: TenantRequest, res) => {
     }
 
     const jobId = req.params.jobId;
+    if (!jobId) {
+      return res.status(400).json({ error: "jobId est requis" });
+    }
     const job = await prisma.discoveryJob.findFirst({
       where: { id: jobId, tenantId },
     });
@@ -498,7 +510,7 @@ router.post(
     let jobId: string | null = null;
     let tenantId: string | null = null;
     try {
-      tenantId = req.tenantId;
+      tenantId = req.tenantId ?? null;
       if (!tenantId) {
         return res.status(500).json({ error: "Tenant not resolved" });
       }
@@ -571,7 +583,7 @@ router.post(
     } catch (error) {
       console.error("Error in POST /discovery/import:", error);
       if (error instanceof DiscoveryImportError) {
-        if (jobId) {
+        if (jobId && tenantId) {
           await prisma.discoveryJob.updateMany({
             where: { id: jobId, tenantId },
             data: {
@@ -601,7 +613,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
   let jobId: string | null = null;
   let tenantId: string | null = null;
   try {
-    tenantId = req.tenantId;
+    tenantId = req.tenantId ?? null;
     if (!tenantId) {
       return res.status(500).json({ error: "Tenant not resolved" });
     }
@@ -648,10 +660,10 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
     jobId = job.id;
 
     const { buffer, filename } = await fetchDiscoveryImportFromGitHub({
-      repoUrl: repoUrl || undefined,
-      filePath: filePath || undefined,
-      ref: ref || undefined,
-      rawUrl: rawUrl || undefined,
+      ...(repoUrl ? { repoUrl } : {}),
+      ...(filePath ? { filePath } : {}),
+      ...(ref ? { ref } : {}),
+      ...(rawUrl ? { rawUrl } : {}),
     });
 
     const { payload: importPayload, report } = parseDiscoveryImport(
@@ -701,7 +713,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
   } catch (error) {
     console.error("Error in POST /discovery/github-import:", error);
     if (error instanceof DiscoveryImportError || error instanceof DiscoveryGitHubImportError) {
-      if (jobId) {
+      if (jobId && tenantId) {
         await prisma.discoveryJob.updateMany({
           where: { id: jobId, tenantId },
           data: {

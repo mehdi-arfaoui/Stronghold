@@ -378,7 +378,7 @@ export async function analyzeExtractedFacts(
       event: status === 429 ? "llm.quota" : "llm.error",
       tenantId,
       correlationId,
-      status,
+      ...(status !== undefined ? { status } : {}),
       message: err instanceof Error ? err.message : "LLM error",
     });
     span.end();

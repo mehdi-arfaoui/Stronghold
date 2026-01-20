@@ -11,7 +11,11 @@ router.get("/", requireRole("READER"), async (_req: TenantRequest, res) => {
 });
 
 router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
-  const scenario = getCyberScenarioDetails(req.params.id);
+  const scenarioId = req.params.id;
+  if (!scenarioId) {
+    return res.status(400).json({ error: "id est requis" });
+  }
+  const scenario = getCyberScenarioDetails(scenarioId);
   if (!scenario) {
     return res.status(404).json({ error: "Scénario cyber introuvable" });
   }

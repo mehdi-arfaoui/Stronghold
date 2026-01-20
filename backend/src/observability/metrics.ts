@@ -111,7 +111,8 @@ export function recordRagMrr(params: {
   const rankedUnique = Array.from(new Set(params.rankedDocumentIds));
   let reciprocal = 0;
   for (let index = 0; index < rankedUnique.length; index += 1) {
-    if (relevantSet.has(rankedUnique[index])) {
+    const candidate = rankedUnique[index];
+    if (candidate && relevantSet.has(candidate)) {
       reciprocal = Number((1 / (index + 1)).toFixed(4));
       break;
     }

@@ -9,6 +9,7 @@ import { decryptDiscoveryCredentials } from "../services/discoveryService.js";
 import { runDiscoveryEngine } from "../services/discoveryEngine.js";
 import { resolveVaultCredentials } from "../services/discoveryVaultService.js";
 import { emitDiscoveryProgress } from "../services/discoveryProgressService.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;
@@ -71,7 +72,7 @@ async function recordDiscoveryHistory({
       jobType: jobRecord?.jobType ?? null,
       startedAt: jobRecord?.startedAt ?? null,
       completedAt: jobRecord?.completedAt ?? null,
-      summary: summary ?? undefined,
+      ...(summary != null ? { summary: toPrismaJson(summary) } : {}),
       errorMessage: errorMessage ?? null,
     },
   });
