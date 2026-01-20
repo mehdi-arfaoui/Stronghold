@@ -31,6 +31,7 @@ import brandingRoutes from "./routes/brandingRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
+import { startApiKeyRotationWorker } from "./workers/apiKeyRotationWorker.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { ensureOnPremiseLicense } from "./services/licenseService.js";
@@ -42,9 +43,8 @@ const onPremiseLicense = ensureOnPremiseLicense();
 const app = express();
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const allowAllDevOrigins =
-  isDevelopment &&
-  String(process.env.CORS_DEV_ALLOW_ALL || "true").toLowerCase() === "true";
+const allowNoOrigin =
+  String(process.env.CORS_ALLOW_NO_ORIGIN || "false").toLowerCase() === "true";
 
 const baseAllowedOrigins = [
   process.env.FRONTEND_URL,
@@ -68,16 +68,12 @@ const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
 // Configure CORS to allow requests from frontend
 const corsOptions: CorsOptions = {
   origin(origin, callback) {
-    // Allow requests with no origin only in dev if explicitly enabled
+    // Allow requests with no origin only when explicitly enabled
     if (!origin) {
-      if (allowAllDevOrigins) {
+      if (allowNoOrigin) {
         return callback(null, true);
       }
       return callback(new Error("Origin not allowed by CORS"));
-    }
-
-    if (allowAllDevOrigins) {
-      return callback(null, true);
     }
 
     if (allowedOrigins.has(origin)) {
@@ -218,6 +214,10 @@ if (process.env.DOCUMENT_WORKER_ENABLED !== "false") {
 
 if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {
   startDiscoveryScheduler();
+}
+
+if (process.env.API_KEY_ROTATION_ENABLED !== "false") {
+  startApiKeyRotationWorker();
 }
 
 // Global error handler - ensure all errors return JSON

@@ -29,6 +29,7 @@ const pricingRoutes = require("./routes/pricingRoutes");
 const { startDiscoveryWorker } = require("./workers/discoveryWorker");
 const { startDocumentIngestionWorker } = require("./workers/documentIngestionWorker");
 const { startDiscoveryScheduler } = require("./workers/discoveryScheduler");
+const { startApiKeyRotationWorker } = require("./workers/apiKeyRotationWorker");
 const { initDiscoveryWebSocket } = require("./websockets/discoveryWebsocket");
 const { deploymentConfig } = require("./config/deployment");
 const { ensureOnPremiseLicense } = require("./services/licenseService");
@@ -40,30 +41,36 @@ const onPremiseLicense = ensureOnPremiseLicense();
 const app = express();
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const allowAllDevOrigins =
-  isDevelopment && String(process.env.CORS_DEV_ALLOW_ALL || "true").toLowerCase() === "true";
+const allowNoOrigin = String(process.env.CORS_ALLOW_NO_ORIGIN || "false").toLowerCase() === "true";
 
-const allowedOrigins = new Set(
-  [
-    process.env.FRONTEND_URL,
-    process.env.CORS_ORIGIN,
-    ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173", // Vite default port
-  ]
-    .map((origin) => origin.trim())
-    .filter(Boolean)
-);
+const baseAllowedOrigins = [
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN,
+  ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
+]
+  .filter((origin) => typeof origin === "string" && origin.length > 0)
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+const devAllowedOrigins = isDevelopment
+  ? [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://localhost:5173", // Vite default port
+    ]
+  : [];
+
+const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
 
 // Configure CORS to allow requests from frontend
 const corsOptions = {
   origin(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-
-    if (allowAllDevOrigins) {
-      return callback(null, true);
+    // Allow requests with no origin only when explicitly enabled
+    if (!origin) {
+      if (allowNoOrigin) {
+        return callback(null, true);
+      }
+      return callback(new Error("Origin not allowed by CORS"));
     }
 
     if (allowedOrigins.has(origin)) {
@@ -137,6 +144,10 @@ if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {
   startDiscoveryScheduler();
 }
 
+if (process.env.API_KEY_ROTATION_ENABLED !== "false") {
+  startApiKeyRotationWorker();
+}
+
 // Global error handler - ensure all errors return JSON
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
@@ -159,10 +170,9 @@ initDiscoveryWebSocket(server);
 
 server.listen(Number(PORT), HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
+  const originList = [...allowedOrigins.values()];
   console.log(
-    `CORS enabled for origins: ${
-      process.env.FRONTEND_URL || process.env.CORS_ORIGIN || "all"
-    }`
+    `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
   );
   console.log(`Health check available at http://${HOST}:${PORT}/health`);
   if (deploymentConfig.mode === "saas") {

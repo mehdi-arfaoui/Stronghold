@@ -107,9 +107,7 @@ test("POST /documents/presign retourne une URL signée", async (t) => {
   });
 });
 
-test("POST /documents charge un fichier et renvoie un document", async (t) => {
-  const wasUploadCalled = setupUploadMocks(t, "tenant-upload");
-
+test("POST /documents bloque les uploads directs sans opt-in", async () => {
   const app = createTestApp(documentRoutes, "/documents", {
     tenantId: "tenant-upload",
     apiRole: "OPERATOR",
@@ -126,11 +124,8 @@ test("POST /documents charge un fichier et renvoie un document", async (t) => {
       body: form,
     });
 
-    assert.equal(response.status, 201);
+    assert.equal(response.status, 409);
     const payload = await response.json();
-    assert.equal(payload.docType, "ARCHI");
-    assert.equal(payload.signedUrl, "https://signed.example.com/doc-1");
-    assert.equal(payload.originalName, "sample.txt");
-    assert.ok(wasUploadCalled());
+    assert.match(payload.error, /Uploads directs désactivés/);
   });
 });

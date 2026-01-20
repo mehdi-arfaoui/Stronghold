@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import { z, ZodError } from "zod";
 import prisma from "../prismaClient.js";
+import { decryptJsonSecret, encryptJsonSecret, isSecretVaultEnabled } from "./secretVaultService.js";
 
 type DiscoveryNodeKind = "service" | "infra";
 
@@ -995,6 +996,10 @@ export async function applyDiscoveryImport(
 }
 
 export function encryptDiscoveryCredentials(payload: Record<string, unknown>, secret: string) {
+  const vaultEncrypted = encryptJsonSecret(payload);
+  if (vaultEncrypted) {
+    return vaultEncrypted;
+  }
   const key = crypto.createHash("sha256").update(secret).digest();
   const iv = crypto.randomBytes(12);
   const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
@@ -1013,6 +1018,20 @@ export function decryptDiscoveryCredentials(
   payload: { ciphertext: string; iv: string; tag: string },
   secret: string
 ): Record<string, unknown> {
+  if (isSecretVaultEnabled()) {
+    try {
+      return decryptJsonSecret({
+        ciphertext: payload.ciphertext,
+        iv: payload.iv,
+        tag: payload.tag,
+        algorithm: "AES-256-GCM",
+      });
+    } catch (error) {
+      console.warn("Secret vault decryption failed, falling back to legacy key", {
+        message: (error as Error).message,
+      });
+    }
+  }
   const key = crypto.createHash("sha256").update(secret).digest();
   const iv = Buffer.from(payload.iv, "base64");
   const tag = Buffer.from(payload.tag, "base64");

@@ -1045,11 +1045,16 @@ model ApiKey {
 
   label         String?
   keyHash       String    @unique
+  keyCiphertext String?
+  keyIv         String?
+  keyTag        String?
+  keyAlgorithm  String?
   role          ApiRole   @default(OPERATOR)
   lastUsedAt    DateTime?
   lastReviewedAt DateTime?
   expiresAt     DateTime?
   revokedAt     DateTime?
+  keyRevealedAt DateTime?
   rotatedFromId String?
   rotatedFrom   ApiKey?   @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
   rotatedTo     ApiKey[]  @relation("ApiKeyRotation")

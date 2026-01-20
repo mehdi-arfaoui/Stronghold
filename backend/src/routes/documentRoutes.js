@@ -67,6 +67,9 @@ const allowedMimeTypes = new Set(
     .filter(Boolean)
 );
 
+const directUploadsEnabled =
+  String(process.env.DOCUMENT_DIRECT_UPLOADS_ENABLED || "false").toLowerCase() === "true";
+
 function isAllowedMimeType(mimeType) {
   if (!mimeType) return false;
   return allowedMimeTypes.has(mimeType);
@@ -122,6 +125,21 @@ function computeRetentionDate(days) {
   return date;
 }
 
+function buildDlpAlert(doc, report) {
+  const totalFindings = (report && report.totalFindings) || 0;
+  const hasFindings = totalFindings > 0 || doc.isSensitive;
+  return {
+    hasFindings,
+    totalFindings,
+    findings: (report && report.findings) || [],
+    protectionStatus: doc.protectionStatus,
+    scannedAt: (report && report.scannedAt) || null,
+    message: hasFindings
+      ? "Données sensibles détectées. Masquage/alerte recommandé."
+      : "Aucune donnée sensible détectée.",
+  };
+}
+
 /**
  * POST /documents
  * Upload d'un document pour le tenant courant.
@@ -132,6 +150,18 @@ function computeRetentionDate(days) {
  */
 router.post("/", requireRole("OPERATOR"), async (req, res) => {
   try {
+    if (!directUploadsEnabled) {
+      return res.status(409).json({
+        error: "Uploads directs désactivés",
+        details: [
+          {
+            field: "upload",
+            message: "Utilisez /documents/presign puis /documents/register avec une URL pré-signée.",
+          },
+        ],
+      });
+    }
+
     await runSingleUpload(req, res);
     if (res.headersSent) return;
 
@@ -367,6 +397,7 @@ router.get("/", requireRole("READER"), async (req, res) => {
       prisma.document.findMany({
         where: { tenantId },
         orderBy: { createdAt: "desc" },
+        include: { sensitivityReport: true },
         ...(shouldPaginate ? { take, skip } : {}),
       }),
       shouldPaginate ? prisma.document.count({ where: { tenantId } }) : Promise.resolve(0),
@@ -376,20 +407,35 @@ router.get("/", requireRole("READER"), async (req, res) => {
       docs.map(async (doc) => {
         const isS3Path = (doc.storagePath || "").startsWith("s3://");
         if (!isS3Path) {
-          return { ...doc, signedUrl: null };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl: null,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         }
 
         try {
           const bucketAndKey = resolveBucketAndKey(doc.storagePath, doc.tenantId, doc.storedName);
           const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
-          return { ...doc, signedUrl };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         } catch (err) {
           console.error("Error signing document URL", {
             tenantId: doc.tenantId,
             documentId: doc.id,
             message: err?.message,
           });
-          return { ...doc, signedUrl: null };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl: null,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         }
       })
     );
