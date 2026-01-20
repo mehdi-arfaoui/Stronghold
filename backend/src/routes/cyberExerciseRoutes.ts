@@ -140,14 +140,14 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const updated = await updateCyberExercise(tenantId, req.params.id, {
-      scenarioId: scenarioId ?? undefined,
-      date,
-      participants: participants ?? undefined,
-      simulator: simulator ?? undefined,
-      results: payload.results ?? undefined,
-      runbook: payload.runbook ?? undefined,
-      report: payload.report ?? undefined,
-      logs: payload.logs ?? undefined,
+      ...(scenarioId !== undefined ? { scenarioId } : {}),
+      ...(date !== undefined ? { date } : {}),
+      ...(participants !== undefined ? { participants } : {}),
+      ...(simulator !== undefined ? { simulator } : {}),
+      ...(payload.results !== undefined ? { results: payload.results } : {}),
+      ...(payload.runbook !== undefined ? { runbook: payload.runbook } : {}),
+      ...(payload.report !== undefined ? { report: payload.report } : {}),
+      ...(payload.logs !== undefined ? { logs: payload.logs } : {}),
     });
 
     return res.json(updated);

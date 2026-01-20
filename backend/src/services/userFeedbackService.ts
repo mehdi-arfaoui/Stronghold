@@ -27,7 +27,7 @@ export async function recordUserFeedback(
       type: normalizeType(input.type),
       rating: input.rating ?? null,
       comment: input.comment ?? null,
-      createdAt: input.timestamp ?? undefined,
+      ...(input.timestamp != null ? { createdAt: input.timestamp } : {}),
     },
   });
 }

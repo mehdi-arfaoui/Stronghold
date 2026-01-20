@@ -1,4 +1,5 @@
 import prisma from "../prismaClient.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 import { getCyberScenarioDetails } from "./cyberScenarioService.js";
 import type { CyberScenario } from "../scenarios/cyber/index.js";
 
@@ -208,10 +209,10 @@ export async function createCyberExercise(
       scenarioId: scenario.id,
       date: input.date,
       participants: input.participants,
-      results,
-      runbook,
-      report,
-      logs,
+      results: toPrismaJson(results),
+      runbook: toPrismaJson(runbook),
+      report: toPrismaJson(report),
+      logs: toPrismaJson(logs),
       simulator: input.simulator ?? null,
     },
   });
@@ -260,10 +261,10 @@ export async function updateCyberExercise(
       scenarioId: data.scenarioId ?? existing.scenarioId,
       date: data.date ?? existing.date,
       participants: participants,
-      results: data.results ?? existing.results,
-      runbook: updatedRunbook,
-      report: updatedReport,
-      logs: data.logs ?? existing.logs,
+      results: toPrismaJson(data.results ?? existing.results),
+      runbook: toPrismaJson(updatedRunbook),
+      report: toPrismaJson(updatedReport),
+      logs: toPrismaJson(data.logs ?? existing.logs),
       simulator: data.simulator ?? existing.simulator,
     },
   });

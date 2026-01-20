@@ -496,10 +496,12 @@ export async function pushChunksToChroma(
       ...c.metadata,
       tenantId,
       documentId,
-      retentionUntil: retention?.document ? retention.document.toISOString() : undefined,
-      embeddingRetentionUntil: retention?.embedding
-        ? retention.embedding.toISOString()
-        : undefined,
+      ...(retention?.document
+        ? { retentionUntil: retention.document.toISOString() }
+        : {}),
+      ...(retention?.embedding
+        ? { embeddingRetentionUntil: retention.embedding.toISOString() }
+        : {}),
     })),
   };
 

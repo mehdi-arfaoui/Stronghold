@@ -1,5 +1,6 @@
 import prisma from "../prismaClient.js";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type SuggestionStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type SuggestionType =
@@ -137,7 +138,7 @@ export async function createExtractionSuggestions(params: {
       documentId: params.documentId,
       suggestionType: suggestion.suggestionType,
       label: suggestion.label,
-      data: suggestion.data,
+      data: toPrismaJson(suggestion.data),
       status: "PENDING",
     })),
   });
@@ -450,8 +451,8 @@ export async function approveExtractionSuggestions(params: {
           await applyRisk(tx, params.tenantId, {
             title: String(data.title || suggestion.label),
             threatType: (data.threatType as string | null) ?? null,
-            probability: typeof data.probability === "number" ? data.probability : undefined,
-            impact: typeof data.impact === "number" ? data.impact : undefined,
+            ...(typeof data.probability === "number" ? { probability: data.probability } : {}),
+            ...(typeof data.impact === "number" ? { impact: data.impact } : {}),
           });
           break;
         case "TEST_EXERCISE":

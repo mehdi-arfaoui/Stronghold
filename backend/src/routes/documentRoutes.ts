@@ -655,7 +655,7 @@ router.post(
       const result = await approveExtractionSuggestions({
         tenantId,
         documentId: docId,
-        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
+        ...(suggestionIds.length > 0 ? { suggestionIds } : {}),
         reviewNotes,
       });
 
@@ -698,7 +698,7 @@ router.post(
       const result = await rejectExtractionSuggestions({
         tenantId,
         documentId: docId,
-        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
+        ...(suggestionIds.length > 0 ? { suggestionIds } : {}),
         reviewNotes,
       });
 

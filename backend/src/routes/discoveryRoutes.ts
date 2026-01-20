@@ -270,10 +270,10 @@ router.post("/schedules", requireRole("OPERATOR"), async (req: TenantRequest, re
       cloudProviders,
       frequency: frequency.toUpperCase() as "DAILY" | "WEEKLY",
       scheduleConfig: {
-        dayOfWeek: typeof dayOfWeek === "number" ? dayOfWeek : undefined,
-        hour: typeof hour === "number" ? hour : undefined,
-        minute: typeof minute === "number" ? minute : undefined,
-        timezone: payload.timezone ? String(payload.timezone) : undefined,
+        ...(typeof dayOfWeek === "number" ? { dayOfWeek } : {}),
+        ...(typeof hour === "number" ? { hour } : {}),
+        ...(typeof minute === "number" ? { minute } : {}),
+        ...(payload.timezone ? { timezone: String(payload.timezone) } : {}),
       },
       requestedByApiKeyId: req.apiKeyId ?? null,
     });
@@ -648,10 +648,10 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
     jobId = job.id;
 
     const { buffer, filename } = await fetchDiscoveryImportFromGitHub({
-      repoUrl: repoUrl || undefined,
-      filePath: filePath || undefined,
-      ref: ref || undefined,
-      rawUrl: rawUrl || undefined,
+      ...(repoUrl ? { repoUrl } : {}),
+      ...(filePath ? { filePath } : {}),
+      ...(ref ? { ref } : {}),
+      ...(rawUrl ? { rawUrl } : {}),
     });
 
     const { payload: importPayload, report } = parseDiscoveryImport(

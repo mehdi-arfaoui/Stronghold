@@ -297,7 +297,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         owner,
         processName,
         serviceId: serviceId || null,
-        mitigations: mitigationCreates.length > 0 ? { create: mitigationCreates } : undefined,
+        ...(mitigationCreates.length > 0 ? { mitigations: { create: mitigationCreates } } : {}),
       },
       include: { mitigations: true, service: true },
     });

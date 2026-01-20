@@ -1,5 +1,6 @@
 import prisma from "../prismaClient.js";
 import type { DiscoveryResourceKind } from "./discoveryTypes.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type MergeDiscoveredResourceInput = {
   source: string;
@@ -170,8 +171,8 @@ export async function mergeDiscoveredResources(
         kind: resource.kind,
         ip: resource.ip ?? null,
         hostname: resource.hostname ?? null,
-        tags: resource.tags ?? undefined,
-        metadata: metadata ?? undefined,
+        ...(resource.tags != null ? { tags: toPrismaJson(resource.tags) } : {}),
+        ...(metadata != null ? { metadata: toPrismaJson(metadata) } : {}),
         serviceId,
         infraId,
         lastSeenAt: now,
@@ -185,8 +186,8 @@ export async function mergeDiscoveredResources(
         type: resource.type,
         ip: resource.ip ?? null,
         hostname: resource.hostname ?? null,
-        tags: resource.tags ?? undefined,
-        metadata: metadata ?? undefined,
+        ...(resource.tags != null ? { tags: toPrismaJson(resource.tags) } : {}),
+        ...(metadata != null ? { metadata: toPrismaJson(metadata) } : {}),
         serviceId,
         infraId,
         firstSeenAt: now,

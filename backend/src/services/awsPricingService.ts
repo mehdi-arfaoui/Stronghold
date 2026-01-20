@@ -44,7 +44,7 @@ export async function fetchAwsPricingProducts(
   do {
     const command = new GetProductsCommand({
       ServiceCode: query.serviceCode,
-      Filters: filters.length > 0 ? filters : undefined,
+      ...(filters.length > 0 ? { Filters: filters } : {}),
       FormatVersion: query.formatVersion ?? "aws_v1",
       MaxResults: maxResults,
       NextToken: nextToken,

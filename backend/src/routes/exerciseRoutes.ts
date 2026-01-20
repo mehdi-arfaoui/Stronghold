@@ -199,10 +199,10 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
       await tx.exercise.updateMany({
         where: { id: exercise.id, tenantId },
         data: {
-          title: data.title ?? undefined,
-          description: data.description ?? undefined,
-          scheduledAt: data.scheduledAt ?? undefined,
-          status: data.status ? data.status.toUpperCase() : undefined,
+          ...(data.title !== undefined ? { title: data.title } : {}),
+          ...(data.description !== undefined ? { description: data.description } : {}),
+          ...(data.scheduledAt !== undefined ? { scheduledAt: data.scheduledAt } : {}),
+          ...(data.status ? { status: data.status.toUpperCase() } : {}),
         },
       });
 
@@ -266,14 +266,13 @@ router.patch(
       await prisma.exerciseChecklistItem.updateMany({
         where: { id: item.id, tenantId, exerciseId: req.params.exerciseId },
         data: {
-          notes: data.notes ?? undefined,
-          isCompleted: data.isCompleted ?? undefined,
-          completedAt:
-            data.isCompleted === true
-              ? new Date()
-              : data.isCompleted === false
-                ? null
-                : undefined,
+          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          ...(data.isCompleted !== undefined ? { isCompleted: data.isCompleted } : {}),
+          ...(data.isCompleted === true
+            ? { completedAt: new Date() }
+            : data.isCompleted === false
+              ? { completedAt: null }
+              : {}),
         },
       });
 

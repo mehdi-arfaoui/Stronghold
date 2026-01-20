@@ -72,7 +72,7 @@ router.post("/estimate", requireRole("READER"), (req: TenantRequest, res) => {
     exchangeRate: Number(req.body?.exchangeRate ?? 1),
     discountRate: Number(req.body?.discountRate ?? 0),
     humanCostMonthly: Number(req.body?.humanCostMonthly ?? 0),
-    currency: typeof req.body?.currency === "string" ? req.body.currency : undefined,
+    ...(typeof req.body?.currency === "string" ? { currency: req.body.currency } : {}),
   });
 
   return res.json({ provider, count: items.length, items, summary });
@@ -99,7 +99,9 @@ router.post("/aws/products", requireRole("READER"), async (req: TenantRequest, r
       filters,
       maxResults: Number(req.body?.maxResults ?? 100),
       maxPages: Number(req.body?.maxPages ?? 1),
-      formatVersion: typeof req.body?.formatVersion === "string" ? req.body.formatVersion : undefined,
+      ...(typeof req.body?.formatVersion === "string"
+        ? { formatVersion: req.body.formatVersion }
+        : {}),
     });
 
     const items = normalizeAwsPriceListEntries(result.priceList);
@@ -107,7 +109,7 @@ router.post("/aws/products", requireRole("READER"), async (req: TenantRequest, r
       exchangeRate: Number(req.body?.exchangeRate ?? 1),
       discountRate: Number(req.body?.discountRate ?? 0),
       humanCostMonthly: Number(req.body?.humanCostMonthly ?? 0),
-      currency: typeof req.body?.currency === "string" ? req.body.currency : undefined,
+      ...(typeof req.body?.currency === "string" ? { currency: req.body.currency } : {}),
     });
 
     return res.json({
@@ -136,12 +138,12 @@ router.post("/azure/retail", requireRole("READER"), async (req: TenantRequest, r
 
   try {
     const result = await fetchAzureRetailPrices({
-      filter,
+      ...(filter !== undefined ? { filter } : {}),
       pageSize: Number(req.body?.pageSize ?? 100),
       maxPages: Number(req.body?.maxPages ?? 1),
-      currencyCode,
-      locale,
-      region,
+      ...(currencyCode !== undefined ? { currencyCode } : {}),
+      ...(locale !== undefined ? { locale } : {}),
+      ...(region !== undefined ? { region } : {}),
     });
 
     const items = normalizeAzurePricingResponse({ Items: result.items });
@@ -149,7 +151,7 @@ router.post("/azure/retail", requireRole("READER"), async (req: TenantRequest, r
       exchangeRate: Number(req.body?.exchangeRate ?? 1),
       discountRate: Number(req.body?.discountRate ?? 0),
       humanCostMonthly: Number(req.body?.humanCostMonthly ?? 0),
-      currency: typeof req.body?.currency === "string" ? req.body.currency : undefined,
+      ...(typeof req.body?.currency === "string" ? { currency: req.body.currency } : {}),
     });
 
     return res.json({
@@ -186,7 +188,7 @@ router.post("/gcp/skus", requireRole("READER"), async (req: TenantRequest, res) 
       exchangeRate: Number(req.body?.exchangeRate ?? 1),
       discountRate: Number(req.body?.discountRate ?? 0),
       humanCostMonthly: Number(req.body?.humanCostMonthly ?? 0),
-      currency: typeof req.body?.currency === "string" ? req.body.currency : undefined,
+      ...(typeof req.body?.currency === "string" ? { currency: req.body.currency } : {}),
     });
 
     return res.json({
@@ -210,23 +212,26 @@ router.post("/scenario-estimates", requireRole("READER"), async (req: TenantRequ
   try {
     const payload = req.body ?? {};
     const response = await buildScenarioComparison({
-      instanceType: typeof payload.instanceType === "string" ? payload.instanceType : undefined,
+      ...(typeof payload.instanceType === "string" ? { instanceType: payload.instanceType } : {}),
       instanceCount: payload.instanceCount,
       storageGb: payload.storageGb,
       dataTransferGb: payload.dataTransferGb,
       snapshotFrequencyPerDay: payload.snapshotFrequencyPerDay,
-      currency: typeof payload.currency === "string" ? payload.currency : undefined,
-      awsRegion: typeof payload.awsRegion === "string" ? payload.awsRegion : undefined,
-      azureRegion: typeof payload.azureRegion === "string" ? payload.azureRegion : undefined,
-      gcpRegion: typeof payload.gcpRegion === "string" ? payload.gcpRegion : undefined,
-      awsLocation: typeof payload.awsLocation === "string" ? payload.awsLocation : undefined,
-      gcpComputeServiceId:
-        typeof payload.gcpComputeServiceId === "string" ? payload.gcpComputeServiceId : undefined,
-      gcpStorageServiceId:
-        typeof payload.gcpStorageServiceId === "string" ? payload.gcpStorageServiceId : undefined,
-      gcpNetworkServiceId:
-        typeof payload.gcpNetworkServiceId === "string" ? payload.gcpNetworkServiceId : undefined,
-      providers: Array.isArray(payload.providers) ? payload.providers : undefined,
+      ...(typeof payload.currency === "string" ? { currency: payload.currency } : {}),
+      ...(typeof payload.awsRegion === "string" ? { awsRegion: payload.awsRegion } : {}),
+      ...(typeof payload.azureRegion === "string" ? { azureRegion: payload.azureRegion } : {}),
+      ...(typeof payload.gcpRegion === "string" ? { gcpRegion: payload.gcpRegion } : {}),
+      ...(typeof payload.awsLocation === "string" ? { awsLocation: payload.awsLocation } : {}),
+      ...(typeof payload.gcpComputeServiceId === "string"
+        ? { gcpComputeServiceId: payload.gcpComputeServiceId }
+        : {}),
+      ...(typeof payload.gcpStorageServiceId === "string"
+        ? { gcpStorageServiceId: payload.gcpStorageServiceId }
+        : {}),
+      ...(typeof payload.gcpNetworkServiceId === "string"
+        ? { gcpNetworkServiceId: payload.gcpNetworkServiceId }
+        : {}),
+      ...(Array.isArray(payload.providers) ? { providers: payload.providers } : {}),
     });
 
     return res.json(response);

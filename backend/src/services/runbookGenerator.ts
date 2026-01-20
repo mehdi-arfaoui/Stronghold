@@ -308,7 +308,7 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     tenantId,
     question: ragQuestion,
     services,
-    scenarios: scenario ? [scenario as any] : undefined,
+    ...(scenario ? { scenarios: [scenario as any] } : {}),
     context: ragContextResult.context,
     maxResults: 5,
   });
