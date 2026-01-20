@@ -82,7 +82,10 @@ function pickBestPrediction(payload: ClassifierResponse): LabelPrediction | null
     const labels = Array.isArray(record.labels) ? (record.labels as string[]) : null;
     const scores = Array.isArray(record.scores) ? (record.scores as number[]) : null;
     if (labels && scores && labels.length > 0 && labels.length === scores.length) {
-      const combined = labels.map((label, index) => ({ label, score: clampScore(scores[index]) }));
+      const combined = labels.map((label, index) => ({
+        label,
+        score: clampScore(scores[index] ?? null),
+      }));
       combined.sort((a, b) => b.score - a.score);
       return combined[0] ?? null;
     }
@@ -91,7 +94,9 @@ function pickBestPrediction(payload: ClassifierResponse): LabelPrediction | null
       const predictions = record.predictions as Array<{ label: string; score: number }>;
       if (predictions.length > 0) {
         const sorted = predictions.sort((a, b) => clampScore(b.score) - clampScore(a.score));
-        return { label: sorted[0].label, score: clampScore(sorted[0].score) };
+        const best = sorted[0];
+        if (!best) return null;
+        return { label: best.label, score: clampScore(best.score) };
       }
     }
   }
@@ -137,7 +142,7 @@ async function callClassifierEndpoint(payload: unknown, signal?: AbortSignal): P
     method: "POST",
     headers,
     body: JSON.stringify(payload),
-    signal,
+    ...(signal ? { signal } : {}),
   });
 
   if (!response.ok) {

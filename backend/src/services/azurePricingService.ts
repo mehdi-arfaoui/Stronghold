@@ -15,6 +15,11 @@ export type AzureRetailResult = {
 
 const AZURE_RETAIL_ENDPOINT = "https://prices.azure.com/api/retail/prices";
 
+type AzureRetailApiResponse = {
+  Items?: unknown[];
+  NextPageLink?: string | null;
+};
+
 export async function fetchAzureRetailPrices(query: AzureRetailQuery): Promise<AzureRetailResult> {
   const pageSize = Math.min(Math.max(query.pageSize ?? 100, 1), 1000);
   const maxPages = Math.min(Math.max(query.maxPages ?? 1, 1), 10);
@@ -40,7 +45,11 @@ export async function fetchAzureRetailPrices(query: AzureRetailQuery): Promise<A
   const items: any[] = [];
 
   do {
-    const response = await fetch(nextPageLink ?? url.toString());
+    const response: {
+      ok: boolean;
+      status: number;
+      json: () => Promise<AzureRetailApiResponse>;
+    } = await fetch(nextPageLink ?? url.toString());
     if (!response.ok) {
       throw new Error(`Azure pricing request failed with status ${response.status}`);
     }
@@ -54,6 +63,6 @@ export async function fetchAzureRetailPrices(query: AzureRetailQuery): Promise<A
   return {
     items,
     rawCount: items.length,
-    nextPageLink,
+    ...(nextPageLink ? { nextPageLink } : {}),
   };
 }

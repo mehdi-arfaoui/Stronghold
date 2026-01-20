@@ -1,5 +1,5 @@
-#!/usr/bin/env sh
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
 echo "Running Prisma migrations..."
 npx prisma migrate deploy

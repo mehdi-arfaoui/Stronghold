@@ -1,8 +1,10 @@
 import { Router } from "express";
 import prisma from "../prismaClient.js";
+import { Prisma } from "@prisma/client";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import { notifyIncidentEvent } from "../services/incidentNotificationService.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 const router = Router();
 
@@ -142,7 +144,7 @@ router.post(
           label: label ? String(label) : null,
           isEnabled: isEnabled === undefined ? true : Boolean(isEnabled),
           n8nWebhookUrl: String(n8nWebhookUrl),
-          configuration: configuration ?? {},
+          configuration: toPrismaJson(configuration ?? {}),
         },
       });
 
@@ -165,6 +167,9 @@ router.patch(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const existing = await prisma.notificationChannel.findFirst({
         where: { id, tenantId },
       });
@@ -174,6 +179,15 @@ router.patch(
 
       const { label, isEnabled, n8nWebhookUrl, configuration } = req.body || {};
 
+      const resolvedConfiguration =
+        configuration === null
+          ? Prisma.DbNull
+          : configuration !== undefined
+            ? toPrismaJson(configuration)
+            : existing.configuration === null
+              ? Prisma.DbNull
+              : existing.configuration;
+
       const updated = await prisma.notificationChannel.update({
         where: { id },
         data: {
@@ -181,7 +195,7 @@ router.patch(
           isEnabled: isEnabled !== undefined ? Boolean(isEnabled) : existing.isEnabled,
           n8nWebhookUrl:
             n8nWebhookUrl !== undefined ? String(n8nWebhookUrl) : existing.n8nWebhookUrl,
-          configuration: configuration !== undefined ? configuration : existing.configuration,
+          configuration: resolvedConfiguration,
         },
       });
 
@@ -225,6 +239,9 @@ router.get("/:id", async (req: TenantRequest, res) => {
     }
 
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const incident = await prisma.incident.findFirst({
       where: { id, tenantId },
       include: {
@@ -357,6 +374,9 @@ router.patch(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const existing = await prisma.incident.findFirst({
         where: { id, tenantId },
         include: {
@@ -526,6 +546,9 @@ router.get("/:id/actions", async (req: TenantRequest, res) => {
     }
 
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const actions = await prisma.incidentAction.findMany({
       where: { tenantId, incidentId: id },
       orderBy: { createdAt: "desc" },
@@ -549,6 +572,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const { actionType, description } = req.body || {};
 
       if (!actionType) {

@@ -16,6 +16,7 @@ import type {
 import { correlateDiscoveryResources } from "./discoveryCorrelationService.js";
 import { applyDiscoveryImport } from "./discoveryService.js";
 import { mergeDiscoveredResources } from "./discoveryMergeService.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 type DiscoveryEngineSummary = {
   discoveredResources: number;
@@ -371,8 +372,8 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
           type: resource.type,
           ip: resource.ip ?? null,
           hostname: resource.hostname ?? null,
-          tags: resource.tags ?? undefined,
-          metadata: resource.metadata ?? undefined,
+          ...(resource.tags != null ? { tags: toPrismaJson(resource.tags) } : {}),
+          ...(resource.metadata != null ? { metadata: toPrismaJson(resource.metadata) } : {}),
           fingerprint,
           discoveredAt: detectedAt,
         },
@@ -409,9 +410,9 @@ export async function runDiscoveryEngine(context: DiscoveryRunContext): Promise<
           source: change.source,
           externalId: change.externalId,
           changeType: change.changeType,
-          previousFingerprint: change.previousFingerprint ?? undefined,
-          newFingerprint: change.newFingerprint ?? undefined,
-          metadata: change.metadata ?? undefined,
+          previousFingerprint: change.previousFingerprint,
+          newFingerprint: change.newFingerprint,
+          ...(change.metadata != null ? { metadata: toPrismaJson(change.metadata) } : {}),
           detectedAt: change.detectedAt,
         })),
       });

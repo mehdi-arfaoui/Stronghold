@@ -248,18 +248,15 @@ function parseFeedbackPayload(body: any): {
     return { issues };
   }
 
-  return {
-    payload: {
-      factId: factId!,
-      category,
-      type,
-      label,
-      service,
-      infra,
-      sla,
-    },
-    issues,
-  };
+  const payload: FeedbackPayload = { factId: factId! };
+  if (category) payload.category = category;
+  if (type) payload.type = type;
+  if (label) payload.label = label;
+  if (service !== undefined) payload.service = service;
+  if (infra !== undefined) payload.infra = infra;
+  if (sla !== undefined) payload.sla = sla;
+
+  return { payload, issues };
 }
 
 /* ========= Helpers d'analyse applicative ========= */
@@ -442,8 +439,8 @@ async function buildPraReportText(tenantId: string) {
     type: s.type,
     domain: s.domain,
     criticality: s.criticality,
-    rtoHours: s.continuity?.rtoHours ?? undefined,
-    rpoMinutes: s.continuity?.rpoMinutes ?? undefined,
+    ...(s.continuity?.rtoHours !== undefined ? { rtoHours: s.continuity.rtoHours } : {}),
+    ...(s.continuity?.rpoMinutes !== undefined ? { rpoMinutes: s.continuity.rpoMinutes } : {}),
   }));
   const dependencies = services.flatMap((s) =>
     s.dependenciesFrom.map((d: any) => ({
@@ -722,8 +719,8 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       type: s.type,
       domain: s.domain,
       criticality: s.criticality,
-      rtoHours: s.continuity?.rtoHours ?? undefined,
-      rpoMinutes: s.continuity?.rpoMinutes ?? undefined,
+      ...(s.continuity?.rtoHours !== undefined ? { rtoHours: s.continuity.rtoHours } : {}),
+      ...(s.continuity?.rpoMinutes !== undefined ? { rpoMinutes: s.continuity.rpoMinutes } : {}),
     }));
     const dependencies = services.flatMap((s) =>
       s.dependenciesFrom.map((d) => ({
@@ -772,10 +769,13 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       trigger: "pra-dashboard",
     });
 
+    const dashboardDocumentTypes = Array.isArray(req.query?.docTypes)
+      ? (req.query.docTypes as string[])
+      : undefined;
     const ragReport = await generatePraReport({
       tenantId,
       question: ragQuestion,
-      documentTypes: Array.isArray(req.query?.docTypes) ? (req.query.docTypes as string[]) : undefined,
+      ...(dashboardDocumentTypes !== undefined ? { documentTypes: dashboardDocumentTypes } : {}),
       serviceFilter: typeof req.query?.service === "string" ? (req.query.service as string) : null,
       maxChunks: 6,
       maxFacts: 8,
@@ -1049,14 +1049,18 @@ router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res)
       return res.status(400).json({ error: "Question manquante ou trop courte" });
     }
 
+    const ragQueryDocumentIds = Array.isArray(documentIds) ? documentIds : undefined;
+    const ragQueryDocumentTypes = Array.isArray(documentTypes) ? documentTypes : undefined;
+    const ragQueryMaxChunks = typeof maxChunks === "number" ? maxChunks : undefined;
+    const ragQueryMaxFacts = typeof maxFacts === "number" ? maxFacts : undefined;
     const ragResult = await retrieveRagContext({
       tenantId,
       question,
-      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
-      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      ...(ragQueryDocumentIds !== undefined ? { documentIds: ragQueryDocumentIds } : {}),
+      ...(ragQueryDocumentTypes !== undefined ? { documentTypes: ragQueryDocumentTypes } : {}),
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
-      maxChunks: typeof maxChunks === "number" ? maxChunks : undefined,
-      maxFacts: typeof maxFacts === "number" ? maxFacts : undefined,
+      ...(ragQueryMaxChunks !== undefined ? { maxChunks: ragQueryMaxChunks } : {}),
+      ...(ragQueryMaxFacts !== undefined ? { maxFacts: ragQueryMaxFacts } : {}),
       ragRuntimeConfig: runtimeConfig,
     });
 
@@ -1105,11 +1109,13 @@ router.post("/pra-rag-report", requireRole("READER"), async (req: TenantRequest,
       return res.status(400).json({ error: "Question manquante ou trop courte" });
     }
 
+    const praReportDocumentIds = Array.isArray(documentIds) ? documentIds : undefined;
+    const praReportDocumentTypes = Array.isArray(documentTypes) ? documentTypes : undefined;
     const report = await generatePraReport({
       tenantId,
       question,
-      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
-      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      ...(praReportDocumentIds !== undefined ? { documentIds: praReportDocumentIds } : {}),
+      ...(praReportDocumentTypes !== undefined ? { documentTypes: praReportDocumentTypes } : {}),
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
       maxChunks: 8,
       maxFacts: 10,
@@ -1149,11 +1155,17 @@ router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, 
       trigger: "runbook-draft",
     });
 
+    const draftQuestion =
+      typeof question === "string" && question.trim().length > 0
+        ? question
+        : "Génère un runbook PRA détaillé incluant dépendances, sauvegardes et étapes de reprise.";
+    const draftDocumentIds = Array.isArray(documentIds) ? documentIds : undefined;
+    const draftDocumentTypes = Array.isArray(documentTypes) ? documentTypes : undefined;
     const draft = await generateRunbookDraft({
       tenantId,
-      question: typeof question === "string" && question.trim().length > 0 ? question : undefined,
-      documentIds: Array.isArray(documentIds) ? documentIds : undefined,
-      documentTypes: Array.isArray(documentTypes) ? documentTypes : undefined,
+      question: draftQuestion,
+      ...(draftDocumentIds !== undefined ? { documentIds: draftDocumentIds } : {}),
+      ...(draftDocumentTypes !== undefined ? { documentTypes: draftDocumentTypes } : {}),
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
       ragRuntimeConfig: runtimeConfig,
     });
@@ -1203,13 +1215,13 @@ router.post("/feedback/entities", requireRole("OPERATOR"), async (req: TenantReq
     const feedback = await recordEntityFeedback({
       tenantId,
       entityType: entityType as string,
-      entityId,
-      documentId,
       action: action as string,
-      originalValue,
-      correctedValue,
-      notes,
-      context,
+      ...(entityId !== undefined ? { entityId } : {}),
+      ...(documentId !== undefined ? { documentId } : {}),
+      ...(originalValue !== undefined ? { originalValue } : {}),
+      ...(correctedValue !== undefined ? { correctedValue } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+      ...(context !== undefined ? { context } : {}),
     });
 
     return res.status(201).json({ feedback });
@@ -1257,11 +1269,11 @@ router.post(
       const feedback = await recordRecommendationFeedback({
         tenantId,
         recommendationType: recommendationType as string,
-        recommendationId,
         rating: rating as "like" | "dislike",
-        score,
-        comment,
-        context,
+        ...(recommendationId !== undefined ? { recommendationId } : {}),
+        ...(score !== undefined ? { score } : {}),
+        ...(comment !== undefined ? { comment } : {}),
+        ...(context !== undefined ? { context } : {}),
       });
 
       return res.status(201).json({ feedback });
@@ -1304,9 +1316,9 @@ router.post("/feedback/user", requireRole("OPERATOR"), async (req: TenantRequest
       tenantId,
       resourceId: resourceId as string,
       type: type as string,
-      rating,
-      comment,
-      timestamp: parsedTimestamp,
+      ...(rating !== undefined ? { rating } : {}),
+      ...(comment !== undefined ? { comment } : {}),
+      ...(parsedTimestamp !== null ? { timestamp: parsedTimestamp } : {}),
     });
 
     return res.status(201).json({ feedback });
@@ -1348,8 +1360,8 @@ router.post(
 
       const { assignment } = await getOrCreateRagExperimentAssignment({
         tenantId,
-        subjectId,
-        experimentKey: experimentKey ?? undefined,
+        ...(subjectId !== undefined ? { subjectId } : {}),
+        ...(typeof experimentKey === "string" ? { experimentKey } : {}),
       });
 
       const feedback = await recordRagExperimentFeedback({
@@ -1357,8 +1369,8 @@ router.post(
         experimentKey: assignment.experimentKey,
         subjectId: assignment.subjectId,
         variant: variant ?? assignment.variant,
-        rating,
-        comment,
+        ...(rating !== undefined ? { rating } : {}),
+        ...(comment !== undefined ? { comment } : {}),
       });
 
       return res.status(201).json({ feedback });
@@ -1528,7 +1540,7 @@ router.post("/financial-report", requireRole("READER"), async (req: TenantReques
           addIssue(issues, `resources[${index}].durationHours`, "champ requis");
         const name = parseOptionalString(resource.name, `resources[${index}].name`, issues, true);
         return {
-          name: typeof name === "string" ? name : undefined,
+          ...(typeof name === "string" ? { name } : {}),
           vcpu: vcpu ?? 0,
           ramGb: ramGb ?? 0,
           storageGb: storageGb ?? 0,
@@ -1573,10 +1585,10 @@ router.post("/financial-report", requireRole("READER"), async (req: TenantReques
       awsRegion: awsRegion ?? "eu-west-1",
       azureRegion: azureRegion ?? "westeurope",
       gcpRegion: gcpRegion ?? "europe-west1",
-      awsLocation: awsLocation ?? undefined,
-      gcpComputeServiceId: gcpComputeServiceId ?? undefined,
-      gcpStorageServiceId: gcpStorageServiceId ?? undefined,
-      gcpNetworkServiceId: gcpNetworkServiceId ?? undefined,
+      ...(typeof awsLocation === "string" ? { awsLocation } : {}),
+      ...(typeof gcpComputeServiceId === "string" ? { gcpComputeServiceId } : {}),
+      ...(typeof gcpStorageServiceId === "string" ? { gcpStorageServiceId } : {}),
+      ...(typeof gcpNetworkServiceId === "string" ? { gcpNetworkServiceId } : {}),
       providers: providers as any,
     });
 
@@ -1806,8 +1818,8 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
       type: s.type,
       domain: s.domain,
       criticality: s.criticality,
-      rtoHours: s.continuity?.rtoHours,
-      rpoMinutes: s.continuity?.rpoMinutes,
+      rtoHours: s.continuity?.rtoHours ?? null,
+      rpoMinutes: s.continuity?.rpoMinutes ?? null,
     }));
 
     const drStrategyDeps = services.flatMap((s) =>
@@ -1860,7 +1872,6 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
       tenantId,
       question: ragQuestion,
       services: drStrategyInputServices,
-      scenarios,
       context: ragContextResult.context,
       maxResults: 5,
     });
@@ -2044,6 +2055,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "documentId manquant" });
+      }
       const force = String(req.query.force ?? "false").toLowerCase() === "true";
 
       const result = await getOrCreateExtractedFacts(id, tenantId, force);
@@ -2073,6 +2087,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "documentId manquant" });
+      }
       const { payload, issues } = parseFeedbackPayload(req.body);
 
       if (!payload) {

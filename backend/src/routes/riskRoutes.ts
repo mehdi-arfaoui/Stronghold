@@ -268,7 +268,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       }
     }
 
-    if (issues.length > 0) {
+    if (issues.length > 0 || !title || probability === undefined || impact === undefined) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -293,11 +293,11 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         threatType,
         probability: probability ?? 1,
         impact: impact ?? 1,
-        status,
-        owner,
-        processName,
+        status: status ?? null,
+        owner: owner ?? null,
+        processName: processName ?? null,
         serviceId: serviceId || null,
-        mitigations: mitigationCreates.length > 0 ? { create: mitigationCreates } : undefined,
+        ...(mitigationCreates.length > 0 ? { mitigations: { create: mitigationCreates } } : {}),
       },
       include: { mitigations: true, service: true },
     });
@@ -323,6 +323,9 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const riskId = req.params.id;
+    if (!riskId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
 
@@ -369,15 +372,15 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const data: any = {};
-    if (title !== undefined) data.title = title;
-    if (description !== undefined) data.description = description;
+    if (title !== undefined && title !== null) data.title = title;
+    if (description !== undefined) data.description = description ?? null;
     if (threatType !== undefined) data.threatType = threatType;
     if (probability !== undefined) data.probability = probability;
     if (impact !== undefined) data.impact = impact;
-    if (status !== undefined) data.status = status;
-    if (owner !== undefined) data.owner = owner;
-    if (processName !== undefined) data.processName = processName;
-    if (serviceId !== undefined) data.serviceId = serviceId;
+    if (status !== undefined) data.status = status ?? null;
+    if (owner !== undefined) data.owner = owner ?? null;
+    if (processName !== undefined) data.processName = processName ?? null;
+    if (serviceId !== undefined) data.serviceId = serviceId ?? null;
 
     const updated = await prisma.risk.update({
       where: { id: riskId },
@@ -406,6 +409,9 @@ router.post("/:id/mitigations", requireRole("OPERATOR"), async (req: TenantReque
     }
 
     const riskId = req.params.id;
+    if (!riskId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
 
@@ -416,7 +422,7 @@ router.post("/:id/mitigations", requireRole("OPERATOR"), async (req: TenantReque
     const status = parseOptionalString(payload.status, "status", issues, { allowNull: true });
     const dueDate = parseDueDate(payload.dueDate, "dueDate", issues);
 
-    if (issues.length > 0) {
+    if (issues.length > 0 || !description) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -433,9 +439,9 @@ router.post("/:id/mitigations", requireRole("OPERATOR"), async (req: TenantReque
         tenantId,
         riskId,
         description,
-        owner,
-        status,
-        dueDate,
+        owner: owner ?? null,
+        status: status ?? null,
+        dueDate: dueDate ?? null,
       },
     });
 
