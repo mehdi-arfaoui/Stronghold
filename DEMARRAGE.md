@@ -12,10 +12,12 @@ docker-compose down
 docker-compose up --build
 
 # Attendez que tous les services soient prêts (vous verrez "API PRA/PCA running on 0.0.0.0:4000")
+# Les migrations sont exécutées automatiquement par le service backend-migrate.
 ```
 
 **Vérification :**
-- Backend : http://localhost:4000/health
+- Backend (live) : http://localhost:4000/health/live
+- Backend (ready) : http://localhost:4000/health/ready
 - Frontend : http://localhost:3000
 
 ---
@@ -47,8 +49,8 @@ node prisma/seed.cjs
 npm run dev
 ```
 
-**Vérification :** Ouvrez http://localhost:4000/health dans votre navigateur
-- Vous devriez voir : `{"status":"ok","tenantsCount":1,...}`
+**Vérification :** Ouvrez http://localhost:4000/health/ready dans votre navigateur
+- Vous devriez voir : `{"status":"ok","dependencies":{...}}`
 
 ### Étape 2 : Frontend (dans un nouveau terminal)
 
@@ -69,14 +71,14 @@ npm run dev
 ## Vérification rapide ✅
 
 ### 1. Test du backend
-Ouvrez dans votre navigateur : **http://localhost:4000/health**
+Ouvrez dans votre navigateur : **http://localhost:4000/health/live**
 
 Vous devriez voir :
 ```json
 {
   "status": "ok",
-  "tenantsCount": 1,
-  "metrics": {...}
+  "uptimeSeconds": 12,
+  "timestamp": "2024-01-01T00:00:00.000Z"
 }
 ```
 
@@ -109,7 +111,7 @@ Ouvrez : **http://localhost:3000**
 - Vérifiez la variable `DATABASE_URL` dans `.env` du backend
 
 ### "NetworkError when attempting to fetch resource"
-- Vérifiez que le backend est démarré : http://localhost:4000/health
+- Vérifiez que le backend est démarré : http://localhost:4000/health/live
 - Vérifiez la console du navigateur (F12) pour les détails
 - Utilisez la bannière de configuration pour définir manuellement l'URL
 
@@ -138,6 +140,9 @@ docker-compose logs -f frontend
 # Arrêter tout
 docker-compose down
 
+# Reset complet (volumes inclus)
+docker-compose down -v
+
 # Redémarrer un service spécifique
 docker-compose restart backend
 ```
@@ -160,4 +165,3 @@ npm run dev  # Ouvrez la console du navigateur (F12)
 - **ChromaDB** : 8000
 - **Backend** : 4000
 - **Frontend** : 3000
-
