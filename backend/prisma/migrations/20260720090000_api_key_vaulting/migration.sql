@@ -1,0 +1,6 @@
+-- AlterTable
+ALTER TABLE "ApiKey" ADD COLUMN "keyCiphertext" TEXT;
+ALTER TABLE "ApiKey" ADD COLUMN "keyIv" TEXT;
+ALTER TABLE "ApiKey" ADD COLUMN "keyTag" TEXT;
+ALTER TABLE "ApiKey" ADD COLUMN "keyAlgorithm" TEXT;
+ALTER TABLE "ApiKey" ADD COLUMN "keyRevealedAt" TIMESTAMP(3);

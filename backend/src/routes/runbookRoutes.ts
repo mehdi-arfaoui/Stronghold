@@ -8,12 +8,19 @@ import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import { generateRunbook } from "../services/runbookGenerator.js";
 import {
+  buildValidationError,
+  parseOptionalString,
+  parseRequiredNumber,
+  parseRequiredString,
+} from "../validation/common.js";
+import {
   computeFileHash,
   detectTemplateFormat,
   sanitizeTemplateDescription,
 } from "../services/runbookTemplateService.js";
 import {
   buildObjectKey,
+  getSignedUploadUrlForObject,
   getSignedUrlForObject,
   getTenantBucketName,
   resolveBucketAndKey,
@@ -23,6 +30,33 @@ import {
 const router = Router();
 const uploadDir = path.join(os.tmpdir(), "runbook-templates");
 fs.mkdirSync(uploadDir, { recursive: true });
+
+const DEFAULT_ALLOWED_MIME_TYPES = [
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.oasis.opendocument.text",
+  "text/markdown",
+];
+
+const MAX_TEMPLATE_SIZE_BYTES = (() => {
+  const value = Number(process.env.RUNBOOK_TEMPLATE_MAX_FILE_SIZE_MB || 10);
+  return Math.max(1, Math.floor(value)) * 1024 * 1024;
+})();
+
+const directUploadsEnabled =
+  String(process.env.RUNBOOK_TEMPLATE_DIRECT_UPLOADS_ENABLED || "false").toLowerCase() === "true";
+
+const allowedMimeTypes = new Set(
+  (process.env.RUNBOOK_TEMPLATE_ALLOWED_MIME_TYPES || DEFAULT_ALLOWED_MIME_TYPES.join(","))
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+
+function isAllowedMimeType(mimeType?: string | null) {
+  if (!mimeType) return false;
+  return allowedMimeTypes.has(mimeType);
+}
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (_req, _file, cb) => cb(null, uploadDir),
@@ -31,7 +65,30 @@ const upload = multer({
       cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
     },
   }),
+  limits: { fileSize: MAX_TEMPLATE_SIZE_BYTES },
+  fileFilter: (_req, file, cb) => {
+    if (!isAllowedMimeType(file.mimetype)) {
+      return cb(new Error("Type de fichier non autorisé"));
+    }
+    return cb(null, true);
+  },
 });
+
+function runTemplateUpload(req: any, res: any): Promise<void> {
+  return new Promise((resolve) => {
+    upload.single("file")(req, res, (err) => {
+      if (err) {
+        const message =
+          err instanceof multer.MulterError
+            ? "Fichier invalide (taille ou format non autorisé)"
+            : err.message || "Fichier invalide";
+        res.status(400).json({ error: message });
+        return resolve();
+      }
+      return resolve();
+    });
+  });
+}
 
 async function withDownloadUrls(runbook: any) {
   const downloadUrls: Record<string, string | null> = { pdf: null, docx: null, markdown: null };
@@ -52,8 +109,23 @@ async function withDownloadUrls(runbook: any) {
   return { ...runbook, downloadUrls };
 }
 
-router.post("/templates", upload.single("file"), async (req: TenantRequest, res) => {
+router.post("/templates", async (req: TenantRequest, res) => {
   try {
+    if (!directUploadsEnabled) {
+      return res.status(409).json({
+        error: "Uploads directs désactivés",
+        details: [
+          {
+            field: "upload",
+            message: "Utilisez /runbooks/templates/presign puis /runbooks/templates/register.",
+          },
+        ],
+      });
+    }
+
+    await runTemplateUpload(req, res);
+    if (res.headersSent) return;
+
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
     if (!req.file) return res.status(400).json({ error: "Aucun fichier fourni" });
@@ -105,8 +177,129 @@ router.post("/templates", upload.single("file"), async (req: TenantRequest, res)
         await fs.promises.rm(file.path, { force: true }).catch(() => undefined);
       }
     }
+    } catch (error: any) {
+      console.error("Error uploading runbook template", { message: error?.message });
+      return res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+router.post("/templates/presign", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const fileName = parseRequiredString(payload.fileName, "fileName", issues);
+    const mimeType = parseRequiredString(payload.mimeType, "mimeType", issues);
+    const size = parseRequiredNumber(payload.size, "size", issues, { min: 1 });
+
+    if (mimeType && !isAllowedMimeType(mimeType)) {
+      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+    }
+
+    if (size && size > MAX_TEMPLATE_SIZE_BYTES) {
+      issues.push({ field: "size", message: "taille maximale dépassée" });
+    }
+
+    const format = detectTemplateFormat(mimeType as string, fileName as string);
+    if (!format) {
+      issues.push({
+        field: "fileName",
+        message: "Format non supporté. Utilisez DOCX, ODT ou Markdown.",
+      });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const bucket = getTenantBucketName(tenantId);
+    const key = buildObjectKey(tenantId, `runbook-template-${fileName}`);
+    const { url, expiresIn } = await getSignedUploadUrlForObject(
+      bucket,
+      key,
+      mimeType as string
+    );
+
+    return res.status(201).json({
+      uploadUrl: url,
+      expiresIn,
+      bucket,
+      key,
+      storagePath: `s3://${bucket}/${key}`,
+      format,
+    });
   } catch (error: any) {
-    console.error("Error uploading runbook template", { message: error?.message });
+    console.error("Error in POST /runbooks/templates/presign:", { message: error?.message });
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const payload = req.body || {};
+    const issues: { field: string; message: string }[] = [];
+    const fileName = parseRequiredString(payload.fileName, "fileName", issues);
+    const mimeType = parseRequiredString(payload.mimeType, "mimeType", issues);
+    const size = parseRequiredNumber(payload.size, "size", issues, { min: 1 });
+    const storagePath = parseRequiredString(payload.storagePath, "storagePath", issues);
+    const fileHash = parseRequiredString(payload.fileHash, "fileHash", issues, { minLength: 8 });
+    const description = parseOptionalString(payload.description, "description", issues, {
+      allowNull: true,
+    });
+
+    if (mimeType && !isAllowedMimeType(mimeType)) {
+      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+    }
+
+    if (size && size > MAX_TEMPLATE_SIZE_BYTES) {
+      issues.push({ field: "size", message: "taille maximale dépassée" });
+    }
+
+    const format = detectTemplateFormat(mimeType as string, fileName as string);
+    if (!format) {
+      issues.push({
+        field: "fileName",
+        message: "Format non supporté. Utilisez DOCX, ODT ou Markdown.",
+      });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const { bucket, key } = resolveBucketAndKey(storagePath as string, tenantId);
+    const duplicate = await prisma.runbookTemplate.findFirst({
+      where: { tenantId, fileHash: String(fileHash) },
+    });
+    if (duplicate) {
+      return res
+        .status(409)
+        .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+    }
+
+    const template = await prisma.runbookTemplate.create({
+      data: {
+        tenantId,
+        originalName: fileName as string,
+        storedName: path.basename(key || fileName),
+        mimeType: mimeType as string,
+        size: size as number,
+        storagePath: `s3://${bucket}/${key}`,
+        format,
+        description: sanitizeTemplateDescription(description),
+        fileHash: String(fileHash),
+      },
+    });
+
+    const signedUrl = await getSignedUrlForObject(bucket, key);
+    return res.status(201).json({ ...template, signedUrl });
+  } catch (error: any) {
+    console.error("Error in POST /runbooks/templates/register:", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });

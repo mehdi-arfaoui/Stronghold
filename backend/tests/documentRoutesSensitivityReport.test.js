@@ -18,7 +18,7 @@ function setupDocumentMocks(t, tenantId) {
 
   documentDelegate.findFirst = async ({ where }) => {
     if (where.id !== "doc-1" || where.tenantId !== tenantId) return null;
-    return { id: "doc-1", tenantId };
+    return { id: "doc-1", tenantId, isSensitive: true, protectionStatus: "PROTECTED" };
   };
 
   reportDelegate.findFirst = async ({ where }) => {
@@ -57,5 +57,6 @@ test("GET /documents/:id/sensitivity-report retourne le rapport", async (t) => {
     const payload = await response.json();
     assert.equal(payload.documentId, "doc-1");
     assert.equal(payload.totalFindings, 1);
+    assert.equal(payload.alert.hasFindings, true);
   });
 });

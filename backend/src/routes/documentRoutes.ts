@@ -68,6 +68,9 @@ const allowedMimeTypes = new Set(
     .filter(Boolean)
 );
 
+const directUploadsEnabled =
+  String(process.env.DOCUMENT_DIRECT_UPLOADS_ENABLED || "false").toLowerCase() === "true";
+
 function isAllowedMimeType(mimeType?: string | null) {
   if (!mimeType) return false;
   return allowedMimeTypes.has(mimeType);
@@ -123,6 +126,21 @@ function computeRetentionDate(days: number): Date | null {
   return date;
 }
 
+function buildDlpAlert(doc: { isSensitive: boolean; protectionStatus: string }, report: any) {
+  const totalFindings = report?.totalFindings ?? 0;
+  const hasFindings = totalFindings > 0 || doc.isSensitive;
+  return {
+    hasFindings,
+    totalFindings,
+    findings: report?.findings ?? [],
+    protectionStatus: doc.protectionStatus,
+    scannedAt: report?.scannedAt ?? null,
+    message: hasFindings
+      ? "Données sensibles détectées. Masquage/alerte recommandé."
+      : "Aucune donnée sensible détectée.",
+  };
+}
+
 /**
  * POST /documents
  * Upload d'un document pour le tenant courant.
@@ -136,6 +154,18 @@ router.post(
   requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
     try {
+      if (!directUploadsEnabled) {
+        return res.status(409).json({
+          error: "Uploads directs désactivés",
+          details: [
+            {
+              field: "upload",
+              message: "Utilisez /documents/presign puis /documents/register avec une URL pré-signée.",
+            },
+          ],
+        });
+      }
+
       await runSingleUpload(req, res);
       if (res.headersSent) return;
 
@@ -375,6 +405,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
       prisma.document.findMany({
         where: { tenantId },
         orderBy: { createdAt: "desc" },
+        include: { sensitivityReport: true },
         ...(shouldPaginate ? { take, skip } : {}),
       }),
       shouldPaginate ? prisma.document.count({ where: { tenantId } }) : Promise.resolve(0),
@@ -384,20 +415,35 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
       docs.map(async (doc) => {
         const isS3Path = (doc.storagePath || "").startsWith("s3://");
         if (!isS3Path) {
-          return { ...doc, signedUrl: null };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl: null,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         }
 
         try {
           const bucketAndKey = resolveBucketAndKey(doc.storagePath, doc.tenantId, doc.storedName);
           const signedUrl = await getSignedUrlForObject(bucketAndKey.bucket, bucketAndKey.key);
-          return { ...doc, signedUrl };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         } catch (err: any) {
           console.error("Error signing document URL", {
             tenantId: doc.tenantId,
             documentId: doc.id,
             message: err?.message,
           });
-          return { ...doc, signedUrl: null };
+          const { sensitivityReport, ...rest } = doc;
+          return {
+            ...rest,
+            signedUrl: null,
+            dlp: buildDlpAlert(doc, sensitivityReport),
+          };
         }
       })
     );
@@ -696,7 +742,10 @@ router.get("/:id/sensitivity-report", requireRole("READER"), async (req: TenantR
       return res.status(404).json({ error: "Rapport de sensibilité introuvable" });
     }
 
-    return res.json(report);
+    return res.json({
+      ...report,
+      alert: buildDlpAlert(doc, report),
+    });
   } catch (error) {
     console.error("Error in GET /documents/:id/sensitivity-report:", error);
     return res.status(500).json({ error: "Internal server error" });
