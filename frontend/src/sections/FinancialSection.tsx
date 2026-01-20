@@ -162,6 +162,21 @@ export function FinancialSection({ configVersion }: FinancialSectionProps) {
       <PageIntro
         title="Coûts"
         subtitle="Comparez les coûts CAPEX/OPEX multi-cloud par scénario de reprise."
+        objective="Valider l'impact financier des scénarios et prioriser les optimisations."
+        steps={[
+          "Renseigner les paramètres d'infrastructure",
+          "Comparer les scénarios par fournisseur",
+          "Identifier les optimisations possibles",
+        ]}
+        links={[
+          { label: "Documentation FinOps", href: "https://finops.org", description: "Bonnes pratiques" },
+        ]}
+        expectedData={[
+          "Paramètres d'instance et de stockage",
+          "Coûts cumulés par scénario",
+          "Synthèse des optimisations",
+        ]}
+        progress={{ value: 40, label: "Modélisation en cours" }}
       />
 
       <div className="card">

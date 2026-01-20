@@ -231,21 +231,27 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
           completedAt?: string | null;
         };
         if (payload.type !== "discovery.progress" || !payload.jobId) return;
+        const jobId = payload.jobId;
 
         setCurrentJob((prev) => {
-          if (prev && prev.id !== payload.jobId) return prev;
+          if (prev && prev.id !== jobId) return prev;
           const now = new Date().toISOString();
-          const baseJob = prev ?? {
-            id: payload.jobId,
+          const baseJob: DiscoveryJob = prev ?? {
+            id: jobId,
             status: "RUNNING",
             jobType: "DISCOVERY",
             progress: 0,
+            step: null,
+            resultSummary: null,
+            errorMessage: null,
             createdAt: now,
             updatedAt: now,
+            startedAt: now,
+            completedAt: null,
           };
           return {
             ...baseJob,
-            id: payload.jobId,
+            id: jobId,
             status: payload.status ?? baseJob.status,
             jobType: baseJob.jobType,
             progress: payload.progress ?? baseJob.progress,
