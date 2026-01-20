@@ -263,7 +263,7 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
   };
 
   const getLinkLabel = (link: GraphEdge) => {
-    if (!showDependencyType) return null;
+    if (!showDependencyType) return undefined;
     if (infoLevel === "detailed") {
       return link.edgeLabelLong || link.edgeLabelShort || link.type || "dépendance";
     }

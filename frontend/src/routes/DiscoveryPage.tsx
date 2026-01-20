@@ -235,18 +235,26 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
         setCurrentJob((prev) => {
           if (prev && prev.id !== payload.jobId) return prev;
           const now = new Date().toISOString();
-          return {
+          const baseJob = prev ?? {
             id: payload.jobId,
-            status: payload.status ?? prev?.status ?? "RUNNING",
-            jobType: prev?.jobType ?? "DISCOVERY",
-            progress: payload.progress ?? prev?.progress ?? 0,
-            step: payload.step ?? prev?.step ?? null,
-            resultSummary: payload.summary ?? prev?.resultSummary ?? null,
-            errorMessage: payload.errorMessage ?? prev?.errorMessage ?? null,
-            createdAt: prev?.createdAt ?? now,
+            status: "RUNNING",
+            jobType: "DISCOVERY",
+            progress: 0,
+            createdAt: now,
             updatedAt: now,
-            startedAt: prev?.startedAt ?? now,
-            completedAt: payload.completedAt ?? prev?.completedAt ?? null,
+          };
+          return {
+            ...baseJob,
+            id: payload.jobId,
+            status: payload.status ?? baseJob.status,
+            jobType: baseJob.jobType,
+            progress: payload.progress ?? baseJob.progress,
+            step: payload.step ?? baseJob.step ?? null,
+            resultSummary: payload.summary ?? baseJob.resultSummary ?? null,
+            errorMessage: payload.errorMessage ?? baseJob.errorMessage ?? null,
+            updatedAt: now,
+            startedAt: baseJob.startedAt ?? now,
+            completedAt: payload.completedAt ?? baseJob.completedAt ?? null,
           };
         });
 

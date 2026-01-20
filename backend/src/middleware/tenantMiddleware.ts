@@ -20,7 +20,7 @@ export const tenantMiddleware = async (
 ) => {
   try {
     // laisser passer /health sans auth
-    if (req.path === "/health") {
+    if (req.path === "/health" || req.path === "/health/live" || req.path === "/health/ready") {
       return next();
     }
 

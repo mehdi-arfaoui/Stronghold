@@ -32,6 +32,11 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/ready || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   chroma:
     image: ghcr.io/chroma-core/chroma:latest
@@ -41,6 +46,11 @@ services:
       - chroma_data:/chroma
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   redis:
     image: redis:7
@@ -48,17 +58,46 @@ services:
     restart: unless-stopped
     ports:
       - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  backend-migrate:
+    build:
+      context: ./backend
+      target: migrate
+    image: stronghold-backend-migrate
+    container_name: pra_backend_migrate
+    restart: "no"
+    command: ["sh", "scripts/migrate-and-seed.sh"]
+    environment:
+      DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: change_me_minio
+      S3_BUCKET_PREFIX: stronghold-docs
+      S3_FORCE_PATH_STYLE: "true"
+      REDIS_URL: redis://redis:6379
+      CHROMADB_URL: http://chroma:8000
+      SEED_ON_START: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
-    image: node:20
+    build:
+      context: ./backend
+      target: runtime
+    image: stronghold-backend
     container_name: pra_backend
-    working_dir: /app
-    command: sh -c "npm install && npx prisma generate && npx prisma migrate deploy && node prisma/seed.cjs && npm run dev"
-    volumes:
-      - ./backend:/app
     environment:
+      NODE_ENV: production
       PORT: 4000
       HOST: 0.0.0.0
+      FRONTEND_URL: http://localhost:3000
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       CHROMADB_URL: http://chroma:8000
       CHROMADB_COLLECTION: pra-documents
@@ -73,32 +112,33 @@ services:
     ports:
       - "4000:4000"
     depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
       chroma:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
       interval: 10s
       timeout: 5s
       retries: 5
-      start_period: 120s
+      start_period: 30s
 
   frontend:
-    image: node:20
+    build:
+      context: ./frontend
+      target: runtime
+      args:
+        VITE_BACKEND_URL: http://localhost:4000
+        VITE_API_URL: http://localhost:4000
+        VITE_API_KEY: dev-key
+    image: stronghold-frontend
     container_name: pra_frontend
-    working_dir: /app
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 3000"
-    volumes:
-      - ./frontend:/app
-    environment:
-      VITE_BACKEND_URL: http://localhost:4000
-      VITE_API_URL: http://localhost:4000
-      VITE_API_KEY: dev-key
     ports:
       - "3000:3000"
     depends_on:

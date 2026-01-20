@@ -2,9 +2,9 @@
 Write-Host "=== Test de connexion Stronghold ===" -ForegroundColor Cyan
 
 # Test 1: Vérifier que le backend répond
-Write-Host "`n1. Test du backend sur http://localhost:4000/health" -ForegroundColor Yellow
+Write-Host "`n1. Test du backend sur http://localhost:4000/health/live" -ForegroundColor Yellow
 try {
-    $response = Invoke-WebRequest -Uri "http://localhost:4000/health" -Method GET -TimeoutSec 5 -ErrorAction Stop
+    $response = Invoke-WebRequest -Uri "http://localhost:4000/health/live" -Method GET -TimeoutSec 5 -ErrorAction Stop
     Write-Host "✓ Backend accessible - Status: $($response.StatusCode)" -ForegroundColor Green
     Write-Host "  Réponse: $($response.Content.Substring(0, [Math]::Min(100, $response.Content.Length)))" -ForegroundColor Gray
 } catch {
@@ -40,4 +40,3 @@ try {
 }
 
 Write-Host "`n=== Fin des tests ===" -ForegroundColor Cyan
-
