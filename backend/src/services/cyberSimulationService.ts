@@ -1,5 +1,5 @@
 import prisma from "../prismaClient.js";
-import type { Exercise } from "@prisma/client";
+import type { Exercise, Prisma } from "@prisma/client";
 import {
   CYBER_SCENARIOS,
   getCyberScenarioById,
@@ -200,7 +200,7 @@ async function applySimulationToRisks(
   simulator: SimulatorType,
   scenario: CyberScenario | null,
   findings: SimulationFindingTemplate[],
-  tx: typeof prisma
+  tx: Prisma.TransactionClient
 ) {
   const updatedRiskIds: string[] = [];
 
@@ -243,7 +243,7 @@ async function applySimulationToRunbookSteps(
   tenantId: string,
   exercise: Exercise,
   findings: SimulationFindingTemplate[],
-  tx: typeof prisma
+  tx: Prisma.TransactionClient
 ) {
   const scenarioId = exercise.scenarioId;
   const existingSteps = await tx.runbookStep.findMany({

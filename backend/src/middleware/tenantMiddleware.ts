@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from "express";
+import type { MulterFile } from "multer";
 import crypto from "crypto";
 import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient.js";
@@ -11,6 +12,7 @@ export type TenantRequest = Request & {
   correlationId?: string;
   tenantSchema?: string;
   tenantQuotas?: ResourceQuotas | null;
+  file?: MulterFile;
 };
 
 export const tenantMiddleware = async (
@@ -61,7 +63,9 @@ export const tenantMiddleware = async (
     const apiRole: ApiRole = existingApiKey?.role ?? "ADMIN";
 
     req.tenantId = resolvedTenant.id;
-    req.apiKeyId = existingApiKey?.id;
+    if (existingApiKey?.id) {
+      req.apiKeyId = existingApiKey.id;
+    }
     req.apiRole = apiRole;
     if (deploymentConfig.multiTenant.enabled) {
       req.tenantSchema = buildTenantSchemaName(resolvedTenant.id);

@@ -60,11 +60,12 @@ export async function fetchAwsComputePricePerHour(
   const pick = pickBestItem(items, [
     (item) => item.metadata?.instanceType === input.instanceType && item.unit.toLowerCase().includes("hr"),
   ]);
+  const source = pick?.source;
 
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }
 
@@ -82,10 +83,11 @@ export async function fetchAwsStoragePricePerGbMonth(region: string, location?: 
     (item) => item.unit.toLowerCase().includes("gb"),
     (item) => item.service.toLowerCase().includes("storage"),
   ]);
+  const source = pick?.source;
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }
 
@@ -100,12 +102,13 @@ export async function fetchAwsTransferPricePerGb(region: string, location?: stri
   });
   const items = normalizeAwsPriceListEntries(response.priceList);
   const pick = pickBestItem(items, [
-    (item) => item.metadata?.usageType?.toString().toLowerCase().includes("data transfer"),
+    (item) => item.metadata?.usageType?.toString().toLowerCase().includes("data transfer") ?? false,
     (item) => item.service.toLowerCase().includes("transfer"),
   ]);
+  const source = pick?.source;
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }

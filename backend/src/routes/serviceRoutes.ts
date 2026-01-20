@@ -98,6 +98,12 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const serviceId = req.params.id;
+    if (!serviceId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+    if (!serviceId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const name =
@@ -142,7 +148,15 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       allowNull: true,
     });
 
-    if (issues.length > 0) {
+    if (
+      issues.length > 0 ||
+      !name ||
+      !type ||
+      !criticality ||
+      rtoHours === undefined ||
+      rpoMinutes === undefined ||
+      mtpdHours === undefined
+    ) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -166,11 +180,11 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     if (description !== undefined) {
-      data.description = description;
+      data.description = description ?? null;
     }
 
     if (owner !== undefined) {
-      data.owner = owner;
+      data.owner = owner ?? null;
     }
 
     if (criticality !== undefined) {
@@ -178,11 +192,11 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     if (businessPriority !== undefined) {
-      data.businessPriority = businessPriority;
+      data.businessPriority = businessPriority ?? null;
     }
 
     if (recoveryPriority !== undefined) {
-      data.recoveryPriority = recoveryPriority;
+      data.recoveryPriority = recoveryPriority ?? null;
     }
 
     if (domain !== undefined) {
@@ -200,7 +214,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       continuityPayload.mtpdHours = mtpdHours;
     }
     if (notes !== undefined) {
-      continuityPayload.notes = notes;
+      continuityPayload.notes = notes ?? null;
     }
 
     if (Object.keys(continuityPayload).length > 0) {
@@ -262,6 +276,9 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     }
 
     const serviceId = req.params.id;
+    if (!serviceId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const service = await prisma.service.findFirst({ where: { id: serviceId, tenantId } });
     if (!service) {
       return res.status(404).json({ error: "Service introuvable pour ce tenant" });
@@ -349,7 +366,15 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       });
     }
 
-    if (issues.length > 0) {
+    if (
+      issues.length > 0 ||
+      !name ||
+      !type ||
+      !criticality ||
+      rtoHours === undefined ||
+      rpoMinutes === undefined ||
+      mtpdHours === undefined
+    ) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -358,18 +383,18 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         tenantId,
         name,
         type,
-        description,
-        owner,
+        description: description ?? null,
+        owner: owner ?? null,
         criticality,
-        businessPriority,
-        recoveryPriority,
+        businessPriority: businessPriority ?? null,
+        recoveryPriority: recoveryPriority ?? null,
         domain: domain ? domain.toUpperCase() : null,
         continuity: {
           create: {
             rtoHours,
             rpoMinutes,
             mtpdHours,
-            notes,
+            notes: notes ?? null,
             advisoryNotes: buildContinuityAdvisory(
               rtoHours,
               rpoMinutes,
@@ -415,6 +440,9 @@ router.post(
     }
 
     const fromServiceId = req.params.id;
+    if (!fromServiceId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const toServiceId = parseRequiredString(payload.toServiceId, "toServiceId", issues);
@@ -423,7 +451,7 @@ router.post(
       "dependencyType",
       issues
     );
-    if (issues.length > 0) {
+    if (issues.length > 0 || !toServiceId || !dependencyType) {
       return res.status(400).json(buildValidationError(issues));
     }
 

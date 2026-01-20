@@ -70,8 +70,13 @@ router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const exercise = await prisma.cyberExercise.findFirst({
-      where: { tenantId, id: req.params.id },
+      where: { tenantId, id: exerciseId },
     });
 
     if (!exercise) {
@@ -139,15 +144,20 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const updated = await updateCyberExercise(tenantId, req.params.id, {
-      scenarioId: scenarioId ?? undefined,
-      date,
-      participants: participants ?? undefined,
-      simulator: simulator ?? undefined,
-      results: payload.results ?? undefined,
-      runbook: payload.runbook ?? undefined,
-      report: payload.report ?? undefined,
-      logs: payload.logs ?? undefined,
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
+    const updated = await updateCyberExercise(tenantId, exerciseId, {
+      ...(scenarioId !== undefined && scenarioId !== null ? { scenarioId } : {}),
+      ...(date !== undefined ? { date } : {}),
+      ...(participants !== undefined ? { participants } : {}),
+      ...(simulator !== undefined ? { simulator } : {}),
+      ...(payload.results !== undefined ? { results: payload.results } : {}),
+      ...(payload.runbook !== undefined ? { runbook: payload.runbook } : {}),
+      ...(payload.report !== undefined ? { report: payload.report } : {}),
+      ...(payload.logs !== undefined ? { logs: payload.logs } : {}),
     });
 
     return res.json(updated);
@@ -162,7 +172,12 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
-    await deleteCyberExercise(tenantId, req.params.id);
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
+    await deleteCyberExercise(tenantId, exerciseId);
     return res.status(204).send();
   } catch (error: any) {
     console.error("Error deleting cyber exercise", { message: error?.message });

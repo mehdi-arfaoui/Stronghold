@@ -68,7 +68,8 @@ type DocxModule = typeof import("docx");
 
 async function loadDocx(): Promise<DocxModule> {
   try {
-    return await import("docx");
+    const module = await import("docx");
+    return module as DocxModule;
   } catch (err) {
     const error = new Error(
       "Module 'docx' requis pour générer les runbooks DOCX. Installez les dépendances backend (npm install)."
@@ -79,27 +80,29 @@ async function loadDocx(): Promise<DocxModule> {
 }
 
 function toDocxParagraph(docx: DocxModule, line: string) {
+  const docxAny = docx as any;
   if (line.startsWith("# ")) {
-    return new docx.Paragraph({
+    return new docxAny.Paragraph({
       text: line.replace(/^#\s*/, "").trim(),
-      heading: docx.HeadingLevel.HEADING_1,
+      heading: docxAny.HeadingLevel.HEADING_1,
     });
   }
   if (line.startsWith("## ")) {
-    return new docx.Paragraph({
+    return new docxAny.Paragraph({
       text: line.replace(/^##\s*/, "").trim(),
-      heading: docx.HeadingLevel.HEADING_2,
+      heading: docxAny.HeadingLevel.HEADING_2,
     });
   }
-  return new docx.Paragraph({
-    children: [new docx.TextRun(line)],
+  return new docxAny.Paragraph({
+    children: [new docxAny.TextRun(line)],
   });
 }
 
 async function renderDocx(content: string): Promise<Buffer> {
   const docx = await loadDocx();
   const lines = splitLines(content);
-  const doc = new docx.Document({
+  const docxAny = docx as any;
+  const doc = new docxAny.Document({
     sections: [
       {
         properties: {},
@@ -107,7 +110,7 @@ async function renderDocx(content: string): Promise<Buffer> {
       },
     ],
   });
-  return docx.Packer.toBuffer(doc);
+  return docxAny.Packer.toBuffer(doc);
 }
 
 async function renderPdf(content: string, title: string): Promise<Buffer> {
@@ -308,7 +311,7 @@ export async function generateRunbook(tenantId: string, options: RunbookGenerati
     tenantId,
     question: ragQuestion,
     services,
-    scenarios: scenario ? [scenario as any] : undefined,
+    ...(scenario ? { scenarios: [scenario as any] } : {}),
     context: ragContextResult.context,
     maxResults: 5,
   });

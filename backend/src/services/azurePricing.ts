@@ -44,35 +44,38 @@ export async function fetchAzureComputePricePerHour(
   const items = normalizeAzurePricingResponse({ Items: response.items });
   const pick = pickBestItem(items, [(item) => item.unit.toLowerCase().includes("hour")]);
 
+  const source = pick?.source;
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }
 
-export async function fetchAzureStoragePricePerGbMonth(region: string) {
+export async function fetchAzureStoragePricePerGbMonth(region: string): Promise<AzureUnitPriceResult> {
   const regionFilter = buildRegionFilter(region);
   const filter = ["serviceName eq 'Storage'", regionFilter].filter(Boolean).join(" and ");
   const response = await fetchAzureRetailPrices({ filter, pageSize: 50, maxPages: 1 });
   const items = normalizeAzurePricingResponse({ Items: response.items });
   const pick = pickBestItem(items, [(item) => item.unit.toLowerCase().includes("gb")]);
+  const source = pick?.source;
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }
 
-export async function fetchAzureTransferPricePerGb(region: string) {
+export async function fetchAzureTransferPricePerGb(region: string): Promise<AzureUnitPriceResult> {
   const regionFilter = buildRegionFilter(region);
   const filter = ["serviceName eq 'Bandwidth'", regionFilter].filter(Boolean).join(" and ");
   const response = await fetchAzureRetailPrices({ filter, pageSize: 50, maxPages: 1 });
   const items = normalizeAzurePricingResponse({ Items: response.items });
   const pick = pickBestItem(items, [(item) => item.unit.toLowerCase().includes("gb")]);
+  const source = pick?.source;
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(source ? { source } : {}),
   };
 }

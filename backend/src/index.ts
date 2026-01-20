@@ -2,7 +2,7 @@ import express from "express";
 import http from "http";
 import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
-import IORedis from "ioredis";
+import { Redis } from "ioredis";
 import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
@@ -108,7 +108,7 @@ const checkRedis = async () => {
   if (!redisUrl) {
     throw new Error("REDIS_URL not set");
   }
-  const redis = new IORedis(redisUrl, {
+  const redis = new Redis(redisUrl, {
     lazyConnect: true,
     connectTimeout: HEALTHCHECK_TIMEOUT_MS,
     maxRetriesPerRequest: 1,
@@ -271,7 +271,7 @@ logBoot("config.loaded", {
 
 // Configure CORS to allow requests from frontend
 const corsOptions: CorsOptions = {
-  origin(origin, callback) {
+  origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
     // Allow requests with no origin only when explicitly enabled
     if (!origin) {
       if (allowNoOrigin) {
@@ -294,11 +294,12 @@ const corsOptions: CorsOptions = {
 const corsMiddleware = cors(corsOptions);
 app.use((req, res, next) => {
   res.append("Vary", "Origin");
-  corsMiddleware(req, res, (err) => {
+  corsMiddleware(req, res, (err?: any) => {
     if (err) {
-      return res.status(403).json({ error: "Origin not allowed by CORS" });
+      res.status(403).json({ error: "Origin not allowed by CORS" });
+      return;
     }
-    return next();
+    next();
   });
 });
 app.use(express.json());

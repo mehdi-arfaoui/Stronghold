@@ -3,6 +3,7 @@ import * as fs from "fs";
 import multer from "multer";
 import path from "path";
 import * as crypto from "crypto";
+import type { MulterFile } from "multer";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -78,14 +79,15 @@ function isAllowedMimeType(mimeType?: string | null) {
 
 const upload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, uploadDir),
-    filename: (_req, file, cb) => {
+    destination: (_req: unknown, _file: MulterFile, cb: (error: Error | null, dest: string) => void) =>
+      cb(null, uploadDir),
+    filename: (_req: unknown, file: MulterFile, cb: (error: Error | null, name: string) => void) => {
       const safeName = file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, "_");
       cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
     },
   }),
   limits: { fileSize: MAX_FILE_SIZE_BYTES, files: MAX_FILE_COUNT },
-  fileFilter: (_req, file, cb) => {
+  fileFilter: (_req: unknown, file: MulterFile, cb: (error: Error | null, acceptFile?: boolean) => void) => {
     if (!isAllowedMimeType(file.mimetype)) {
       return cb(new Error("Type de fichier non autorisé"));
     }
@@ -235,7 +237,7 @@ router.post(
             size: file.size,
             storagePath: `s3://${bucketAndKey.bucket}/${bucketAndKey.key}`,
             docType: docType ? docType.toUpperCase() : null,
-            description,
+            description: description ?? null,
             fileHash,
             ingestionStatus: "FILE_STORED",
             retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
@@ -283,17 +285,13 @@ router.post("/presign", requireRole("OPERATOR"), async (req: TenantRequest, res)
       issues.push({ field: "size", message: "taille maximale dépassée" });
     }
 
-    if (issues.length > 0) {
+    if (issues.length > 0 || !fileName || !mimeType || size === undefined) {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const objectKey = buildObjectKey(tenantId, fileName as string);
+    const objectKey = buildObjectKey(tenantId, fileName);
     const bucket = getTenantBucketName(tenantId);
-    const { url, expiresIn } = await getSignedUploadUrlForObject(
-      bucket,
-      objectKey,
-      mimeType as string
-    );
+    const { url, expiresIn } = await getSignedUploadUrlForObject(bucket, objectKey, mimeType);
 
     return res.status(201).json({
       uploadUrl: url,
@@ -338,11 +336,18 @@ router.post("/register", requireRole("OPERATOR"), async (req: TenantRequest, res
       issues.push({ field: "size", message: "taille maximale dépassée" });
     }
 
-    if (issues.length > 0) {
+    if (
+      issues.length > 0 ||
+      !fileName ||
+      !mimeType ||
+      size === undefined ||
+      !storagePath ||
+      !fileHash
+    ) {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const { bucket, key } = resolveBucketAndKey(storagePath as string, tenantId);
+    const { bucket, key } = resolveBucketAndKey(storagePath, tenantId);
     const duplicate = await prisma.document.findFirst({
       where: { tenantId, fileHash: String(fileHash) },
     });
@@ -356,13 +361,13 @@ router.post("/register", requireRole("OPERATOR"), async (req: TenantRequest, res
     const doc = await prisma.document.create({
       data: {
         tenantId,
-        originalName: fileName as string,
+        originalName: fileName,
         storedName: path.basename(key || fileName),
-        mimeType: mimeType as string,
-        size: size as number,
+        mimeType: mimeType,
+        size: size,
         storagePath: `s3://${bucket}/${key}`,
         docType: docType ? docType.toUpperCase() : null,
-        description,
+        description: description ?? null,
         fileHash: String(fileHash),
         ingestionStatus: "FILE_STORED",
         retentionUntil: computeRetentionDate(retentionConfig.documentRetentionDays),
@@ -476,6 +481,9 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const docId = req.params.id;
+    if (!docId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const docType = parseOptionalString(payload.docType, "docType", issues, {
@@ -484,7 +492,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     const description = parseOptionalString(payload.description, "description", issues, {
       allowNull: true,
     });
-    if (issues.length > 0) {
+    if (issues.length > 0 || !docId) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -498,7 +506,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       data.docType = docType ? docType.toUpperCase() : null;
     }
     if (description !== undefined) {
-      data.description = description;
+      data.description = description ?? null;
     }
 
     const updated = await prisma.document.update({
@@ -527,14 +535,14 @@ router.post(
         return res.status(500).json({ error: "Tenant not resolved" });
       }
 
-      const docId = req.params.id;
       const issues: { field: string; message: string }[] = [];
+      const docId = parseRequiredString(req.params.id, "id", issues);
       const correctedType = parseRequiredString(req.body?.correctedType, "correctedType", issues);
       const notes = parseOptionalString(req.body?.notes, "notes", issues, {
         allowNull: true,
       });
 
-      if (issues.length > 0) {
+      if (issues.length > 0 || !docId) {
         return res.status(400).json(buildValidationError(issues));
       }
 
@@ -542,7 +550,7 @@ router.post(
         tenantId,
         documentId: docId,
         correctedType: correctedType as string,
-        notes,
+        notes: notes ?? null,
       });
 
       return res.json({ documentId: docId, feedback });
@@ -568,6 +576,9 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     }
 
     const docId = req.params.id;
+    if (!docId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const doc = await prisma.document.findFirst({ where: { id: docId, tenantId } });
     if (!doc) {
       return res.status(404).json({ error: "Document introuvable pour ce tenant" });
@@ -602,7 +613,7 @@ router.get("/:id/extraction-suggestions", requireRole("OPERATOR"), async (req: T
     if (status && !["PENDING", "APPROVED", "REJECTED"].includes(status.toUpperCase())) {
       issues.push({ field: "status", message: "Statut invalide" });
     }
-    if (issues.length > 0) {
+    if (issues.length > 0 || !docId) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -639,7 +650,7 @@ router.post(
       const reviewNotes = parseOptionalString(req.body?.reviewNotes, "reviewNotes", issues, {
         allowNull: true,
       });
-      if (issues.length > 0) {
+      if (issues.length > 0 || !docId) {
         return res.status(400).json(buildValidationError(issues));
       }
 
@@ -655,8 +666,8 @@ router.post(
       const result = await approveExtractionSuggestions({
         tenantId,
         documentId: docId,
-        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
-        reviewNotes,
+        ...(suggestionIds.length > 0 ? { suggestionIds } : {}),
+        ...(reviewNotes !== undefined ? { reviewNotes } : {}),
       });
 
       return res.json(result);
@@ -682,7 +693,7 @@ router.post(
       const reviewNotes = parseOptionalString(req.body?.reviewNotes, "reviewNotes", issues, {
         allowNull: true,
       });
-      if (issues.length > 0) {
+      if (issues.length > 0 || !docId) {
         return res.status(400).json(buildValidationError(issues));
       }
 
@@ -698,8 +709,8 @@ router.post(
       const result = await rejectExtractionSuggestions({
         tenantId,
         documentId: docId,
-        suggestionIds: suggestionIds.length > 0 ? suggestionIds : undefined,
-        reviewNotes,
+        ...(suggestionIds.length > 0 ? { suggestionIds } : {}),
+        ...(reviewNotes !== undefined ? { reviewNotes } : {}),
       });
 
       return res.json(result);
@@ -723,7 +734,7 @@ router.get("/:id/sensitivity-report", requireRole("READER"), async (req: TenantR
 
     const issues: { field: string; message: string }[] = [];
     const docId = parseRequiredString(req.params.id, "id", issues);
-    if (issues.length > 0) {
+    if (issues.length > 0 || !docId) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -761,7 +772,7 @@ router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, 
 
     const issues: { field: string; message: string }[] = [];
     const docId = parseRequiredString(req.params.id, "id", issues);
-    if (issues.length > 0) {
+    if (issues.length > 0 || !docId) {
       return res.status(400).json(buildValidationError(issues));
     }
 
