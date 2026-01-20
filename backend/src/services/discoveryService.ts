@@ -453,7 +453,14 @@ function parseCsvPayload(content: string): DiscoveryImportResult {
       report: { rejectedRows: 0, rejectedEntries: [] },
     };
   }
-  const headers = rows[0].map(toLowerHeader);
+  const headerRow = rows[0];
+  if (!headerRow) {
+    return {
+      payload: { nodes: [], edges: [] },
+      report: { rejectedRows: 0, rejectedEntries: [] },
+    };
+  }
+  const headers = headerRow.map(toLowerHeader);
   const missingHeaders = expectedCsvHeaders.filter((header) => !headers.includes(header));
   if (missingHeaders.length > 0) {
     throw new DiscoveryImportError("Header CSV invalide", [
@@ -497,11 +504,11 @@ function parseCsvPayload(content: string): DiscoveryImportResult {
       const externalId = normalizeExternalId(record["id"], "");
       const name = record["name"];
       const rawKind = record["type"];
-      const reasons: string[] = [];
-      if (!externalId) reasons.push("id manquant");
-      if (!name) reasons.push("name manquant");
-      if (!rawKind) reasons.push("type manquant");
-      if (reasons.length > 0) {
+      if (!externalId || !name || !rawKind) {
+        const reasons: string[] = [];
+        if (!externalId) reasons.push("id manquant");
+        if (!name) reasons.push("name manquant");
+        if (!rawKind) reasons.push("type manquant");
         rejectedEntries.push({ line: lineNumber, recordType: "node", reasons });
         continue;
       }
@@ -900,8 +907,8 @@ export async function applyDiscoveryImport(
           tenantId,
           name: node.name,
           type: node.type,
-          provider: node.provider,
-          location: node.location,
+          ...(node.provider !== undefined ? { provider: node.provider } : {}),
+          ...(node.location !== undefined ? { location: node.location } : {}),
           criticality: node.criticality ? normalizeCriticality(node.criticality) : null,
           notes: description,
           isSingleAz: false,

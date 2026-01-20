@@ -385,9 +385,11 @@ export function buildChunks(
 
   for (let index = 0; index < sentenceChunks.length; index += 1) {
     const baseText = sentenceChunks[index];
+    if (!baseText) continue;
+    const previous = sentenceChunks[index - 1];
     const overlapText =
-      overlap > 0 && index > 0
-        ? sentenceChunks[index - 1].slice(Math.max(0, sentenceChunks[index - 1].length - overlap))
+      overlap > 0 && index > 0 && previous
+        ? previous.slice(Math.max(0, previous.length - overlap))
         : "";
     const mergedText = overlapText ? `${overlapText} ${baseText}`.trim() : baseText;
     const chunkText = mergedText.slice(0, maxLength).trim();
@@ -496,10 +498,12 @@ export async function pushChunksToChroma(
       ...c.metadata,
       tenantId,
       documentId,
-      retentionUntil: retention?.document ? retention.document.toISOString() : undefined,
-      embeddingRetentionUntil: retention?.embedding
-        ? retention.embedding.toISOString()
-        : undefined,
+      ...(retention?.document
+        ? { retentionUntil: retention.document.toISOString() }
+        : {}),
+      ...(retention?.embedding
+        ? { embeddingRetentionUntil: retention.embedding.toISOString() }
+        : {}),
     })),
   };
 

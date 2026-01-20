@@ -1,5 +1,6 @@
 import prisma from "../prismaClient.js";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type SuggestionStatus = "PENDING" | "APPROVED" | "REJECTED";
 export type SuggestionType =
@@ -137,7 +138,7 @@ export async function createExtractionSuggestions(params: {
       documentId: params.documentId,
       suggestionType: suggestion.suggestionType,
       label: suggestion.label,
-      data: suggestion.data,
+      data: toPrismaJson(suggestion.data),
       status: "PENDING",
     })),
   });
@@ -401,7 +402,7 @@ export async function approveExtractionSuggestions(params: {
     return { approved: 0 };
   }
 
-  await prismaClient.$transaction(async (tx) => {
+  await prismaClient.$transaction(async (tx: Prisma.TransactionClient) => {
     for (const suggestion of suggestions) {
       const data = suggestion.data as Record<string, unknown>;
       switch (suggestion.suggestionType as SuggestionType) {
@@ -450,8 +451,8 @@ export async function approveExtractionSuggestions(params: {
           await applyRisk(tx, params.tenantId, {
             title: String(data.title || suggestion.label),
             threatType: (data.threatType as string | null) ?? null,
-            probability: typeof data.probability === "number" ? data.probability : undefined,
-            impact: typeof data.impact === "number" ? data.impact : undefined,
+            ...(typeof data.probability === "number" ? { probability: data.probability } : {}),
+            ...(typeof data.impact === "number" ? { impact: data.impact } : {}),
           });
           break;
         case "TEST_EXERCISE":
@@ -468,7 +469,7 @@ export async function approveExtractionSuggestions(params: {
     }
 
     await tx.documentExtractionSuggestion.updateMany({
-      where: { id: { in: suggestions.map((s) => s.id) } },
+      where: { id: { in: suggestions.map((suggestion: { id: string }) => suggestion.id) } },
       data: {
         status: "APPROVED",
         reviewedAt: new Date(),

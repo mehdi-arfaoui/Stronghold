@@ -354,9 +354,9 @@ export async function applyClassificationFeedback(
           label: existing.label,
         },
         updatedFact: {
-          type: updatePayload.type ?? existing.type,
+          type: typeof updatePayload.type === "string" ? updatePayload.type : existing.type,
           category: updatedCategory,
-          label: updatePayload.label ?? existing.label,
+          label: typeof updatePayload.label === "string" ? updatePayload.label : existing.label,
           data: updatedData,
           source: existing.source ?? null,
           confidence: existing.confidence ?? null,

@@ -248,7 +248,11 @@ function parseCrossWeights(value: string | undefined): { lexical: number; vector
   if (parts.length !== 3) {
     return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
   }
-  return { lexical: parts[0], vector: parts[1], bm25: parts[2] };
+  const [lexical, vector, bm25] = parts;
+  if (lexical === undefined || vector === undefined || bm25 === undefined) {
+    return { lexical: 0.5, vector: 0.25, bm25: 0.25 };
+  }
+  return { lexical, vector, bm25 };
 }
 
 function buildRankedDocumentIds(chunks: RagChunk[]): string[] {
@@ -356,7 +360,7 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
     fetchFactCandidates({
       tenantId: options.tenantId,
       questionTokens,
-      documentIds: docFilter.id ? docFilter.id.in : null,
+      documentIds: options.documentIds ?? null,
       maxFacts,
       prismaClient,
     }),
@@ -402,7 +406,7 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
     };
   }
 
-  const index = elasticlunr(function () {
+  const index = elasticlunr(function (this: any) {
     this.setRef("chunkKey");
     this.addField("text");
   });
@@ -411,7 +415,9 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
     index.addDoc({ chunkKey: chunk.chunkKey, text: chunk.text });
   }
 
-  const searchResults = questionText ? index.search(questionText, { expand: true }) : [];
+  const searchResults: Array<{ ref: string; score?: number }> = questionText
+    ? index.search(questionText, { expand: true })
+    : [];
   const resultScoreMap = new Map<string, number>();
   for (const result of searchResults) {
     const score = typeof result.score === "number" ? result.score : 0;
@@ -421,7 +427,9 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
   const rankedCandidates =
     searchResults.length > 0
       ? searchResults
-          .map((result) => chunkDocs.find((chunk) => chunk.chunkKey === result.ref))
+          .map((result: { ref: string }) =>
+            chunkDocs.find((chunk) => chunk.chunkKey === result.ref)
+          )
           .filter((chunk): chunk is RagChunkCandidate => Boolean(chunk))
       : chunkDocs;
 
@@ -443,7 +451,11 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
 
   return {
     context: {
-      chunks: sortedChunks.map((chunk) => ({ ...chunk, score: chunk.score })),
+      chunks: sortedChunks.map((chunk) => ({
+        ...chunk,
+        score: chunk.score,
+        ...(chunk.documentType !== undefined ? { documentType: chunk.documentType } : {}),
+      })),
       extractedFacts: sortedFacts,
     },
     usedDocumentIds: documents.map((d) => d.id),
@@ -490,6 +502,7 @@ async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
   const chunkCandidates: RagChunkCandidate[] = [];
   for (let index = 0; index < documents.length; index += 1) {
     const text = documents[index];
+    if (typeof text !== "string") continue;
     const metadata = metadatas[index] || {};
     const documentId = toOptionalString(metadata.documentId);
     if (!documentId) continue;
@@ -499,7 +512,8 @@ async function retrieveVectorRagContext(options: RagQueryOptions): Promise<{
       toOptionalString(metadata.normalizedDocType) ??
       toOptionalString(metadata.declaredDocType) ??
       toOptionalString(metadata.classification);
-    const distance = typeof distances[index] === "number" ? distances[index] : null;
+    const distanceValue = distances[index];
+    const distance = typeof distanceValue === "number" ? distanceValue : null;
     const score = distance !== null ? Number((1 / (1 + distance)).toFixed(4)) : DEFAULT_VECTOR_SCORE;
     const chunkText = clampText(text, MAX_CHARS_PER_CHUNK);
 
@@ -685,7 +699,7 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
     .map((chunk) => ({
       documentId: chunk.documentId,
       documentName: chunk.documentName,
-      documentType: chunk.documentType,
+      documentType: chunk.documentType ?? null,
       score: chunk.score,
       text: chunk.text,
     }));
@@ -893,13 +907,13 @@ export async function generatePraReport(params: {
   const contextResult = await retrieveRagContext({
     tenantId: params.tenantId,
     question: params.question,
-    documentIds: params.documentIds,
-    documentTypes: params.documentTypes,
-    serviceFilter: params.serviceFilter,
+    ...(params.documentIds !== undefined ? { documentIds: params.documentIds } : {}),
+    ...(params.documentTypes !== undefined ? { documentTypes: params.documentTypes } : {}),
+    ...(params.serviceFilter !== undefined ? { serviceFilter: params.serviceFilter } : {}),
     maxChunks: params.maxChunks ?? 6,
     maxFacts: params.maxFacts ?? 8,
-    prismaClient: params.prismaClient,
-    ragRuntimeConfig: params.ragRuntimeConfig,
+    ...(params.prismaClient !== undefined ? { prismaClient: params.prismaClient } : {}),
+    ...(params.ragRuntimeConfig !== undefined ? { ragRuntimeConfig: params.ragRuntimeConfig } : {}),
   });
 
   const prompt = buildRagPrompt({
@@ -912,7 +926,7 @@ export async function generatePraReport(params: {
     question: params.question,
     context: contextResult.context,
     maxResults: 6,
-    prismaClient: params.prismaClient,
+    ...(params.prismaClient !== undefined ? { prismaClient: params.prismaClient } : {}),
   });
 
   return {
@@ -940,12 +954,12 @@ export async function generateRunbookDraft(params: {
   const report = await generatePraReport({
     tenantId: params.tenantId,
     question: baseQuestion,
-    documentIds: params.documentIds,
-    documentTypes: params.documentTypes,
-    serviceFilter: params.serviceFilter,
+    ...(params.documentIds !== undefined ? { documentIds: params.documentIds } : {}),
+    ...(params.documentTypes !== undefined ? { documentTypes: params.documentTypes } : {}),
+    ...(params.serviceFilter !== undefined ? { serviceFilter: params.serviceFilter } : {}),
     maxChunks: 8,
     maxFacts: 10,
-    ragRuntimeConfig: params.ragRuntimeConfig,
+    ...(params.ragRuntimeConfig !== undefined ? { ragRuntimeConfig: params.ragRuntimeConfig } : {}),
   });
 
   const sources = [

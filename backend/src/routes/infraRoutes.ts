@@ -42,7 +42,7 @@ router.post("/components", requireRole("OPERATOR"), async (req: TenantRequest, r
       allowNull: true,
     });
 
-    if (issues.length > 0) {
+    if (issues.length > 0 || !name || !type) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -51,11 +51,11 @@ router.post("/components", requireRole("OPERATOR"), async (req: TenantRequest, r
         tenantId,
         name,
         type,
-        provider,
-        location,
-        criticality,
-        isSingleAz: Boolean(isSingleAz),
-        notes,
+        provider: provider ?? null,
+        location: location ?? null,
+        criticality: criticality ?? null,
+        isSingleAz: isSingleAz ?? false,
+        notes: notes ?? null,
       },
     });
 
@@ -75,6 +75,9 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     }
 
     const infraId = req.params.id;
+    if (!infraId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const name =
@@ -123,15 +126,15 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     }
 
     if (provider !== undefined) {
-      data.provider = provider;
+      data.provider = provider ?? null;
     }
 
     if (location !== undefined) {
-      data.location = location;
+      data.location = location ?? null;
     }
 
     if (criticality !== undefined) {
-      data.criticality = criticality;
+      data.criticality = criticality ?? null;
     }
 
     if (isSingleAz !== undefined) {
@@ -139,7 +142,7 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
     }
 
     if (notes !== undefined) {
-      data.notes = notes;
+      data.notes = notes ?? null;
     }
 
     const updated = await prisma.infraComponent.update({
@@ -194,7 +197,7 @@ router.post("/link", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
     const issues: { field: string; message: string }[] = [];
     const serviceId = parseRequiredString(payload.serviceId, "serviceId", issues);
     const infraId = parseRequiredString(payload.infraId, "infraId", issues);
-    if (issues.length > 0) {
+    if (issues.length > 0 || !serviceId || !infraId) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -231,6 +234,9 @@ router.delete("/components/:id", requireRole("OPERATOR"), async (req: TenantRequ
     }
 
     const infraId = req.params.id;
+    if (!infraId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const infra = await prisma.infraComponent.findFirst({ where: { id: infraId, tenantId } });
     if (!infra) {
       return res.status(404).json({ error: "InfraComponent introuvable pour ce tenant" });

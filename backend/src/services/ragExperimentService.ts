@@ -42,7 +42,11 @@ function pickVariant(seed: string): RagExperimentVariant {
   const bucket = parseInt(hash.slice(0, 8), 16) / 0xffffffff;
   const segment = 1 / VARIANTS.length;
   const index = bucket < segment ? 0 : bucket < segment * 2 ? 1 : 2;
-  return VARIANTS[index] ?? VARIANTS[0];
+  const fallback = VARIANTS[0];
+  if (!fallback) {
+    throw new Error("RAG experiment variants are not configured.");
+  }
+  return VARIANTS[index] ?? fallback;
 }
 
 export async function getOrCreateRagExperimentAssignment(params: {
@@ -58,7 +62,11 @@ export async function getOrCreateRagExperimentAssignment(params: {
   });
 
   if (existing) {
-    const variant = VARIANTS.find((item) => item.key === existing.variant) ?? VARIANTS[0];
+    const fallback = VARIANTS[0];
+    if (!fallback) {
+      throw new Error("RAG experiment variants are not configured.");
+    }
+    const variant = VARIANTS.find((item) => item.key === existing.variant) ?? fallback;
     return { assignment: existing, variant };
   }
 

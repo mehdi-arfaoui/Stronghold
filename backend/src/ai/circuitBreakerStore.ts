@@ -1,4 +1,4 @@
-import IORedis from "ioredis";
+import { Redis } from "ioredis";
 
 export type CircuitBreakerState = {
   failures: number;
@@ -6,7 +6,7 @@ export type CircuitBreakerState = {
 };
 
 const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
-let redisClient: IORedis | null = null;
+let redisClient: Redis | null = null;
 const memoryStore = new Map<string, CircuitBreakerState>();
 
 function shouldUseRedis() {
@@ -18,7 +18,7 @@ function getRedisClient() {
     return null;
   }
   if (!redisClient) {
-    redisClient = new IORedis(redisUrl, { maxRetriesPerRequest: null });
+    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
   }
   return redisClient;
 }

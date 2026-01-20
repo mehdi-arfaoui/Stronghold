@@ -1,5 +1,6 @@
 import { Router } from "express";
 import prisma from "../prismaClient.js";
+import type { Prisma } from "@prisma/client";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import {
@@ -115,7 +116,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       { allowNull: true, min: 0 }
     );
     const serviceIds = parseStringArray(payload.serviceIds, "serviceIds", issues);
-    if (issues.length > 0) {
+    if (issues.length > 0 || !name || !type) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -137,9 +138,9 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
         catalogScenarioId: catalogScenarioId ?? null,
         name,
         type,
-        description,
-        impactLevel: impact,
-        rtoTargetHours: rtoHours,
+        description: description ?? null,
+        impactLevel: impact ?? null,
+        rtoTargetHours: rtoHours ?? null,
       },
     });
 
@@ -203,6 +204,9 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     const scenarioId = req.params.id;
+    if (!scenarioId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const name =
@@ -256,11 +260,11 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     if (description !== undefined) {
-      data.description = description;
+      data.description = description ?? null;
     }
 
     if (impactLevel !== undefined) {
-      data.impactLevel = impactLevel;
+      data.impactLevel = impactLevel ?? null;
     }
 
     if (catalogScenarioId !== undefined) {
@@ -279,10 +283,10 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     }
 
     if (rtoTargetHours !== undefined) {
-      data.rtoTargetHours = rtoTargetHours;
+      data.rtoTargetHours = rtoTargetHours ?? null;
     }
 
-    const updates: Promise<any>[] = [];
+    const updates: Prisma.PrismaPromise<unknown>[] = [];
     updates.push(
       prisma.scenario.update({
         where: { id: scenarioId },
@@ -356,6 +360,9 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     }
 
     const scenarioId = req.params.id;
+    if (!scenarioId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, tenantId } });
     if (!scenario) {
       return res.status(404).json({ error: "Scenario not found for this tenant" });
@@ -387,6 +394,9 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
     }
 
     const scenarioId = req.params.id;
+    if (!scenarioId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const order = parseRequiredNumber(payload.order, "order", issues);
@@ -403,7 +413,7 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
     const role = parseOptionalString(payload.role, "role", issues, { allowNull: true });
     const blocking = parseOptionalBoolean(payload.blocking, "blocking", issues);
 
-    if (issues.length > 0) {
+    if (issues.length > 0 || order === undefined || !title) {
       return res.status(400).json(buildValidationError(issues));
     }
 
@@ -435,9 +445,9 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
         scenarioId: scenario.id,
         order: ord,
         title,
-        description,
+        description: description ?? null,
         estimatedDurationMinutes: estMinutes,
-        role,
+        role: role ?? null,
         blocking: Boolean(blocking),
       },
     });
@@ -461,6 +471,9 @@ router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequ
 
     const scenarioId = req.params.id;
     const stepId = req.params.stepId;
+    if (!scenarioId || !stepId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const order =
@@ -504,20 +517,20 @@ router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequ
       data.order = ord;
     }
 
-    if (title !== undefined) {
+    if (title !== undefined && title !== null) {
       data.title = title;
     }
 
     if (description !== undefined) {
-      data.description = description;
+      data.description = description ?? null;
     }
 
     if (estimatedDurationMinutes !== undefined) {
-      data.estimatedDurationMinutes = estimatedDurationMinutes;
+      data.estimatedDurationMinutes = estimatedDurationMinutes ?? null;
     }
 
     if (role !== undefined) {
-      data.role = role;
+      data.role = role ?? null;
     }
 
     if (blocking !== undefined) {
@@ -548,6 +561,9 @@ router.delete("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantR
 
     const scenarioId = req.params.id;
     const stepId = req.params.stepId;
+    if (!scenarioId || !stepId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
 
     const step = await prisma.runbookStep.findFirst({
       where: { id: stepId, scenarioId, tenantId },

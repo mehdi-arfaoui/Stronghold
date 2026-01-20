@@ -19,7 +19,10 @@ export async function resolveRagRuntimeConfig(params: {
   await ensureMlTrainingIfDue(params.tenantId, trigger);
 
   const [{ assignment, variant }, tuning] = await Promise.all([
-    getOrCreateRagExperimentAssignment({ tenantId: params.tenantId, subjectId: params.subjectId }),
+    getOrCreateRagExperimentAssignment({
+      tenantId: params.tenantId,
+      ...(params.subjectId !== undefined ? { subjectId: params.subjectId } : {}),
+    }),
     prisma.ragTuningConfig.findFirst({ where: { tenantId: params.tenantId } }),
   ]);
 

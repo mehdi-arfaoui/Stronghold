@@ -260,7 +260,7 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
       issues.push({ field: "size", message: "taille maximale dépassée" });
     }
 
-    const format = detectTemplateFormat(mimeType as string, fileName as string);
+    const format = fileName && mimeType ? detectTemplateFormat(mimeType, fileName) : null;
     if (!format) {
       issues.push({
         field: "fileName",
@@ -268,11 +268,19 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
       });
     }
 
-    if (issues.length > 0) {
+    if (
+      issues.length > 0 ||
+      !fileName ||
+      !mimeType ||
+      size === undefined ||
+      !storagePath ||
+      !fileHash ||
+      !format
+    ) {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const { bucket, key } = resolveBucketAndKey(storagePath as string, tenantId);
+    const { bucket, key } = resolveBucketAndKey(storagePath, tenantId);
     const duplicate = await prisma.runbookTemplate.findFirst({
       where: { tenantId, fileHash: String(fileHash) },
     });
@@ -285,10 +293,10 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
     const template = await prisma.runbookTemplate.create({
       data: {
         tenantId,
-        originalName: fileName as string,
+        originalName: fileName,
         storedName: path.basename(key || fileName),
-        mimeType: mimeType as string,
-        size: size as number,
+        mimeType: mimeType,
+        size: size,
         storagePath: `s3://${bucket}/${key}`,
         format,
         description: sanitizeTemplateDescription(description),
@@ -338,8 +346,13 @@ router.get("/templates/:id", async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
+    const templateId = req.params.id;
+    if (!templateId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const tpl = await prisma.runbookTemplate.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: templateId, tenantId },
     });
     if (!tpl) return res.status(404).json({ error: "Template introuvable" });
 
@@ -364,6 +377,9 @@ router.put("/templates/:id", requireRole("OPERATOR"), async (req: TenantRequest,
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
     const templateId = req.params.id;
+    if (!templateId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const { description } = req.body || {};
 
     const template = await prisma.runbookTemplate.findFirst({
@@ -393,6 +409,9 @@ router.delete("/templates/:id", requireRole("OPERATOR"), async (req: TenantReque
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
     const templateId = req.params.id;
+    if (!templateId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const template = await prisma.runbookTemplate.findFirst({
       where: { id: templateId, tenantId },
     });
@@ -437,7 +456,12 @@ router.get("/:id", async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
-    const runbook = await prisma.runbook.findFirst({ where: { id: req.params.id, tenantId } });
+    const runbookId = req.params.id;
+    if (!runbookId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
+    const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
     if (!runbook) return res.status(404).json({ error: "Runbook introuvable" });
 
     const enriched = await withDownloadUrls(runbook);
@@ -454,6 +478,9 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
     const runbookId = req.params.id;
+    if (!runbookId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const { title, summary, status } = req.body || {};
 
     const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
@@ -493,6 +520,9 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
     const runbookId = req.params.id;
+    if (!runbookId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
     if (!runbook) {
       return res.status(404).json({ error: "Runbook introuvable" });

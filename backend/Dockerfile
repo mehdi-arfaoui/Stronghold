@@ -12,7 +12,7 @@ RUN npx prisma generate
 RUN npm run build
 
 FROM build AS migrate
-CMD ["sh", "scripts/migrate-and-seed.sh"]
+CMD ["bash", "scripts/migrate-and-seed.sh"]
 
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app

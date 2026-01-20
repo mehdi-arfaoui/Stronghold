@@ -10,7 +10,8 @@ export const scoreImpact = (financial: number, regulatory: number) => {
 
 export const scoreByThreshold = (value: number, thresholds: number[]) => {
   for (let i = 0; i < thresholds.length; i += 1) {
-    if (value <= thresholds[i]) {
+    const threshold = thresholds[i];
+    if (threshold !== undefined && value <= threshold) {
       return thresholds.length - i;
     }
   }

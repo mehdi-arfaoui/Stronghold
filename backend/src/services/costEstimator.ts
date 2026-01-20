@@ -394,7 +394,7 @@ async function buildFinancialProviderReport(
     const computePrice = await fetchAwsComputePricePerHour({
       instanceType: base.instanceType,
       region: input.awsRegion,
-      location: input.awsLocation,
+      ...(input.awsLocation ? { location: input.awsLocation } : {}),
     });
     const storagePrice = await fetchAwsStoragePricePerGbMonth(input.awsRegion, input.awsLocation);
     const transferPrice = await fetchAwsTransferPricePerGb(input.awsRegion, input.awsLocation);
@@ -428,9 +428,9 @@ async function buildFinancialProviderReport(
       usage: accumulateResourceUsage(input.resources),
       recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
       sources: {
-        compute: computePrice.source,
-        storage: storagePrice.source,
-        dataTransfer: transferPrice.source,
+        ...(computePrice.source ? { compute: computePrice.source } : {}),
+        ...(storagePrice.source ? { storage: storagePrice.source } : {}),
+        ...(transferPrice.source ? { dataTransfer: transferPrice.source } : {}),
       },
     };
   }
@@ -472,9 +472,9 @@ async function buildFinancialProviderReport(
       usage: accumulateResourceUsage(input.resources),
       recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
       sources: {
-        compute: computePrice.source,
-        storage: storagePrice.source,
-        dataTransfer: transferPrice.source,
+        ...(computePrice.source ? { compute: computePrice.source } : {}),
+        ...(storagePrice.source ? { storage: storagePrice.source } : {}),
+        ...(transferPrice.source ? { dataTransfer: transferPrice.source } : {}),
       },
     };
   }
@@ -518,9 +518,9 @@ async function buildFinancialProviderReport(
     usage: accumulateResourceUsage(input.resources),
     recommendations: buildOptimizationRecommendations(breakdown, opexMonthly),
     sources: {
-      compute: computePrice.source,
-      storage: storagePrice.source,
-      dataTransfer: transferPrice.source,
+      ...(computePrice.source ? { compute: computePrice.source } : {}),
+      ...(storagePrice.source ? { storage: storagePrice.source } : {}),
+      ...(transferPrice.source ? { dataTransfer: transferPrice.source } : {}),
     },
   };
 }
@@ -567,7 +567,7 @@ async function fetchAwsUnitPrices(input: ScenarioInput) {
     (item) => item.service.toLowerCase().includes("storage"),
   ]);
   const transferPick = pickBestItem(transferItems, [
-    (item) => item.metadata?.usageType?.toString().toLowerCase().includes("data transfer"),
+    (item) => item.metadata?.usageType?.toString().toLowerCase().includes("data transfer") ?? false,
     (item) => item.service.toLowerCase().includes("transfer"),
   ]);
 
@@ -580,9 +580,9 @@ async function fetchAwsUnitPrices(input: ScenarioInput) {
     dataTransfer: transferPick?.pricePerUnit ?? 0,
     currency,
     sources: {
-      compute: computePick?.source,
-      storage: storagePick?.source,
-      dataTransfer: transferPick?.source,
+      ...(computePick?.source ? { compute: computePick.source } : {}),
+      ...(storagePick?.source ? { storage: storagePick.source } : {}),
+      ...(transferPick?.source ? { dataTransfer: transferPick.source } : {}),
     },
   };
 }
@@ -629,9 +629,9 @@ async function fetchAzureUnitPrices(input: ScenarioInput) {
     dataTransfer: transferPick?.pricePerUnit ?? 0,
     currency,
     sources: {
-      compute: computePick?.source,
-      storage: storagePick?.source,
-      dataTransfer: transferPick?.source,
+      ...(computePick?.source ? { compute: computePick.source } : {}),
+      ...(storagePick?.source ? { storage: storagePick.source } : {}),
+      ...(transferPick?.source ? { dataTransfer: transferPick.source } : {}),
     },
   };
 }
@@ -652,14 +652,15 @@ async function fetchGcpUnitPrices(input: ScenarioInput) {
   const transferItems = normalizeGcpPricingResponse({ skus: transferRaw.skus });
 
   const computePick = pickBestItem(computeItems, [
-    (item) => item.metadata?.description?.toString().toLowerCase().includes(input.instanceType),
+    (item) =>
+      item.metadata?.description?.toString().toLowerCase().includes(input.instanceType) ?? false,
     (item) => item.unit.toLowerCase().includes("hour"),
   ]);
   const storagePick = pickBestItem(storageItems, [
     (item) => item.unit.toLowerCase().includes("gb"),
   ]);
   const transferPick = pickBestItem(transferItems, [
-    (item) => item.metadata?.description?.toString().toLowerCase().includes("egress"),
+    (item) => item.metadata?.description?.toString().toLowerCase().includes("egress") ?? false,
     (item) => item.unit.toLowerCase().includes("gb"),
   ]);
 
@@ -672,9 +673,9 @@ async function fetchGcpUnitPrices(input: ScenarioInput) {
     dataTransfer: transferPick?.pricePerUnit ?? 0,
     currency,
     sources: {
-      compute: computePick?.source,
-      storage: storagePick?.source,
-      dataTransfer: transferPick?.source,
+      ...(computePick?.source ? { compute: computePick.source } : {}),
+      ...(storagePick?.source ? { storage: storagePick.source } : {}),
+      ...(transferPick?.source ? { dataTransfer: transferPick.source } : {}),
     },
   };
 }
@@ -700,7 +701,9 @@ export async function buildScenarioComparison(
     gcpRegion: payload.gcpRegion?.trim() || DEFAULT_INPUTS.gcpRegion,
   };
 
-  const providers = payload.providers?.length ? payload.providers : ["aws", "azure", "gcp"];
+  const providers: Array<"aws" | "azure" | "gcp"> = payload.providers?.length
+    ? payload.providers
+    : ["aws", "azure", "gcp"];
 
   const scenarios: ScenarioEstimate[] = [];
 
@@ -766,7 +769,12 @@ export async function buildScenarioComparison(
 export async function buildFinancialReport(input: FinancialReportInput): Promise<FinancialReport> {
   const scenario =
     DEFAULT_SCENARIOS.find((profile) => profile.id === input.scenarioId) ?? DEFAULT_SCENARIOS[0];
-  const providers = input.providers?.length ? input.providers : ["aws", "azure", "gcp"];
+  if (!scenario) {
+    throw new Error("No scenario profiles configured");
+  }
+  const providers: Array<"aws" | "azure" | "gcp"> = input.providers?.length
+    ? input.providers
+    : ["aws", "azure", "gcp"];
   const sanitizedResources = input.resources.map((resource) => ({
     ...resource,
     vcpu: clampPositive(toNumber(resource.vcpu, 1), 1, 256),
