@@ -5,7 +5,7 @@
 ### Causes possibles
 
 1. **Backend non démarré**
-   - Vérifiez que le backend est accessible : `http://localhost:4000/health`
+   - Vérifiez que le backend est accessible : `http://localhost:4000/health/live`
    - Si vous utilisez Docker : `docker-compose ps` pour voir les conteneurs
 
 2. **Variables d'environnement non chargées**
@@ -72,7 +72,7 @@ Ou testez manuellement :
 
 ```powershell
 # Test backend
-Invoke-WebRequest -Uri "http://localhost:4000/health"
+Invoke-WebRequest -Uri "http://localhost:4000/health/live"
 
 # Test API avec clé
 $headers = @{ "x-api-key" = "dev-key" }

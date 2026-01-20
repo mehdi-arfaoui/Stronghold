@@ -11,10 +11,10 @@ const prismaClient_1 = __importDefault(require("../prismaClient"));
 const deployment_1 = require("../config/deployment");
 const tenantMiddleware = async (req, res, next) => {
     try {
-        // laisser passer /health sans auth
-        if (req.path === "/health") {
-            return next();
-        }
+    // laisser passer /health sans auth
+    if (req.path === "/health" || req.path === "/health/live" || req.path === "/health/ready") {
+      return next();
+    }
         const correlationId = req.header("x-correlation-id") || crypto_1.default.randomUUID();
         req.correlationId = correlationId;
         res.setHeader("x-correlation-id", correlationId);
