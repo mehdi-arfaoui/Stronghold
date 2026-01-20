@@ -8,6 +8,8 @@ COPY prisma ./prisma
 COPY src ./src
 COPY scripts ./scripts
 COPY tsconfig.json ./
+RUN sed -i 's/\r$//' scripts/migrate-and-seed.sh \
+    && chmod +x scripts/migrate-and-seed.sh
 RUN npx prisma generate
 RUN npm run build
 
