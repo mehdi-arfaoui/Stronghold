@@ -405,6 +405,8 @@ export type GraphNode = {
   rtoHours: number | null;
   rpoMinutes: number | null;
   mtpdHours: number | null;
+  x?: number;
+  y?: number;
 };
 
 export type GraphEdge = {
@@ -426,6 +428,7 @@ export type GraphApiResponse = {
     categories?: Array<{
       category: string;
       serviceCount: number;
+      count?: number;
       averageCriticality: string;
       dependencies: Array<{ target: string; count: number }>;
     }>;

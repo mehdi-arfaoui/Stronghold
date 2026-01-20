@@ -20,6 +20,7 @@ describe("AppLayout", () => {
           steps={steps}
           activeStepId={steps[0].id}
           completedSteps={[steps[0].id]}
+          maxAllowedIndex={0}
           onStepAction={() => undefined}
           onQuickAction={() => undefined}
           theme="light"
@@ -56,6 +57,7 @@ describe("AppLayout", () => {
           steps={steps}
           activeStepId={steps[0].id}
           completedSteps={[steps[0].id]}
+          maxAllowedIndex={0}
           onStepAction={() => undefined}
           onQuickAction={() => undefined}
           theme="light"

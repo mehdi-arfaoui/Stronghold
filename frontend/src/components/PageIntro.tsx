@@ -8,6 +8,7 @@ interface QuickLink {
 
 interface PageIntroProps {
   title: string;
+  subtitle?: string;
   objective: string;
   steps: string[];
   links: QuickLink[];
@@ -21,6 +22,7 @@ interface PageIntroProps {
 
 export function PageIntro({
   title,
+  subtitle,
   objective,
   steps,
   links,
@@ -35,6 +37,7 @@ export function PageIntro({
         <div className="page-intro-header">
           <div>
             <h3 className="page-intro-title">{title}</h3>
+            {subtitle ? <p className="muted">{subtitle}</p> : null}
             <p className="muted">{objective}</p>
           </div>
           <HelpButton title="Aide de l'étape" buttonLabel="Aide" className="page-intro-help">
