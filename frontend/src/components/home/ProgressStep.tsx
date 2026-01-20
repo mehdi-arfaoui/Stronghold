@@ -1,5 +1,7 @@
+import type { HomeStepId } from "./HomePage";
+
 interface ProgressStepProps {
-  stepId: string;
+  stepId: HomeStepId;
   title: string;
   description: string;
   actionLabel: string;
@@ -9,7 +11,7 @@ interface ProgressStepProps {
   isActive: boolean;
   isComplete: boolean;
   isLocked: boolean;
-  onAction: (stepId: string) => void;
+  onAction: (stepId: HomeStepId) => void;
 }
 
 export function ProgressStep({

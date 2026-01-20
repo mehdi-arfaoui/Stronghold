@@ -2,6 +2,8 @@ import express from "express";
 import http from "http";
 import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
+import IORedis from "ioredis";
+import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
 
@@ -40,6 +42,202 @@ dotenv.config();
 initTelemetry();
 const onPremiseLicense = ensureOnPremiseLicense();
 
+type DependencyStatus = "ok" | "failed" | "skipped";
+type DependencyCheck = {
+  status: DependencyStatus;
+  latencyMs?: number;
+  error?: string;
+  optional?: boolean;
+};
+
+type ReadinessReport = {
+  status: "ok" | "degraded" | "failed";
+  dependencies: Record<string, DependencyCheck>;
+  timestamp: string;
+};
+
+const HEALTHCHECK_TIMEOUT_MS = Number(process.env.HEALTHCHECK_TIMEOUT_MS || 2000);
+const HEALTHCHECK_RETRY_DELAY_MS = Number(process.env.HEALTHCHECK_RETRY_DELAY_MS || 500);
+const HEALTHCHECK_RETRIES = Number(process.env.HEALTHCHECK_RETRIES || 2);
+const VECTOR_DB_OPTIONAL =
+  String(process.env.VECTOR_DB_OPTIONAL || "false").toLowerCase() === "true";
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const logBoot = (step: string, meta: Record<string, unknown> = {}) => {
+  console.log(JSON.stringify({ level: "info", msg: "boot", step, ...meta }));
+};
+
+const withTimeout = async <T>(
+  operation: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+): Promise<T> => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await operation(controller.signal);
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const runWithRetries = async <T>(operation: () => Promise<T>): Promise<T> => {
+  let attempt = 0;
+  let lastError: unknown;
+  while (attempt <= HEALTHCHECK_RETRIES) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+      if (attempt === HEALTHCHECK_RETRIES) {
+        throw error;
+      }
+      await sleep(HEALTHCHECK_RETRY_DELAY_MS);
+      attempt += 1;
+    }
+  }
+  throw lastError;
+};
+
+const checkDatabase = async () => {
+  await prisma.$queryRaw(Prisma.sql`SELECT 1`);
+};
+
+const checkRedis = async () => {
+  const redisUrl = process.env.REDIS_URL;
+  if (!redisUrl) {
+    throw new Error("REDIS_URL not set");
+  }
+  const redis = new IORedis(redisUrl, {
+    lazyConnect: true,
+    connectTimeout: HEALTHCHECK_TIMEOUT_MS,
+    maxRetriesPerRequest: 1,
+    retryStrategy: () => null,
+  });
+  try {
+    await redis.connect();
+    const pong = await redis.ping();
+    if (pong !== "PONG") {
+      throw new Error("Redis ping failed");
+    }
+  } finally {
+    await redis.quit().catch(() => redis.disconnect());
+  }
+};
+
+const checkMinio = async () => {
+  const endpoint = process.env.S3_ENDPOINT;
+  if (!endpoint) {
+    throw new Error("S3_ENDPOINT not set");
+  }
+  const response = await withTimeout(
+    (signal) => fetch(`${endpoint}/minio/health/ready`, { signal }),
+    HEALTHCHECK_TIMEOUT_MS
+  );
+  if (!response.ok) {
+    throw new Error(`MinIO not ready (${response.status})`);
+  }
+};
+
+const checkChroma = async () => {
+  const chromaUrl = process.env.CHROMADB_URL;
+  if (!chromaUrl) {
+    throw new Error("CHROMADB_URL not set");
+  }
+  const response = await withTimeout(
+    (signal) => fetch(`${chromaUrl}/api/v1/heartbeat`, { signal }),
+    HEALTHCHECK_TIMEOUT_MS
+  );
+  if (!response.ok) {
+    throw new Error(`Chroma not ready (${response.status})`);
+  }
+};
+
+const checkDependency = async (
+  name: string,
+  operation: () => Promise<void>,
+  options: { optional?: boolean; enabled?: boolean } = {}
+): Promise<{ name: string; result: DependencyCheck }> => {
+  const { optional = false, enabled = true } = options;
+  if (!enabled) {
+    return {
+      name,
+      result: {
+        status: "skipped",
+        optional,
+        error: "not configured",
+      },
+    };
+  }
+  const startedAt = Date.now();
+  try {
+    await runWithRetries(operation);
+    return {
+      name,
+      result: {
+        status: "ok",
+        optional,
+        latencyMs: Date.now() - startedAt,
+      },
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    return {
+      name,
+      result: {
+        status: "failed",
+        optional,
+        latencyMs: Date.now() - startedAt,
+        error: message,
+      },
+    };
+  }
+};
+
+const buildReadinessReport = async (): Promise<{
+  httpStatus: number;
+  report: ReadinessReport;
+}> => {
+  const chromaConfigured = Boolean(process.env.CHROMADB_URL);
+  const chromaEnabled = chromaConfigured || !VECTOR_DB_OPTIONAL;
+
+  const checks = await Promise.all([
+    checkDependency("database", checkDatabase),
+    checkDependency("redis", checkRedis),
+    checkDependency("minio", checkMinio),
+    checkDependency("chroma", checkChroma, {
+      optional: VECTOR_DB_OPTIONAL,
+      enabled: chromaEnabled,
+    }),
+  ]);
+
+  const dependencies = Object.fromEntries(
+    checks.map(({ name, result }) => [name, result])
+  ) as Record<string, DependencyCheck>;
+
+  const requiredFailures = Object.values(dependencies).some(
+    (dependency) => dependency.status === "failed" && !dependency.optional
+  );
+  const optionalFailures = Object.values(dependencies).some(
+    (dependency) => dependency.status === "failed" && dependency.optional
+  );
+
+  const status: ReadinessReport["status"] = requiredFailures
+    ? "failed"
+    : optionalFailures
+      ? "degraded"
+      : "ok";
+
+  return {
+    httpStatus: requiredFailures ? 503 : 200,
+    report: {
+      status,
+      dependencies,
+      timestamp: new Date().toISOString(),
+    },
+  };
+};
+
 const app = express();
 
 const isDevelopment = process.env.NODE_ENV !== "production";
@@ -64,6 +262,12 @@ const devAllowedOrigins = isDevelopment
   : [];
 
 const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
+
+logBoot("config.loaded", {
+  nodeEnv: process.env.NODE_ENV || "development",
+  allowedOriginsCount: allowedOrigins.size,
+  allowNoOrigin,
+});
 
 // Configure CORS to allow requests from frontend
 const corsOptions: CorsOptions = {
@@ -100,11 +304,26 @@ app.use((req, res, next) => {
 app.use(express.json());
 
 // ✅ health-check sans tenant
-app.get("/health", async (_req, res) => {
-  const tenantsCount = await prisma.tenant.count();
+app.get("/health/live", (_req, res) => {
   res.json({
     status: "ok",
-    tenantsCount,
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+});
+
+app.get("/health/ready", async (_req, res) => {
+  const { httpStatus, report } = await buildReadinessReport();
+  res.status(httpStatus).json(report);
+});
+
+app.get("/health", async (_req, res) => {
+  const { httpStatus, report } = await buildReadinessReport();
+  res.status(httpStatus).json({
+    ...report,
+    deprecated: true,
+    live: "/health/live",
+    ready: "/health/ready",
   });
 });
 
@@ -204,6 +423,8 @@ for (const route of routes) {
   app.use(route.path, normalizedHandler);
 }
 
+logBoot("routes.registered", { count: routes.length });
+
 if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
   startDiscoveryWorker();
 }
@@ -219,6 +440,13 @@ if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {
 if (process.env.API_KEY_ROTATION_ENABLED !== "false") {
   startApiKeyRotationWorker();
 }
+
+logBoot("workers.started", {
+  discoveryWorker: process.env.DISCOVERY_WORKER_ENABLED !== "false",
+  documentWorker: process.env.DOCUMENT_WORKER_ENABLED !== "false",
+  discoveryScheduler: process.env.DISCOVERY_SCHEDULER_ENABLED !== "false",
+  apiKeyRotationWorker: process.env.API_KEY_ROTATION_ENABLED !== "false",
+});
 
 // Global error handler - ensure all errors return JSON
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -242,11 +470,14 @@ initDiscoveryWebSocket(server);
 
 server.listen(Number(PORT), HOST, () => {
   console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
+  logBoot("server.listening", { host: HOST, port: Number(PORT) });
   const originList = [...allowedOrigins.values()];
   console.log(
     `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
   );
-  console.log(`Health check available at http://${HOST}:${PORT}/health`);
+  console.log(
+    `Health checks available at http://${HOST}:${PORT}/health/live (liveness) and /health/ready (readiness)`
+  );
   if (deploymentConfig.mode === "saas") {
     console.log("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
   } else {
@@ -255,4 +486,16 @@ server.listen(Number(PORT), HOST, () => {
       console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
     }
   }
+
+  void (async () => {
+    logBoot("dependencies.probe.start");
+    const { report } = await buildReadinessReport();
+    const failed = Object.entries(report.dependencies)
+      .filter(([, dependency]) => dependency.status === "failed")
+      .map(([name]) => name);
+    logBoot("dependencies.probe.complete", {
+      status: report.status,
+      failedDependencies: failed,
+    });
+  })();
 });
