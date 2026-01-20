@@ -1,4 +1,5 @@
 import prisma from "../prismaClient.js";
+import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type EntityFeedbackInput = {
   tenantId: string;
@@ -27,31 +28,33 @@ function normalizeLabel(value: string): string {
 }
 
 export async function recordEntityFeedback(input: EntityFeedbackInput) {
+  const data = {
+    tenantId: input.tenantId,
+    entityType: normalizeLabel(input.entityType),
+    entityId: input.entityId ?? null,
+    documentId: input.documentId ?? null,
+    action: normalizeLabel(input.action),
+    notes: input.notes ?? null,
+    ...(input.originalValue != null ? { originalValue: toPrismaJson(input.originalValue) } : {}),
+    ...(input.correctedValue != null ? { correctedValue: toPrismaJson(input.correctedValue) } : {}),
+    ...(input.context != null ? { context: toPrismaJson(input.context) } : {}),
+  };
   return prisma.entityFeedback.create({
-    data: {
-      tenantId: input.tenantId,
-      entityType: normalizeLabel(input.entityType),
-      entityId: input.entityId ?? null,
-      documentId: input.documentId ?? null,
-      action: normalizeLabel(input.action),
-      originalValue: input.originalValue ?? null,
-      correctedValue: input.correctedValue ?? null,
-      notes: input.notes ?? null,
-      context: input.context ?? null,
-    },
+    data,
   });
 }
 
 export async function recordRecommendationFeedback(input: RecommendationFeedbackInput) {
+  const data = {
+    tenantId: input.tenantId,
+    recommendationType: normalizeLabel(input.recommendationType),
+    recommendationId: input.recommendationId ?? null,
+    rating: input.rating,
+    score: input.score ?? null,
+    comment: input.comment ?? null,
+    ...(input.context != null ? { context: toPrismaJson(input.context) } : {}),
+  };
   return prisma.recommendationFeedback.create({
-    data: {
-      tenantId: input.tenantId,
-      recommendationType: normalizeLabel(input.recommendationType),
-      recommendationId: input.recommendationId ?? null,
-      rating: input.rating,
-      score: input.score ?? null,
-      comment: input.comment ?? null,
-      context: input.context ?? null,
-    },
+    data,
   });
 }

@@ -31,13 +31,13 @@ export async function fetchGcpComputePricePerHour(
   const items = normalizeGcpPricingResponse({ skus: response.skus });
   const descriptor = input.instanceDescriptor.toLowerCase();
   const pick = pickBestItem(items, [
-    (item) => item.metadata?.description?.toString().toLowerCase().includes(descriptor),
+    (item) => item.metadata?.description?.toString().toLowerCase().includes(descriptor) ?? false,
     (item) => item.unit.toLowerCase().includes("hour"),
   ]);
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(pick?.source ? { source: pick.source } : {}),
   };
 }
 
@@ -48,7 +48,7 @@ export async function fetchGcpStoragePricePerGbMonth(serviceId: string) {
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(pick?.source ? { source: pick.source } : {}),
   };
 }
 
@@ -56,12 +56,12 @@ export async function fetchGcpTransferPricePerGb(serviceId: string) {
   const response = await fetchGcpSkus({ serviceId, pageSize: 200, maxPages: 1 });
   const items = normalizeGcpPricingResponse({ skus: response.skus });
   const pick = pickBestItem(items, [
-    (item) => item.metadata?.description?.toString().toLowerCase().includes("egress"),
+    (item) => item.metadata?.description?.toString().toLowerCase().includes("egress") ?? false,
     (item) => item.unit.toLowerCase().includes("gb"),
   ]);
   return {
     pricePerUnit: pick?.pricePerUnit ?? 0,
     currency: pick?.currency ?? "USD",
-    source: pick?.source,
+    ...(pick?.source ? { source: pick.source } : {}),
   };
 }

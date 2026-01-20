@@ -248,18 +248,15 @@ function parseFeedbackPayload(body: any): {
     return { issues };
   }
 
-  return {
-    payload: {
-      factId: factId!,
-      category,
-      type,
-      label,
-      service,
-      infra,
-      sla,
-    },
-    issues,
-  };
+  const payload: FeedbackPayload = { factId: factId! };
+  if (category) payload.category = category;
+  if (type) payload.type = type;
+  if (label) payload.label = label;
+  if (service !== undefined) payload.service = service;
+  if (infra !== undefined) payload.infra = infra;
+  if (sla !== undefined) payload.sla = sla;
+
+  return { payload, issues };
 }
 
 /* ========= Helpers d'analyse applicative ========= */
@@ -1159,12 +1156,14 @@ router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, 
     });
 
     const draftQuestion =
-      typeof question === "string" && question.trim().length > 0 ? question : undefined;
+      typeof question === "string" && question.trim().length > 0
+        ? question
+        : "Génère un runbook PRA détaillé incluant dépendances, sauvegardes et étapes de reprise.";
     const draftDocumentIds = Array.isArray(documentIds) ? documentIds : undefined;
     const draftDocumentTypes = Array.isArray(documentTypes) ? documentTypes : undefined;
     const draft = await generateRunbookDraft({
       tenantId,
-      ...(draftQuestion !== undefined ? { question: draftQuestion } : {}),
+      question: draftQuestion,
       ...(draftDocumentIds !== undefined ? { documentIds: draftDocumentIds } : {}),
       ...(draftDocumentTypes !== undefined ? { documentTypes: draftDocumentTypes } : {}),
       serviceFilter: typeof serviceFilter === "string" ? serviceFilter : null,
@@ -1216,13 +1215,13 @@ router.post("/feedback/entities", requireRole("OPERATOR"), async (req: TenantReq
     const feedback = await recordEntityFeedback({
       tenantId,
       entityType: entityType as string,
-      entityId,
-      documentId,
       action: action as string,
-      originalValue,
-      correctedValue,
-      notes,
-      context,
+      ...(entityId !== undefined ? { entityId } : {}),
+      ...(documentId !== undefined ? { documentId } : {}),
+      ...(originalValue !== undefined ? { originalValue } : {}),
+      ...(correctedValue !== undefined ? { correctedValue } : {}),
+      ...(notes !== undefined ? { notes } : {}),
+      ...(context !== undefined ? { context } : {}),
     });
 
     return res.status(201).json({ feedback });
@@ -1270,11 +1269,11 @@ router.post(
       const feedback = await recordRecommendationFeedback({
         tenantId,
         recommendationType: recommendationType as string,
-        recommendationId,
         rating: rating as "like" | "dislike",
-        score,
-        comment,
-        context,
+        ...(recommendationId !== undefined ? { recommendationId } : {}),
+        ...(score !== undefined ? { score } : {}),
+        ...(comment !== undefined ? { comment } : {}),
+        ...(context !== undefined ? { context } : {}),
       });
 
       return res.status(201).json({ feedback });
@@ -1317,9 +1316,9 @@ router.post("/feedback/user", requireRole("OPERATOR"), async (req: TenantRequest
       tenantId,
       resourceId: resourceId as string,
       type: type as string,
-      rating,
-      comment,
-      timestamp: parsedTimestamp,
+      ...(rating !== undefined ? { rating } : {}),
+      ...(comment !== undefined ? { comment } : {}),
+      ...(parsedTimestamp !== null ? { timestamp: parsedTimestamp } : {}),
     });
 
     return res.status(201).json({ feedback });
@@ -1361,8 +1360,8 @@ router.post(
 
       const { assignment } = await getOrCreateRagExperimentAssignment({
         tenantId,
-        subjectId,
-        ...(experimentKey !== undefined ? { experimentKey } : {}),
+        ...(subjectId !== undefined ? { subjectId } : {}),
+        ...(typeof experimentKey === "string" ? { experimentKey } : {}),
       });
 
       const feedback = await recordRagExperimentFeedback({
@@ -1370,8 +1369,8 @@ router.post(
         experimentKey: assignment.experimentKey,
         subjectId: assignment.subjectId,
         variant: variant ?? assignment.variant,
-        rating,
-        comment,
+        ...(rating !== undefined ? { rating } : {}),
+        ...(comment !== undefined ? { comment } : {}),
       });
 
       return res.status(201).json({ feedback });
@@ -1586,10 +1585,10 @@ router.post("/financial-report", requireRole("READER"), async (req: TenantReques
       awsRegion: awsRegion ?? "eu-west-1",
       azureRegion: azureRegion ?? "westeurope",
       gcpRegion: gcpRegion ?? "europe-west1",
-      ...(awsLocation !== undefined ? { awsLocation } : {}),
-      ...(gcpComputeServiceId !== undefined ? { gcpComputeServiceId } : {}),
-      ...(gcpStorageServiceId !== undefined ? { gcpStorageServiceId } : {}),
-      ...(gcpNetworkServiceId !== undefined ? { gcpNetworkServiceId } : {}),
+      ...(typeof awsLocation === "string" ? { awsLocation } : {}),
+      ...(typeof gcpComputeServiceId === "string" ? { gcpComputeServiceId } : {}),
+      ...(typeof gcpStorageServiceId === "string" ? { gcpStorageServiceId } : {}),
+      ...(typeof gcpNetworkServiceId === "string" ? { gcpNetworkServiceId } : {}),
       providers: providers as any,
     });
 
@@ -1819,8 +1818,8 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
       type: s.type,
       domain: s.domain,
       criticality: s.criticality,
-      rtoHours: s.continuity?.rtoHours,
-      rpoMinutes: s.continuity?.rpoMinutes,
+      rtoHours: s.continuity?.rtoHours ?? null,
+      rpoMinutes: s.continuity?.rpoMinutes ?? null,
     }));
 
     const drStrategyDeps = services.flatMap((s) =>
@@ -1873,7 +1872,6 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
       tenantId,
       question: ragQuestion,
       services: drStrategyInputServices,
-      scenarios,
       context: ragContextResult.context,
       maxResults: 5,
     });
@@ -2057,6 +2055,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "documentId manquant" });
+      }
       const force = String(req.query.force ?? "false").toLowerCase() === "true";
 
       const result = await getOrCreateExtractedFacts(id, tenantId, force);
@@ -2086,6 +2087,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "documentId manquant" });
+      }
       const { payload, issues } = parseFeedbackPayload(req.body);
 
       if (!payload) {

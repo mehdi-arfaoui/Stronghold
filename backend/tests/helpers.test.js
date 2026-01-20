@@ -1,10 +1,7 @@
-require("ts-node/register/transpile-only");
-
-const assert = require("node:assert/strict");
-const { test } = require("node:test");
-
-const { omitUndefined } = require("../src/utils/objectUtils");
-const { isJsonValue, toPrismaJson } = require("../src/utils/prismaJson");
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { omitUndefined } from "../src/utils/objectUtils.js";
+import { isJsonValue, toPrismaJson } from "../src/utils/prismaJson.js";
 
 test("omitUndefined removes undefined keys and preserves null", () => {
   const input = { a: 1, b: undefined, c: null, d: "ok" };

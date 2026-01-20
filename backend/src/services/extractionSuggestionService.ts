@@ -402,7 +402,7 @@ export async function approveExtractionSuggestions(params: {
     return { approved: 0 };
   }
 
-  await prismaClient.$transaction(async (tx) => {
+  await prismaClient.$transaction(async (tx: Prisma.TransactionClient) => {
     for (const suggestion of suggestions) {
       const data = suggestion.data as Record<string, unknown>;
       switch (suggestion.suggestionType as SuggestionType) {
@@ -469,7 +469,7 @@ export async function approveExtractionSuggestions(params: {
     }
 
     await tx.documentExtractionSuggestion.updateMany({
-      where: { id: { in: suggestions.map((s) => s.id) } },
+      where: { id: { in: suggestions.map((suggestion: { id: string }) => suggestion.id) } },
       data: {
         status: "APPROVED",
         reviewedAt: new Date(),

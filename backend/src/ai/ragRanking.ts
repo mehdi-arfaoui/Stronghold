@@ -54,7 +54,9 @@ export function fuseChunkScores(candidates: RagChunkCandidate[], alpha: number):
   const normalizedBm25 = normalizeScores(bm25Scores);
 
   return candidates.map((candidate, index) => {
-    const fused = alpha * normalizedVector[index] + (1 - alpha) * normalizedBm25[index];
+    const vectorScore = normalizedVector[index] ?? 0;
+    const bm25Score = normalizedBm25[index] ?? 0;
+    const fused = alpha * vectorScore + (1 - alpha) * bm25Score;
     return {
       ...candidate,
       fusedScore: fused,
@@ -108,9 +110,9 @@ export function rerankChunksCrossEncoder(
 
   return candidates.map((candidate, index) => {
     const score =
-      lexicalWeight * normalizedLexical[index] +
-      vectorWeight * normalizedVector[index] +
-      bm25Weight * normalizedBm25[index];
+      lexicalWeight * (normalizedLexical[index] ?? 0) +
+      vectorWeight * (normalizedVector[index] ?? 0) +
+      bm25Weight * (normalizedBm25[index] ?? 0);
     return {
       ...candidate,
       crossScore: score,

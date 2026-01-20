@@ -1,9 +1,14 @@
-import { GetProductsCommand, PricingClient } from "@aws-sdk/client-pricing";
+import {
+  GetProductsCommand,
+  PricingClient,
+  type FilterType,
+  type GetProductsCommandOutput,
+} from "@aws-sdk/client-pricing";
 
 export type AwsPricingFilter = {
   field: string;
   value: string;
-  type?: "TERM_MATCH" | "RANGE" | "ANY" | "GREATER_THAN" | "LESS_THAN";
+  type?: FilterType;
 };
 
 export type AwsPricingQuery = {
@@ -49,7 +54,7 @@ export async function fetchAwsPricingProducts(
       MaxResults: maxResults,
       NextToken: nextToken,
     });
-    const response = await client.send(command);
+    const response: GetProductsCommandOutput = await client.send(command);
     if (response.PriceList?.length) {
       priceList.push(...response.PriceList);
     }
@@ -62,7 +67,7 @@ export async function fetchAwsPricingProducts(
   return {
     priceList: parsed,
     rawCount: priceList.length,
-    nextToken,
     region: DEFAULT_REGION,
+    ...(nextToken ? { nextToken } : {}),
   };
 }

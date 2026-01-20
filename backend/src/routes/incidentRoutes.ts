@@ -167,6 +167,9 @@ router.patch(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const existing = await prisma.notificationChannel.findFirst({
         where: { id, tenantId },
       });
@@ -181,7 +184,9 @@ router.patch(
           ? Prisma.DbNull
           : configuration !== undefined
             ? toPrismaJson(configuration)
-            : existing.configuration;
+            : existing.configuration === null
+              ? Prisma.DbNull
+              : existing.configuration;
 
       const updated = await prisma.notificationChannel.update({
         where: { id },
@@ -234,6 +239,9 @@ router.get("/:id", async (req: TenantRequest, res) => {
     }
 
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const incident = await prisma.incident.findFirst({
       where: { id, tenantId },
       include: {
@@ -366,6 +374,9 @@ router.patch(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const existing = await prisma.incident.findFirst({
         where: { id, tenantId },
         include: {
@@ -535,6 +546,9 @@ router.get("/:id/actions", async (req: TenantRequest, res) => {
     }
 
     const { id } = req.params;
+    if (!id) {
+      return res.status(400).json({ error: "id est requis" });
+    }
     const actions = await prisma.incidentAction.findMany({
       where: { tenantId, incidentId: id },
       orderBy: { createdAt: "desc" },
@@ -558,6 +572,9 @@ router.post(
       }
 
       const { id } = req.params;
+      if (!id) {
+        return res.status(400).json({ error: "id est requis" });
+      }
       const { actionType, description } = req.body || {};
 
       if (!actionType) {

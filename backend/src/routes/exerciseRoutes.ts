@@ -144,8 +144,13 @@ router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
       include: {
         scenario: true,
         runbooks: { include: { runbook: true } },
@@ -171,13 +176,18 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const { issues, data } = parseExerciseUpdatePayload(req.body || {});
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
       include: { runbooks: true },
     });
 
@@ -199,9 +209,11 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
       await tx.exercise.updateMany({
         where: { id: exercise.id, tenantId },
         data: {
-          ...(data.title !== undefined ? { title: data.title } : {}),
-          ...(data.description !== undefined ? { description: data.description } : {}),
-          ...(data.scheduledAt !== undefined ? { scheduledAt: data.scheduledAt } : {}),
+          ...(data.title !== undefined && data.title !== null ? { title: data.title } : {}),
+          ...(data.description !== undefined ? { description: data.description ?? null } : {}),
+          ...(data.scheduledAt !== undefined && data.scheduledAt !== null
+            ? { scheduledAt: data.scheduledAt }
+            : {}),
           ...(data.status ? { status: data.status.toUpperCase() } : {}),
         },
       });
@@ -246,6 +258,12 @@ router.patch(
       const tenantId = ensureTenant(req, res);
       if (!tenantId) return;
 
+      const exerciseId = req.params.exerciseId;
+      const itemId = req.params.itemId;
+      if (!exerciseId || !itemId) {
+        return res.status(400).json({ error: "id est requis" });
+      }
+
       const { issues, data } = parseChecklistUpdatePayload(req.body || {});
       if (issues.length > 0) {
         return res.status(400).json(buildValidationError(issues));
@@ -253,9 +271,9 @@ router.patch(
 
       const item = await prisma.exerciseChecklistItem.findFirst({
         where: {
-          id: req.params.itemId,
+          id: itemId,
           tenantId,
-          exerciseId: req.params.exerciseId,
+          exerciseId,
         },
       });
 
@@ -264,9 +282,9 @@ router.patch(
       }
 
       await prisma.exerciseChecklistItem.updateMany({
-        where: { id: item.id, tenantId, exerciseId: req.params.exerciseId },
+        where: { id: item.id, tenantId, exerciseId },
         data: {
-          ...(data.notes !== undefined ? { notes: data.notes } : {}),
+          ...(data.notes !== undefined ? { notes: data.notes ?? null } : {}),
           ...(data.isCompleted !== undefined ? { isCompleted: data.isCompleted } : {}),
           ...(data.isCompleted === true
             ? { completedAt: new Date() }
@@ -277,7 +295,7 @@ router.patch(
       });
 
       const updated = await prisma.exerciseChecklistItem.findFirst({
-        where: { id: item.id, tenantId, exerciseId: req.params.exerciseId },
+        where: { id: item.id, tenantId, exerciseId },
       });
 
       return res.json(updated);
@@ -293,13 +311,18 @@ router.post("/:id/results", requireRole("OPERATOR"), async (req: TenantRequest, 
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const { issues, data } = parseExerciseResultPayload(req.body || {});
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
     });
     if (!exercise) {
       return res.status(404).json({ error: "Exercice introuvable" });
@@ -338,8 +361,13 @@ router.post("/:id/analysis", requireRole("OPERATOR"), async (req: TenantRequest,
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
       include: {
         scenario: true,
         checklistItems: true,
@@ -393,8 +421,13 @@ router.get("/:id/report", requireRole("READER"), async (req: TenantRequest, res)
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
       include: {
         scenario: true,
         runbooks: { include: { runbook: true } },
@@ -445,13 +478,18 @@ router.post("/:id/assistant", requireRole("OPERATOR"), async (req: TenantRequest
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const { issues, data } = parseExerciseAssistantPayload(req.body || {});
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
     const exercise = await prisma.exercise.findFirst({
-      where: { id: req.params.id, tenantId },
+      where: { id: exerciseId, tenantId },
       include: { scenario: true },
     });
 
@@ -490,12 +528,17 @@ router.post("/:id/simulations", requireRole("OPERATOR"), async (req: TenantReque
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const { issues, data } = parseExerciseSimulationPayload(req.body || {});
     if (issues.length > 0) {
       return res.status(400).json(buildValidationError(issues));
     }
 
-    const simulation = await runCyberSimulation(tenantId, req.params.id, {
+    const simulation = await runCyberSimulation(tenantId, exerciseId, {
       simulator: data.simulator!,
       durationHours: data.durationHours ?? null,
       targets: data.targets,
@@ -518,8 +561,13 @@ router.get("/:id/simulations", requireRole("READER"), async (req: TenantRequest,
     const tenantId = ensureTenant(req, res);
     if (!tenantId) return;
 
+    const exerciseId = req.params.id;
+    if (!exerciseId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
     const simulations = await prisma.exerciseSimulation.findMany({
-      where: { tenantId, exerciseId: req.params.id },
+      where: { tenantId, exerciseId },
       orderBy: { createdAt: "desc" },
     });
 
