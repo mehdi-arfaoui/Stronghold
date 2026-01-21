@@ -1,33 +1,34 @@
 {
   "id": "ddos",
-  "name": "DDoS",
-  "description": "Saturation des services exposés par un trafic volumétrique ou applicatif.",
+  "name": "Attaque DDoS",
+  "description": "Surcharge des services exposés en ligne par un trafic massif distribué.",
   "incidentSteps": [
-    "Montée en charge anormale sur les points d'entrée publics.",
-    "Saturation des capacités réseau ou des équilibreurs.",
-    "Dégradation progressive des SLA et erreurs applicatives.",
-    "Blocage partiel ou total des services en ligne."
+    "Montée progressive du trafic vers l'application publique",
+    "Saturation des liens réseau et des équilibreurs de charge",
+    "Dégradation des temps de réponse et erreurs 5xx",
+    "Blocage des IPs malveillantes et activation de la protection anti-DDoS",
+    "Stabilisation du service après nettoyage du trafic"
   ],
   "impacts": [
-    "Indisponibilité des services exposés.",
-    "Perte de chiffre d'affaires et insatisfaction client.",
-    "Surconsommation de ressources cloud."
+    "Indisponibilité partielle ou totale du site",
+    "Perte de ventes et dégradation de l'image",
+    "Augmentation des coûts d'infrastructure"
   ],
   "detection": [
-    "Alertes WAF/CDN sur volumes de requêtes.",
-    "Surveillance NOC et dashboards de latence.",
-    "Pics inhabituels sur les métriques d'entrée/sortie."
+    "Alertes de saturation sur les métriques réseau",
+    "Logs applicatifs montrant des erreurs de disponibilité",
+    "Signalement des utilisateurs ou du support"
   ],
   "responseActions": [
-    "Activer les protections anti-DDoS en amont.",
-    "Mettre en place un rate-limiting et des règles WAF.",
-    "Coordonner avec le fournisseur réseau et le SOC."
+    "Activer les règles de mitigation auprès du fournisseur",
+    "Filtrer par géolocalisation ou ASN si pertinent",
+    "Augmenter temporairement la capacité et informer les parties prenantes"
   ],
   "recoveryPlan": [
-    "Basculer vers des capacités supplémentaires temporaires.",
-    "Revenir à une configuration standard après stabilisation.",
-    "Documenter les enseignements et ajuster les seuils."
+    "Analyser les sources de trafic et ajuster les protections permanentes",
+    "Mettre à jour les seuils de supervision",
+    "Documenter les leçons apprises et le plan de communication"
   ],
-  "defaultDurationHours": 4,
-  "tags": ["availability", "network"]
+  "defaultDurationHours": 12,
+  "tags": ["ddos", "disponibilite", "reseau"]
 }

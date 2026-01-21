@@ -1,33 +1,34 @@
 {
   "id": "compromission",
-  "name": "Compromission d'identifiants",
-  "description": "Prise de contrôle d'identifiants sensibles entraînant des accès non autorisés.",
+  "name": "Compromission de compte",
+  "description": "Accès non autorisé à un compte privilégié via fuite d'identifiants ou phishing ciblé.",
   "incidentSteps": [
-    "Collecte d'identifiants via phishing ou fuite.",
-    "Connexion suspecte et contournement des contrôles MFA.",
-    "Élévation de privilèges et accès aux données critiques.",
-    "Exfiltration ou manipulation de données sensibles."
+    "Collecte d'identifiants via hameçonnage",
+    "Connexion réussie à un compte administrateur",
+    "Création d'un compte secondaire pour persistance",
+    "Accès aux données sensibles et exfiltration",
+    "Tentatives d'effacement des traces"
   ],
   "impacts": [
-    "Accès non autorisé aux données sensibles.",
-    "Risque de fraude ou de manipulation des transactions.",
-    "Perturbation des opérations internes."
+    "Accès illégitime aux données clients",
+    "Risque réglementaire et légal",
+    "Perte de confiance des utilisateurs"
   ],
   "detection": [
-    "Alertes IAM sur connexions inhabituelles.",
-    "Écarts de localisation ou d'horaires anormaux.",
-    "Anomalies sur les privilèges administratifs."
+    "Connexion depuis une géolocalisation inhabituelle",
+    "Changement de droits d'accès non attendu",
+    "Alertes d'exfiltration anormale"
   ],
   "responseActions": [
-    "Désactiver immédiatement les comptes compromis.",
-    "Réinitialiser les accès et renforcer la MFA.",
-    "Inspecter les journaux et isoler les sessions actives."
+    "Révoquer les sessions actives et réinitialiser les mots de passe",
+    "Activer l'authentification multi-facteurs",
+    "Analyser les journaux d'accès et notifier la DPO"
   ],
   "recoveryPlan": [
-    "Révoquer les tokens actifs et surveiller les accès.",
-    "Réviser les droits d'accès et appliquer le moindre privilège.",
-    "Informer les parties prenantes et documenter l'incident."
+    "Renforcer les politiques d'accès conditionnel",
+    "Mettre à jour les guides de sensibilisation",
+    "Revoir les procédures de revue de comptes"
   ],
-  "defaultDurationHours": 3,
-  "tags": ["identity", "access"]
+  "defaultDurationHours": 24,
+  "tags": ["compromission", "identite", "exfiltration"]
 }

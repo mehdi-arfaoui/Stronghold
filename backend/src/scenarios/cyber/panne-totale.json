@@ -1,33 +1,34 @@
 {
   "id": "panne-totale",
-  "name": "Panne totale",
-  "description": "Arrêt complet des infrastructures critiques suite à une défaillance majeure.",
+  "name": "Panne totale du SI",
+  "description": "Arrêt complet des services informatiques suite à une défaillance majeure.",
   "incidentSteps": [
-    "Défaillance simultanée des composants critiques (énergie, réseau, stockage).",
-    "Perte des services centraux et des outils de supervision.",
-    "Interruption des processus métier dépendants.",
-    "Activation des procédures d'urgence et bascule vers un mode dégradé."
+    "Panne électrique ou défaillance de l'onduleur",
+    "Arrêt des serveurs critiques et des équipements réseau",
+    "Perte de connectivité aux applications internes",
+    "Activation du plan de continuité et bascule éventuelle",
+    "Rétablissement progressif des services"
   ],
   "impacts": [
-    "Arrêt des opérations critiques.",
-    "Perte de visibilité sur l'état des systèmes.",
-    "Risque de non-conformité réglementaire."
+    "Interruption des activités métiers",
+    "Inaccessibilité des applications critiques",
+    "Risque de perte de données non sauvegardées"
   ],
   "detection": [
-    "Alertes de supervision sur indisponibilité globale.",
-    "Signalements métiers d'interruption totale.",
-    "Perte de télémetrie ou de logs."
+    "Alertes d'arrêt des services de supervision",
+    "Signalement immédiat des utilisateurs",
+    "Absence de réponse des équipements"
   ],
   "responseActions": [
-    "Déclencher la cellule de crise et les plans PCA.",
-    "Prioriser les services vitaux à restaurer.",
-    "Coordonner les équipes IT, sécurité et fournisseurs."
+    "Diagnostiquer la cause racine avec l'équipe infra",
+    "Démarrer les procédures de reprise d'activité",
+    "Informer la direction et les utilisateurs"
   ],
   "recoveryPlan": [
-    "Restaurer les infrastructures cœur en priorité.",
-    "Redéployer les services critiques et valider les dépendances.",
-    "Documenter les écarts et mettre à jour les procédures."
+    "Restaurer l'alimentation et vérifier l'intégrité des systèmes",
+    "Relancer les services par ordre de criticité",
+    "Mettre à jour le plan de maintenance préventive"
   ],
-  "defaultDurationHours": 8,
-  "tags": ["resilience", "infrastructure", "outage"]
+  "defaultDurationHours": 48,
+  "tags": ["panne", "infrastructure", "continuité"]
 }
