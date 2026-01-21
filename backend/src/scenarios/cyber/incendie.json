@@ -1,33 +1,34 @@
 {
   "id": "incendie",
-  "name": "Incendie",
-  "description": "Sinistre physique affectant un site critique et provoquant la perte d'infrastructures.",
+  "name": "Incendie en salle serveur",
+  "description": "Départ de feu dans la salle serveur nécessitant l'arrêt immédiat des équipements.",
   "incidentSteps": [
-    "Détection d'un départ de feu et déclenchement des alarmes.",
-    "Évacuation du site et coupure des alimentations.",
-    "Arrêt des systèmes hébergés localement.",
-    "Activation des plans de continuité et de relocalisation."
+    "Détection fumée ou déclenchement du système incendie",
+    "Arrêt d'urgence des équipements pour sécurité",
+    "Evacuation du personnel et intervention des secours",
+    "Indisponibilité prolongée des services locaux",
+    "Relocalisation temporaire vers un site de secours"
   ],
   "impacts": [
-    "Perte de disponibilité des infrastructures locales.",
-    "Dommages matériels et immobilisation du site.",
-    "Risque de rupture de service prolongée."
+    "Perte matérielle potentielle",
+    "Arrêt de production et des services internes",
+    "Coûts élevés de remise en état"
   ],
   "detection": [
-    "Alertes sécurité bâtiment et capteurs incendie.",
-    "Signalements physiques par les équipes sur site.",
-    "Perte soudaine de télémétrie locale."
+    "Alertes du système anti-incendie",
+    "Signalement visuel ou olfactif",
+    "Déconnexion simultanée de plusieurs équipements"
   ],
   "responseActions": [
-    "Assurer la sécurité du personnel et activer les procédures HSE.",
-    "Basculer vers le site de secours ou le cloud.",
-    "Informer les parties prenantes et les autorités."
+    "Activer le plan d'évacuation et la cellule de crise",
+    "Isoler l'alimentation électrique et réseau",
+    "Notifier les prestataires d'hébergement et de sauvegarde"
   ],
   "recoveryPlan": [
-    "Évaluer les dommages et sécuriser le site.",
-    "Reconstituer les infrastructures et valider les sauvegardes.",
-    "Mettre à jour le plan de continuité avec le retour d'expérience."
+    "Basculer les services vers le site de reprise",
+    "Réparer ou remplacer les équipements endommagés",
+    "Mettre à jour les procédures de sécurité incendie"
   ],
-  "defaultDurationHours": 12,
-  "tags": ["physical", "disaster", "site"]
+  "defaultDurationHours": 96,
+  "tags": ["incendie", "site", "continuité", "catastrophe"]
 }

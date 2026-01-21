@@ -26,8 +26,25 @@ const scenarioFiles = [
 const baseDir = dirname(fileURLToPath(import.meta.url));
 
 function loadScenario(fileName: string): CyberScenario {
-  const raw = readFileSync(join(baseDir, fileName), "utf-8");
-  return JSON.parse(raw) as CyberScenario;
+  try {
+    const raw = readFileSync(join(baseDir, fileName), "utf-8");
+    return JSON.parse(raw) as CyberScenario;
+  } catch (error) {
+    console.warn(`Scenario file ${fileName} not found or invalid`, error);
+    const fallbackId = fileName.replace(".json", "");
+    return {
+      id: fallbackId,
+      name: fallbackId,
+      description: "Scenario non disponible",
+      incidentSteps: [],
+      impacts: [],
+      detection: [],
+      responseActions: [],
+      recoveryPlan: [],
+      defaultDurationHours: 0,
+      tags: [],
+    };
+  }
 }
 
 export const CYBER_SCENARIOS: CyberScenario[] = scenarioFiles.map(loadScenario);
