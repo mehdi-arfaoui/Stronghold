@@ -99,6 +99,7 @@ services:
       PORT: 4000
       HOST: 0.0.0.0
       FRONTEND_URL: http://localhost:3000
+      CORS_ALLOW_NO_ORIGIN: "true"
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       CHROMADB_URL: http://chroma:8000
       CHROMADB_COLLECTION: pra-documents
