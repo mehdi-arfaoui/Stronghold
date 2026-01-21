@@ -47,7 +47,7 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v1/heartbeat || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/api/v2/heartbeat || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
