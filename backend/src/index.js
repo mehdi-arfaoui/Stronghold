@@ -125,12 +125,23 @@ const checkChroma = async () => {
   if (!chromaUrl) {
     throw new Error("CHROMADB_URL not set");
   }
-  const response = await withTimeout(
+  const v1Response = await withTimeout(
     (signal) => fetch(`${chromaUrl}/api/v1/heartbeat`, { signal }),
     HEALTHCHECK_TIMEOUT_MS
   );
-  if (!response.ok) {
-    throw new Error(`Chroma not ready (${response.status})`);
+  if (v1Response.ok) {
+    return;
+  }
+  const fallbackStatuses = new Set([404, 410]);
+  if (!fallbackStatuses.has(v1Response.status)) {
+    throw new Error(`Chroma not ready (${v1Response.status})`);
+  }
+  const v2Response = await withTimeout(
+    (signal) => fetch(`${chromaUrl}/api/v2/heartbeat`, { signal }),
+    HEALTHCHECK_TIMEOUT_MS
+  );
+  if (!v2Response.ok) {
+    throw new Error(`Chroma not ready (${v2Response.status})`);
   }
 };
 
