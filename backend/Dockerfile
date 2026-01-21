@@ -23,6 +23,12 @@ CMD ["bash", "scripts/migrate-and-seed.sh"]
 FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        nmap \
+        snmp \
+        tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
