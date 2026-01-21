@@ -1,7 +1,8 @@
+# syntax=docker/dockerfile:1.6
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --fund=false
 ARG VITE_BACKEND_URL
 ARG VITE_API_URL
 ARG VITE_API_KEY
