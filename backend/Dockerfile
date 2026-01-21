@@ -28,6 +28,7 @@ RUN apt-get update \
         nmap \
         snmp \
         tesseract-ocr \
+        wget \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
