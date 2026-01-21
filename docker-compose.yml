@@ -116,9 +116,9 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/health/live', (r) => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"]
-      interval: 10s
-      timeout: 5s
+      test: ["CMD-SHELL", "wget -qO- http://localhost:4000/health/live || exit 1"]
+      interval: 30s
+      timeout: 10s
       retries: 5
       start_period: 30s
 
