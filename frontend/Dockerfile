@@ -16,6 +16,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_API_KEY=${VITE_API_KEY}
 COPY . .
 RUN npm run build
+RUN npm prune --production
 
 FROM nginx:alpine AS runtime
 COPY --from=build /app/dist /usr/share/nginx/html

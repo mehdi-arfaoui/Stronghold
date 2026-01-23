@@ -15,7 +15,7 @@ RUN npx prisma generate
 RUN npm run build
 
 FROM build AS prod-deps
-RUN npm prune --omit=dev
+RUN npm prune --production
 
 FROM node:20-alpine AS migrate
 WORKDIR /app
