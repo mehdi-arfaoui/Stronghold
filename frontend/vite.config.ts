@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import { visualizer } from "rollup-plugin-visualizer";
@@ -17,6 +18,11 @@ export default defineConfig({
         ]
       : []),
   ],
+  resolve: {
+    alias: {
+      tslib: fileURLToPath(new URL("./src/vendor/tslib.ts", import.meta.url)),
+    },
+  },
   server: {
     host: "0.0.0.0",
     port: 3000,
