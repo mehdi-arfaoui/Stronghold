@@ -56,6 +56,12 @@ type ReadinessReport = {
   timestamp: string;
 };
 
+type BackgroundService = {
+  name: string;
+  enabled: boolean;
+  start: () => Promise<void> | void;
+};
+
 const HEALTHCHECK_TIMEOUT_MS = Number(process.env.HEALTHCHECK_TIMEOUT_MS || 2000);
 const HEALTHCHECK_RETRY_DELAY_MS = Number(process.env.HEALTHCHECK_RETRY_DELAY_MS || 500);
 const HEALTHCHECK_RETRIES = Number(process.env.HEALTHCHECK_RETRIES || 2);
@@ -66,6 +72,88 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const logBoot = (step: string, meta: Record<string, unknown> = {}) => {
   console.log(JSON.stringify({ level: "info", msg: "boot", step, ...meta }));
+};
+
+const backgroundServices: BackgroundService[] = [
+  {
+    name: "discoveryWorker",
+    enabled: process.env.DISCOVERY_WORKER_ENABLED !== "false",
+    start: () => {
+      startDiscoveryWorker();
+    },
+  },
+  {
+    name: "documentIngestionWorker",
+    enabled: process.env.DOCUMENT_WORKER_ENABLED !== "false",
+    start: () => {
+      startDocumentIngestionWorker();
+    },
+  },
+  {
+    name: "discoveryScheduler",
+    enabled: process.env.DISCOVERY_SCHEDULER_ENABLED !== "false",
+    start: async () => {
+      await startDiscoveryScheduler();
+    },
+  },
+  {
+    name: "apiKeyRotationWorker",
+    enabled: process.env.API_KEY_ROTATION_ENABLED !== "false",
+    start: async () => {
+      await startApiKeyRotationWorker();
+    },
+  },
+];
+
+const workerReadiness: Record<string, DependencyCheck> = Object.fromEntries(
+  backgroundServices.map((service) => [
+    service.name,
+    service.enabled
+      ? { status: "failed", optional: true, error: "boot pending" }
+      : { status: "skipped", optional: true, error: "disabled" },
+  ])
+) as Record<string, DependencyCheck>;
+
+const updateWorkerReadiness = (
+  name: string,
+  status: DependencyStatus,
+  meta: Pick<DependencyCheck, "error" | "latencyMs"> = {}
+) => {
+  workerReadiness[name] = {
+    status,
+    optional: true,
+    ...meta,
+  };
+};
+
+const startBackgroundServices = async () => {
+  logBoot("background.services.start", {
+    enabled: backgroundServices.filter((service) => service.enabled).length,
+  });
+  for (const service of backgroundServices) {
+    if (!service.enabled) {
+      updateWorkerReadiness(service.name, "skipped", { error: "disabled" });
+      continue;
+    }
+    const startedAt = Date.now();
+    updateWorkerReadiness(service.name, "failed", { error: "starting" });
+    try {
+      await service.start();
+      updateWorkerReadiness(service.name, "ok", { latencyMs: Date.now() - startedAt });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "background service error";
+      updateWorkerReadiness(service.name, "failed", {
+        error: message,
+        latencyMs: Date.now() - startedAt,
+      });
+      logBoot("background.services.failed", { service: service.name, error: message });
+    }
+  }
+  logBoot("background.services.ready", {
+    statuses: Object.fromEntries(
+      Object.entries(workerReadiness).map(([name, status]) => [name, status.status])
+    ),
+  });
 };
 
 const withTimeout = async <T>(
@@ -226,10 +314,15 @@ const buildReadinessReport = async (): Promise<{
     checks.map(({ name, result }) => [name, result])
   ) as Record<string, DependencyCheck>;
 
+  const combinedDependencies = {
+    ...dependencies,
+    ...workerReadiness,
+  };
+
   const requiredFailures = Object.values(dependencies).some(
     (dependency) => dependency.status === "failed" && !dependency.optional
   );
-  const optionalFailures = Object.values(dependencies).some(
+  const optionalFailures = Object.values(combinedDependencies).some(
     (dependency) => dependency.status === "failed" && dependency.optional
   );
 
@@ -243,7 +336,7 @@ const buildReadinessReport = async (): Promise<{
     httpStatus: requiredFailures ? 503 : 200,
     report: {
       status,
-      dependencies,
+      dependencies: combinedDependencies,
       timestamp: new Date().toISOString(),
     },
   };
@@ -437,23 +530,7 @@ for (const route of routes) {
 
 logBoot("routes.registered", { count: routes.length });
 
-if (process.env.DISCOVERY_WORKER_ENABLED !== "false") {
-  startDiscoveryWorker();
-}
-
-if (process.env.DOCUMENT_WORKER_ENABLED !== "false") {
-  startDocumentIngestionWorker();
-}
-
-if (process.env.DISCOVERY_SCHEDULER_ENABLED !== "false") {
-  startDiscoveryScheduler();
-}
-
-if (process.env.API_KEY_ROTATION_ENABLED !== "false") {
-  startApiKeyRotationWorker();
-}
-
-logBoot("workers.started", {
+logBoot("background.services.deferred", {
   discoveryWorker: process.env.DISCOVERY_WORKER_ENABLED !== "false",
   documentWorker: process.env.DOCUMENT_WORKER_ENABLED !== "false",
   discoveryScheduler: process.env.DISCOVERY_SCHEDULER_ENABLED !== "false",
@@ -498,6 +575,10 @@ server.listen(Number(PORT), HOST, () => {
       console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
     }
   }
+
+  setImmediate(() => {
+    void startBackgroundServices();
+  });
 
   void (async () => {
     logBoot("dependencies.probe.start");
