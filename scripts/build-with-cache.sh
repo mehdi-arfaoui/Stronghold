@@ -11,6 +11,4 @@ else
   docker buildx use "$builder_name" >/dev/null
 fi
 
-mkdir -p .buildx-cache/backend .buildx-cache/frontend
-
-docker compose build --progress=plain "$@"
+docker compose build --no-cache --progress=plain "$@"
