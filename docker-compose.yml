@@ -78,6 +78,8 @@ services:
     entrypoint: ["bash", "-lc"]
     command: ["./scripts/migrate-and-seed.sh"]
     environment:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1
@@ -103,6 +105,8 @@ services:
     image: stronghold-backend
     container_name: pra_backend
     environment:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
       NODE_ENV: production
       PORT: 4000
       HOST: 0.0.0.0
@@ -145,6 +149,9 @@ services:
         - type=local,dest=.buildx-cache/frontend,mode=max
     image: stronghold-frontend
     container_name: pra_frontend
+    environment:
+      DOCKER_BUILDKIT: "1"
+      COMPOSE_DOCKER_CLI_BUILD: "1"
     ports:
       - "3000:3000"
     depends_on:
