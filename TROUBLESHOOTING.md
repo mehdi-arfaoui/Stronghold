@@ -136,3 +136,11 @@ rm -rf frontend/node_modules/.vite
 cd frontend
 npm run dev
 ```
+
+## Entretien Docker (espace disque)
+
+Pensez à nettoyer régulièrement les ressources Docker inutilisées pour éviter que le fichier `docker_data.vhdx` n'enfle (notamment sous Docker Desktop). Vous pouvez :
+
+- Lancer le script local `./cleanup.sh` (basé sur `docker system prune` et `docker volume prune`).
+- Utiliser `docker compose prune` si vous gérez plusieurs projets Compose.
+- Utiliser la fonction **Clean / Purge data** dans Docker Desktop pour libérer l'espace disque.
