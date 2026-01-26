@@ -144,3 +144,7 @@ Pensez à nettoyer régulièrement les ressources Docker inutilisées pour évit
 - Lancer le script local `./cleanup.sh` (basé sur `docker system prune` et `docker volume prune`).
 - Utiliser `docker compose prune` si vous gérez plusieurs projets Compose.
 - Utiliser la fonction **Clean / Purge data** dans Docker Desktop pour libérer l'espace disque.
+
+## Performance Docker Desktop (ressources)
+
+Si les builds sont lents ou que les conteneurs démarrent difficilement, augmentez les ressources allouées à Docker Desktop (par exemple **12 Go de RAM** et **6 CPU**). Des ressources plus élevées, combinées à des images légères (Alpine) et des builds multi-stage, réduisent les temps de build et de démarrage.
