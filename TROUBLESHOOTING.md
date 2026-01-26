@@ -137,6 +137,13 @@ cd frontend
 npm run dev
 ```
 
+Si vous voyez une erreur TypeScript liée à `src/vendor/tslib.ts`, supprimez tout ancien fichier `frontend/src/vendor/tslib.ts` (issu d'un shim local obsolète), puis relancez un build propre :
+
+```bash
+rm -f frontend/src/vendor/tslib.ts
+docker compose build --no-cache frontend
+```
+
 ## Entretien Docker (espace disque)
 
 Pensez à nettoyer régulièrement les ressources Docker inutilisées pour éviter que le fichier `docker_data.vhdx` n'enfle (notamment sous Docker Desktop). Vous pouvez :
