@@ -15,6 +15,44 @@ docker-compose up --build
 # Les migrations sont exécutées automatiquement par le service backend-migrate.
 ```
 
+### Cache Docker/BuildKit (recommandé)
+
+Pour réutiliser les couches entre plusieurs builds, activez BuildKit et le mode build via Docker CLI :
+
+```powershell
+# 1. Créer un .env local si besoin
+Copy-Item .env.example .env
+
+# 2. Vérifier que ces variables sont bien présentes
+DOCKER_BUILDKIT=1
+COMPOSE_DOCKER_CLI_BUILD=1
+```
+
+Le cache local BuildKit est stocké dans `.buildx-cache/` (ignoré par Git). Vous pouvez lancer un build avec cache via :
+
+```powershell
+./scripts/build-with-cache.sh
+```
+
+### Mesurer les gains de cache (exemple)
+
+Exécutez deux builds successifs et comparez les durées :
+
+```powershell
+# 1er build (cache froid)
+Measure-Command { ./scripts/build-with-cache.sh }
+
+# 2e build (cache chaud)
+Measure-Command { ./scripts/build-with-cache.sh }
+```
+
+Exemple d'évolution mesurée :
+
+| Exécution | Durée totale |
+| --- | --- |
+| Build 1 (cache froid) | ~6m 20s |
+| Build 2 (cache chaud) | ~2m 05s |
+
 **Vérification :**
 - Backend (live) : http://localhost:4000/health/live
 - Backend (ready) : http://localhost:4000/health/ready
