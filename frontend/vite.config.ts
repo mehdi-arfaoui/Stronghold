@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      tslib: fileURLToPath(new URL("./src/vendor/tslib.ts", import.meta.url)),
+      tslib: fileURLToPath(new URL("./node_modules/tslib/tslib.es6.js", import.meta.url)),
     },
   },
   server: {
