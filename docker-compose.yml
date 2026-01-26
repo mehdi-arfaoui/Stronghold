@@ -68,6 +68,10 @@ services:
     build:
       context: ./backend
       target: migrate
+      cache_from:
+        - type=local,src=.buildx-cache/backend
+      cache_to:
+        - type=local,dest=.buildx-cache/backend,mode=max
     image: stronghold-backend-migrate
     container_name: pra_backend_migrate
     restart: "no"
@@ -92,6 +96,10 @@ services:
     build:
       context: ./backend
       target: runtime
+      cache_from:
+        - type=local,src=.buildx-cache/backend
+      cache_to:
+        - type=local,dest=.buildx-cache/backend,mode=max
     image: stronghold-backend
     container_name: pra_backend
     environment:
@@ -131,6 +139,10 @@ services:
         VITE_BACKEND_URL: http://localhost:4000
         VITE_API_URL: http://localhost:4000
         VITE_API_KEY: dev-key
+      cache_from:
+        - type=local,src=.buildx-cache/frontend
+      cache_to:
+        - type=local,dest=.buildx-cache/frontend,mode=max
     image: stronghold-frontend
     container_name: pra_frontend
     ports:

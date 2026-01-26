@@ -19,3 +19,6 @@ prisma/*.sqlite
 # OS
 .DS_Store
 Thumbs.db
+
+# Docker build cache
+.buildx-cache/
