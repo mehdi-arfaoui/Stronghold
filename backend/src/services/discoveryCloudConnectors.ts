@@ -4,6 +4,7 @@ import {
   EC2Client,
   DescribeInstancesCommand,
   DescribeTagsCommand,
+  DescribeRegionsCommand,
 } from "@aws-sdk/client-ec2";
 import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/client-auto-scaling";
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
@@ -25,6 +26,59 @@ function emptyResult(): DiscoveryConnectorResult {
   return { resources: [], flows: [], warnings: [] };
 }
 
+// Rate limiting: max concurrent region scans
+const AWS_MAX_CONCURRENT_REGIONS = 5;
+
+/**
+ * Fetch all available AWS regions using EC2 DescribeRegions API.
+ */
+export async function getAllAwsRegions(
+  credentials: DiscoveryCredentials
+): Promise<string[]> {
+  if (!credentials.aws?.accessKeyId && !credentials.aws?.roleArn) {
+    return [];
+  }
+
+  const credentialProvider = credentials.aws.roleArn
+    ? fromTemporaryCredentials({
+        params: {
+          RoleArn: credentials.aws.roleArn,
+          RoleSessionName: "stronghold-discovery-regions",
+          ExternalId: credentials.aws.externalId,
+        },
+        clientConfig: { region: "us-east-1" },
+      })
+    : {
+        accessKeyId: credentials.aws.accessKeyId,
+        secretAccessKey: credentials.aws.secretAccessKey,
+        sessionToken: credentials.aws.sessionToken,
+      };
+
+  const ec2 = new EC2Client({ region: "us-east-1", credentials: credentialProvider as any });
+  const { Regions } = await ec2.send(new DescribeRegionsCommand({}));
+
+  return Regions?.map((r) => r.RegionName).filter((name): name is string => !!name) || [];
+}
+
+/**
+ * Process items in batches with concurrency limit.
+ */
+async function processInBatches<T, R>(
+  items: T[],
+  batchSize: number,
+  processor: (item: T) => Promise<R>
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = [];
+
+  for (let i = 0; i < items.length; i += batchSize) {
+    const batch = items.slice(i, i + batchSize);
+    const batchResults = await Promise.allSettled(batch.map(processor));
+    results.push(...batchResults);
+  }
+
+  return results;
+}
+
 function buildResource(input: Partial<DiscoveredResource> & { source: string; externalId: string }) {
   return {
     name: input.name || input.externalId,
@@ -34,10 +88,15 @@ function buildResource(input: Partial<DiscoveredResource> & { source: string; ex
   } satisfies DiscoveredResource;
 }
 
-export async function scanAws(credentials: DiscoveryCredentials): Promise<DiscoveryConnectorResult> {
-  if (!credentials.aws?.region) return emptyResult();
-  const region = credentials.aws.region;
-  const credentialProvider = credentials.aws.roleArn
+/**
+ * Scan a single AWS region for resources.
+ * @internal
+ */
+async function scanAwsRegion(
+  region: string,
+  credentials: DiscoveryCredentials
+): Promise<DiscoveredResource[]> {
+  const credentialProvider = credentials.aws?.roleArn
     ? fromTemporaryCredentials({
         params: {
           RoleArn: credentials.aws.roleArn,
@@ -47,9 +106,9 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
         clientConfig: { region },
       })
     : {
-        accessKeyId: credentials.aws.accessKeyId,
-        secretAccessKey: credentials.aws.secretAccessKey,
-        sessionToken: credentials.aws.sessionToken,
+        accessKeyId: credentials.aws?.accessKeyId,
+        secretAccessKey: credentials.aws?.secretAccessKey,
+        sessionToken: credentials.aws?.sessionToken,
       };
 
   const ec2 = new EC2Client({ region, credentials: credentialProvider as any });
@@ -60,6 +119,7 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
 
   const resources: DiscoveredResource[] = [];
 
+  // EC2 Instances
   const instances = await ec2.send(new DescribeInstancesCommand({}));
   instances.Reservations?.forEach((reservation) => {
     reservation.Instances?.forEach((instance) => {
@@ -72,12 +132,13 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
           type: "EC2",
           ip: instance.PrivateIpAddress || null,
           hostname: instance.PrivateDnsName || null,
-          metadata: { state: instance.State?.Name, instanceType: instance.InstanceType },
+          metadata: { state: instance.State?.Name, instanceType: instance.InstanceType, region },
         })
       );
     });
   });
 
+  // EC2 Tags
   const tags = await ec2.send(new DescribeTagsCommand({}));
   if (tags.Tags) {
     tags.Tags.forEach((tag) => {
@@ -90,6 +151,7 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
     });
   }
 
+  // RDS Instances
   const dbInstances = await rds.send(new DescribeDBInstancesCommand({}));
   dbInstances.DBInstances?.forEach((db) => {
     resources.push(
@@ -100,11 +162,12 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
         kind: "infra",
         type: "RDS",
         ip: db.Endpoint?.Address || null,
-        metadata: { engine: db.Engine, status: db.DBInstanceStatus },
+        metadata: { engine: db.Engine, status: db.DBInstanceStatus, region },
       })
     );
   });
 
+  // Lambda Functions
   const lambdas = await lambda.send(new ListFunctionsCommand({}));
   lambdas.Functions?.forEach((fn) => {
     resources.push(
@@ -114,11 +177,12 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
         name: fn.FunctionName || "lambda",
         kind: "service",
         type: "LAMBDA",
-        metadata: { runtime: fn.Runtime, handler: fn.Handler },
+        metadata: { runtime: fn.Runtime, handler: fn.Handler, region },
       })
     );
   });
 
+  // Auto Scaling Groups
   const groups = await asg.send(new DescribeAutoScalingGroupsCommand({}));
   groups.AutoScalingGroups?.forEach((group) => {
     resources.push(
@@ -128,11 +192,12 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
         name: group.AutoScalingGroupName || "asg",
         kind: "infra",
         type: "ASG",
-        metadata: { minSize: group.MinSize, maxSize: group.MaxSize },
+        metadata: { minSize: group.MinSize, maxSize: group.MaxSize, region },
       })
     );
   });
 
+  // Load Balancers
   const loadBalancers = await elb.send(new DescribeLoadBalancersCommand({}));
   loadBalancers.LoadBalancers?.forEach((lb) => {
     resources.push(
@@ -143,12 +208,82 @@ export async function scanAws(credentials: DiscoveryCredentials): Promise<Discov
         kind: "infra",
         type: "ELB",
         ip: lb.DNSName || null,
-        metadata: { scheme: lb.Scheme, type: lb.Type },
+        metadata: { scheme: lb.Scheme, type: lb.Type, region },
       })
     );
   });
 
-  return { resources, flows: [], warnings: [] };
+  return resources;
+}
+
+export type AwsScanOptions = {
+  /**
+   * Regions to scan:
+   * - undefined: use credentials.aws.region (single region, backward compatible)
+   * - ['all']: scan all available regions
+   * - ['us-east-1', 'eu-west-1']: scan specific regions
+   */
+  regions?: string[];
+  /**
+   * Callback for progress updates during multi-region scan.
+   */
+  onProgress?: (completed: number, total: number, currentRegion: string) => void;
+};
+
+/**
+ * Scan AWS infrastructure across one or multiple regions.
+ *
+ * @param credentials - AWS credentials (IAM keys or role ARN)
+ * @param options - Scan options including regions to scan
+ */
+export async function scanAws(
+  credentials: DiscoveryCredentials,
+  options: AwsScanOptions = {}
+): Promise<DiscoveryConnectorResult> {
+  // Determine which regions to scan
+  let regionsToScan: string[] = [];
+
+  if (options.regions && options.regions.length > 0) {
+    if (options.regions.includes("all")) {
+      // Fetch all available regions
+      regionsToScan = await getAllAwsRegions(credentials);
+      if (regionsToScan.length === 0) {
+        return { resources: [], flows: [], warnings: ["Could not fetch AWS regions"] };
+      }
+    } else {
+      regionsToScan = options.regions;
+    }
+  } else if (credentials.aws?.region) {
+    // Backward compatible: single region from credentials
+    regionsToScan = [credentials.aws.region];
+  } else {
+    return emptyResult();
+  }
+
+  const allResources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
+  let completed = 0;
+
+  // Scan regions with rate limiting (max concurrent)
+  const results = await processInBatches(regionsToScan, AWS_MAX_CONCURRENT_REGIONS, async (region) => {
+    const resources = await scanAwsRegion(region, credentials);
+    completed++;
+    options.onProgress?.(completed, regionsToScan.length, region);
+    return { region, resources };
+  });
+
+  // Aggregate results
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      allResources.push(...result.value.resources);
+    } else {
+      // Extract region from error if possible
+      const errorMsg = result.reason?.message || String(result.reason);
+      warnings.push(`AWS scan failed for region: ${errorMsg}`);
+    }
+  }
+
+  return { resources: allResources, flows: [], warnings };
 }
 
 export async function scanAzure(credentials: DiscoveryCredentials): Promise<DiscoveryConnectorResult> {
