@@ -5,6 +5,9 @@ import {
   DescribeInstancesCommand,
   DescribeTagsCommand,
   DescribeRegionsCommand,
+  DescribeVpcsCommand,
+  DescribeSubnetsCommand,
+  DescribeSecurityGroupsCommand,
 } from "@aws-sdk/client-ec2";
 import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/client-auto-scaling";
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
@@ -24,6 +27,7 @@ import { ResourceManagementClient } from "@azure/arm-resources";
 import { ComputeManagementClient } from "@azure/arm-compute";
 import { ContainerServiceClient } from "@azure/arm-containerservice";
 import { StorageManagementClient } from "@azure/arm-storage";
+import { SqlManagementClient } from "@azure/arm-sql";
 
 import { InstancesClient, type protos } from "@google-cloud/compute";
 import { ClusterManagerClient } from "@google-cloud/container";
@@ -277,6 +281,83 @@ async function scanAwsRegion(
     }
   }
 
+  // VPCs
+  const vpcs = await ec2.send(new DescribeVpcsCommand({}));
+  vpcs.Vpcs?.forEach((vpc) => {
+    const vpcName = vpc.Tags?.find((t) => t.Key === "Name")?.Value || vpc.VpcId;
+    resources.push(
+      buildResource({
+        source: "aws",
+        externalId: vpc.VpcId || "vpc",
+        name: vpcName || "vpc",
+        kind: "infra",
+        type: "VPC",
+        metadata: {
+          region,
+          cidrBlock: vpc.CidrBlock,
+          state: vpc.State,
+          isDefault: vpc.IsDefault,
+          dhcpOptionsId: vpc.DhcpOptionsId,
+        },
+      })
+    );
+  });
+
+  // Subnets
+  const subnets = await ec2.send(new DescribeSubnetsCommand({}));
+  subnets.Subnets?.forEach((subnet) => {
+    const subnetName = subnet.Tags?.find((t) => t.Key === "Name")?.Value || subnet.SubnetId;
+    resources.push(
+      buildResource({
+        source: "aws",
+        externalId: subnet.SubnetId || "subnet",
+        name: subnetName || "subnet",
+        kind: "infra",
+        type: "SUBNET",
+        metadata: {
+          region,
+          vpcId: subnet.VpcId,
+          cidrBlock: subnet.CidrBlock,
+          availabilityZone: subnet.AvailabilityZone,
+          availableIpAddressCount: subnet.AvailableIpAddressCount,
+          mapPublicIpOnLaunch: subnet.MapPublicIpOnLaunch,
+          defaultForAz: subnet.DefaultForAz,
+        },
+      })
+    );
+  });
+
+  // Security Groups
+  const securityGroups = await ec2.send(new DescribeSecurityGroupsCommand({}));
+  securityGroups.SecurityGroups?.forEach((sg) => {
+    resources.push(
+      buildResource({
+        source: "aws",
+        externalId: sg.GroupId || "sg",
+        name: sg.GroupName || "sg",
+        kind: "infra",
+        type: "SECURITY_GROUP",
+        metadata: {
+          region,
+          vpcId: sg.VpcId,
+          description: sg.Description,
+          inboundRulesCount: sg.IpPermissions?.length || 0,
+          outboundRulesCount: sg.IpPermissionsEgress?.length || 0,
+          inboundRules: sg.IpPermissions?.map((rule) => ({
+            protocol: rule.IpProtocol,
+            fromPort: rule.FromPort,
+            toPort: rule.ToPort,
+            sources: [
+              ...(rule.IpRanges?.map((r) => r.CidrIp) || []),
+              ...(rule.Ipv6Ranges?.map((r) => r.CidrIpv6) || []),
+              ...(rule.UserIdGroupPairs?.map((g) => g.GroupId) || []),
+            ],
+          })),
+        },
+      })
+    );
+  });
+
   return resources;
 }
 
@@ -367,8 +448,10 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
   const computeClient = new ComputeManagementClient(credential, subscriptionId);
   const aksClient = new ContainerServiceClient(credential, subscriptionId);
   const storageClient = new StorageManagementClient(credential, subscriptionId);
+  const sqlClient = new SqlManagementClient(credential, subscriptionId);
 
   const resources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
 
   for await (const resource of resourceClient.resources.list()) {
     resources.push(
@@ -422,7 +505,66 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
     );
   }
 
-  return { resources, flows: [], warnings: [] };
+  // Azure SQL Servers and Databases
+  try {
+    for await (const server of sqlClient.servers.list()) {
+      const serverName = server.name || "sql-server";
+      resources.push(
+        buildResource({
+          source: "azure",
+          externalId: server.id || serverName,
+          name: serverName,
+          kind: "infra",
+          type: "AZURE_SQL_SERVER",
+          ip: server.fullyQualifiedDomainName || null,
+          metadata: {
+            location: server.location,
+            version: server.version,
+            state: server.state,
+            administratorLogin: server.administratorLogin,
+            publicNetworkAccess: server.publicNetworkAccess,
+            minimalTlsVersion: server.minimalTlsVersion,
+          },
+        })
+      );
+
+      // List databases for this server
+      const resourceGroup = server.id?.split("/")[4];
+      if (resourceGroup && server.name) {
+        try {
+          for await (const db of sqlClient.databases.listByServer(resourceGroup, server.name)) {
+            resources.push(
+              buildResource({
+                source: "azure",
+                externalId: db.id || `${serverName}/${db.name}`,
+                name: `${serverName}/${db.name}`,
+                kind: "infra",
+                type: "AZURE_SQL_DATABASE",
+                metadata: {
+                  location: db.location,
+                  serverName,
+                  status: db.status,
+                  edition: db.sku?.tier,
+                  sku: db.sku?.name,
+                  maxSizeBytes: db.maxSizeBytes,
+                  collation: db.collation,
+                  zoneRedundant: db.zoneRedundant,
+                  readScale: db.readScale,
+                  currentServiceObjectiveName: db.currentServiceObjectiveName,
+                },
+              })
+            );
+          }
+        } catch {
+          warnings.push(`Failed to list databases for SQL server: ${serverName}`);
+        }
+      }
+    }
+  } catch {
+    warnings.push("Failed to list Azure SQL servers");
+  }
+
+  return { resources, flows: [], warnings };
 }
 
 export async function scanGcp(credentials: DiscoveryCredentials): Promise<DiscoveryConnectorResult> {
