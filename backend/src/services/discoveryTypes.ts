@@ -1,5 +1,13 @@
 export type DiscoveryResourceKind = "service" | "infra";
 
+export type OpenPort = {
+  port: number;
+  protocol: "tcp" | "udp";
+  service?: string;
+  version?: string;
+  state?: string;
+};
+
 export type DiscoveredResource = {
   source: string;
   externalId: string;
@@ -10,6 +18,7 @@ export type DiscoveredResource = {
   hostname?: string | null;
   tags?: string[] | null;
   metadata?: Record<string, unknown> | null;
+  openPorts?: OpenPort[] | null;
 };
 
 export type DiscoveredFlow = {
@@ -78,6 +87,14 @@ export type DiscoveryCredentials = DiscoveryCredentialVaultRef &
   DiscoveryVirtualizationCredentials &
   DiscoveryFlowCredentials;
 
+export type NetworkScanMode = "light" | "full";
+
+export type NetworkScanOptions = {
+  mode?: NetworkScanMode;
+  topPorts?: number;
+  timeout?: number;
+};
+
 export type DiscoveryRunContext = {
   tenantId: string;
   jobId: string;
@@ -86,5 +103,6 @@ export type DiscoveryRunContext = {
   credentials: DiscoveryCredentials;
   requestedBy: string | null;
   autoCreate: boolean;
+  networkScanOptions?: NetworkScanOptions;
 };
 

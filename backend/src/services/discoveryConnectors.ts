@@ -4,6 +4,8 @@ import type {
   DiscoveryCredentials,
   DiscoveredFlow,
   DiscoveredResource,
+  NetworkScanOptions,
+  OpenPort,
 } from "./discoveryTypes.js";
 
 const require = createRequire(import.meta.url);
@@ -28,6 +30,166 @@ function buildResource(input: Partial<DiscoveredResource> & { source: string; ex
 function toPort(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+/**
+ * Parse nmap XML/JSON output to extract open ports with service information.
+ * Handles the node-nmap library output format.
+ */
+export function parseNmapPortsFromHost(host: any): OpenPort[] {
+  const ports: OpenPort[] = [];
+
+  // node-nmap returns ports in various formats depending on scan type
+  const portList = host?.ports || host?.openPorts || [];
+
+  if (!Array.isArray(portList)) {
+    return ports;
+  }
+
+  for (const portInfo of portList) {
+    if (!portInfo) continue;
+
+    const port = Number(portInfo.port ?? portInfo.portid);
+    if (!Number.isFinite(port) || port <= 0) continue;
+
+    const protocol = (portInfo.protocol || "tcp").toLowerCase();
+    if (protocol !== "tcp" && protocol !== "udp") continue;
+
+    const state = portInfo.state || portInfo.status || "open";
+    // Only include open ports
+    if (state !== "open" && state !== "open|filtered") continue;
+
+    const service = portInfo.service?.name || portInfo.service || portInfo.serviceName || undefined;
+    const version = portInfo.service?.product
+      ? `${portInfo.service.product}${portInfo.service.version ? ` ${portInfo.service.version}` : ""}`
+      : portInfo.version || undefined;
+
+    ports.push({
+      port,
+      protocol: protocol as "tcp" | "udp",
+      service: service ? String(service) : undefined,
+      version: version ? String(version) : undefined,
+      state,
+    });
+  }
+
+  return ports;
+}
+
+/**
+ * Perform a full network scan with service/version detection.
+ * Uses nmap SYN scan (-sS) with version detection (-sV).
+ *
+ * @param ipRanges - Array of IP ranges in CIDR notation
+ * @param credentials - Discovery credentials for SNMP/SSH/WMI enrichment
+ * @param options - Scan options (topPorts, timeout)
+ */
+export async function scanNetworkWithServices(
+  ipRanges: string[],
+  credentials: DiscoveryCredentials,
+  options: NetworkScanOptions = {}
+): Promise<DiscoveryConnectorResult> {
+  if (ipRanges.length === 0) return emptyResult();
+
+  if (process.env.NMAP_PATH) {
+    nmap.nmapLocation = process.env.NMAP_PATH;
+  }
+
+  const topPorts = options.topPorts ?? 100;
+  const timeout = options.timeout ?? 300000; // 5 minutes default
+
+  // Build nmap arguments for service detection
+  // -sS: SYN scan (fast, less intrusive)
+  // -sV: Service/version detection
+  // --top-ports N: Scan top N most common ports
+  // -T4: Aggressive timing (faster but reasonable)
+  // -n: No DNS resolution (faster)
+  // --open: Only show open ports
+  const nmapArgs = `-sS -sV --top-ports ${topPorts} -T4 -n --open`;
+
+  const scanResults = await new Promise<any[]>((resolve, reject) => {
+    const scan = new nmap.NmapScan(ipRanges.join(" "), nmapArgs);
+    const timeoutId = setTimeout(() => {
+      scan.cancelScan?.();
+      reject(new Error(`Nmap scan timed out after ${timeout}ms`));
+    }, timeout);
+
+    scan.on("complete", (data: any[]) => {
+      clearTimeout(timeoutId);
+      resolve(data || []);
+    });
+    scan.on("error", (error: Error) => {
+      clearTimeout(timeoutId);
+      reject(error);
+    });
+    scan.startScan();
+  });
+
+  const resources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
+
+  for (const host of scanResults) {
+    const ip = host?.ip || host?.ipaddress || host?.host || null;
+    if (!ip) continue;
+
+    const hostname = Array.isArray(host?.hostname) ? host.hostname[0] : host?.hostname || null;
+
+    // Parse open ports from nmap results
+    const openPorts = parseNmapPortsFromHost(host);
+
+    // Enrich with SNMP/SSH/WMI data
+    let snmpData: Record<string, string> = {};
+    let sshInfo: string | null = null;
+    let wmiInfo: string | null = null;
+
+    try {
+      snmpData = credentials.snmp ? await scanSnmpHost(ip, credentials.snmp) : {};
+    } catch {
+      warnings.push(`SNMP scan failed for ${ip}`);
+    }
+
+    try {
+      sshInfo = credentials.ssh ? await scanSshHost(ip, credentials.ssh) : null;
+    } catch {
+      warnings.push(`SSH scan failed for ${ip}`);
+    }
+
+    try {
+      wmiInfo = credentials.wmi ? await scanWmiHost(ip, credentials.wmi) : null;
+    } catch {
+      warnings.push(`WMI scan failed for ${ip}`);
+    }
+
+    // Detect OS from various sources
+    const detectedOs = host?.osNmap || host?.os?.osmatch?.[0]?.name || wmiInfo || null;
+
+    // Detect services from open ports for better categorization
+    const detectedServices = openPorts.map((p) => p.service).filter(Boolean);
+
+    resources.push(
+      buildResource({
+        source: "network",
+        externalId: hostname || ip,
+        name: hostname || ip,
+        kind: "infra",
+        type: "HOST",
+        ip,
+        hostname,
+        openPorts: openPorts.length > 0 ? openPorts : null,
+        metadata: {
+          snmpSysName: snmpData["1.3.6.1.2.1.1.5.0"],
+          snmpSysDescr: snmpData["1.3.6.1.2.1.1.1.0"],
+          sshFingerprint: sshInfo,
+          wmiOs: wmiInfo,
+          detectedOs,
+          detectedServices,
+          portCount: openPorts.length,
+        },
+      })
+    );
+  }
+
+  return { resources, flows: [], warnings };
 }
 
 async function scanSnmpHost(
