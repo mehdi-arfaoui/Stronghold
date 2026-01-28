@@ -1,0 +1,191 @@
+{
+  "nodes": [
+    {
+      "id": "web-frontend",
+      "name": "Site Web Client",
+      "type": "service",
+      "description": "Interface utilisateur web React"
+    },
+    {
+      "id": "mobile-app",
+      "name": "Application Mobile",
+      "type": "service",
+      "description": "Application iOS/Android"
+    },
+    {
+      "id": "api-gateway",
+      "name": "API Gateway",
+      "type": "service",
+      "description": "Point d'entree des requetes API"
+    },
+    {
+      "id": "auth-service",
+      "name": "Service Authentification",
+      "type": "service",
+      "description": "Gestion des connexions et tokens JWT"
+    },
+    {
+      "id": "user-service",
+      "name": "Service Utilisateurs",
+      "type": "service",
+      "description": "Gestion des profils utilisateurs"
+    },
+    {
+      "id": "order-service",
+      "name": "Service Commandes",
+      "type": "service",
+      "description": "Traitement des commandes clients"
+    },
+    {
+      "id": "payment-service",
+      "name": "Service Paiement",
+      "type": "service",
+      "description": "Integration avec les processeurs de paiement"
+    },
+    {
+      "id": "notification-service",
+      "name": "Service Notifications",
+      "type": "service",
+      "description": "Envoi d'emails et SMS"
+    },
+    {
+      "id": "postgres-main",
+      "name": "Base PostgreSQL Principale",
+      "type": "postgres",
+      "description": "Base de donnees transactionnelle"
+    },
+    {
+      "id": "postgres-replica",
+      "name": "Base PostgreSQL Replica",
+      "type": "postgres",
+      "description": "Replica en lecture seule"
+    },
+    {
+      "id": "redis-cache",
+      "name": "Cache Redis",
+      "type": "cache",
+      "description": "Cache de session et donnees frequentes"
+    },
+    {
+      "id": "elasticsearch",
+      "name": "Elasticsearch",
+      "type": "search",
+      "description": "Recherche full-text produits"
+    },
+    {
+      "id": "rabbitmq",
+      "name": "RabbitMQ",
+      "type": "queue",
+      "description": "File de messages asynchrones"
+    },
+    {
+      "id": "s3-storage",
+      "name": "Stockage S3",
+      "type": "storage",
+      "description": "Fichiers et images"
+    },
+    {
+      "id": "cdn",
+      "name": "CDN CloudFront",
+      "type": "cdn",
+      "description": "Distribution de contenu statique"
+    }
+  ],
+  "edges": [
+    {
+      "source": "web-frontend",
+      "target": "api-gateway",
+      "dependency_type": "HTTPS"
+    },
+    {
+      "source": "mobile-app",
+      "target": "api-gateway",
+      "dependency_type": "HTTPS"
+    },
+    {
+      "source": "web-frontend",
+      "target": "cdn",
+      "dependency_type": "HTTPS"
+    },
+    {
+      "source": "api-gateway",
+      "target": "auth-service",
+      "dependency_type": "gRPC"
+    },
+    {
+      "source": "api-gateway",
+      "target": "user-service",
+      "dependency_type": "gRPC"
+    },
+    {
+      "source": "api-gateway",
+      "target": "order-service",
+      "dependency_type": "gRPC"
+    },
+    {
+      "source": "auth-service",
+      "target": "postgres-main",
+      "dependency_type": "SQL"
+    },
+    {
+      "source": "auth-service",
+      "target": "redis-cache",
+      "dependency_type": "TCP"
+    },
+    {
+      "source": "user-service",
+      "target": "postgres-main",
+      "dependency_type": "SQL"
+    },
+    {
+      "source": "user-service",
+      "target": "postgres-replica",
+      "dependency_type": "SQL lecture"
+    },
+    {
+      "source": "user-service",
+      "target": "elasticsearch",
+      "dependency_type": "REST"
+    },
+    {
+      "source": "order-service",
+      "target": "postgres-main",
+      "dependency_type": "SQL"
+    },
+    {
+      "source": "order-service",
+      "target": "payment-service",
+      "dependency_type": "gRPC"
+    },
+    {
+      "source": "order-service",
+      "target": "rabbitmq",
+      "dependency_type": "AMQP"
+    },
+    {
+      "source": "payment-service",
+      "target": "postgres-main",
+      "dependency_type": "SQL"
+    },
+    {
+      "source": "notification-service",
+      "target": "rabbitmq",
+      "dependency_type": "AMQP"
+    },
+    {
+      "source": "notification-service",
+      "target": "postgres-main",
+      "dependency_type": "SQL"
+    },
+    {
+      "source": "postgres-main",
+      "target": "postgres-replica",
+      "dependency_type": "replication"
+    },
+    {
+      "source": "cdn",
+      "target": "s3-storage",
+      "dependency_type": "origine"
+    }
+  ]
+}
