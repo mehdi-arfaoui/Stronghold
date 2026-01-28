@@ -10,6 +10,13 @@ import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/cl
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { LambdaClient, ListFunctionsCommand } from "@aws-sdk/client-lambda";
+import {
+  EKSClient,
+  ListClustersCommand,
+  DescribeClusterCommand,
+  ListNodegroupsCommand,
+  DescribeNodegroupCommand,
+} from "@aws-sdk/client-eks";
 import { fromTemporaryCredentials } from "@aws-sdk/credential-providers";
 
 import { ClientSecretCredential } from "@azure/identity";
@@ -116,6 +123,7 @@ async function scanAwsRegion(
   const lambda = new LambdaClient({ region, credentials: credentialProvider as any });
   const asg = new AutoScalingClient({ region, credentials: credentialProvider as any });
   const elb = new ElasticLoadBalancingV2Client({ region, credentials: credentialProvider as any });
+  const eks = new EKSClient({ region, credentials: credentialProvider as any });
 
   const resources: DiscoveredResource[] = [];
 
@@ -212,6 +220,62 @@ async function scanAwsRegion(
       })
     );
   });
+
+  // EKS Clusters
+  const clusterList = await eks.send(new ListClustersCommand({}));
+  for (const clusterName of clusterList.clusters || []) {
+    const clusterDetails = await eks.send(new DescribeClusterCommand({ name: clusterName }));
+    const cluster = clusterDetails.cluster;
+    if (!cluster) continue;
+
+    resources.push(
+      buildResource({
+        source: "aws",
+        externalId: cluster.arn || clusterName,
+        name: clusterName,
+        kind: "infra",
+        type: "EKS",
+        metadata: {
+          region,
+          version: cluster.version,
+          status: cluster.status,
+          endpoint: cluster.endpoint,
+          platformVersion: cluster.platformVersion,
+          vpcId: cluster.resourcesVpcConfig?.vpcId,
+        },
+      })
+    );
+
+    // List node groups for this cluster
+    const nodeGroupList = await eks.send(new ListNodegroupsCommand({ clusterName }));
+    for (const nodeGroupName of nodeGroupList.nodegroups || []) {
+      const nodeGroupDetails = await eks.send(
+        new DescribeNodegroupCommand({ clusterName, nodegroupName: nodeGroupName })
+      );
+      const nodeGroup = nodeGroupDetails.nodegroup;
+      if (!nodeGroup) continue;
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: nodeGroup.nodegroupArn || `${clusterName}/${nodeGroupName}`,
+          name: `${clusterName}/${nodeGroupName}`,
+          kind: "infra",
+          type: "EKS_NODEGROUP",
+          metadata: {
+            region,
+            clusterName,
+            status: nodeGroup.status,
+            capacityType: nodeGroup.capacityType,
+            instanceTypes: nodeGroup.instanceTypes,
+            desiredSize: nodeGroup.scalingConfig?.desiredSize,
+            minSize: nodeGroup.scalingConfig?.minSize,
+            maxSize: nodeGroup.scalingConfig?.maxSize,
+          },
+        })
+      );
+    }
+  }
 
   return resources;
 }
