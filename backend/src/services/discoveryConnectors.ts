@@ -427,9 +427,18 @@ export async function scanVmware(
   return { resources, flows: [], warnings: [] };
 }
 
+/**
+ * Kubernetes resource edge representing a dependency relationship.
+ */
+export type K8sEdge = {
+  source: string;
+  target: string;
+  dependencyType: string;
+};
+
 export async function scanKubernetes(
   credentials: DiscoveryCredentials
-): Promise<DiscoveryConnectorResult> {
+): Promise<DiscoveryConnectorResult & { edges?: K8sEdge[] }> {
   if (!credentials.kubernetes?.kubeconfig) return emptyResult();
   const k8s = require("@kubernetes/client-node");
   const kc = new k8s.KubeConfig();
@@ -437,9 +446,19 @@ export async function scanKubernetes(
   if (credentials.kubernetes.context) {
     kc.setCurrentContext(credentials.kubernetes.context);
   }
-  const coreApi = kc.makeApiClient(k8s.CoreV1Api);
-  const resources: DiscoveredResource[] = [];
 
+  const coreApi = kc.makeApiClient(k8s.CoreV1Api);
+  const appsApi = kc.makeApiClient(k8s.AppsV1Api);
+  const networkingApi = kc.makeApiClient(k8s.NetworkingV1Api);
+
+  const resources: DiscoveredResource[] = [];
+  const edges: K8sEdge[] = [];
+  const warnings: string[] = [];
+
+  // Track pod selectors for relationship mapping
+  const podsByLabels = new Map<string, string[]>(); // labelKey=labelValue -> [podUids]
+
+  // --- Nodes ---
   const nodes = await coreApi.listNode();
   nodes.body.items.forEach((node: any) => {
     resources.push(
@@ -449,25 +468,66 @@ export async function scanKubernetes(
         name: node.metadata?.name || "node",
         kind: "infra",
         type: "K8S_NODE",
-        metadata: { labels: node.metadata?.labels },
+        metadata: {
+          labels: node.metadata?.labels,
+          kubeletVersion: node.status?.nodeInfo?.kubeletVersion,
+          osImage: node.status?.nodeInfo?.osImage,
+          containerRuntime: node.status?.nodeInfo?.containerRuntimeVersion,
+        },
       })
     );
   });
 
+  // --- Pods ---
   const pods = await coreApi.listPodForAllNamespaces();
   pods.body.items.forEach((pod: any) => {
+    const podUid = pod.metadata?.uid || `${pod.metadata?.namespace}/${pod.metadata?.name}`;
+    const podName = `${pod.metadata?.namespace}/${pod.metadata?.name}`;
+
     resources.push(
       buildResource({
         source: "kubernetes",
-        externalId: pod.metadata?.uid || pod.metadata?.name,
-        name: `${pod.metadata?.namespace}/${pod.metadata?.name}`,
+        externalId: podUid,
+        name: podName,
         kind: "infra",
         type: "K8S_POD",
-        metadata: { nodeName: pod.spec?.nodeName, containers: pod.spec?.containers?.length || 0 },
+        ip: pod.status?.podIP || null,
+        metadata: {
+          namespace: pod.metadata?.namespace,
+          nodeName: pod.spec?.nodeName,
+          containers: pod.spec?.containers?.length || 0,
+          phase: pod.status?.phase,
+          labels: pod.metadata?.labels,
+        },
       })
     );
+
+    // Index pods by their labels for service selector matching
+    const labels = pod.metadata?.labels || {};
+    for (const [key, value] of Object.entries(labels)) {
+      const labelKey = `${key}=${value}`;
+      if (!podsByLabels.has(labelKey)) {
+        podsByLabels.set(labelKey, []);
+      }
+      podsByLabels.get(labelKey)!.push(podUid);
+    }
+
+    // Edge: Pod -> Node
+    if (pod.spec?.nodeName) {
+      const nodeResource = resources.find(
+        (r) => r.type === "K8S_NODE" && r.name === pod.spec.nodeName
+      );
+      if (nodeResource) {
+        edges.push({
+          source: podUid,
+          target: nodeResource.externalId,
+          dependencyType: "runs_on",
+        });
+      }
+    }
   });
 
+  // --- Persistent Volumes ---
   const volumes = await coreApi.listPersistentVolume();
   volumes.body.items.forEach((pv: any) => {
     resources.push(
@@ -477,12 +537,211 @@ export async function scanKubernetes(
         name: pv.metadata?.name || "pv",
         kind: "infra",
         type: "K8S_VOLUME",
-        metadata: { capacity: pv.spec?.capacity, storageClass: pv.spec?.storageClassName },
+        metadata: {
+          capacity: pv.spec?.capacity,
+          storageClass: pv.spec?.storageClassName,
+          accessModes: pv.spec?.accessModes,
+          status: pv.status?.phase,
+        },
       })
     );
   });
 
-  return { resources, flows: [], warnings: [] };
+  // --- Services ---
+  try {
+    const services = await coreApi.listServiceForAllNamespaces();
+    services.body.items.forEach((svc: any) => {
+      const svcUid = svc.metadata?.uid || `${svc.metadata?.namespace}/${svc.metadata?.name}`;
+      const svcName = `${svc.metadata?.namespace}/${svc.metadata?.name}`;
+
+      resources.push(
+        buildResource({
+          source: "kubernetes",
+          externalId: svcUid,
+          name: svcName,
+          kind: "service",
+          type: "K8S_SERVICE",
+          ip: svc.spec?.clusterIP || null,
+          metadata: {
+            namespace: svc.metadata?.namespace,
+            type: svc.spec?.type,
+            ports: svc.spec?.ports?.map((p: any) => ({
+              port: p.port,
+              targetPort: p.targetPort,
+              protocol: p.protocol,
+            })),
+            selector: svc.spec?.selector,
+            externalIPs: svc.spec?.externalIPs,
+            loadBalancerIP: svc.status?.loadBalancer?.ingress?.[0]?.ip,
+          },
+        })
+      );
+
+      // Edge: Service -> Pods (via selector)
+      const selector = svc.spec?.selector || {};
+      for (const [key, value] of Object.entries(selector)) {
+        const labelKey = `${key}=${value}`;
+        const matchingPods = podsByLabels.get(labelKey) || [];
+        for (const podUid of matchingPods) {
+          edges.push({
+            source: svcUid,
+            target: podUid,
+            dependencyType: "routes_to",
+          });
+        }
+      }
+    });
+  } catch (error) {
+    warnings.push("Failed to list Kubernetes services");
+  }
+
+  // --- Ingress ---
+  try {
+    const ingresses = await networkingApi.listIngressForAllNamespaces();
+    ingresses.body.items.forEach((ing: any) => {
+      const ingUid = ing.metadata?.uid || `${ing.metadata?.namespace}/${ing.metadata?.name}`;
+      const ingName = `${ing.metadata?.namespace}/${ing.metadata?.name}`;
+
+      const rules = ing.spec?.rules?.map((rule: any) => ({
+        host: rule.host,
+        paths: rule.http?.paths?.map((path: any) => ({
+          path: path.path,
+          pathType: path.pathType,
+          serviceName: path.backend?.service?.name,
+          servicePort: path.backend?.service?.port?.number || path.backend?.service?.port?.name,
+        })),
+      }));
+
+      resources.push(
+        buildResource({
+          source: "kubernetes",
+          externalId: ingUid,
+          name: ingName,
+          kind: "infra",
+          type: "K8S_INGRESS",
+          metadata: {
+            namespace: ing.metadata?.namespace,
+            ingressClassName: ing.spec?.ingressClassName,
+            rules,
+            tls: ing.spec?.tls?.map((t: any) => ({ hosts: t.hosts, secretName: t.secretName })),
+            loadBalancerIP: ing.status?.loadBalancer?.ingress?.[0]?.ip,
+          },
+        })
+      );
+
+      // Edge: Ingress -> Services
+      for (const rule of ing.spec?.rules || []) {
+        for (const path of rule.http?.paths || []) {
+          const serviceName = path.backend?.service?.name;
+          if (serviceName) {
+            const namespace = ing.metadata?.namespace;
+            const targetService = resources.find(
+              (r) =>
+                r.type === "K8S_SERVICE" &&
+                r.name === `${namespace}/${serviceName}`
+            );
+            if (targetService) {
+              edges.push({
+                source: ingUid,
+                target: targetService.externalId,
+                dependencyType: "routes_to",
+              });
+            }
+          }
+        }
+      }
+    });
+  } catch (error) {
+    warnings.push("Failed to list Kubernetes ingresses");
+  }
+
+  // --- Deployments ---
+  try {
+    const deployments = await appsApi.listDeploymentForAllNamespaces();
+    deployments.body.items.forEach((deploy: any) => {
+      const deployUid = deploy.metadata?.uid || `${deploy.metadata?.namespace}/${deploy.metadata?.name}`;
+      const deployName = `${deploy.metadata?.namespace}/${deploy.metadata?.name}`;
+
+      resources.push(
+        buildResource({
+          source: "kubernetes",
+          externalId: deployUid,
+          name: deployName,
+          kind: "service",
+          type: "K8S_DEPLOYMENT",
+          metadata: {
+            namespace: deploy.metadata?.namespace,
+            replicas: deploy.spec?.replicas,
+            availableReplicas: deploy.status?.availableReplicas,
+            readyReplicas: deploy.status?.readyReplicas,
+            strategy: deploy.spec?.strategy?.type,
+            selector: deploy.spec?.selector?.matchLabels,
+          },
+        })
+      );
+
+      // Edge: Deployment -> Pods (via selector)
+      const selector = deploy.spec?.selector?.matchLabels || {};
+      for (const [key, value] of Object.entries(selector)) {
+        const labelKey = `${key}=${value}`;
+        const matchingPods = podsByLabels.get(labelKey) || [];
+        for (const podUid of matchingPods) {
+          edges.push({
+            source: deployUid,
+            target: podUid,
+            dependencyType: "manages",
+          });
+        }
+      }
+    });
+  } catch (error) {
+    warnings.push("Failed to list Kubernetes deployments");
+  }
+
+  // --- StatefulSets ---
+  try {
+    const statefulSets = await appsApi.listStatefulSetForAllNamespaces();
+    statefulSets.body.items.forEach((sts: any) => {
+      const stsUid = sts.metadata?.uid || `${sts.metadata?.namespace}/${sts.metadata?.name}`;
+      const stsName = `${sts.metadata?.namespace}/${sts.metadata?.name}`;
+
+      resources.push(
+        buildResource({
+          source: "kubernetes",
+          externalId: stsUid,
+          name: stsName,
+          kind: "service",
+          type: "K8S_STATEFULSET",
+          metadata: {
+            namespace: sts.metadata?.namespace,
+            replicas: sts.spec?.replicas,
+            readyReplicas: sts.status?.readyReplicas,
+            serviceName: sts.spec?.serviceName,
+            selector: sts.spec?.selector?.matchLabels,
+            volumeClaimTemplates: sts.spec?.volumeClaimTemplates?.length,
+          },
+        })
+      );
+
+      // Edge: StatefulSet -> Pods (via selector)
+      const selector = sts.spec?.selector?.matchLabels || {};
+      for (const [key, value] of Object.entries(selector)) {
+        const labelKey = `${key}=${value}`;
+        const matchingPods = podsByLabels.get(labelKey) || [];
+        for (const podUid of matchingPods) {
+          edges.push({
+            source: stsUid,
+            target: podUid,
+            dependencyType: "manages",
+          });
+        }
+      }
+    });
+  } catch (error) {
+    warnings.push("Failed to list Kubernetes statefulsets");
+  }
+
+  return { resources, flows: [], warnings, edges };
 }
 
 export async function scanFlows(credentials: DiscoveryCredentials): Promise<DiscoveryConnectorResult> {
