@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.6
-FROM node:20-bullseye AS deps
+FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci --no-audit --fund=false
@@ -17,34 +17,29 @@ RUN npm run build
 FROM build AS prod-deps
 RUN npm prune --production
 
-FROM node:20-bullseye AS migrate
+FROM node:20-alpine AS migrate
 WORKDIR /app
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        bash \
-        ca-certificates \
-        libssl1.1 \
-        openssl \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    bash \
+    ca-certificates \
+    openssl
 COPY --from=build /app/package*.json ./
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts ./scripts
 CMD ["bash", "scripts/migrate-and-seed.sh"]
 
-FROM node:20-bullseye AS runtime
+FROM node:20-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        ca-certificates \
-        libssl1.1 \
-        nmap \
-        openssl \
-        snmp \
-        tesseract-ocr \
-        wget \
-    && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache \
+    ca-certificates \
+    nmap \
+    nmap-scripts \
+    net-snmp-tools \
+    openssl \
+    tesseract-ocr \
+    wget
 COPY --from=build /app/package*.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
