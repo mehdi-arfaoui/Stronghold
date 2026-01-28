@@ -59,18 +59,20 @@ export function parseNmapPortsFromHost(host: any): OpenPort[] {
     // Only include open ports
     if (state !== "open" && state !== "open|filtered") continue;
 
-    const service = portInfo.service?.name || portInfo.service || portInfo.serviceName || undefined;
+    const service = portInfo.service?.name || portInfo.service || portInfo.serviceName;
     const version = portInfo.service?.product
       ? `${portInfo.service.product}${portInfo.service.version ? ` ${portInfo.service.version}` : ""}`
-      : portInfo.version || undefined;
+      : portInfo.version;
 
-    ports.push({
+    // Build port entry conditionally to comply with exactOptionalPropertyTypes
+    const portEntry: OpenPort = {
       port,
       protocol: protocol as "tcp" | "udp",
-      service: service ? String(service) : undefined,
-      version: version ? String(version) : undefined,
       state,
-    });
+    };
+    if (service) portEntry.service = String(service);
+    if (version) portEntry.version = String(version);
+    ports.push(portEntry);
   }
 
   return ports;

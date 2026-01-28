@@ -58,9 +58,10 @@ describe("parseNmapPortsFromHost", async () => {
       port: 443,
       protocol: "tcp",
       service: "https",
-      version: undefined,
       state: "open",
     });
+    // version should not be present (not undefined, but absent)
+    assert.equal(ports[2].version, undefined);
   });
 
   test("parses openPorts array format", () => {
