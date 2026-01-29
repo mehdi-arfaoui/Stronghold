@@ -366,7 +366,25 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
       const job = (await apiFetchFormData("/discovery/import", formData)) as DiscoveryJob;
       setCurrentJob(job);
       setImportFile(null);
-      setActionMessage("Import terminé. Les ressources sont en cours de consolidation.");
+
+      // Build a detailed success message with import results
+      const summary = job.resultSummary;
+      const parts: string[] = ["Import terminé avec succès !"];
+      if (summary) {
+        const details: string[] = [];
+        if (summary.createdServices) details.push(`${summary.createdServices} service(s)`);
+        if (summary.createdInfra) details.push(`${summary.createdInfra} infrastructure(s)`);
+        if (summary.createdDependencies) details.push(`${summary.createdDependencies} dépendance(s)`);
+        if (summary.createdInfraLinks) details.push(`${summary.createdInfraLinks} lien(s) infra`);
+        if (details.length > 0) {
+          parts.push(`Créés : ${details.join(", ")}.`);
+        }
+      }
+      parts.push("Cliquez sur \"Aller aux services\" pour voir les résultats.");
+      setActionMessage(parts.join(" "));
+
+      // Mark discovery as completed
+      setDiscoveryCompleted(true);
       await loadHistory();
     } catch (err: any) {
       setImportError(err.message || "Erreur lors de l'import");
@@ -394,7 +412,25 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
         }),
       })) as DiscoveryJob;
       setCurrentJob(job);
-      setActionMessage("Import GitHub lancé. La cartographie se met à jour.");
+
+      // Build a detailed success message with import results
+      const summary = job.resultSummary;
+      const parts: string[] = ["Import GitHub terminé avec succès !"];
+      if (summary) {
+        const details: string[] = [];
+        if (summary.createdServices) details.push(`${summary.createdServices} service(s)`);
+        if (summary.createdInfra) details.push(`${summary.createdInfra} infrastructure(s)`);
+        if (summary.createdDependencies) details.push(`${summary.createdDependencies} dépendance(s)`);
+        if (summary.createdInfraLinks) details.push(`${summary.createdInfraLinks} lien(s) infra`);
+        if (details.length > 0) {
+          parts.push(`Créés : ${details.join(", ")}.`);
+        }
+      }
+      parts.push("Cliquez sur \"Aller aux services\" pour voir les résultats.");
+      setActionMessage(parts.join(" "));
+
+      // Mark discovery as completed
+      setDiscoveryCompleted(true);
       await loadHistory();
     } catch (err: any) {
       setGithubError(err.message || "Erreur lors de l'import GitHub");

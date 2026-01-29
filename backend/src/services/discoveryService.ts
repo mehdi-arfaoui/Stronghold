@@ -238,21 +238,103 @@ function normalizeCriticality(value?: string | null) {
 
 function classifyNodeKind(value?: string | null): DiscoveryNodeKind {
   const normalized = (value || "").toLowerCase();
-  if (
-    normalized.includes("infra") ||
-    normalized.includes("vm") ||
-    normalized.includes("host") ||
-    normalized.includes("server") ||
-    normalized.includes("database") ||
-    normalized.includes("db") ||
-    normalized.includes("container") ||
-    normalized.includes("network")
-  ) {
-    return "infra";
+
+  // Infrastructure types - databases, caches, queues, storage, networking
+  const infraTypes = [
+    "infra",
+    "vm",
+    "host",
+    "server",
+    "database",
+    "db",
+    "container",
+    "network",
+    // Database types
+    "postgres",
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "mongodb",
+    "mongo",
+    "oracle",
+    "sqlserver",
+    "mssql",
+    "sqlite",
+    "dynamodb",
+    "cosmosdb",
+    "cassandra",
+    "couchdb",
+    "neo4j",
+    // Cache types
+    "cache",
+    "redis",
+    "memcached",
+    "elasticache",
+    // Queue/messaging types
+    "queue",
+    "rabbitmq",
+    "kafka",
+    "sqs",
+    "activemq",
+    "zeromq",
+    "nats",
+    "pulsar",
+    // Storage types
+    "storage",
+    "s3",
+    "blob",
+    "minio",
+    "nas",
+    "san",
+    "nfs",
+    "ceph",
+    // Search engines
+    "search",
+    "elasticsearch",
+    "elastic",
+    "opensearch",
+    "solr",
+    // CDN and networking
+    "cdn",
+    "cloudfront",
+    "cloudflare",
+    "akamai",
+    "loadbalancer",
+    "lb",
+    "proxy",
+    "nginx",
+    "haproxy",
+    "firewall",
+    "gateway",
+    "router",
+    "switch",
+    // Monitoring/logging infra
+    "prometheus",
+    "grafana",
+    "kibana",
+    "logstash",
+    "fluentd",
+    // Container orchestration
+    "kubernetes",
+    "k8s",
+    "docker",
+    "swarm",
+    "ecs",
+    "fargate",
+  ];
+
+  for (const infraType of infraTypes) {
+    if (normalized.includes(infraType)) {
+      return "infra";
+    }
   }
-  if (normalized.includes("service") || normalized.includes("app")) {
+
+  // Service types - applications, APIs, microservices
+  if (normalized.includes("service") || normalized.includes("app") || normalized.includes("api")) {
     return "service";
   }
+
+  // Default to service for unknown types (backwards compatible)
   return "service";
 }
 
