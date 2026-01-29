@@ -9,7 +9,8 @@ export function isJsonValue(
   value: unknown,
   seen: WeakSet<object> = new WeakSet()
 ): value is Prisma.InputJsonValue {
-  if (value === null) return false;
+  // null is a valid JSON value
+  if (value === null) return true;
   if (typeof value === "string") return true;
   if (typeof value === "boolean") return true;
   if (typeof value === "number") return Number.isFinite(value);
@@ -31,8 +32,9 @@ export function isJsonValue(
 }
 
 export function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  // null is a valid JSON value, return it as-is
   if (value === null) {
-    throw new Error("Invalid JSON value for Prisma: null is not allowed.");
+    return null as unknown as Prisma.InputJsonValue;
   }
   if (isJsonValue(value)) return value;
   if (value instanceof Date) {
