@@ -75,6 +75,7 @@ model Tenant {
   discoveryHistory       DiscoveryHistory[]
   vulnerabilities            Vulnerability[]
   branding               TenantBranding?
+  license                License?
 }
 
 model TenantBranding {
@@ -1313,4 +1314,65 @@ model DiscoveryHistory {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, status])
+}
+
+// License system
+enum PlanType {
+  STARTER
+  PRO
+  ENTERPRISE
+  CUSTOM
+}
+
+enum LicenseStatus {
+  ACTIVE
+  SUSPENDED
+  EXPIRED
+  CANCELLED
+}
+
+model License {
+  id            String        @id @default(cuid())
+  tenantId      String        @unique
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Plan et statut
+  plan          PlanType      @default(STARTER)
+  status        LicenseStatus @default(ACTIVE)
+
+  // Validité
+  startsAt      DateTime      @default(now())
+  expiresAt     DateTime?
+
+  // Quotas
+  maxUsers      Int           @default(5)
+  maxStorage    BigInt        @default(1073741824)  // 1 GB
+  maxScansMonth Int           @default(100)
+  maxDocuments  Int           @default(500)
+
+  // Features activées (array de strings)
+  features      String[]      @default(["discovery", "inventory"])
+
+  // Timestamps
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  // Relations
+  usage         LicenseUsage?
+}
+
+model LicenseUsage {
+  id              String   @id @default(cuid())
+  licenseId       String   @unique
+  license         License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+
+  // Compteurs actuels
+  currentUsers    Int      @default(0)
+  currentStorage  BigInt   @default(0)
+  scansThisMonth  Int      @default(0)
+  documentsCount  Int      @default(0)
+
+  // Reset mensuel
+  lastResetAt     DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

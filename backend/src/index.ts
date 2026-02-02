@@ -36,7 +36,7 @@ import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
 import { startApiKeyRotationWorker } from "./workers/apiKeyRotationWorker.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
-import { ensureOnPremiseLicense } from "./services/licenseService.js";
+import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
 
 dotenv.config();
 initTelemetry();
