@@ -3,6 +3,7 @@ import { PageIntro } from "../components/PageIntro";
 import { BiaDashboardView } from "../components/BiaDashboard";
 import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import { BiaProcessDetail } from "../components/BiaProcessDetail";
+import { BiaPrioritization } from "../components/BiaPrioritization";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -10,7 +11,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "wizard" | "list";
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -300,6 +301,12 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           Assistant BIA
         </button>
         <button
+          className={`tab-button ${activeTab === "prioritization" ? "active" : ""}`}
+          onClick={() => setActiveTab("prioritization")}
+        >
+          Priorisation
+        </button>
+        <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
           onClick={() => setActiveTab("list")}
         >
@@ -326,6 +333,27 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
             services={services}
             onComplete={handleWizardComplete}
             onCancel={() => setActiveTab("dashboard")}
+          />
+        </div>
+      )}
+
+      {/* Prioritization Tab */}
+      {activeTab === "prioritization" && (
+        <div id="bia-prioritization">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Analyse</p>
+                <h3>Tableau de priorisation BIA</h3>
+              </div>
+              <p className="muted small">
+                Triez, filtrez et exportez vos processus pour identifier les priorités.
+              </p>
+            </div>
+          </div>
+          <BiaPrioritization
+            processes={processes}
+            onProcessSelect={(process) => setSelectedProcess(process)}
           />
         </div>
       )}
