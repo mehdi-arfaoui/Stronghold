@@ -202,6 +202,7 @@ export type BusinessProcessServiceLink = {
 
 export type BusinessProcess = {
   id: string;
+  tenantId: string;
   name: string;
   description?: string | null;
   owners?: string | null;
@@ -214,8 +215,8 @@ export type BusinessProcess = {
   impactScore: number;
   criticalityScore: number;
   services: BusinessProcessServiceLink[];
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type RiskMatrixCell = {
@@ -272,6 +273,65 @@ export type BiaSummary = {
       count: number;
       processes: Array<{ id: string; name: string; criticalityScore: number }>;
     }>;
+  };
+};
+
+export type BiaKpi = {
+  label: string;
+  value: number | string;
+  unit?: string;
+  trend?: "up" | "down" | "stable";
+  severity?: "success" | "warning" | "error" | "neutral";
+};
+
+export type BiaAlert = {
+  id: string;
+  type: "rto_rpo_mismatch" | "high_impact_low_coverage" | "mtpd_exceeded" | "missing_dependencies" | "critical_without_backup";
+  severity: "critical" | "high" | "medium" | "low";
+  title: string;
+  description: string;
+  processId?: string;
+  processName?: string;
+  recommendation: string;
+  priority: number;
+};
+
+export type BiaImpactDistribution = {
+  category: string;
+  count: number;
+  avgScore: number;
+  processes: Array<{ id: string; name: string; score: number }>;
+};
+
+export type BiaHeatmapCell = {
+  probability: number;
+  severity: number;
+  count: number;
+  level: "critical" | "high" | "medium" | "low";
+  processes: Array<{ id: string; name: string; criticalityScore: number }>;
+};
+
+export type BiaDashboard = {
+  meta: {
+    tenantId: string;
+    generatedAt: string;
+  };
+  kpis: BiaKpi[];
+  impactDistribution: {
+    financial: BiaImpactDistribution;
+    regulatory: BiaImpactDistribution;
+    operational: BiaImpactDistribution;
+  };
+  heatmap: {
+    probabilityScale: number[];
+    severityScale: number[];
+    cells: BiaHeatmapCell[];
+  };
+  alerts: BiaAlert[];
+  trends: {
+    processesLastMonth: number;
+    criticalProcessesTrend: "up" | "down" | "stable";
+    avgCriticalityTrend: "up" | "down" | "stable";
   };
 };
 

@@ -1,57 +1,57 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
-import type { BusinessProcess, Service } from "../types";
+import { BiaDashboardView } from "../components/BiaDashboard";
+import { BiaWizard, type WizardData } from "../components/BiaWizard";
+import { BiaProcessDetail } from "../components/BiaProcessDetail";
+import { BiaPrioritization } from "../components/BiaPrioritization";
+import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
 interface BiaSectionProps {
   configVersion: number;
 }
 
-type ProcessDraft = {
-  name: string;
-  description: string;
-  owners: string;
-  financialImpactLevel: number;
-  regulatoryImpactLevel: number;
-  interdependencies: string;
-  rtoHours: number;
-  rpoMinutes: number;
-  mtpdHours: number;
-  serviceIds: string[];
-};
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "list";
 
-const impactLevels = [
-  { value: 1, label: "1 - Faible" },
-  { value: 2, label: "2 - Modéré" },
-  { value: 3, label: "3 - Notable" },
-  { value: 4, label: "4 - Élevé" },
-  { value: 5, label: "5 - Critique" },
+const domains = [
+  { value: "", label: "-- Sélectionner --" },
+  { value: "finance", label: "Finance" },
+  { value: "rh", label: "Ressources Humaines" },
+  { value: "production", label: "Production" },
+  { value: "it", label: "IT / Infrastructure" },
+  { value: "commercial", label: "Commercial / Ventes" },
+  { value: "logistique", label: "Logistique" },
+  { value: "juridique", label: "Juridique" },
+  { value: "autre", label: "Autre" },
 ];
 
 const ReactECharts = lazy(() => import("echarts-for-react"));
 
-const defaultDraft: ProcessDraft = {
-  name: "",
-  description: "",
-  owners: "",
-  financialImpactLevel: 3,
-  regulatoryImpactLevel: 3,
-  interdependencies: "",
-  rtoHours: 4,
-  rpoMinutes: 60,
-  mtpdHours: 24,
-  serviceIds: [],
-};
+function SeverityBadge({ level }: { level: "critical" | "high" | "medium" | "low" | number }) {
+  const numLevel = typeof level === "number" ? level :
+    level === "critical" ? 5 : level === "high" ? 4 : level === "medium" ? 3 : 1;
+  const className = numLevel >= 4 ? "error" : numLevel >= 3 ? "warning" : "success";
+  const label = numLevel >= 4 ? "Critique" : numLevel >= 3 ? "Modéré" : "Faible";
+  return <span className={`pill ${className}`}>{label}</span>;
+}
 
 export function BiaSection({ configVersion }: BiaSectionProps) {
+  const [activeTab, setActiveTab] = useState<BiaTab>("dashboard");
   const [services, setServices] = useState<Service[]>([]);
   const [processes, setProcesses] = useState<BusinessProcess[]>([]);
+  const [dashboard, setDashboard] = useState<BiaDashboard | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ProcessDraft>({ ...defaultDraft });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
+  const [dashboardError, setDashboardError] = useState<string | null>(null);
+
+  // Filters for list view
+  const [filterDomain, setFilterDomain] = useState<string>("all");
+  const [filterCriticality, setFilterCriticality] = useState<string>("all");
+  const [searchTerm, setSearchTerm] = useState<string>("");
+
+  // Selected process for detail view
+  const [selectedProcess, setSelectedProcess] = useState<BusinessProcess | null>(null);
 
   const loadBia = async () => {
     try {
@@ -70,42 +70,80 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
     }
   };
 
+  const loadDashboard = async () => {
+    try {
+      setDashboardLoading(true);
+      setDashboardError(null);
+      const data = await apiFetch("/bia/dashboard");
+      setDashboard(data);
+    } catch (err: any) {
+      setDashboardError(err.message || "Erreur lors du chargement du dashboard");
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadBia();
+    loadDashboard();
   }, [configVersion]);
 
-  const handleCreate = async (event: FormEvent) => {
-    event.preventDefault();
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await apiFetch("/bia/processes", {
-        method: "POST",
-        body: JSON.stringify({
-          name: draft.name,
-          description: draft.description || null,
-          owners: draft.owners || null,
-          financialImpactLevel: draft.financialImpactLevel,
-          regulatoryImpactLevel: draft.regulatoryImpactLevel,
-          interdependencies: draft.interdependencies || null,
-          rtoHours: draft.rtoHours,
-          rpoMinutes: draft.rpoMinutes,
-          mtpdHours: draft.mtpdHours,
-          serviceIds: draft.serviceIds,
-        }),
-      });
-      await loadBia();
-      setDraft({ ...defaultDraft });
-    } catch (err: any) {
-      setCreateError(err.message || "Erreur lors de la création");
-    } finally {
-      setCreating(false);
-    }
+  const handleWizardComplete = async (wizardData: WizardData) => {
+    // Convert wizard data to API format
+    const avgFinancial = Math.round(
+      (wizardData.financialImpact.at24h + wizardData.financialImpact.at72h + wizardData.financialImpact.at1Week) / 3
+    );
+    const avgRegulatory = Math.round(
+      (wizardData.regulatoryImpact.at24h + wizardData.regulatoryImpact.at72h + wizardData.regulatoryImpact.at1Week) / 3
+    );
+
+    await apiFetch("/bia/processes", {
+      method: "POST",
+      body: JSON.stringify({
+        name: wizardData.name,
+        description: wizardData.description || null,
+        owners: wizardData.owners || null,
+        financialImpactLevel: avgFinancial,
+        regulatoryImpactLevel: avgRegulatory,
+        interdependencies: wizardData.interdependencies || null,
+        rtoHours: wizardData.rtoHours,
+        rpoMinutes: wizardData.rpoMinutes,
+        mtpdHours: wizardData.mtpdHours,
+        serviceIds: wizardData.serviceIds,
+      }),
+    });
+
+    await Promise.all([loadBia(), loadDashboard()]);
+    setActiveTab("list");
+  };
+
+  const handleProcessClick = (processId: string) => {
+    setActiveTab("list");
   };
 
   const criticalProcesses = processes.filter(
     (process) => process.criticalityScore >= 4 || process.impactScore >= 4
   );
+
+  const filteredProcesses = useMemo(() => {
+    return processes.filter((process) => {
+      if (filterCriticality !== "all") {
+        const level = process.criticalityScore >= 4 ? "critical" :
+          process.criticalityScore >= 3 ? "high" :
+          process.criticalityScore >= 2 ? "medium" : "low";
+        if (level !== filterCriticality) return false;
+      }
+      if (searchTerm) {
+        const search = searchTerm.toLowerCase();
+        if (!process.name.toLowerCase().includes(search) &&
+            !process.description?.toLowerCase().includes(search) &&
+            !process.owners?.toLowerCase().includes(search)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [processes, filterDomain, filterCriticality, searchTerm]);
 
   const impactMatrix = useMemo(() => {
     if (processes.length === 0) return null;
@@ -179,6 +217,9 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
         orient: "horizontal",
         left: "center",
         bottom: 0,
+        inRange: {
+          color: ["#d4f4dd", "#ffe5b4", "#ffd0d0", "#ff6b6b"],
+        },
       },
       series: [
         {
@@ -196,15 +237,15 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
     };
   }, [processes]);
 
-  if (loading) {
+  if (loading && !dashboard) {
     return <div className="skeleton">Chargement des analyses BIA...</div>;
   }
 
-  if (error) {
+  if (error && !dashboard) {
     return <div className="alert error">Erreur lors du chargement : {error}</div>;
   }
 
-  const progressSteps = [processes.length > 0, services.length > 0];
+  const progressSteps = [processes.length > 0, services.length > 0, dashboard !== null];
   const progressValue = Math.round(
     (progressSteps.filter(Boolean).length / progressSteps.length) * 100
   );
@@ -213,27 +254,28 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
     <>
       <PageIntro
         title="Business Impact Analysis"
-        subtitle="Décrivez vos processus métiers, leurs impacts et les interdépendances pour prioriser la continuité."
-        objective="Structurer le BIA, calculer l'impact/criticité et lier les processus aux services."
+        subtitle="Analysez vos processus métiers, leurs impacts et les interdépendances pour prioriser la continuité."
+        objective="Dashboard BIA complet avec KPIs, matrice de risques, alertes et assistant de création guidé."
         steps={[
-          "Renseigner les informations métiers et RTO/RPO/MTPD",
-          "Associer les services critiques",
-          "Analyser la matrice d'impact",
+          "Consulter le dashboard pour une vue d'ensemble",
+          "Utiliser l'assistant pour créer un processus BIA",
+          "Analyser la matrice d'impact et les alertes",
+          "Prioriser les actions de continuité",
         ]}
         tips={[
-          "Documentez les impacts financiers et réglementaires pour affiner la criticité.",
-          "Associez les services principaux dès la création du processus.",
-          "Utilisez la matrice pour prioriser les plans d'action.",
+          "L'assistant vous guide à travers 4 étapes pour créer un processus complet.",
+          "Les données sont sauvegardées automatiquement à chaque étape.",
+          "Utilisez le catalogue de processus types pour gagner du temps.",
         ]}
         links={[
-          { label: "Créer un processus", href: "#bia-form", description: "Formulaire" },
-          { label: "Consulter le tableau", href: "#bia-table", description: "Table" },
-          { label: "Matrice d'impact", href: "#bia-matrix", description: "Graphique" },
+          { label: "Dashboard", href: "#bia-dashboard", description: "Vue d'ensemble" },
+          { label: "Assistant BIA", href: "#bia-wizard", description: "Création guidée" },
+          { label: "Liste des processus", href: "#bia-table", description: "Table" },
         ]}
         expectedData={[
-          "Impacts financiers/réglementaires",
-          "RTO/RPO/MTPD par processus",
-          "Lien avec les services/applications",
+          "Impacts financiers/réglementaires sur différentes échelles de temps",
+          "RTO/RPO/MTPD par processus avec valeurs suggérées",
+          "Lien avec les services/applications existants",
         ]}
         progress={{
           value: progressValue,
@@ -241,245 +283,273 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
         }}
       />
 
-      <form id="bia-form" className="card form-grid" onSubmit={handleCreate}>
-        <div className="card-header" style={{ gridColumn: "1 / -1" }}>
-          <div>
-            <p className="eyebrow">Processus métier</p>
-            <h3>Nouveau processus BIA</h3>
-          </div>
-        </div>
-
-        <label className="form-field">
-          <span>Nom du processus</span>
-          <input
-            type="text"
-            value={draft.name}
-            onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
-            placeholder="Traitement des paiements"
-            required
-          />
-        </label>
-
-        <label className="form-field">
-          <span>Propriétaires</span>
-          <input
-            type="text"
-            value={draft.owners}
-            onChange={(event) => setDraft((prev) => ({ ...prev, owners: event.target.value }))}
-            placeholder="Direction financière, DSI"
-          />
-        </label>
-
-        <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-          <span>Description</span>
-          <textarea
-            value={draft.description}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, description: event.target.value }))
-            }
-            rows={3}
-          />
-        </label>
-
-        <label className="form-field">
-          <span>Impact financier</span>
-          <select
-            value={draft.financialImpactLevel}
-            onChange={(event) =>
-              setDraft((prev) => ({
-                ...prev,
-                financialImpactLevel: Number(event.target.value),
-              }))
-            }
-          >
-            {impactLevels.map((level) => (
-              <option key={level.value} value={level.value}>
-                {level.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="form-field">
-          <span>Impact réglementaire</span>
-          <select
-            value={draft.regulatoryImpactLevel}
-            onChange={(event) =>
-              setDraft((prev) => ({
-                ...prev,
-                regulatoryImpactLevel: Number(event.target.value),
-              }))
-            }
-          >
-            {impactLevels.map((level) => (
-              <option key={level.value} value={level.value}>
-                {level.label}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="form-field">
-          <span>RTO (heures)</span>
-          <input
-            type="number"
-            min={0}
-            value={draft.rtoHours}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, rtoHours: Number(event.target.value) }))
-            }
-          />
-        </label>
-
-        <label className="form-field">
-          <span>RPO (minutes)</span>
-          <input
-            type="number"
-            min={0}
-            value={draft.rpoMinutes}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, rpoMinutes: Number(event.target.value) }))
-            }
-          />
-        </label>
-
-        <label className="form-field">
-          <span>MTPD (heures)</span>
-          <input
-            type="number"
-            min={0}
-            value={draft.mtpdHours}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, mtpdHours: Number(event.target.value) }))
-            }
-          />
-        </label>
-
-        <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-          <span>Interdépendances</span>
-          <textarea
-            value={draft.interdependencies}
-            onChange={(event) =>
-              setDraft((prev) => ({ ...prev, interdependencies: event.target.value }))
-            }
-            rows={2}
-            placeholder="Flux entre agences, interfaces partenaires, etc."
-          />
-        </label>
-
-        <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-          <span>Services / applications concernés</span>
-          <select
-            multiple
-            value={draft.serviceIds}
-            onChange={(event) => {
-              const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
-              setDraft((prev) => ({ ...prev, serviceIds: selected }));
-            }}
-          >
-            {services.map((service) => (
-              <option key={service.id} value={service.id}>
-                {service.name} ({service.criticality})
-              </option>
-            ))}
-          </select>
-          <p className="helper">Maintenez Ctrl/Cmd pour sélectionner plusieurs services.</p>
-        </label>
-
-        {createError && (
-          <div className="alert error" style={{ gridColumn: "1 / -1" }}>
-            {createError}
-          </div>
-        )}
-
-        <div className="form-field" style={{ gridColumn: "1 / -1" }}>
-          <button className="button primary" type="submit" disabled={creating}>
-            {creating ? "Création..." : "Enregistrer le processus"}
-          </button>
-        </div>
-      </form>
-
-      <div id="bia-table" className="card" style={{ marginTop: "1.5rem" }}>
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Synthèse</p>
-            <h3>Processus & scores</h3>
-          </div>
-          <div className="badge subtle">{processes.length} processus</div>
-        </div>
-        {processes.length === 0 ? (
-          <p className="muted">Ajoutez un premier processus pour afficher la synthèse.</p>
-        ) : (
-          <div className="table-wrapper">
-            <table className="data-table">
-              <thead>
-                <tr>
-                  <th>Processus</th>
-                  <th>Impacts</th>
-                  <th>RTO/RPO/MTPD</th>
-                  <th>Scores</th>
-                  <th>Services liés</th>
-                </tr>
-              </thead>
-              <tbody>
-                {processes.map((process) => (
-                  <tr key={process.id}>
-                    <td>
-                      <strong>{process.name}</strong>
-                      {process.description && <p className="muted">{process.description}</p>}
-                    </td>
-                    <td>
-                      Financier: {process.financialImpactLevel}
-                      <br />
-                      Réglementaire: {process.regulatoryImpactLevel}
-                    </td>
-                    <td>
-                      RTO {process.rtoHours}h
-                      <br />
-                      RPO {process.rpoMinutes} min
-                      <br />
-                      MTPD {process.mtpdHours}h
-                    </td>
-                    <td>
-                      Impact {process.impactScore.toFixed(2)}
-                      <br />
-                      Criticité {process.criticalityScore.toFixed(2)}
-                    </td>
-                    <td>
-                      {process.services.length === 0
-                        ? "Aucun"
-                        : process.services.map((link) => link.service.name).join(", ")}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+      {/* Tab Navigation */}
+      <div className="tab-nav" style={{ marginBottom: "1.5rem" }}>
+        <button
+          className={`tab-button ${activeTab === "dashboard" ? "active" : ""}`}
+          onClick={() => setActiveTab("dashboard")}
+        >
+          Dashboard
+          {dashboard && dashboard.alerts.filter(a => a.severity === "critical" || a.severity === "high").length > 0 && (
+            <span className="tab-badge">{dashboard.alerts.filter(a => a.severity === "critical" || a.severity === "high").length}</span>
+          )}
+        </button>
+        <button
+          className={`tab-button ${activeTab === "wizard" ? "active" : ""}`}
+          onClick={() => setActiveTab("wizard")}
+        >
+          Assistant BIA
+        </button>
+        <button
+          className={`tab-button ${activeTab === "prioritization" ? "active" : ""}`}
+          onClick={() => setActiveTab("prioritization")}
+        >
+          Priorisation
+        </button>
+        <button
+          className={`tab-button ${activeTab === "list" ? "active" : ""}`}
+          onClick={() => setActiveTab("list")}
+        >
+          Processus ({processes.length})
+        </button>
       </div>
 
-      <div id="bia-matrix" className="card" style={{ marginTop: "1.5rem" }}>
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Analyse visuelle</p>
-            <h3>Matrice d'impact</h3>
-          </div>
-          <div className="badge subtle">{criticalProcesses.length} points critiques</div>
+      {/* Dashboard Tab */}
+      {activeTab === "dashboard" && (
+        <div id="bia-dashboard">
+          <BiaDashboardView
+            dashboard={dashboard}
+            loading={dashboardLoading}
+            error={dashboardError}
+            onProcessClick={handleProcessClick}
+          />
         </div>
-        {impactMatrix ? (
-          <Suspense fallback={<div className="skeleton">Chargement du graphique...</div>}>
-            <ReactECharts option={impactMatrix} style={{ height: 360 }} />
-          </Suspense>
-        ) : (
-          <p className="muted">La matrice s'affichera dès qu'un processus sera créé.</p>
-        )}
-        {criticalProcesses.length > 0 && (
-          <p className="muted" style={{ marginTop: "1rem" }}>
-            <strong>Processus critiques :</strong>{" "}
-            {criticalProcesses.map((process) => process.name).join(", ")}
-          </p>
-        )}
-      </div>
+      )}
+
+      {/* Wizard Tab */}
+      {activeTab === "wizard" && (
+        <div id="bia-wizard">
+          <BiaWizard
+            services={services}
+            onComplete={handleWizardComplete}
+            onCancel={() => setActiveTab("dashboard")}
+          />
+        </div>
+      )}
+
+      {/* Prioritization Tab */}
+      {activeTab === "prioritization" && (
+        <div id="bia-prioritization">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Analyse</p>
+                <h3>Tableau de priorisation BIA</h3>
+              </div>
+              <p className="muted small">
+                Triez, filtrez et exportez vos processus pour identifier les priorités.
+              </p>
+            </div>
+          </div>
+          <BiaPrioritization
+            processes={processes}
+            onProcessSelect={(process) => setSelectedProcess(process)}
+          />
+        </div>
+      )}
+
+      {/* List Tab */}
+      {activeTab === "list" && (
+        <>
+          {/* Filters */}
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Filtres</p>
+                <h3>Rechercher des processus</h3>
+              </div>
+            </div>
+            <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, 1fr)" }}>
+              <label className="form-field">
+                <span>Recherche</span>
+                <input
+                  type="text"
+                  placeholder="Nom, description..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </label>
+              <label className="form-field">
+                <span>Criticité</span>
+                <select
+                  value={filterCriticality}
+                  onChange={(e) => setFilterCriticality(e.target.value)}
+                >
+                  <option value="all">Toutes</option>
+                  <option value="critical">Critique (4-5)</option>
+                  <option value="high">Élevé (3-4)</option>
+                  <option value="medium">Moyen (2-3)</option>
+                  <option value="low">Faible (1-2)</option>
+                </select>
+              </label>
+              <label className="form-field">
+                <span>Domaine</span>
+                <select
+                  value={filterDomain}
+                  onChange={(e) => setFilterDomain(e.target.value)}
+                >
+                  <option value="all">Tous</option>
+                  {domains.slice(1).map((d) => (
+                    <option key={d.value} value={d.value}>{d.label}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="form-field" style={{ display: "flex", alignItems: "flex-end" }}>
+                <button
+                  className="button"
+                  type="button"
+                  onClick={() => {
+                    setSearchTerm("");
+                    setFilterCriticality("all");
+                    setFilterDomain("all");
+                  }}
+                >
+                  Réinitialiser
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Process Table */}
+          <div id="bia-table" className="card">
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Synthèse</p>
+                <h3>Processus & scores</h3>
+              </div>
+              <div className="stack horizontal" style={{ gap: "0.5rem" }}>
+                <div className="badge subtle">{filteredProcesses.length} processus</div>
+                {criticalProcesses.length > 0 && (
+                  <div className="badge error">{criticalProcesses.length} critiques</div>
+                )}
+              </div>
+            </div>
+            {filteredProcesses.length === 0 ? (
+              <p className="muted">Aucun processus ne correspond aux critères de recherche.</p>
+            ) : (
+              <div className="table-wrapper">
+                <table className="data-table">
+                  <thead>
+                    <tr>
+                      <th>Processus</th>
+                      <th>Impacts</th>
+                      <th>RTO/RPO/MTPD</th>
+                      <th>Scores</th>
+                      <th>Services liés</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredProcesses.map((process) => (
+                      <tr
+                        key={process.id}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedProcess(process)}
+                      >
+                        <td>
+                          <strong>{process.name}</strong>
+                          {process.description && <p className="muted small">{process.description}</p>}
+                          {process.owners && <p className="muted small">Propriétaire: {process.owners}</p>}
+                        </td>
+                        <td>
+                          <div className="stack" style={{ gap: "4px" }}>
+                            <span className="muted small">Financier: <strong>{process.financialImpactLevel}</strong></span>
+                            <span className="muted small">Réglementaire: <strong>{process.regulatoryImpactLevel}</strong></span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="stack" style={{ gap: "4px" }}>
+                            <span className="muted small">RTO: <strong>{process.rtoHours}h</strong></span>
+                            <span className="muted small">RPO: <strong>{process.rpoMinutes}min</strong></span>
+                            <span className="muted small">MTPD: <strong>{process.mtpdHours}h</strong></span>
+                          </div>
+                        </td>
+                        <td>
+                          <div className="stack" style={{ gap: "4px" }}>
+                            <span className="muted small">Impact: <strong>{process.impactScore.toFixed(2)}</strong></span>
+                            <span className="muted small">Criticité: <strong>{process.criticalityScore.toFixed(2)}</strong></span>
+                            <SeverityBadge level={Math.round(process.criticalityScore)} />
+                          </div>
+                        </td>
+                        <td>
+                          {process.services.length === 0
+                            ? <span className="muted">Aucun</span>
+                            : (
+                              <div className="stack" style={{ gap: "4px" }}>
+                                {process.services.slice(0, 3).map((link) => (
+                                  <span key={link.service.id} className="pill subtle small">
+                                    {link.service.name}
+                                  </span>
+                                ))}
+                                {process.services.length > 3 && (
+                                  <span className="muted small">+{process.services.length - 3} autres</span>
+                                )}
+                              </div>
+                            )}
+                        </td>
+                        <td>
+                          <button
+                            className="button small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProcess(process);
+                            }}
+                          >
+                            Voir détails
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Impact Matrix */}
+          <div id="bia-matrix" className="card" style={{ marginTop: "1.5rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Analyse visuelle</p>
+                <h3>Matrice d'impact</h3>
+              </div>
+              <div className="badge subtle">{criticalProcesses.length} points critiques</div>
+            </div>
+            {impactMatrix ? (
+              <Suspense fallback={<div className="skeleton">Chargement du graphique...</div>}>
+                <ReactECharts option={impactMatrix} style={{ height: 360 }} />
+              </Suspense>
+            ) : (
+              <p className="muted">La matrice s'affichera dès qu'un processus sera créé.</p>
+            )}
+            {criticalProcesses.length > 0 && (
+              <p className="muted" style={{ marginTop: "1rem" }}>
+                <strong>Processus critiques :</strong>{" "}
+                {criticalProcesses.map((process) => process.name).join(", ")}
+              </p>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* Process Detail Modal */}
+      {selectedProcess && (
+        <BiaProcessDetail
+          process={selectedProcess}
+          services={services}
+          onClose={() => setSelectedProcess(null)}
+        />
+      )}
     </>
   );
 }

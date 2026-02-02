@@ -17,6 +17,7 @@ import {
   scoreImpact,
   scoreTimeSensitivity,
 } from "../services/biaSummary.js";
+import { buildBiaDashboard } from "../services/biaDashboard.js";
 
 const router = Router();
 
@@ -65,6 +66,21 @@ router.get("/summary", requireRole("READER"), async (req: TenantRequest, res) =>
     return res.json(summary);
   } catch (error) {
     console.error("Error fetching BIA summary", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/dashboard", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const dashboard = await buildBiaDashboard(prisma, tenantId);
+    return res.json(dashboard);
+  } catch (error) {
+    console.error("Error fetching BIA dashboard", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
