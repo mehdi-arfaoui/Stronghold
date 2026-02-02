@@ -2,6 +2,7 @@ import { Suspense, lazy, useEffect, useMemo, useState } from "react";
 import { PageIntro } from "../components/PageIntro";
 import { BiaDashboardView } from "../components/BiaDashboard";
 import { BiaWizard, type WizardData } from "../components/BiaWizard";
+import { BiaProcessDetail } from "../components/BiaProcessDetail";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -47,6 +48,9 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
   const [filterDomain, setFilterDomain] = useState<string>("all");
   const [filterCriticality, setFilterCriticality] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
+
+  // Selected process for detail view
+  const [selectedProcess, setSelectedProcess] = useState<BusinessProcess | null>(null);
 
   const loadBia = async () => {
     try {
@@ -414,11 +418,16 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
                       <th>RTO/RPO/MTPD</th>
                       <th>Scores</th>
                       <th>Services liés</th>
+                      <th>Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {filteredProcesses.map((process) => (
-                      <tr key={process.id}>
+                      <tr
+                        key={process.id}
+                        style={{ cursor: "pointer" }}
+                        onClick={() => setSelectedProcess(process)}
+                      >
                         <td>
                           <strong>{process.name}</strong>
                           {process.description && <p className="muted small">{process.description}</p>}
@@ -460,6 +469,17 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
                               </div>
                             )}
                         </td>
+                        <td>
+                          <button
+                            className="button small"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedProcess(process);
+                            }}
+                          >
+                            Voir détails
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -492,6 +512,15 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
             )}
           </div>
         </>
+      )}
+
+      {/* Process Detail Modal */}
+      {selectedProcess && (
+        <BiaProcessDetail
+          process={selectedProcess}
+          services={services}
+          onClose={() => setSelectedProcess(null)}
+        />
       )}
     </>
   );

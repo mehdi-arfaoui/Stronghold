@@ -202,6 +202,7 @@ export type BusinessProcessServiceLink = {
 
 export type BusinessProcess = {
   id: string;
+  tenantId: string;
   name: string;
   description?: string | null;
   owners?: string | null;
@@ -214,8 +215,8 @@ export type BusinessProcess = {
   impactScore: number;
   criticalityScore: number;
   services: BusinessProcessServiceLink[];
-  createdAt?: string;
-  updatedAt?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type RiskMatrixCell = {
