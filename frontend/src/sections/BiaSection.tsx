@@ -1,7 +1,7 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import { PageIntro } from "../components/PageIntro";
 import { BiaDashboardView } from "../components/BiaDashboard";
+import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -9,32 +9,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "create" | "list";
-
-type ProcessDraft = {
-  name: string;
-  description: string;
-  owners: string;
-  financialImpactLevel: number;
-  regulatoryImpactLevel: number;
-  operationalImpactLevel: number;
-  reputationalImpactLevel: number;
-  interdependencies: string;
-  rtoHours: number;
-  rpoMinutes: number;
-  mtpdHours: number;
-  serviceIds: string[];
-  domain: string;
-  status: "draft" | "in_progress" | "completed";
-};
-
-const impactLevels = [
-  { value: 1, label: "1 - Faible" },
-  { value: 2, label: "2 - Modéré" },
-  { value: 3, label: "3 - Notable" },
-  { value: 4, label: "4 - Élevé" },
-  { value: 5, label: "5 - Critique" },
-];
+type BiaTab = "dashboard" | "wizard" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -49,23 +24,6 @@ const domains = [
 ];
 
 const ReactECharts = lazy(() => import("echarts-for-react"));
-
-const defaultDraft: ProcessDraft = {
-  name: "",
-  description: "",
-  owners: "",
-  financialImpactLevel: 3,
-  regulatoryImpactLevel: 3,
-  operationalImpactLevel: 3,
-  reputationalImpactLevel: 3,
-  interdependencies: "",
-  rtoHours: 4,
-  rpoMinutes: 60,
-  mtpdHours: 24,
-  serviceIds: [],
-  domain: "",
-  status: "draft",
-};
 
 function SeverityBadge({ level }: { level: "critical" | "high" | "medium" | "low" | number }) {
   const numLevel = typeof level === "number" ? level :
@@ -84,12 +42,8 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [dashboardError, setDashboardError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<ProcessDraft>({ ...defaultDraft });
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
 
   // Filters for list view
-  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterDomain, setFilterDomain] = useState<string>("all");
   const [filterCriticality, setFilterCriticality] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
@@ -129,39 +83,37 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
     loadDashboard();
   }, [configVersion]);
 
-  const handleCreate = async (event: FormEvent) => {
-    event.preventDefault();
-    setCreating(true);
-    setCreateError(null);
-    try {
-      await apiFetch("/bia/processes", {
-        method: "POST",
-        body: JSON.stringify({
-          name: draft.name,
-          description: draft.description || null,
-          owners: draft.owners || null,
-          financialImpactLevel: draft.financialImpactLevel,
-          regulatoryImpactLevel: draft.regulatoryImpactLevel,
-          interdependencies: draft.interdependencies || null,
-          rtoHours: draft.rtoHours,
-          rpoMinutes: draft.rpoMinutes,
-          mtpdHours: draft.mtpdHours,
-          serviceIds: draft.serviceIds,
-        }),
-      });
-      await Promise.all([loadBia(), loadDashboard()]);
-      setDraft({ ...defaultDraft });
-      setActiveTab("list");
-    } catch (err: any) {
-      setCreateError(err.message || "Erreur lors de la création");
-    } finally {
-      setCreating(false);
-    }
+  const handleWizardComplete = async (wizardData: WizardData) => {
+    // Convert wizard data to API format
+    const avgFinancial = Math.round(
+      (wizardData.financialImpact.at24h + wizardData.financialImpact.at72h + wizardData.financialImpact.at1Week) / 3
+    );
+    const avgRegulatory = Math.round(
+      (wizardData.regulatoryImpact.at24h + wizardData.regulatoryImpact.at72h + wizardData.regulatoryImpact.at1Week) / 3
+    );
+
+    await apiFetch("/bia/processes", {
+      method: "POST",
+      body: JSON.stringify({
+        name: wizardData.name,
+        description: wizardData.description || null,
+        owners: wizardData.owners || null,
+        financialImpactLevel: avgFinancial,
+        regulatoryImpactLevel: avgRegulatory,
+        interdependencies: wizardData.interdependencies || null,
+        rtoHours: wizardData.rtoHours,
+        rpoMinutes: wizardData.rpoMinutes,
+        mtpdHours: wizardData.mtpdHours,
+        serviceIds: wizardData.serviceIds,
+      }),
+    });
+
+    await Promise.all([loadBia(), loadDashboard()]);
+    setActiveTab("list");
   };
 
   const handleProcessClick = (processId: string) => {
     setActiveTab("list");
-    // Could scroll to the process or highlight it
   };
 
   const criticalProcesses = processes.filter(
@@ -186,7 +138,7 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
       }
       return true;
     });
-  }, [processes, filterStatus, filterDomain, filterCriticality, searchTerm]);
+  }, [processes, filterDomain, filterCriticality, searchTerm]);
 
   const impactMatrix = useMemo(() => {
     if (processes.length === 0) return null;
@@ -298,27 +250,27 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
       <PageIntro
         title="Business Impact Analysis"
         subtitle="Analysez vos processus métiers, leurs impacts et les interdépendances pour prioriser la continuité."
-        objective="Dashboard BIA complet avec KPIs, matrice de risques, alertes et gestion des processus."
+        objective="Dashboard BIA complet avec KPIs, matrice de risques, alertes et assistant de création guidé."
         steps={[
           "Consulter le dashboard pour une vue d'ensemble",
-          "Créer et évaluer les processus métiers",
+          "Utiliser l'assistant pour créer un processus BIA",
           "Analyser la matrice d'impact et les alertes",
           "Prioriser les actions de continuité",
         ]}
         tips={[
-          "Utilisez le dashboard pour identifier rapidement les processus critiques.",
-          "Associez les services pour une analyse d'impact complète.",
-          "Consultez les alertes pour les actions prioritaires.",
+          "L'assistant vous guide à travers 4 étapes pour créer un processus complet.",
+          "Les données sont sauvegardées automatiquement à chaque étape.",
+          "Utilisez le catalogue de processus types pour gagner du temps.",
         ]}
         links={[
           { label: "Dashboard", href: "#bia-dashboard", description: "Vue d'ensemble" },
-          { label: "Créer un processus", href: "#bia-form", description: "Formulaire" },
+          { label: "Assistant BIA", href: "#bia-wizard", description: "Création guidée" },
           { label: "Liste des processus", href: "#bia-table", description: "Table" },
         ]}
         expectedData={[
-          "Impacts financiers/réglementaires",
-          "RTO/RPO/MTPD par processus",
-          "Lien avec les services/applications",
+          "Impacts financiers/réglementaires sur différentes échelles de temps",
+          "RTO/RPO/MTPD par processus avec valeurs suggérées",
+          "Lien avec les services/applications existants",
         ]}
         progress={{
           value: progressValue,
@@ -338,10 +290,10 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           )}
         </button>
         <button
-          className={`tab-button ${activeTab === "create" ? "active" : ""}`}
-          onClick={() => setActiveTab("create")}
+          className={`tab-button ${activeTab === "wizard" ? "active" : ""}`}
+          onClick={() => setActiveTab("wizard")}
         >
-          Nouveau processus
+          Assistant BIA
         </button>
         <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
@@ -363,292 +315,15 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
         </div>
       )}
 
-      {/* Create Tab */}
-      {activeTab === "create" && (
-        <form id="bia-form" className="card form-grid" onSubmit={handleCreate}>
-          <div className="card-header" style={{ gridColumn: "1 / -1" }}>
-            <div>
-              <p className="eyebrow">Processus métier</p>
-              <h3>Nouveau processus BIA</h3>
-            </div>
-          </div>
-
-          {/* Basic Information */}
-          <div style={{ gridColumn: "1 / -1" }}>
-            <h4 style={{ marginBottom: "1rem", color: "var(--color-text-secondary)" }}>
-              1. Identification du processus
-            </h4>
-          </div>
-
-          <label className="form-field">
-            <span>Nom du processus *</span>
-            <input
-              type="text"
-              value={draft.name}
-              onChange={(event) => setDraft((prev) => ({ ...prev, name: event.target.value }))}
-              placeholder="Ex: Traitement des paiements"
-              required
-            />
-          </label>
-
-          <label className="form-field">
-            <span>Domaine métier</span>
-            <select
-              value={draft.domain}
-              onChange={(event) => setDraft((prev) => ({ ...prev, domain: event.target.value }))}
-            >
-              {domains.map((d) => (
-                <option key={d.value} value={d.value}>
-                  {d.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>Propriétaires</span>
-            <input
-              type="text"
-              value={draft.owners}
-              onChange={(event) => setDraft((prev) => ({ ...prev, owners: event.target.value }))}
-              placeholder="Direction financière, DSI"
-            />
-          </label>
-
-          <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <span>Description</span>
-            <textarea
-              value={draft.description}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, description: event.target.value }))
-              }
-              rows={3}
-              placeholder="Décrivez le processus, son rôle et son importance..."
-            />
-          </label>
-
-          {/* Impact Evaluation */}
-          <div style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
-            <h4 style={{ marginBottom: "1rem", color: "var(--color-text-secondary)" }}>
-              2. Évaluation des impacts
-            </h4>
-          </div>
-
-          <label className="form-field">
-            <span>
-              Impact financier
-              <span className="helper" title="Pertes financières en cas d'interruption">?</span>
-            </span>
-            <select
-              value={draft.financialImpactLevel}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  financialImpactLevel: Number(event.target.value),
-                }))
-              }
-            >
-              {impactLevels.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>
-              Impact réglementaire
-              <span className="helper" title="Non-conformité, sanctions réglementaires">?</span>
-            </span>
-            <select
-              value={draft.regulatoryImpactLevel}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  regulatoryImpactLevel: Number(event.target.value),
-                }))
-              }
-            >
-              {impactLevels.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>
-              Impact opérationnel
-              <span className="helper" title="Perturbation des opérations quotidiennes">?</span>
-            </span>
-            <select
-              value={draft.operationalImpactLevel}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  operationalImpactLevel: Number(event.target.value),
-                }))
-              }
-            >
-              {impactLevels.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label className="form-field">
-            <span>
-              Impact réputationnel
-              <span className="helper" title="Atteinte à l'image et à la confiance">?</span>
-            </span>
-            <select
-              value={draft.reputationalImpactLevel}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  reputationalImpactLevel: Number(event.target.value),
-                }))
-              }
-            >
-              {impactLevels.map((level) => (
-                <option key={level.value} value={level.value}>
-                  {level.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {/* Recovery Objectives */}
-          <div style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
-            <h4 style={{ marginBottom: "1rem", color: "var(--color-text-secondary)" }}>
-              3. Objectifs de reprise
-            </h4>
-          </div>
-
-          <label className="form-field">
-            <span>
-              RTO (Recovery Time Objective)
-              <span className="helper" title="Temps maximum acceptable pour restaurer le processus">?</span>
-            </span>
-            <div className="input-with-unit">
-              <input
-                type="number"
-                min={0}
-                value={draft.rtoHours}
-                onChange={(event) =>
-                  setDraft((prev) => ({ ...prev, rtoHours: Number(event.target.value) }))
-                }
-              />
-              <span className="unit">heures</span>
-            </div>
-          </label>
-
-          <label className="form-field">
-            <span>
-              RPO (Recovery Point Objective)
-              <span className="helper" title="Perte de données maximum acceptable">?</span>
-            </span>
-            <div className="input-with-unit">
-              <input
-                type="number"
-                min={0}
-                value={draft.rpoMinutes}
-                onChange={(event) =>
-                  setDraft((prev) => ({ ...prev, rpoMinutes: Number(event.target.value) }))
-                }
-              />
-              <span className="unit">minutes</span>
-            </div>
-          </label>
-
-          <label className="form-field">
-            <span>
-              MTPD (Maximum Tolerable Period of Disruption)
-              <span className="helper" title="Durée maximum avant dommages irréversibles">?</span>
-            </span>
-            <div className="input-with-unit">
-              <input
-                type="number"
-                min={0}
-                value={draft.mtpdHours}
-                onChange={(event) =>
-                  setDraft((prev) => ({ ...prev, mtpdHours: Number(event.target.value) }))
-                }
-              />
-              <span className="unit">heures</span>
-            </div>
-          </label>
-
-          {/* Dependencies */}
-          <div style={{ gridColumn: "1 / -1", marginTop: "1rem" }}>
-            <h4 style={{ marginBottom: "1rem", color: "var(--color-text-secondary)" }}>
-              4. Dépendances
-            </h4>
-          </div>
-
-          <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <span>Interdépendances (texte libre)</span>
-            <textarea
-              value={draft.interdependencies}
-              onChange={(event) =>
-                setDraft((prev) => ({ ...prev, interdependencies: event.target.value }))
-              }
-              rows={2}
-              placeholder="Flux entre agences, interfaces partenaires, etc."
-            />
-          </label>
-
-          <label className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <span>Services / applications concernés</span>
-            <select
-              multiple
-              value={draft.serviceIds}
-              onChange={(event) => {
-                const selected = Array.from(event.target.selectedOptions).map((option) => option.value);
-                setDraft((prev) => ({ ...prev, serviceIds: selected }));
-              }}
-              style={{ minHeight: "120px" }}
-            >
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name} ({service.criticality})
-                </option>
-              ))}
-            </select>
-            <p className="helper">Maintenez Ctrl/Cmd pour sélectionner plusieurs services.</p>
-          </label>
-
-          {/* Criticality Preview */}
-          <div className="card" style={{ gridColumn: "1 / -1", marginTop: "1rem", padding: "1rem", background: "var(--color-surface-secondary)" }}>
-            <h4 style={{ marginBottom: "0.5rem" }}>Aperçu de la criticité</h4>
-            <div className="stack horizontal" style={{ gap: "1rem", flexWrap: "wrap" }}>
-              <div>
-                <span className="muted small">Score d'impact: </span>
-                <strong>{((draft.financialImpactLevel * 0.6 + draft.regulatoryImpactLevel * 0.4)).toFixed(1)}</strong>
-              </div>
-              <div>
-                <span className="muted small">Niveau: </span>
-                <SeverityBadge level={Math.round(draft.financialImpactLevel * 0.6 + draft.regulatoryImpactLevel * 0.4)} />
-              </div>
-            </div>
-          </div>
-
-          {createError && (
-            <div className="alert error" style={{ gridColumn: "1 / -1" }}>
-              {createError}
-            </div>
-          )}
-
-          <div className="form-field" style={{ gridColumn: "1 / -1" }}>
-            <button className="button primary" type="submit" disabled={creating}>
-              {creating ? "Création..." : "Enregistrer le processus"}
-            </button>
-          </div>
-        </form>
+      {/* Wizard Tab */}
+      {activeTab === "wizard" && (
+        <div id="bia-wizard">
+          <BiaWizard
+            services={services}
+            onComplete={handleWizardComplete}
+            onCancel={() => setActiveTab("dashboard")}
+          />
+        </div>
       )}
 
       {/* List Tab */}
@@ -705,7 +380,6 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
                     setSearchTerm("");
                     setFilterCriticality("all");
                     setFilterDomain("all");
-                    setFilterStatus("all");
                   }}
                 >
                   Réinitialiser
