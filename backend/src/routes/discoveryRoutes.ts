@@ -8,6 +8,12 @@ import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import {
+  requireValidLicense,
+  requireFeature,
+  requireQuota,
+  incrementQuotaOnSuccess,
+} from "../middleware/licenseMiddleware.js";
+import {
   buildValidationError,
   parseOptionalBoolean,
   parseOptionalNumber,
@@ -240,8 +246,24 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
   }
 }
 
-router.post("/run", requireRole("OPERATOR"), handleDiscoveryRun);
-router.post("/scan", requireRole("OPERATOR"), handleDiscoveryRun);
+router.post(
+  "/run",
+  requireValidLicense(),
+  requireFeature("discovery"),
+  requireQuota("scans", 1),
+  incrementQuotaOnSuccess(),
+  requireRole("OPERATOR"),
+  handleDiscoveryRun
+);
+router.post(
+  "/scan",
+  requireValidLicense(),
+  requireFeature("discovery"),
+  requireQuota("scans", 1),
+  incrementQuotaOnSuccess(),
+  requireRole("OPERATOR"),
+  handleDiscoveryRun
+);
 
 /**
  * POST /discovery/schedules
@@ -359,7 +381,7 @@ router.post("/flows/import", requireRole("OPERATOR"), async (req: TenantRequest,
  * GET /discovery/resources
  * Liste des ressources découvertes (CMDB dynamique).
  */
-router.get("/resources", async (req: TenantRequest, res) => {
+router.get("/resources", requireValidLicense(), requireFeature("inventory"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
