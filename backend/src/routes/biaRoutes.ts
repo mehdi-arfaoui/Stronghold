@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { requireValidLicense, requireFeature } from "../middleware/licenseMiddleware.js";
 import {
   buildValidationError,
   parseOptionalString,
@@ -18,6 +19,10 @@ import {
 } from "../services/biaSummary.js";
 
 const router = Router();
+
+// Apply license validation to all BIA routes
+router.use(requireValidLicense());
+router.use(requireFeature("bia"));
 
 const IMPACT_LEVEL_MIN = 1;
 const IMPACT_LEVEL_MAX = 5;

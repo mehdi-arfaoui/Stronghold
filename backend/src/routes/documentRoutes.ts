@@ -7,6 +7,7 @@ import type { MulterFile } from "multer";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { requireValidLicense, requireQuota, incrementQuotaOnSuccess } from "../middleware/licenseMiddleware.js";
 import { enqueueDocumentIngestion } from "../services/documentIngestionService.js";
 import { retentionConfig } from "../config/observability.js";
 import {
@@ -37,6 +38,9 @@ import {
 } from "../clients/s3Client.js";
 
 const router = Router();
+
+// Apply license validation to all document routes
+router.use(requireValidLicense());
 
 const uploadDir = path.join(process.cwd(), "uploads", "documents");
 fs.mkdirSync(uploadDir, { recursive: true });
@@ -153,6 +157,8 @@ function buildDlpAlert(doc: { isSensitive: boolean; protectionStatus: string }, 
  */
 router.post(
   "/",
+  requireQuota("documents", 1),
+  incrementQuotaOnSuccess(),
   requireRole("OPERATOR"),
   async (req: TenantRequest, res) => {
     try {

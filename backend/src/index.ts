@@ -30,10 +30,12 @@ import discoveryRoutes from "./routes/discoveryRoutes.js";
 import pricingRoutes from "./routes/pricingRoutes.js";
 import vulnerabilityRoutes from "./routes/vulnerabilityRoutes.js";
 import brandingRoutes from "./routes/brandingRoutes.js";
+import licenseRoutes from "./routes/licenseRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
 import { startApiKeyRotationWorker } from "./workers/apiKeyRotationWorker.js";
+import { startLicenseQuotaResetWorker } from "./workers/licenseQuotaResetWorker.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
@@ -101,6 +103,13 @@ const backgroundServices: BackgroundService[] = [
     enabled: process.env.API_KEY_ROTATION_ENABLED !== "false",
     start: async () => {
       await startApiKeyRotationWorker();
+    },
+  },
+  {
+    name: "licenseQuotaResetWorker",
+    enabled: process.env.LICENSE_QUOTA_RESET_ENABLED !== "false",
+    start: async () => {
+      await startLicenseQuotaResetWorker();
     },
   },
 ];
@@ -521,6 +530,7 @@ const routes = [
   { path: "/pricing", handler: pricingRoutes, name: "pricingRoutes" },
   { path: "/vulnerabilities", handler: vulnerabilityRoutes, name: "vulnerabilityRoutes" },
   { path: "/branding", handler: brandingRoutes, name: "brandingRoutes" },
+  { path: "/license", handler: licenseRoutes, name: "licenseRoutes" },
 ];
 
 for (const route of routes) {

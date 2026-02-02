@@ -6,6 +6,7 @@ import * as fs from "fs";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { requireValidLicense, requireFeature, requireQuota, incrementQuotaOnSuccess } from "../middleware/licenseMiddleware.js";
 import { generateRunbook } from "../services/runbookGenerator.js";
 import {
   buildValidationError,
@@ -28,6 +29,11 @@ import {
 } from "../clients/s3Client.js";
 
 const router = Router();
+
+// Apply license validation to all runbook routes
+router.use(requireValidLicense());
+router.use(requireFeature("pra"));
+
 const uploadDir = path.join(os.tmpdir(), "runbook-templates");
 fs.mkdirSync(uploadDir, { recursive: true });
 
