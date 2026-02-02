@@ -176,7 +176,9 @@ export function requireLicenseAccess(options: {
     increment?: number;
   };
 }) {
-  const middlewares: Array<(req: LicenseRequest, res: Response, next: NextFunction) => void | Promise<void>> = [
+  // Using any[] to avoid complex Express middleware type constraints
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const middlewares: any[] = [
     requireValidLicense()
   ];
 
