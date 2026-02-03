@@ -18,6 +18,7 @@ import {
   scoreTimeSensitivity,
 } from "../services/biaSummary.js";
 import { buildBiaDashboard } from "../services/biaDashboard.js";
+import { generateBiaReport, type ReportFormat, type ReportType } from "../services/biaReportGenerator.js";
 
 const router = Router();
 
@@ -195,6 +196,42 @@ router.get("/processes", async (req: TenantRequest, res) => {
     return res.json(processes);
   } catch (error) {
     console.error("Error fetching business processes", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/reports/generate", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { type, format, includeCharts, includeRecommendations, scenarioType, processIds } = req.body;
+
+    const validTypes: ReportType[] = ["full", "summary", "scenario"];
+    const validFormats: ReportFormat[] = ["markdown", "json", "html"];
+
+    if (!type || !validTypes.includes(type)) {
+      return res.status(400).json({ error: "Invalid report type. Must be: full, summary, or scenario" });
+    }
+
+    if (!format || !validFormats.includes(format)) {
+      return res.status(400).json({ error: "Invalid format. Must be: markdown, json, or html" });
+    }
+
+    const report = await generateBiaReport(prisma, tenantId, {
+      type,
+      format,
+      includeCharts: includeCharts ?? true,
+      includeRecommendations: includeRecommendations ?? true,
+      scenarioType: scenarioType ?? "site_disaster",
+      processIds: processIds ?? [],
+    });
+
+    return res.json(report);
+  } catch (error) {
+    console.error("Error generating BIA report", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

@@ -4,6 +4,7 @@ import { BiaDashboardView } from "../components/BiaDashboard";
 import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import { BiaProcessDetail } from "../components/BiaProcessDetail";
 import { BiaPrioritization } from "../components/BiaPrioritization";
+import { BiaReports } from "../components/BiaReports";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -11,7 +12,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "wizard" | "prioritization" | "list";
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -307,6 +308,12 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           Priorisation
         </button>
         <button
+          className={`tab-button ${activeTab === "reports" ? "active" : ""}`}
+          onClick={() => setActiveTab("reports")}
+        >
+          Rapports
+        </button>
+        <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
           onClick={() => setActiveTab("list")}
         >
@@ -355,6 +362,24 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
             processes={processes}
             onProcessSelect={(process) => setSelectedProcess(process)}
           />
+        </div>
+      )}
+
+      {/* Reports Tab */}
+      {activeTab === "reports" && (
+        <div id="bia-reports">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Export</p>
+                <h3>Génération de rapports BIA</h3>
+              </div>
+              <p className="muted small">
+                Générez des rapports complets, synthétiques ou par scénario en différents formats.
+              </p>
+            </div>
+          </div>
+          <BiaReports processCount={processes.length} />
         </div>
       )}
 
