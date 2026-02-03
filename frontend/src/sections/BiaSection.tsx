@@ -4,6 +4,9 @@ import { BiaDashboardView } from "../components/BiaDashboard";
 import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import { BiaProcessDetail } from "../components/BiaProcessDetail";
 import { BiaPrioritization } from "../components/BiaPrioritization";
+import { BiaReports } from "../components/BiaReports";
+import { BiaIntegration } from "../components/BiaIntegration";
+import { BiaSettings } from "../components/BiaSettings";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -11,7 +14,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "wizard" | "prioritization" | "list";
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "integration" | "settings" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -307,6 +310,24 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           Priorisation
         </button>
         <button
+          className={`tab-button ${activeTab === "reports" ? "active" : ""}`}
+          onClick={() => setActiveTab("reports")}
+        >
+          Rapports
+        </button>
+        <button
+          className={`tab-button ${activeTab === "integration" ? "active" : ""}`}
+          onClick={() => setActiveTab("integration")}
+        >
+          Intégration
+        </button>
+        <button
+          className={`tab-button ${activeTab === "settings" ? "active" : ""}`}
+          onClick={() => setActiveTab("settings")}
+        >
+          Paramètres
+        </button>
+        <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
           onClick={() => setActiveTab("list")}
         >
@@ -355,6 +376,69 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
             processes={processes}
             onProcessSelect={(process) => setSelectedProcess(process)}
           />
+        </div>
+      )}
+
+      {/* Reports Tab */}
+      {activeTab === "reports" && (
+        <div id="bia-reports">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Export</p>
+                <h3>Génération de rapports BIA</h3>
+              </div>
+              <p className="muted small">
+                Générez des rapports complets, synthétiques ou par scénario en différents formats.
+              </p>
+            </div>
+          </div>
+          <BiaReports processCount={processes.length} />
+        </div>
+      )}
+
+      {/* Integration Tab */}
+      {activeTab === "integration" && (
+        <div id="bia-integration">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Modules</p>
+                <h3>Intégration Stronghold</h3>
+              </div>
+              <p className="muted small">
+                Vue unifiée des risques, runbooks et incidents liés aux processus BIA.
+              </p>
+            </div>
+          </div>
+          <BiaIntegration
+            processes={processes}
+            onNavigateToProcess={(processId) => {
+              const process = processes.find((p) => p.id === processId);
+              if (process) {
+                setSelectedProcess(process);
+                setActiveTab("list");
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Settings Tab */}
+      {activeTab === "settings" && (
+        <div id="bia-settings">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Configuration</p>
+                <h3>Paramètres BIA</h3>
+              </div>
+              <p className="muted small">
+                Personnalisez les templates, seuils de criticité, alertes et préférences d'affichage.
+              </p>
+            </div>
+          </div>
+          <BiaSettings />
         </div>
       )}
 
