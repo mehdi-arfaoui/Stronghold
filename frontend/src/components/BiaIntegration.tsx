@@ -29,7 +29,6 @@ interface LinkedRunbook {
   title: string;
   summary: string | null;
   status: string;
-  owner: string | null;
   scenarioTitle: string | null;
   generatedAt: string;
   hasDownloads: boolean;
@@ -489,9 +488,6 @@ export function BiaIntegration({ processes, onNavigateToProcess }: BiaIntegratio
                           <div className="item-meta">
                             {runbook.scenarioTitle && (
                               <span className="muted small">Scénario: {runbook.scenarioTitle}</span>
-                            )}
-                            {runbook.owner && (
-                              <span className="muted small">Owner: {runbook.owner}</span>
                             )}
                             <span className="muted small">
                               Généré le {new Date(runbook.generatedAt).toLocaleDateString("fr-FR")}

@@ -72,7 +72,7 @@ async function generateFullReportMarkdown(
 ): Promise<string> {
   const [processes, summary, dashboard] = await Promise.all([
     prisma.businessProcess.findMany({
-      where: tenantId ? { tenantId } : undefined,
+      where: { tenantId },
       include: { services: { include: { service: true } } },
       orderBy: { criticalityScore: "desc" },
     }),
@@ -194,7 +194,7 @@ async function generateSummaryReportMarkdown(
 ): Promise<string> {
   const [processes, summary] = await Promise.all([
     prisma.businessProcess.findMany({
-      where: tenantId ? { tenantId } : undefined,
+      where: { tenantId },
       orderBy: { criticalityScore: "desc" },
       take: 10,
     }),
@@ -224,7 +224,7 @@ async function generateSummaryReportMarkdown(
 
   const topProcesses = processes.slice(0, 5);
   for (let i = 0; i < topProcesses.length; i++) {
-    const p = topProcesses[i];
+    const p = topProcesses[i]!;
     md += `${i + 1}. **${p.name}**\n`;
     md += `   - Criticité : ${p.criticalityScore.toFixed(1)}/5\n`;
     md += `   - RTO : ${p.rtoHours}h | RPO : ${p.rpoMinutes}min\n\n`;
@@ -249,7 +249,7 @@ async function generateScenarioReportMarkdown(
   options: ReportOptions
 ): Promise<string> {
   const processes = await prisma.businessProcess.findMany({
-    where: tenantId ? { tenantId } : undefined,
+    where: { tenantId },
     include: { services: { include: { service: true } } },
     orderBy: { criticalityScore: "desc" },
   });
@@ -270,7 +270,7 @@ async function generateScenarioReportMarkdown(
     },
   };
 
-  const scenario = scenarioLabels[options.scenarioType || "site_disaster"];
+  const scenario = scenarioLabels[options.scenarioType || "site_disaster"] || scenarioLabels["site_disaster"]!;
 
   let md = `# Rapport de scénario BIA\n\n`;
   md += `## ${scenario.title}\n\n`;
@@ -397,7 +397,7 @@ export async function generateBiaReport(
   options: ReportOptions
 ): Promise<GeneratedReport> {
   const processes = await prisma.businessProcess.findMany({
-    where: tenantId ? { tenantId } : undefined,
+    where: { tenantId },
   });
 
   const criticalCount = processes.filter((p) => p.criticalityScore >= 4).length;

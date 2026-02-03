@@ -24,7 +24,6 @@ export interface BiaLinkedRunbook {
   title: string;
   summary: string | null;
   status: string;
-  owner: string | null;
   scenarioId: string | null;
   scenarioTitle: string | null;
   generatedAt: Date;
@@ -349,7 +348,6 @@ export async function getProcessIntegration(
       title: r.title,
       summary: r.summary,
       status: r.status,
-      owner: r.owner,
       scenarioId: r.scenarioId,
       scenarioTitle: r.scenario?.name || null,
       generatedAt: r.generatedAt,
