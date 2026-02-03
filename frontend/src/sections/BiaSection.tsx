@@ -6,6 +6,7 @@ import { BiaProcessDetail } from "../components/BiaProcessDetail";
 import { BiaPrioritization } from "../components/BiaPrioritization";
 import { BiaReports } from "../components/BiaReports";
 import { BiaIntegration } from "../components/BiaIntegration";
+import { BiaSettings } from "../components/BiaSettings";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -13,7 +14,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "integration" | "list";
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "integration" | "settings" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -321,6 +322,12 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           Intégration
         </button>
         <button
+          className={`tab-button ${activeTab === "settings" ? "active" : ""}`}
+          onClick={() => setActiveTab("settings")}
+        >
+          Paramètres
+        </button>
+        <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
           onClick={() => setActiveTab("list")}
         >
@@ -414,6 +421,24 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
               }
             }}
           />
+        </div>
+      )}
+
+      {/* Settings Tab */}
+      {activeTab === "settings" && (
+        <div id="bia-settings">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Configuration</p>
+                <h3>Paramètres BIA</h3>
+              </div>
+              <p className="muted small">
+                Personnalisez les templates, seuils de criticité, alertes et préférences d'affichage.
+              </p>
+            </div>
+          </div>
+          <BiaSettings />
         </div>
       )}
 

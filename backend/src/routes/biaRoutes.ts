@@ -25,6 +25,16 @@ import {
   linkRiskToProcess,
   createRiskForProcess,
 } from "../services/biaIntegrationService.js";
+import {
+  getBiaSettings,
+  addProcessTemplate,
+  deleteProcessTemplate,
+  updateCriticalityThresholds,
+  updateAlertConfigurations,
+  updateDisplayPreferences,
+  toggleTemplateActive,
+  resetToDefaults,
+} from "../services/biaSettingsService.js";
 
 const router = Router();
 
@@ -362,6 +372,191 @@ router.post("/integration/process/:processId/create-risk", requireRole("OPERATOR
     return res.status(201).json(risk);
   } catch (error) {
     console.error("Error creating risk for process", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Settings endpoints
+router.get("/settings", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const settings = await getBiaSettings(prisma, tenantId);
+    return res.json(settings);
+  } catch (error) {
+    console.error("Error fetching BIA settings", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/settings/templates", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const issues: ValidationIssue[] = [];
+    const name = parseRequiredString(req.body.name, "name", issues, { minLength: 2 });
+    const category = parseRequiredString(req.body.category, "category", issues);
+    const defaultRtoHours = parseRequiredNumber(req.body.defaultRtoHours, "defaultRtoHours", issues, { min: 0 });
+    const defaultRpoMinutes = parseRequiredNumber(req.body.defaultRpoMinutes, "defaultRpoMinutes", issues, { min: 0 });
+    const defaultMtpdHours = parseRequiredNumber(req.body.defaultMtpdHours, "defaultMtpdHours", issues, { min: 0 });
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const template = await addProcessTemplate(prisma, tenantId, {
+      name: name!,
+      description: req.body.description || null,
+      category: category!,
+      defaultRtoHours: defaultRtoHours!,
+      defaultRpoMinutes: defaultRpoMinutes!,
+      defaultMtpdHours: defaultMtpdHours!,
+      suggestedFinancialImpact: req.body.suggestedFinancialImpact || 3,
+      suggestedRegulatoryImpact: req.body.suggestedRegulatoryImpact || 3,
+      isActive: req.body.isActive !== false,
+    });
+
+    return res.status(201).json(template);
+  } catch (error) {
+    console.error("Error creating process template", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.delete("/settings/templates/:templateId", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { templateId } = req.params;
+    if (!templateId) {
+      return res.status(400).json({ error: "templateId est requis" });
+    }
+
+    const success = await deleteProcessTemplate(prisma, tenantId, templateId);
+    if (!success) {
+      return res.status(400).json({ error: "Impossible de supprimer ce template (built-in ou introuvable)" });
+    }
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error("Error deleting process template", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/settings/templates/:templateId/toggle", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { templateId } = req.params;
+    const { isActive } = req.body;
+
+    if (!templateId) {
+      return res.status(400).json({ error: "templateId est requis" });
+    }
+
+    if (typeof isActive !== "boolean") {
+      return res.status(400).json({ error: "isActive doit être un booléen" });
+    }
+
+    const template = await toggleTemplateActive(prisma, tenantId, templateId, isActive);
+    if (!template) {
+      return res.status(404).json({ error: "Template introuvable" });
+    }
+
+    return res.json(template);
+  } catch (error) {
+    console.error("Error toggling template", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/settings/thresholds", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { thresholds } = req.body;
+    if (!Array.isArray(thresholds)) {
+      return res.status(400).json({ error: "thresholds doit être un tableau" });
+    }
+
+    const updated = await updateCriticalityThresholds(prisma, tenantId, thresholds);
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating thresholds", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/settings/alerts", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { configs } = req.body;
+    if (!Array.isArray(configs)) {
+      return res.status(400).json({ error: "configs doit être un tableau" });
+    }
+
+    const updated = await updateAlertConfigurations(prisma, tenantId, configs);
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating alert configurations", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.put("/settings/display", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const preferences = req.body;
+    const updated = await updateDisplayPreferences(prisma, tenantId, preferences);
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error updating display preferences", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/settings/reset", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { section } = req.body;
+    const validSections = ["templates", "thresholds", "alerts", "display"];
+
+    if (section && !validSections.includes(section)) {
+      return res.status(400).json({ error: `section doit être: ${validSections.join(", ")}` });
+    }
+
+    const settings = await resetToDefaults(prisma, tenantId, section);
+    return res.json(settings);
+  } catch (error) {
+    console.error("Error resetting settings", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
