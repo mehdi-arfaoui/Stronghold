@@ -19,6 +19,12 @@ import {
 } from "../services/biaSummary.js";
 import { buildBiaDashboard } from "../services/biaDashboard.js";
 import { generateBiaReport, type ReportFormat, type ReportType } from "../services/biaReportGenerator.js";
+import {
+  getBiaIntegrationSummary,
+  getProcessIntegration,
+  linkRiskToProcess,
+  createRiskForProcess,
+} from "../services/biaIntegrationService.js";
 
 const router = Router();
 
@@ -232,6 +238,130 @@ router.post("/reports/generate", requireRole("OPERATOR"), async (req: TenantRequ
     return res.json(report);
   } catch (error) {
     console.error("Error generating BIA report", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// Integration endpoints
+router.get("/integration/summary", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const summary = await getBiaIntegrationSummary(prisma, tenantId);
+    return res.json(summary);
+  } catch (error) {
+    console.error("Error fetching BIA integration summary", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/integration/process/:processId", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { processId } = req.params;
+    if (!processId) {
+      return res.status(400).json({ error: "processId est requis" });
+    }
+
+    const integration = await getProcessIntegration(prisma, tenantId, processId);
+    if (!integration) {
+      return res.status(404).json({ error: "Processus introuvable" });
+    }
+
+    return res.json(integration);
+  } catch (error) {
+    console.error("Error fetching process integration", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/integration/process/:processId/link-risk", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { processId } = req.params;
+    const { riskId } = req.body;
+
+    if (!processId || !riskId) {
+      return res.status(400).json({ error: "processId et riskId sont requis" });
+    }
+
+    const process = await prisma.businessProcess.findFirst({
+      where: { id: processId, tenantId },
+    });
+
+    if (!process) {
+      return res.status(404).json({ error: "Processus introuvable" });
+    }
+
+    const success = await linkRiskToProcess(prisma, tenantId, riskId, process.name);
+    if (!success) {
+      return res.status(404).json({ error: "Risque introuvable" });
+    }
+
+    return res.json({ success: true, message: "Risque lié au processus" });
+  } catch (error) {
+    console.error("Error linking risk to process", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.post("/integration/process/:processId/create-risk", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { processId } = req.params;
+    const { title, description, threatType, probability, impact } = req.body;
+
+    if (!processId) {
+      return res.status(400).json({ error: "processId est requis" });
+    }
+
+    const issues: ValidationIssue[] = [];
+    const validTitle = parseRequiredString(title, "title", issues, { minLength: 3 });
+    const validThreatType = parseRequiredString(threatType, "threatType", issues);
+    const validProbability = parseRequiredNumber(probability, "probability", issues, { min: 1 });
+    const validImpact = parseRequiredNumber(impact, "impact", issues, { min: 1 });
+
+    if (validProbability !== undefined && validProbability > 5) {
+      issues.push({ field: "probability", message: "doit être inférieur ou égal à 5" });
+    }
+    if (validImpact !== undefined && validImpact > 5) {
+      issues.push({ field: "impact", message: "doit être inférieur ou égal à 5" });
+    }
+
+    if (issues.length > 0) {
+      return res.status(400).json(buildValidationError(issues));
+    }
+
+    const risk = await createRiskForProcess(prisma, tenantId, processId, {
+      title: validTitle!,
+      description: description || undefined,
+      threatType: validThreatType!,
+      probability: validProbability!,
+      impact: validImpact!,
+    });
+
+    if (!risk) {
+      return res.status(404).json({ error: "Processus introuvable" });
+    }
+
+    return res.status(201).json(risk);
+  } catch (error) {
+    console.error("Error creating risk for process", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

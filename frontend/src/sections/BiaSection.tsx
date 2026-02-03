@@ -5,6 +5,7 @@ import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import { BiaProcessDetail } from "../components/BiaProcessDetail";
 import { BiaPrioritization } from "../components/BiaPrioritization";
 import { BiaReports } from "../components/BiaReports";
+import { BiaIntegration } from "../components/BiaIntegration";
 import type { BiaDashboard, BusinessProcess, Service } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -12,7 +13,7 @@ interface BiaSectionProps {
   configVersion: number;
 }
 
-type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "list";
+type BiaTab = "dashboard" | "wizard" | "prioritization" | "reports" | "integration" | "list";
 
 const domains = [
   { value: "", label: "-- Sélectionner --" },
@@ -314,6 +315,12 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           Rapports
         </button>
         <button
+          className={`tab-button ${activeTab === "integration" ? "active" : ""}`}
+          onClick={() => setActiveTab("integration")}
+        >
+          Intégration
+        </button>
+        <button
           className={`tab-button ${activeTab === "list" ? "active" : ""}`}
           onClick={() => setActiveTab("list")}
         >
@@ -380,6 +387,33 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
             </div>
           </div>
           <BiaReports processCount={processes.length} />
+        </div>
+      )}
+
+      {/* Integration Tab */}
+      {activeTab === "integration" && (
+        <div id="bia-integration">
+          <div className="card" style={{ marginBottom: "1rem" }}>
+            <div className="card-header">
+              <div>
+                <p className="eyebrow">Modules</p>
+                <h3>Intégration Stronghold</h3>
+              </div>
+              <p className="muted small">
+                Vue unifiée des risques, runbooks et incidents liés aux processus BIA.
+              </p>
+            </div>
+          </div>
+          <BiaIntegration
+            processes={processes}
+            onNavigateToProcess={(processId) => {
+              const process = processes.find((p) => p.id === processId);
+              if (process) {
+                setSelectedProcess(process);
+                setActiveTab("list");
+              }
+            }}
+          />
         </div>
       )}
 
