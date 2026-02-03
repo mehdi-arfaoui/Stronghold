@@ -159,7 +159,7 @@ function ImpactCard({
   title: string;
   icon: string;
   evaluation: ImpactEvaluation;
-  onChange: (eval: ImpactEvaluation) => void;
+  onChange: (nextEvaluation: ImpactEvaluation) => void;
   helpTexts?: { at24h?: string; at72h?: string; at1Week?: string };
 }) {
   const avgImpact = (evaluation.at24h + evaluation.at72h + evaluation.at1Week) / 3;

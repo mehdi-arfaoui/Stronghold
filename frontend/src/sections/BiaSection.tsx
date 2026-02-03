@@ -121,6 +121,10 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
   };
 
   const handleProcessClick = (processId: string) => {
+    const process = processes.find((item) => item.id === processId);
+    if (process) {
+      setSelectedProcess(process);
+    }
     setActiveTab("list");
   };
 

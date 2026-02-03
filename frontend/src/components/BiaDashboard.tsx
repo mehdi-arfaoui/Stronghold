@@ -141,17 +141,32 @@ export function BiaDashboardView({ dashboard, loading, error, onProcessClick }: 
     if (!dashboard) return null;
 
     const { impactDistribution } = dashboard;
-    const categories = ["Financier", "Réglementaire", "Opérationnel"];
-    const counts = [
-      impactDistribution.financial.count,
-      impactDistribution.regulatory.count,
-      impactDistribution.operational.count,
+    const allDomains = [
+      {
+        key: "financial",
+        label: "Financier",
+        count: impactDistribution.financial.count,
+        avgScore: impactDistribution.financial.avgScore,
+      },
+      {
+        key: "regulatory",
+        label: "Réglementaire",
+        count: impactDistribution.regulatory.count,
+        avgScore: impactDistribution.regulatory.avgScore,
+      },
+      {
+        key: "operational",
+        label: "Opérationnel",
+        count: impactDistribution.operational.count,
+        avgScore: impactDistribution.operational.avgScore,
+      },
     ];
-    const avgScores = [
-      impactDistribution.financial.avgScore,
-      impactDistribution.regulatory.avgScore,
-      impactDistribution.operational.avgScore,
-    ];
+    const filteredDomains = filterDomain === "all"
+      ? allDomains
+      : allDomains.filter((domain) => domain.key === filterDomain);
+    const categories = filteredDomains.map((domain) => domain.label);
+    const counts = filteredDomains.map((domain) => domain.count);
+    const avgScores = filteredDomains.map((domain) => domain.avgScore);
 
     return {
       tooltip: {
@@ -199,7 +214,7 @@ export function BiaDashboardView({ dashboard, loading, error, onProcessClick }: 
         },
       ],
     };
-  }, [dashboard]);
+  }, [dashboard, filterDomain]);
 
   const filteredAlerts = useMemo(() => {
     if (!dashboard) return [];
@@ -285,6 +300,17 @@ export function BiaDashboardView({ dashboard, loading, error, onProcessClick }: 
               <p className="eyebrow">Répartition</p>
               <h3>Distribution des impacts</h3>
             </div>
+            <select
+              value={filterDomain}
+              onChange={(e) => setFilterDomain(e.target.value as FilterDomain)}
+              className="input-small"
+              aria-label="Filtrer par domaine d'impact"
+            >
+              <option value="all">Tous les domaines</option>
+              <option value="financial">Financier</option>
+              <option value="regulatory">Réglementaire</option>
+              <option value="operational">Opérationnel</option>
+            </select>
           </div>
           {impactChartOptions ? (
             <Suspense fallback={<div className="skeleton">Chargement...</div>}>

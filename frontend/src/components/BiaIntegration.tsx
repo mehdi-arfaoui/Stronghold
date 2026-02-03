@@ -399,6 +399,15 @@ export function BiaIntegration({ processes, onNavigateToProcess }: BiaIntegratio
                   <span className="stat-label">Incidents actifs</span>
                 </div>
               </div>
+              <div className="process-actions">
+                <button
+                  className="button small"
+                  type="button"
+                  onClick={() => onNavigateToProcess(processIntegration.processId)}
+                >
+                  Ouvrir dans la liste des processus
+                </button>
+              </div>
 
               {/* Tabs */}
               <div className="integration-tabs">
@@ -740,6 +749,12 @@ export const biaIntegrationStyles = `
   padding: 1rem;
   background: var(--color-surface-secondary);
   border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.process-actions {
+  display: flex;
+  justify-content: flex-end;
   margin-bottom: 1rem;
 }
 
