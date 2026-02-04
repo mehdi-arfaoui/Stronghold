@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { SERVICE_DOMAINS, domainMetaByValue } from "../constants/domains";
 import type { InfraComponent, Service } from "../types";
 import { apiFetch } from "../utils/api";
@@ -19,6 +19,21 @@ const defaultServicePayload = {
   mtpdHours: 24,
   domain: "APP",
   owner: "",
+};
+
+const criticalityLabels: Record<string, string> = {
+  low: "Faible",
+  medium: "Moyenne",
+  high: "Élevée",
+  critical: "Critique",
+};
+
+const typeLabels: Record<string, string> = {
+  app: "Application",
+  db: "Base de données",
+  infra: "Infrastructure",
+  network: "Réseau",
+  cloud: "Cloud",
 };
 
 export function ServicesSection({ configVersion }: ServicesSectionProps) {
@@ -176,7 +191,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
   };
 
   const handleDelete = async (serviceId: string) => {
-    const confirmed = window.confirm("Supprimer ce service ?");
+    const confirmed = window.confirm("Voulez-vous vraiment supprimer ce service ?");
     if (!confirmed) return;
     setDeletingId(serviceId);
     setDeleteError(null);
@@ -193,7 +208,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
   if (loading) return <div className="skeleton">Chargement des services...</div>;
 
   if (error) {
-    return <div className="alert error">Erreur lors du chargement : {error}</div>;
+    return <div className="alert error">Erreur : {error}</div>;
   }
 
   const progressSteps = [
@@ -217,49 +232,29 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
   });
 
   return (
-    <section id="services-panel" className="panel" aria-labelledby="services-title">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Catalogue</p>
-          <h2 id="services-title">Services & Applications</h2>
-          <p className="muted">
-            Vue consolidée des services, priorités PRA et rattachements à la Landing Zone.
-          </p>
-        </div>
-        <div className="badge subtle">{services.length} services</div>
-      </div>
-
-      <PageIntro
-        title="Piloter les services critiques"
-        objective="Centraliser la cartographie des services, prioriser les besoins PRA et préparer les liaisons infra."
-        steps={[
-          "Créer les services critiques",
-          "Renseigner criticité et objectifs RTO/RPO",
-          "Lier les services aux composants Landing Zone",
-        ]}
-        tips={[
-          "Priorisez les services à criticité haute ou critique.",
-          "Renseignez le domaine pour faciliter les filtres transverses.",
-          "Ajoutez les dépendances pour enrichir le graphe.",
-        ]}
-        links={[
-          { label: "Ajouter un service", href: "#services-create", description: "Formulaire" },
-          { label: "Associer à l'infra", href: "#services-link", description: "Lien service ↔ infra" },
-          { label: "Voir le catalogue", href: "#services-table", description: "Table des services" },
-        ]}
-        expectedData={[
-          "Nom du service + domaine fonctionnel",
-          "Criticité, priorité et objectifs de continuité",
-          "Composants infra associés (Landing Zone)",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
-      <form id="services-create" className="form-grid card" onSubmit={handleCreate}>
-        <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+    <SectionLayout
+      id="services-panel"
+      title="Catalogue des services"
+      description="Gérez vos services, définissez leur criticité et associez-les à l'infrastructure."
+      badge={`${services.length} services`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="Identifiez les services critiques pour prioriser les efforts de reprise d'activité."
+      quickLinks={[
+        { label: "Ajouter un service", href: "#services-create" },
+        { label: "Associer à l'infra", href: "#services-link" },
+      ]}
+      tips={[
+        "Priorisez les services à criticité élevée.",
+        "Renseignez les objectifs RTO/RPO.",
+      ]}
+    >
+      {/* Formulaire de création */}
+      <form id="services-create" className="card" onSubmit={handleCreate}>
+        <h3 className="section-title">Nouveau service</h3>
+        <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
           <label className="form-field">
             <span>Domaine</span>
             <select
@@ -283,7 +278,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
             />
           </label>
           <label className="form-field">
-            <span>Propriétaire</span>
+            <span>Responsable</span>
             <input
               type="text"
               value={newService.owner}
@@ -296,11 +291,9 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               value={newService.type}
               onChange={(e) => setNewService((s) => ({ ...s, type: e.target.value }))}
             >
-              <option value="app">app</option>
-              <option value="db">db</option>
-              <option value="infra">infra</option>
-              <option value="network">network</option>
-              <option value="cloud">cloud</option>
+              {Object.entries(typeLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
           </label>
           <label className="form-field">
@@ -309,9 +302,9 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               value={newService.criticality}
               onChange={(e) => setNewService((s) => ({ ...s, criticality: e.target.value }))}
             >
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
+              {Object.entries(criticalityLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
             </select>
           </label>
           <label className="form-field">
@@ -322,10 +315,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               max={5}
               value={newService.recoveryPriority}
               onChange={(e) =>
-                setNewService((s) => ({
-                  ...s,
-                  recoveryPriority: Number(e.target.value),
-                }))
+                setNewService((s) => ({ ...s, recoveryPriority: Number(e.target.value) }))
               }
             />
           </label>
@@ -336,10 +326,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               min={0}
               value={newService.rtoHours}
               onChange={(e) =>
-                setNewService((s) => ({
-                  ...s,
-                  rtoHours: Number(e.target.value),
-                }))
+                setNewService((s) => ({ ...s, rtoHours: Number(e.target.value) }))
               }
             />
           </label>
@@ -350,119 +337,83 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               min={0}
               value={newService.rpoMinutes}
               onChange={(e) =>
-                setNewService((s) => ({
-                  ...s,
-                  rpoMinutes: Number(e.target.value),
-                }))
-              }
-            />
-          </label>
-          <label className="form-field">
-            <span>MTPD (h)</span>
-            <input
-              type="number"
-              min={0}
-              value={newService.mtpdHours}
-              onChange={(e) =>
-                setNewService((s) => ({
-                  ...s,
-                  mtpdHours: Number(e.target.value),
-                }))
+                setNewService((s) => ({ ...s, rpoMinutes: Number(e.target.value) }))
               }
             />
           </label>
         </div>
         <div className="form-actions">
           <button className="btn primary" type="submit" disabled={creating}>
-            {creating ? "Création..." : "Ajouter le service"}
+            {creating ? "Création..." : "Ajouter"}
           </button>
           {createError && <p className="helper error">{createError}</p>}
         </div>
       </form>
 
-      <form id="services-link" className="form-grid card" onSubmit={handleLink}>
-        <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
-          <label className="form-field">
-            <span>Service</span>
-            <select
-              value={newLink.serviceId}
-              onChange={(e) => setNewLink((s) => ({ ...s, serviceId: e.target.value }))}
-              required
-            >
-              {services.map((service) => (
-                <option key={service.id} value={service.id}>
-                  {service.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="form-field">
-            <span>Composant infra</span>
-            <select
-              value={newLink.infraId}
-              onChange={(e) => setNewLink((s) => ({ ...s, infraId: e.target.value }))}
-              required
-            >
-              {infraComponents.map((infra) => (
-                <option key={infra.id} value={infra.id}>
-                  {infra.name} ({infra.type})
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="form-field">
-            <span className="muted">Association</span>
-            <button
-              className="btn primary"
-              type="submit"
-              disabled={linking || !newLink.serviceId || !newLink.infraId}
-            >
-              {linking ? "Association..." : "Associer"}
-            </button>
-          </label>
-        </div>
-        <div className="form-actions">
-          {linkError && <p className="helper error">{linkError}</p>}
-          {!services.length && (
-            <p className="helper">Ajoutez un service avant de créer un lien.</p>
-          )}
-          {!infraComponents.length && (
-            <p className="helper">Ajoutez un composant infra pour créer un lien.</p>
-          )}
-        </div>
-      </form>
-
-      <div id="services-table" className="card">
-        <div className="card-header">
-          <div>
-            <p className="eyebrow">Catalogue consolidé</p>
-            <h3>Services & applications</h3>
-            <p className="muted small">
-              Filtrez les services importés ou détectés pour compléter les métadonnées clés.
-            </p>
-          </div>
-          <div className="stack horizontal" style={{ gap: "12px" }}>
-            <label className="form-field" style={{ minWidth: "160px" }}>
-              <span>Criticité</span>
+      {/* Formulaire d'association */}
+      {services.length > 0 && infraComponents.length > 0 && (
+        <form id="services-link" className="card" onSubmit={handleLink}>
+          <h3 className="section-title">Associer à l'infrastructure</h3>
+          <div className="form-grid" style={{ gridTemplateColumns: "1fr 1fr auto" }}>
+            <label className="form-field">
+              <span>Service</span>
               <select
-                value={criticalityFilter}
-                onChange={(event) => setCriticalityFilter(event.target.value)}
+                value={newLink.serviceId}
+                onChange={(e) => setNewLink((s) => ({ ...s, serviceId: e.target.value }))}
+                required
               >
-                <option value="all">Toutes</option>
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
+                {services.map((service) => (
+                  <option key={service.id} value={service.id}>{service.name}</option>
+                ))}
               </select>
             </label>
-            <label className="form-field" style={{ minWidth: "220px" }}>
-              <span>Recherche</span>
-              <input
-                type="search"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Nom ou propriétaire"
-              />
+            <label className="form-field">
+              <span>Composant</span>
+              <select
+                value={newLink.infraId}
+                onChange={(e) => setNewLink((s) => ({ ...s, infraId: e.target.value }))}
+                required
+              >
+                {infraComponents.map((infra) => (
+                  <option key={infra.id} value={infra.id}>
+                    {infra.name} ({infra.type})
+                  </option>
+                ))}
+              </select>
             </label>
+            <label className="form-field">
+              <span>&nbsp;</span>
+              <button className="btn primary" type="submit" disabled={linking}>
+                {linking ? "..." : "Associer"}
+              </button>
+            </label>
+          </div>
+          {linkError && <p className="helper error">{linkError}</p>}
+        </form>
+      )}
+
+      {/* Tableau des services */}
+      <div id="services-table" className="card">
+        <div className="card-header">
+          <h3 className="section-title">Liste des services</h3>
+          <div className="stack horizontal" style={{ gap: "12px" }}>
+            <select
+              value={criticalityFilter}
+              onChange={(event) => setCriticalityFilter(event.target.value)}
+              aria-label="Filtrer par criticité"
+            >
+              <option value="all">Toutes criticités</option>
+              {Object.entries(criticalityLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <input
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              placeholder="Rechercher..."
+              aria-label="Rechercher un service"
+            />
           </div>
         </div>
         <div className="table-wrapper">
@@ -470,56 +421,41 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
             <thead>
               <tr>
                 <th>Service</th>
-                <th>Domaine</th>
                 <th>Type</th>
-                <th>Propriétaire</th>
+                <th>Responsable</th>
                 <th>Criticité</th>
-                <th>Priorité</th>
-                <th>RTO (h)</th>
-                <th>RPO (min)</th>
-                <th>MTPD (h)</th>
-                <th>Infra (LZ)</th>
+                <th>RTO</th>
+                <th>RPO</th>
+                <th>Infra</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredServices.map((service) => {
                 const infraNames =
-                  service.infraLinks?.map((link) => link.infra.name).join(", ") || "-";
+                  service.infraLinks?.map((link) => link.infra.name).join(", ") || "—";
                 const domainMeta = service.domain ? domainMetaByValue[service.domain] : null;
 
                 return (
                   <tr key={service.id}>
                     <td>
-                      <div className="stack">
-                        <span className="service-name">
-                          {domainMeta ? (
-                            <>
-                              <span className="icon">{domainMeta.icon}</span>
-                              {service.name}
-                            </>
-                          ) : (
-                            service.name
-                          )}
-                        </span>
-                        <span className="muted small">{service.description || ""}</span>
-                      </div>
-                    </td>
-                    <td>{domainMeta ? domainMeta.label : "-"}</td>
-                    <td>{service.type}</td>
-                    <td>{service.owner || "-"}</td>
-                    <td>
-                      <span className={`pill criticality-${service.criticality}`}>
-                        {service.criticality}
+                      <span className="service-name">
+                        {domainMeta && <span className="icon">{domainMeta.icon}</span>}
+                        {service.name}
                       </span>
                     </td>
-                    <td className="numeric">{service.recoveryPriority ?? "-"}</td>
-                    <td className="numeric">{service.continuity?.rtoHours ?? "-"}</td>
-                    <td className="numeric">{service.continuity?.rpoMinutes ?? "-"}</td>
-                    <td className="numeric">{service.continuity?.mtpdHours ?? "-"}</td>
+                    <td>{typeLabels[service.type] || service.type}</td>
+                    <td>{service.owner || "—"}</td>
+                    <td>
+                      <span className={`pill criticality-${service.criticality}`}>
+                        {criticalityLabels[service.criticality] || service.criticality}
+                      </span>
+                    </td>
+                    <td className="numeric">{service.continuity?.rtoHours ?? "—"} h</td>
+                    <td className="numeric">{service.continuity?.rpoMinutes ?? "—"} min</td>
                     <td>{infraNames}</td>
                     <td>
-                      <div className="stack horizontal" style={{ gap: "8px", flexWrap: "wrap" }}>
+                      <div className="button-group">
                         <button className="btn ghost" onClick={() => startEdit(service)}>
                           Modifier
                         </button>
@@ -528,7 +464,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                           onClick={() => handleDelete(service.id)}
                           disabled={deletingId === service.id}
                         >
-                          {deletingId === service.id ? "Suppression..." : "Supprimer"}
+                          {deletingId === service.id ? "..." : "Supprimer"}
                         </button>
                       </div>
                     </td>
@@ -538,12 +474,18 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
             </tbody>
           </table>
         </div>
+        {filteredServices.length === 0 && (
+          <p className="empty-state">Aucun service trouvé.</p>
+        )}
       </div>
+
       {deleteError && !editingServiceId && <p className="helper error">{deleteError}</p>}
 
+      {/* Modal d'édition */}
       {editingServiceId && (
-        <form className="form-grid card" onSubmit={handleUpdate}>
-          <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
+        <form className="card" onSubmit={handleUpdate}>
+          <h3 className="section-title">Modifier le service</h3>
+          <div className="form-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
             <label className="form-field">
               <span>Domaine</span>
               <select
@@ -567,7 +509,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
               />
             </label>
             <label className="form-field">
-              <span>Propriétaire</span>
+              <span>Responsable</span>
               <input
                 type="text"
                 value={editService.owner}
@@ -580,11 +522,9 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 value={editService.type}
                 onChange={(e) => setEditService((s) => ({ ...s, type: e.target.value }))}
               >
-                <option value="app">app</option>
-                <option value="db">db</option>
-                <option value="infra">infra</option>
-                <option value="network">network</option>
-                <option value="cloud">cloud</option>
+                {Object.entries(typeLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
             <label className="form-field">
@@ -593,9 +533,9 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 value={editService.criticality}
                 onChange={(e) => setEditService((s) => ({ ...s, criticality: e.target.value }))}
               >
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
+                {Object.entries(criticalityLabels).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
+                ))}
               </select>
             </label>
             <label className="form-field">
@@ -606,10 +546,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 max={5}
                 value={editService.recoveryPriority}
                 onChange={(e) =>
-                  setEditService((s) => ({
-                    ...s,
-                    recoveryPriority: Number(e.target.value),
-                  }))
+                  setEditService((s) => ({ ...s, recoveryPriority: Number(e.target.value) }))
                 }
               />
             </label>
@@ -620,10 +557,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 min={0}
                 value={editService.rtoHours}
                 onChange={(e) =>
-                  setEditService((s) => ({
-                    ...s,
-                    rtoHours: Number(e.target.value),
-                  }))
+                  setEditService((s) => ({ ...s, rtoHours: Number(e.target.value) }))
                 }
               />
             </label>
@@ -634,24 +568,7 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
                 min={0}
                 value={editService.rpoMinutes}
                 onChange={(e) =>
-                  setEditService((s) => ({
-                    ...s,
-                    rpoMinutes: Number(e.target.value),
-                  }))
-                }
-              />
-            </label>
-            <label className="form-field">
-              <span>MTPD (h)</span>
-              <input
-                type="number"
-                min={0}
-                value={editService.mtpdHours}
-                onChange={(e) =>
-                  setEditService((s) => ({
-                    ...s,
-                    mtpdHours: Number(e.target.value),
-                  }))
+                  setEditService((s) => ({ ...s, rpoMinutes: Number(e.target.value) }))
                 }
               />
             </label>
@@ -665,24 +582,21 @@ export function ServicesSection({ configVersion }: ServicesSectionProps) {
             </label>
           </div>
           <div className="form-actions">
-            <div className="stack horizontal" style={{ gap: "8px", alignItems: "center" }}>
-              <button className="btn primary" type="submit" disabled={updating}>
-                {updating ? "Mise à jour..." : "Enregistrer"}
-              </button>
-              <button
-                className="btn"
-                type="button"
-                onClick={() => setEditingServiceId(null)}
-                disabled={updating}
-              >
-                Annuler
-              </button>
-            </div>
+            <button className="btn primary" type="submit" disabled={updating}>
+              {updating ? "Enregistrement..." : "Enregistrer"}
+            </button>
+            <button
+              className="btn"
+              type="button"
+              onClick={() => setEditingServiceId(null)}
+              disabled={updating}
+            >
+              Annuler
+            </button>
             {updateError && <p className="helper error">{updateError}</p>}
-            {deleteError && <p className="helper error">{deleteError}</p>}
           </div>
         </form>
       )}
-    </section>
+    </SectionLayout>
   );
 }
