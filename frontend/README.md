@@ -74,6 +74,58 @@ export default defineConfig([
 
 ## Stronghold UI customization
 
+## Graphes d'infrastructure (Cytoscape)
+
+### Installation
+Les dépendances suivantes sont utilisées pour le rendu des graphes interactifs :
+
+```bash
+npm install cytoscape cytoscape-cose-bilkent cytoscape-popper cytoscape-svg tippy.js
+```
+
+### Format des données
+Le hook `useFetchGraphData` transforme la réponse API en un format standard :
+
+```ts
+type InfrastructureGraphNode = {
+  id: string;
+  label: string;
+  type: "service" | "application" | "infra";
+  criticality: string;
+  category?: string | null;
+  metadata?: Record<string, unknown> | null;
+  dependsOnCount?: number;
+  usedByCount?: number;
+};
+
+type InfrastructureGraphEdge = {
+  id: string;
+  source: string;
+  target: string;
+  type?: string | null;
+  weight?: number | null;
+};
+```
+
+### Composant `InfrastructureGraph`
+Exemple d'intégration :
+
+```tsx
+import { InfrastructureGraph } from "./components/graph/InfrastructureGraph";
+import { useFetchGraphData } from "./hooks/useFetchGraphData";
+import { buildCytoscapeElements } from "./utils/graphTransform";
+
+export function ExampleGraph() {
+  const { data, loading } = useFetchGraphData({ endpoint: "/graph" });
+  if (!data) return null;
+  return <InfrastructureGraph elements={buildCytoscapeElements(data)} isLoading={loading} />;
+}
+```
+
+### Styles et interactions
+- Les styles Cytoscape sont centralisés dans `InfrastructureGraph.tsx` (couleurs par criticité, formes par type).
+- Les interactions incluent zoom/pan, survol avec tooltip, double-clic pour recadrer un sous-graphe, exports PNG/SVG.
+
 ### Ajouter une page ou un lien de navigation
 1. Ajoutez un nouvel objet dans `navLinks` de `src/App.tsx` pour exposer le lien dans le menu principal.
 2. Associez un `TabId` dans `tabNavigationMap` pour relier le lien à un module existant.
