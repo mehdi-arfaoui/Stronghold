@@ -120,7 +120,7 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
     setActiveTab("list");
   };
 
-  const handleProcessClick = (processId: string) => {
+  const handleProcessClick = (_processId: string) => {
     setActiveTab("list");
   };
 

@@ -59,7 +59,7 @@ function AlertCard({ alert, onClick }: { alert: BiaAlert; onClick?: () => void }
 
 export function BiaDashboardView({ dashboard, loading, error, onProcessClick }: BiaDashboardProps) {
   const [filterStatus, setFilterStatus] = useState<FilterStatus>("all");
-  const [filterDomain, setFilterDomain] = useState<FilterDomain>("all");
+  const [_filterDomain, _setFilterDomain] = useState<FilterDomain>("all");
 
   const heatmapOptions = useMemo(() => {
     if (!dashboard) return null;

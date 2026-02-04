@@ -97,7 +97,7 @@ const THREAT_TYPES = [
   { value: "compliance", label: "Conformité" },
 ];
 
-export function BiaIntegration({ processes, onNavigateToProcess }: BiaIntegrationProps) {
+export function BiaIntegration({ processes, onNavigateToProcess: _onNavigateToProcess }: BiaIntegrationProps) {
   const [summary, setSummary] = useState<IntegrationSummary | null>(null);
   const [selectedProcess, setSelectedProcess] = useState<string | null>(null);
   const [processIntegration, setProcessIntegration] = useState<ProcessIntegration | null>(null);
