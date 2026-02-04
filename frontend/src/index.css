@@ -1,9 +1,37 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&display=swap");
+/* ============================================
+   STRONGHOLD - Styles de base et reset
+   ============================================ */
 
+/* Polices */
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+
+/* Reset moderne */
 *,
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Désactiver les animations pour les utilisateurs qui le préfèrent */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+html {
+  /* Améliore le rendu du texte */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  /* Défilement fluide */
+  scroll-behavior: smooth;
+  /* Hauteur minimale */
+  height: 100%;
 }
 
 html,
@@ -13,16 +41,19 @@ body {
 
 body {
   margin: 0;
-  font-family: var(--font-family, "Inter", system-ui, sans-serif);
+  font-family: var(--font-family, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
   font-size: 16px;
-  line-height: 1.6;
+  line-height: 1.5;
   color: var(--text-primary, #0f172a);
-  background: var(--background-color, #f5f7fb);
+  background: var(--background-color, #f8fafc);
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  /* Évite le débordement horizontal */
+  overflow-x: hidden;
 }
 
+/* Éléments de média */
 img,
 picture,
 video,
@@ -30,19 +61,127 @@ canvas,
 svg {
   display: block;
   max-width: 100%;
+  height: auto;
 }
 
+/* Formulaires */
 input,
 button,
 textarea,
 select {
   font: inherit;
-}
-
-a {
   color: inherit;
 }
 
+/* Boutons */
+button {
+  cursor: pointer;
+  border: none;
+  background: none;
+}
+
+/* Liens */
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+a:focus-visible {
+  outline: 2px solid var(--primary-500, #3b82f6);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Listes */
+ul,
+ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Tableaux */
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* Citations */
+blockquote,
+q {
+  quotes: none;
+}
+
+/* Focus visible pour l'accessibilité */
+:focus-visible {
+  outline: 2px solid var(--primary-500, #3b82f6);
+  outline-offset: 2px;
+}
+
+/* Masquer le focus par défaut pour les clics souris */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Sélection */
+::selection {
+  background: var(--primary-200, #bfdbfe);
+  color: var(--primary-900, #1e3a8a);
+}
+
+:root[data-theme="dark"] ::selection {
+  background: var(--primary-700, #1d4ed8);
+  color: var(--neutral-0, #ffffff);
+}
+
+/* Scrollbar personnalisée */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--neutral-100, #f1f5f9);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--neutral-300, #cbd5e1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400, #94a3b8);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-track {
+  background: var(--neutral-800, #1e293b);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: var(--neutral-600, #475569);
+}
+
+:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-500, #64748b);
+}
+
+/* Conteneur racine */
 #root {
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Utilitaires d'accessibilité */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
