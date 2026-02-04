@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import ReactECharts from "echarts-for-react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { ActionToolbar } from "../components/ui/ActionToolbar";
 import { InlineHelp } from "../components/ui/InlineHelp";
 import type { GraphApiResponse, GraphEdge, GraphNode } from "../types";
@@ -376,35 +376,25 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         </div>
       </div>
 
-      <PageIntro
-        title="Explorer les dépendances"
-        objective="Comprendre les liens entre services, applications et Landing Zone pour anticiper les impacts PRA."
-        steps={[
-          "Choisir une vue de graphe",
-          "Filtrer par criticité ou niveau d'information",
-          "Analyser les dépendances clés",
-        ]}
-        tips={[
-          "Passez en vue bulles pour comparer les criticités.",
-          "Utilisez le filtre de criticité pour isoler les impacts majeurs.",
-          "Activez le niveau détaillé pour enrichir les tooltips.",
-        ]}
-        links={[
-          { label: "Changer de vue", href: "#graph-views", description: "Vues disponibles" },
-          { label: "Ajuster les filtres", href: "#graph-controls", description: "Toolbar" },
-          { label: "Lire les détails", href: "#graph-details", description: "Panneau latéral" },
-        ]}
-        expectedData={[
-          "Services et applications chargés",
-          "Relations et criticités renseignées",
-          "Catégories et vues disponibles",
-        ]}
+      <SectionLayout
+        id="graph"
+        title="Graphe"
+        description="Visualisez les dépendances entre services, applications et infrastructure."
+        badge={`${filteredNodes.length} noeuds`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="Le graphe de dépendances révèle les impacts potentiels et les points critiques du PRA."
+        quickLinks={[
+          { label: "Changer de vue", href: "#graph-views" },
+          { label: "Ajuster les filtres", href: "#graph-controls" },
+        ]}
+        tips={[
+          "Passez en vue bulles pour comparer les criticités.",
+          "Utilisez le filtre de criticité pour isoler les impacts majeurs.",
+        ]}
+      >
       <ActionToolbar id="graph-controls">
         <div className="legend">
           <span className="legend-title">Criticité</span>
@@ -584,6 +574,7 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         Astuces : survoler pour le détail, zoom/drag activés, rectangles = services, ellipses = applications, couleurs
         = criticité. Le mode essentiel masque les nœuds secondaires.
       </div>
+      </SectionLayout>
     </section>
   );
 }

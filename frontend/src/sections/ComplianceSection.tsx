@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { ComplianceItem, ComplianceReport, ComplianceStatus } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -216,36 +216,26 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
       {error && <p className="helper error">{error}</p>}
       {exportError && <p className="helper error">{exportError}</p>}
 
-      <PageIntro
-        title="Piloter la conformité et les audits"
-        objective="Synthétiser les exigences ISO 22301 et SecNumCloud avec un scoring dynamique."
-        steps={[
-          "Vérifier la couverture BIA, risques, runbooks et exercices.",
-          "Analyser les écarts par standard.",
-          "Exporter un rapport d'audit prêt à partager.",
-        ]}
-        links={[
-          { label: "Voir les checklists", href: "#compliance-checklists", description: "Standards" },
-          { label: "Écarts", href: "#compliance-gaps", description: "Manquements" },
-          { label: "Actions", href: "#compliance-actions", description: "Recommandations" },
-          { label: "Exports", href: "#compliance-exports", description: "PDF & Excel" },
-        ]}
-        expectedData={[
-          "Processus BIA et impacts",
-          "Registre des risques",
-          "Runbooks générés",
-          "Exercices PRA réalisés",
+      <SectionLayout
+        id="compliance"
+        title="Conformité"
+        description="Mesurez l'alignement ISO 22301 et SecNumCloud avec un scoring dynamique."
+        badge={`${scorePercent}% couvert`}
+        progress={{
+          value: scorePercent,
+          label: `${totalItems} exigences suivies`,
+        }}
+        whyThisStep="La conformité dynamique garantit l'alignement aux standards et prépare les audits PRA."
+        quickLinks={[
+          { label: "Checklists", href: "#compliance-checklists" },
+          { label: "Écarts", href: "#compliance-gaps" },
+          { label: "Exports", href: "#compliance-exports" },
         ]}
         tips={[
           "Augmentez la fréquence des exercices pour améliorer la maturité.",
           "Centralisez les preuves dans les runbooks pour faciliter l'audit.",
         ]}
-        progress={{
-          value: scorePercent,
-          label: `${totalItems} exigences suivies`,
-        }}
-      />
-
+      >
       <div className="panel-grid">
         <div className="card">
           <div className="card-header">
@@ -468,6 +458,7 @@ export function ComplianceSection({ configVersion }: ComplianceSectionProps) {
           </div>
         </div>
       </div>
+      </SectionLayout>
     </section>
   );
 }

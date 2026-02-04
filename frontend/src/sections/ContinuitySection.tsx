@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   BackupStrategy,
   DependencyCycle,
@@ -255,35 +255,26 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
         </div>
       </div>
 
-      <PageIntro
-        title="Aligner sauvegardes et politiques"
-        objective="Définir les stratégies de sauvegarde, les politiques de sécurité et les cycles critiques pour éviter les angles morts PRA."
-        steps={[
-          "Documenter les stratégies de sauvegarde",
-          "Rattacher les politiques de sécurité",
-          "Qualifier les cycles de dépendance",
-        ]}
-        tips={[
-          "Renseignez RTO/RPO pour mesurer l'impact des sauvegardes.",
-          "Associez chaque politique aux services critiques.",
-          "Identifiez les cycles critiques avant les exercices PRA.",
-        ]}
-        links={[
-          { label: "Créer une stratégie", href: "#continuity-backup", description: "Backup" },
-          { label: "Ajouter une politique", href: "#continuity-policy", description: "Sécurité" },
-          { label: "Définir un cycle", href: "#continuity-cycle", description: "Dépendances" },
-        ]}
-        expectedData={[
-          "Service cible, fréquence et rétention",
-          "Politique, classification et contrôle",
-          "Services en dépendance + niveau de sévérité",
-        ]}
+      <SectionLayout
+        id="continuity"
+        title="Continuité"
+        description="Centralisez sauvegardes, politiques de sécurité et cycles de dépendance."
+        badge={`${backupStrategies.length} sauvegardes`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="La continuité d'activité garantit la reprise en documentant les stratégies de sauvegarde et les dépendances critiques."
+        quickLinks={[
+          { label: "Stratégie backup", href: "#continuity-backup" },
+          { label: "Politique sécurité", href: "#continuity-policy" },
+          { label: "Cycle dépendance", href: "#continuity-cycle" },
+        ]}
+        tips={[
+          "Renseignez RTO/RPO pour mesurer l'impact des sauvegardes.",
+          "Identifiez les cycles critiques avant les exercices PRA.",
+        ]}
+      >
       <div className="panel-stack">
         <div id="continuity-backup" className="card">
           <div className="card-header">
@@ -781,6 +772,7 @@ export function ContinuitySection({ configVersion }: ContinuitySectionProps) {
           </div>
         </div>
       </div>
+      </SectionLayout>
     </section>
   );
 }

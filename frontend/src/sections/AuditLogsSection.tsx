@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { apiFetch } from "../utils/api";
 
 interface AuditLogsSectionProps {
@@ -122,35 +122,25 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
         <div className="badge subtle">ADMIN only</div>
       </div>
 
-      <PageIntro
-        title="Suivre l'audit API"
-        objective="Inspecter les appels API pour tracer les erreurs, mesurer les latences et vérifier la conformité."
-        steps={[
-          "Appliquer des filtres ciblés",
-          "Analyser les statuts et latences",
-          "Exporter ou corriger les anomalies",
-        ]}
-        tips={[
-          "Filtrez par statut pour isoler les erreurs 4xx/5xx.",
-          "Utilisez l'ID de corrélation pour relier plusieurs appels.",
-          "Surveillez les latences élevées pour détecter les goulots.",
-        ]}
-        links={[
-          { label: "Filtrer les logs", href: "#audit-filters", description: "Formulaire" },
-          { label: "Consulter les résultats", href: "#audit-results", description: "Table" },
-          { label: "Réinitialiser", href: "#audit-filters", description: "Reset" },
-        ]}
-        expectedData={[
-          "Date, statut HTTP ou chemin",
-          "Corrélation et identifiant de clé",
-          "Latence et statut de succès",
-        ]}
+      <SectionLayout
+        id="audit-logs"
+        title="Audit API"
+        description="Inspectez les appels API pour tracer les erreurs et mesurer les latences."
+        badge={`${rows.length} entrées`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="L'audit API garantit la traçabilité des opérations et facilite le diagnostic des anomalies."
+        quickLinks={[
+          { label: "Filtrer les logs", href: "#audit-filters" },
+          { label: "Consulter les résultats", href: "#audit-results" },
+        ]}
+        tips={[
+          "Filtrez par statut pour isoler les erreurs 4xx/5xx.",
+          "Utilisez l'ID de corrélation pour relier plusieurs appels.",
+        ]}
+      >
       <form id="audit-filters" className="card form-grid" onSubmit={handleFilter}>
         <div className="card-header" style={{ gridColumn: "1 / -1" }}>
           <div>
@@ -254,6 +244,7 @@ export function AuditLogsSection({ configVersion }: AuditLogsSectionProps) {
           </div>
         )}
       </div>
+      </SectionLayout>
     </section>
   );
 }

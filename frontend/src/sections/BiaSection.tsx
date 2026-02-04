@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useMemo, useState } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { BiaDashboardView } from "../components/BiaDashboard";
 import { BiaWizard, type WizardData } from "../components/BiaWizard";
 import { BiaProcessDetail } from "../components/BiaProcessDetail";
@@ -254,38 +254,26 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
   );
 
   return (
-    <>
-      <PageIntro
-        title="Business Impact Analysis"
-        subtitle="Analysez vos processus métiers, leurs impacts et les interdépendances pour prioriser la continuité."
-        objective="Dashboard BIA complet avec KPIs, matrice de risques, alertes et assistant de création guidé."
-        steps={[
-          "Consulter le dashboard pour une vue d'ensemble",
-          "Utiliser l'assistant pour créer un processus BIA",
-          "Analyser la matrice d'impact et les alertes",
-          "Prioriser les actions de continuité",
-        ]}
-        tips={[
-          "L'assistant vous guide à travers 4 étapes pour créer un processus complet.",
-          "Les données sont sauvegardées automatiquement à chaque étape.",
-          "Utilisez le catalogue de processus types pour gagner du temps.",
-        ]}
-        links={[
-          { label: "Dashboard", href: "#bia-dashboard", description: "Vue d'ensemble" },
-          { label: "Assistant BIA", href: "#bia-wizard", description: "Création guidée" },
-          { label: "Liste des processus", href: "#bia-table", description: "Table" },
-        ]}
-        expectedData={[
-          "Impacts financiers/réglementaires sur différentes échelles de temps",
-          "RTO/RPO/MTPD par processus avec valeurs suggérées",
-          "Lien avec les services/applications existants",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
+    <SectionLayout
+      id="bia"
+      title="Analyse d'Impact (BIA)"
+      description="Évaluez la criticité de vos processus métiers et leurs interdépendances."
+      badge={`${processes.length} processus`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="L'analyse BIA permet de prioriser les processus critiques et de définir les objectifs de reprise (RTO, RPO) pour garantir la continuité d'activité."
+      quickLinks={[
+        { label: "Dashboard", href: "#bia-dashboard" },
+        { label: "Créer un processus", href: "#bia-wizard" },
+        { label: "Priorisation", href: "#bia-prioritization" },
+      ]}
+      tips={[
+        "L'assistant guide la création en 4 étapes.",
+        "Utilisez les templates de processus types.",
+      ]}
+    >
       {/* Tab Navigation */}
       <div className="tab-nav" style={{ marginBottom: "1.5rem" }}>
         <button
@@ -634,6 +622,6 @@ export function BiaSection({ configVersion }: BiaSectionProps) {
           onClose={() => setSelectedProcess(null)}
         />
       )}
-    </>
+    </SectionLayout>
   );
 }

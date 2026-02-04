@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { DocumentMetadata, DocumentRecord, PaginatedResponse } from "../types";
 import { apiFetch, apiFetchFormData } from "../utils/api";
 
@@ -264,35 +264,25 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
         </div>
       </div>
 
-      <PageIntro
-        title="Structurer l'ingestion documentaire"
-        objective="Centraliser vos pièces PRA, suivre l'extraction et alimenter la base de faits exploitable par l'IA."
-        steps={[
-          "Uploader les documents sources",
-          "Lancer l'extraction / indexation",
-          "Contrôler les faits et dépendances détectés",
-        ]}
-        tips={[
-          "Renseignez le type de document pour améliorer l'extraction.",
-          "Utilisez l'extraction en masse pour accélérer l'indexation.",
-          "Validez les faits détectés avant exploitation IA.",
-        ]}
-        links={[
-          { label: "Charger un document", href: "#documents-upload", description: "Formulaire" },
-          { label: "Extraire en masse", href: "#documents-actions", description: "Actions rapides" },
-          { label: "Parcourir les documents", href: "#documents-table", description: "Table" },
-        ]}
-        expectedData={[
-          "Fichier source (PDF, DOCX, CSV...)",
-          "Type de document + description",
-          "Documents éligibles à l'extraction",
-        ]}
+      <SectionLayout
+        id="documents"
+        title="Documents"
+        description="Centralisez vos pièces PRA et alimentez la base de faits IA."
+        badge={`${documentCountLabel} documents`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="L'ingestion documentaire alimente l'extraction automatique des faits et dépendances pour les analyses PRA."
+        quickLinks={[
+          { label: "Charger un document", href: "#documents-upload" },
+          { label: "Extraire en masse", href: "#documents-actions" },
+        ]}
+        tips={[
+          "Renseignez le type de document pour améliorer l'extraction.",
+          "Utilisez l'extraction en masse pour accélérer l'indexation.",
+        ]}
+      >
       <form
         id="documents-upload"
         className="card form-grid"
@@ -533,6 +523,7 @@ export function DocumentsSection({ configVersion }: DocumentsSectionProps) {
           {loadMoreError && <span className="helper error">{loadMoreError}</span>}
         </div>
       )}
+      </SectionLayout>
     </section>
   );
 }

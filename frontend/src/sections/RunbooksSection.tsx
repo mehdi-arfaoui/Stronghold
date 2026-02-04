@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { RunbookFront, RunbookTemplateFront, ScenarioFront } from "../types";
 import { apiDownload, apiFetch, apiFetchFormData } from "../utils/api";
 
@@ -351,47 +351,26 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
   );
 
   return (
-    <section id="runbooks-panel" className="panel" aria-labelledby="runbooks-title">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">PRA</p>
-          <h2 id="runbooks-title">Runbooks & rapports</h2>
-          <p className="muted">
-            Génération de runbooks, sélection de templates et téléchargement des rapports PRA (texte, PDF ou JSON).
-          </p>
-        </div>
-        <div className="badge subtle">{runbooks.length} runbooks</div>
-      </div>
-
-      <PageIntro
-        title="Générer et versionner les runbooks"
-        objective="Assembler les scénarios PRA, templates et synthèses pour obtenir des runbooks prêts à diffuser."
-        steps={[
-          "Sélectionner un template",
-          "Associer un scénario si nécessaire",
-          "Exporter le runbook final",
-        ]}
-        tips={[
-          "Choisissez un template cohérent avec vos exigences d'audit.",
-          "Associez un scénario pour enrichir les étapes.",
-          "Exportez le PDF pour diffusion opérationnelle.",
-        ]}
-        links={[
-          { label: "Générer un runbook", href: "#runbooks-generate", description: "Formulaire" },
-          { label: "Gérer les templates", href: "#runbooks-templates", description: "Bibliothèque" },
-          { label: "Consulter les runbooks", href: "#runbooks-list", description: "Historique" },
-        ]}
-        expectedData={[
-          "Template (générique, scénario, audit)",
-          "Scénario PRA à inclure",
-          "Titre, résumé et propriétaire",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
+    <SectionLayout
+      id="runbooks"
+      title="Runbooks"
+      description="Générez et exportez vos runbooks PRA à partir de templates et scénarios."
+      badge={`${runbooks.length} runbooks`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="Les runbooks formalisent les procédures de reprise pour guider les équipes en cas de sinistre."
+      quickLinks={[
+        { label: "Générer un runbook", href: "#runbooks-generate" },
+        { label: "Templates", href: "#runbooks-templates" },
+        { label: "Historique", href: "#runbooks-list" },
+      ]}
+      tips={[
+        "Associez un scénario pour enrichir le runbook.",
+        "Exportez en PDF pour diffusion opérationnelle.",
+      ]}
+    >
       <div className="panel-grid">
         <form id="runbooks-generate" className="card form-grid" onSubmit={handleGenerate}>
           <div className="card-header" style={{ gridColumn: "1 / -1" }}>
@@ -756,6 +735,6 @@ export function RunbooksSection({ configVersion }: RunbooksSectionProps) {
           </form>
         )}
       </div>
-    </section>
+    </SectionLayout>
   );
 }

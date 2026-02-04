@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import ReactECharts from "echarts-for-react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   AppWarning,
   BiaSummary,
@@ -414,53 +414,26 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
   );
 
   return (
-    <section id="analysis-panel" className="panel" aria-labelledby="analysis-title">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Contrôles</p>
-          <h2 id="analysis-title">Analyse PRA</h2>
-          <p className="muted">
-            Synthèse des incohérences RTO/RPO/criticité, recommandations DR et interrogation IA contextualisée.
-          </p>
-        </div>
-        <div className="badge subtle">
-          Cible : RTO {dashboard.meta.targetRtoHours}h / RPO {dashboard.meta.targetRpoMinutes} min •{" "}
-          {dashboard.meta.globalCriticality.toUpperCase()}
-        </div>
-      </div>
-
-      <PageIntro
-        title="Qualifier la posture PRA"
-        objective="Identifier les écarts RTO/RPO, prioriser les recommandations DR et interroger l'IA avec votre contexte."
-        steps={[
-          "Analyser les incohérences applicatives",
-          "Évaluer les écarts RTO/RPO",
-          "Comparer les scénarios DR",
-          "Lancer un diagnostic IA contextualisé",
-        ]}
-        tips={[
-          "Vérifiez les objectifs RTO/RPO avant de lancer l'analyse.",
-          "Utilisez la heatmap pour prioriser les écarts critiques.",
-          "Interrogez l'IA après avoir indexé vos documents clés.",
-        ]}
-        links={[
-          { label: "Voir les alertes", href: "#analysis-dashboard", description: "Anomalies" },
-          { label: "Heatmap de risques", href: "#analysis-heatmap", description: "RTO/RPO" },
-          { label: "Comparer les scénarios", href: "#analysis-dr", description: "Recommandations" },
-          { label: "Synthèses BIA & risques", href: "#analysis-risk-summary", description: "Priorités" },
-          { label: "Interroger l'IA", href: "#analysis-ai", description: "RAG PRA" },
-        ]}
-        expectedData={[
-          "Services + objectifs RTO/RPO",
-          "Dépendances et criticités",
-          "Documents indexés pour le RAG",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
+    <SectionLayout
+      id="analysis"
+      title="Analyse PRA"
+      description="Évaluez les écarts RTO/RPO, la maturité et générez des recommandations DR."
+      badge={`RTO ${dashboard.meta.targetRtoHours}h`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="L'analyse PRA consolide vos données pour identifier les incohérences et recommander les stratégies de reprise adaptées."
+      quickLinks={[
+        { label: "Heatmap", href: "#analysis-heatmap" },
+        { label: "Recommandations DR", href: "#analysis-dr" },
+        { label: "IA PRA", href: "#analysis-ai" },
+      ]}
+      tips={[
+        "Indexez vos documents avant d'interroger l'IA.",
+        "Utilisez la heatmap pour prioriser les écarts.",
+      ]}
+    >
       <div className="panel-grid">
         <div id="analysis-maturity" className="card">
           <div className="card-header">
@@ -1160,6 +1133,6 @@ export function AnalysisSection({ configVersion }: AnalysisSectionProps) {
           </details>
         )}
       </div>
-    </section>
+    </SectionLayout>
   );
 }

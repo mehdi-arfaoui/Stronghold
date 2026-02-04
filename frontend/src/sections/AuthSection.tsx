@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { apiFetch } from "../utils/api";
 
 interface AuthSectionProps {
@@ -209,36 +209,26 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
         <div className="badge subtle">ADMIN only</div>
       </div>
 
-      <PageIntro
-        title="Gérer les accès API"
-        objective="Créer, faire tourner et suivre les clés API pour sécuriser l'accès aux modules PRA."
-        steps={[
-          "Créer une clé avec le bon rôle",
-          "Planifier la rotation et l'expiration",
-          "Suivre l'usage et la révocation",
-        ]}
-        tips={[
-          "Limitez les clés ADMIN aux comptes de confiance.",
-          "Programmez une rotation régulière des clés sensibles.",
-          "Planifiez une revue périodique des permissions.",
-          "Vérifiez le dernier usage avant révocation.",
-        ]}
-        links={[
-          { label: "Créer une clé", href: "#auth-create", description: "Formulaire" },
-          { label: "Rotater une clé", href: "#auth-rotate", description: "Rotation" },
-          { label: "Consulter l'inventaire", href: "#auth-list", description: "Liste" },
-        ]}
-        expectedData={[
-          "Libellé + rôle (ADMIN/OPERATOR/READER)",
-          "Durée d'expiration souhaitée",
-          "Clé à tourner ou à révoquer",
-        ]}
+      <SectionLayout
+        id="auth"
+        title="Clés API"
+        description="Créez, faites tourner et suivez les clés API pour sécuriser l'accès."
+        badge={`${keys.length} clés`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="La gestion des clés API sécurise l'accès aux modules PRA et garantit la traçabilité."
+        quickLinks={[
+          { label: "Créer une clé", href: "#auth-create" },
+          { label: "Rotater une clé", href: "#auth-rotate" },
+          { label: "Inventaire", href: "#auth-list" },
+        ]}
+        tips={[
+          "Limitez les clés ADMIN aux comptes de confiance.",
+          "Programmez une rotation régulière des clés sensibles.",
+        ]}
+      >
       {createdKey && (
         <div className="card" style={{ marginBottom: "1.5rem" }}>
           <div className="card-header">
@@ -419,6 +409,7 @@ export function AuthSection({ configVersion }: AuthSectionProps) {
           </table>
         </div>
       </div>
+      </SectionLayout>
     </section>
   );
 }

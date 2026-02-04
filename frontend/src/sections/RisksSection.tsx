@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   PaginatedResponse,
   Risk,
@@ -225,37 +225,26 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
   }
 
   return (
-    <>
-      <PageIntro
-        title="Évaluation et gestion des risques"
-        objective="Structurer les menaces, calculer un score (probabilité × impact) et suivre les mesures de mitigation par service ou processus."
-        steps={[
-          "Décrire la menace et le périmètre",
-          "Attribuer une probabilité et un impact",
-          "Évaluer la matrice et prioriser",
-          "Suivre les mitigations associées",
-        ]}
-        tips={[
-          "Utilisez une probabilité réaliste basée sur l'historique d'incidents.",
-          "Assignez un owner pour chaque risque critique.",
-          "Consignez les mitigations dès la création du risque.",
-        ]}
-        links={[
-          { label: "Catalogue des services", href: "#services-panel" },
-          { label: "Analyse PRA", href: "#analysis-panel" },
-        ]}
-        expectedData={[
-          "Menaces classées par type",
-          "Probabilité & impact (1-5)",
-          "Mesures de mitigation suivies",
-          "Matrice des risques consolidée",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${totalRisks} risques recensés`,
-        }}
-      />
-
+    <SectionLayout
+      id="risks"
+      title="Risques"
+      description="Cartographiez et suivez les menaces pesant sur vos services."
+      badge={`${totalRisks} risques`}
+      progress={{
+        value: progressValue,
+        label: `${totalRisks} risques recensés`,
+      }}
+      whyThisStep="Identifiez les menaces, évaluez leur criticité et définissez les mesures de mitigation pour renforcer la résilience de votre organisation."
+      quickLinks={[
+        { label: "Ajouter un risque", href: "#risk-form" },
+        { label: "Matrice des risques", href: "#risk-matrix" },
+        { label: "Vulnérabilités", href: "#vulnerability-report" },
+      ]}
+      tips={[
+        "Utilisez une probabilité réaliste basée sur l'historique.",
+        "Assignez un responsable pour chaque risque critique.",
+      ]}
+    >
       <section className="panel" id="risk-form">
         <div className="panel-header">
           <div>
@@ -658,6 +647,6 @@ export function RisksSection({ configVersion }: RisksSectionProps) {
           </>
         )}
       </section>
-    </>
+    </SectionLayout>
   );
 }

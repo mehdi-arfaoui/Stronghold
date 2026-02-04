@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { GraphApiResponse, GraphNode } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -244,35 +244,25 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
         </div>
       </div>
 
-      <PageIntro
-        title="Synthétiser l'architecture"
-        objective="Offrir une vue globale des composants et dépendances pour alimenter les audits et comités PRA."
-        steps={[
-          "Charger les composants et catégories",
-          "Analyser les dépendances critiques",
-          "Exporter le diagramme pour les rapports",
-        ]}
-        tips={[
-          "Filtrez par domaine pour présenter une vue ciblée.",
-          "Utilisez les exports PNG/SVG pour vos supports de comité.",
-          "Survolez les nœuds pour lire les métriques clés.",
-        ]}
-        links={[
-          { label: "Visualiser le schéma", href: "#architecture-chart", description: "Graphique" },
-          { label: "Exporter l'image", href: "#architecture-export-png", description: "PNG" },
-          { label: "Relire les annotations", href: "#architecture-notes", description: "Astuce" },
-        ]}
-        expectedData={[
-          "Catégories d'architecture et criticités",
-          "Liens entre applications et infra",
-          "Niveaux de priorité métier",
-        ]}
+      <SectionLayout
+        id="architecture"
+        title="Architecture"
+        description="Vue globale des composants et dépendances pour les audits PRA."
+        badge={`${filteredNodes.length} composants`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="L'architecture d'entreprise offre une vue consolidée pour les comités et les rapports d'audit PRA."
+        quickLinks={[
+          { label: "Visualiser le schéma", href: "#architecture-chart" },
+          { label: "Exporter PNG", href: "#architecture-export-png" },
+        ]}
+        tips={[
+          "Filtrez par domaine pour présenter une vue ciblée.",
+          "Utilisez les exports PNG/SVG pour vos supports de comité.",
+        ]}
+      >
       <div id="architecture-filters" className="card form-grid" style={{ marginTop: "1.5rem" }}>
         <div className="card-header" style={{ gridColumn: "1 / -1" }}>
           <div>
@@ -360,6 +350,7 @@ export function ArchitectureSection({ configVersion }: ArchitectureSectionProps)
       <div id="architecture-notes" className="muted small">
         Astuce : utilisez le zoom et le déplacement pour annoter les interactions clés avant export.
       </div>
+      </SectionLayout>
     </section>
   );
 }
