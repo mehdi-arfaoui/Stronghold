@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import "tippy.js/dist/tippy.css";
 import "tippy.js/themes/light-border.css";
-import type { Core, ElementDefinition, LayoutOptions, StylesheetCSS } from "cytoscape";
+import type { Core, ElementDefinition, LayoutOptions, Stylesheet } from "cytoscape";
 import type { InfrastructureGraphNode } from "../../types/infrastructureGraph";
 import { buildNodeTooltip } from "../../utils/graphTransform";
 import { createInteractionHandlers } from "../../utils/graphInteractions";
@@ -9,7 +9,7 @@ import { createInteractionHandlers } from "../../utils/graphInteractions";
 type InfrastructureGraphProps = {
   elements: ElementDefinition[];
   layout?: LayoutOptions;
-  styles?: StylesheetCSS[];
+  styles?: Stylesheet[];
   isLoading?: boolean;
   onNodeSelect?: (node: InfrastructureGraphNode) => void;
   onNodeHover?: (node: InfrastructureGraphNode | null) => void;
@@ -29,7 +29,7 @@ export type InfrastructureGraphHandle = {
 
 let cytoscapeExtensionsLoaded = false;
 
-const DEFAULT_LAYOUT: LayoutOptions = {
+const DEFAULT_LAYOUT = {
   name: "cose-bilkent",
   animate: true,
   fit: true,
@@ -38,9 +38,9 @@ const DEFAULT_LAYOUT: LayoutOptions = {
   idealEdgeLength: 160,
   edgeElasticity: 0.15,
   gravity: 0.25,
-};
+} as LayoutOptions;
 
-const DEFAULT_STYLES: StylesheetCSS[] = [
+const DEFAULT_STYLES: Stylesheet[] = [
   {
     selector: "node",
     style: {
