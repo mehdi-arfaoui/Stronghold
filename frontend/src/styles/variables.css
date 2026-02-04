@@ -1,13 +1,70 @@
+/* ============================================
+   STRONGHOLD - Variables CSS (Compatibilité)
+   Ce fichier assure la rétrocompatibilité avec
+   les variables héritées.
+   ============================================ */
+
 :root {
-  --primary-color: #f8f3ea;
-  --accent-color: #e5b76a;
-  --text-color: #fdf6ee;
+  /* Variables héritées - mappées vers le nouveau système */
+  --primary-color: var(--primary-600, #2563eb);
+  --accent-color: var(--accent-400, #22d3ee);
+  --text-color: var(--text-primary, #0f172a);
   --background-overlay: rgba(6, 6, 8, 0.55);
-  --sidebar-background: rgba(12, 12, 16, 0.96);
-  --header-font-family: "Montserrat", "Futura", "Inter", sans-serif;
+  --sidebar-background: var(--surface-color, #ffffff);
+
+  /* Typographie héritée */
+  --header-font-family: var(--font-family-display, "Space Grotesk", "Inter", sans-serif);
   --header-padding-x: clamp(24px, 6vw, 64px);
   --header-padding-y: clamp(18px, 3vw, 28px);
   --header-gap: clamp(16px, 4vw, 48px);
-  --header-max-width: 1280px;
+  --header-max-width: var(--max-content-width, 1400px);
+
+  /* Dimensions héritées */
   --hero-height: clamp(240px, 40vh, 420px);
+
+  /* Alias pour rétrocompatibilité */
+  --font-size-h1: var(--font-size-4xl, 2.25rem);
+  --font-size-h2: var(--font-size-2xl, 1.5rem);
+  --font-size-body: var(--font-size-base, 1rem);
+  --font-size-label: var(--font-size-xs, 0.75rem);
+  --line-height-heading: var(--line-height-tight, 1.25);
+  --line-height-body: var(--line-height-normal, 1.5);
+  --line-height-label: var(--line-height-snug, 1.375);
+
+  /* Couleurs neutres héritées */
+  --color-neutral-0: var(--neutral-0, #ffffff);
+  --color-neutral-50: var(--neutral-50, #f8fafc);
+  --color-neutral-100: var(--neutral-100, #f1f5f9);
+  --color-neutral-200: var(--neutral-200, #e2e8f0);
+  --color-neutral-300: var(--neutral-300, #cbd5e1);
+  --color-neutral-400: var(--neutral-400, #94a3b8);
+  --color-neutral-500: var(--neutral-500, #64748b);
+  --color-neutral-600: var(--neutral-600, #475569);
+  --color-neutral-700: var(--neutral-700, #334155);
+  --color-neutral-800: var(--neutral-800, #1e293b);
+  --color-neutral-900: var(--neutral-900, #0f172a);
+  --color-neutral-950: var(--neutral-950, #020617);
+
+  /* Couleurs d'accent héritées */
+  --color-accent-100: var(--accent-100, #cffafe);
+  --color-accent-300: var(--accent-300, #67e8f9);
+  --color-accent-500: var(--accent-500, #06b6d4);
+  --color-accent-600: var(--accent-600, #0891b2);
+  --color-accent-700: var(--accent-700, #0e7490);
+
+  /* Couleurs sémantiques héritées */
+  --color-success-100: var(--success-100, #dcfce7);
+  --color-success-500: var(--success-500, #22c55e);
+  --color-warning-100: var(--warning-100, #fef3c7);
+  --color-warning-200: var(--warning-100, #fef3c7);
+}
+
+:root[data-theme="dark"] {
+  --background-overlay: rgba(6, 6, 8, 0.75);
+  --sidebar-background: var(--surface-color, #0f172a);
+
+  --color-success-100: var(--success-100, #14532d);
+  --color-success-500: var(--success-500, #4ade80);
+  --color-warning-100: var(--warning-100, #713f12);
+  --color-warning-200: var(--warning-100, #fbbf24);
 }
