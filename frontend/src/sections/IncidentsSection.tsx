@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   DocumentRecord,
   Incident,
@@ -198,47 +198,26 @@ export function IncidentsSection({ configVersion }: IncidentsSectionProps) {
   }
 
   return (
-    <section id="incidents-panel" className="panel" aria-labelledby="incidents-title">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Crises & incidents</p>
-          <h2 id="incidents-title">Gestion des incidents &amp; crises</h2>
-          <p className="muted">
-            Centralisez les incidents, les équipes responsables, les services impactés et les notifications en temps réel.
-          </p>
-        </div>
-        <div className="badge subtle">{incidents.length} incidents</div>
-      </div>
-
-      <PageIntro
-        title="Piloter la réponse aux incidents"
-        objective="Suivre les incidents, notifier les équipes et conserver l'historique des actions menées."
-        steps={[
-          "Créer un incident avec les services impactés",
-          "Configurer les canaux de notification n8n",
-          "Mettre à jour le statut et consigner les actions",
-        ]}
-        tips={[
-          "Préparez un webhook vers votre SIEM ou outil de ticketing.",
-          "Activez les canaux critiques pour les crises prioritaires.",
-          "Consignez les actions pour faciliter le post-mortem.",
-        ]}
-        links={[
-          { label: "Créer un incident", href: "#incidents-create", description: "Formulaire" },
-          { label: "Suivi temps réel", href: "#incidents-dashboard", description: "Tableau de bord" },
-          { label: "Notifications", href: "#incident-notifications", description: "Canaux" },
-        ]}
-        expectedData={[
-          "Titre, statut, équipe responsable",
-          "Services et documents impactés",
-          "Canaux e-mail, Slack, Teams",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
+    <SectionLayout
+      id="incidents"
+      title="Incidents"
+      description="Gérez les crises, notifiez les équipes et tracez les actions de réponse."
+      badge={`${incidents.length} incidents`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="La gestion centralisée des incidents permet de coordonner la réponse, notifier les parties prenantes et conserver un historique pour les post-mortems."
+      quickLinks={[
+        { label: "Créer un incident", href: "#incidents-create" },
+        { label: "Dashboard", href: "#incidents-dashboard" },
+        { label: "Notifications", href: "#incident-notifications" },
+      ]}
+      tips={[
+        "Configurez vos webhooks n8n pour les alertes automatiques.",
+        "Consignez les actions pour faciliter le post-mortem.",
+      ]}
+    >
       <div id="incidents-dashboard" className="panel-grid" style={{ marginBottom: "24px" }}>
         <div className="card">
           <h3 className="section-title">Vue d'ensemble</h3>
@@ -527,7 +506,7 @@ export function IncidentsSection({ configVersion }: IncidentsSectionProps) {
           )}
         </div>
       </div>
-    </section>
+    </SectionLayout>
   );
 }
 

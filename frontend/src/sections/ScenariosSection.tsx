@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   PaginatedResponse,
   ScenarioCatalogFront,
@@ -173,58 +173,36 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
   ).sort();
 
   return (
-    <section id="scenarios-panel" className="panel" aria-labelledby="scenarios-title">
-      <div className="panel-header">
-        <div>
-          <p className="eyebrow">Runbooks</p>
-          <h2 id="scenarios-title">Scénarios PRA &amp; runbooks</h2>
-          <p className="muted">
-            Modélisation des scénarios de sinistre (perte AZ, région, corruption DB, perte AD...) et des étapes de reprise.
-          </p>
-        </div>
-        <div className="stack" style={{ alignItems: "flex-end", gap: "8px" }}>
-          <div className="badge subtle">{scenarioCountLabel} scénarios</div>
-          <button
-            className="btn subtle"
-            type="button"
-            onClick={handleCatalogSync}
-            disabled={syncingCatalog}
-          >
-            {syncingCatalog ? "Synchronisation..." : "Synchroniser la bibliothèque"}
-          </button>
-          {catalogError && <span className="helper error">{catalogError}</span>}
-        </div>
+    <SectionLayout
+      id="scenarios"
+      title="Scénarios PRA"
+      description="Modélisez les scénarios de sinistre et définissez les étapes de reprise."
+      badge={`${scenarioCountLabel} scénarios`}
+      progress={{
+        value: progressValue,
+        label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
+      }}
+      whyThisStep="Les scénarios structurent les menaces pour guider la génération des runbooks et prioriser les actions de continuité."
+      quickLinks={[
+        { label: "Créer un scénario", href: "#scenarios-create" },
+        { label: "Voir les scénarios", href: "#scenarios-list" },
+      ]}
+      tips={[
+        "Indiquez le RTO cible pour prioriser les scénarios.",
+        "Ordonnez les étapes pour structurer les runbooks.",
+      ]}
+    >
+      <div className="stack horizontal" style={{ justifyContent: "flex-end", marginBottom: "1rem" }}>
+        <button
+          className="btn subtle"
+          type="button"
+          onClick={handleCatalogSync}
+          disabled={syncingCatalog}
+        >
+          {syncingCatalog ? "Synchronisation..." : "Synchroniser la bibliothèque"}
+        </button>
+        {catalogError && <span className="helper error">{catalogError}</span>}
       </div>
-
-      <PageIntro
-        title="Construire les scénarios PRA"
-        objective="Structurer les scénarios de sinistre pour guider la génération de runbooks et la priorisation."
-        steps={[
-          "Créer un scénario et définir l'impact",
-          "Associer les services concernés",
-          "Décrire les étapes de reprise",
-        ]}
-        tips={[
-          "Indiquez la cible RTO pour prioriser les scénarios.",
-          "Ajoutez les services critiques dès la création.",
-          "Ordonnez les étapes pour guider la génération des runbooks.",
-        ]}
-        links={[
-          { label: "Créer un scénario", href: "#scenarios-create", description: "Formulaire" },
-          { label: "Sélectionner les services", href: "#scenarios-services", description: "Checklist" },
-          { label: "Consulter les scénarios", href: "#scenarios-list", description: "Historique" },
-        ]}
-        expectedData={[
-          "Nom + type de scénario",
-          "Services impactés et cible RTO",
-          "Étapes de runbook associées",
-        ]}
-        progress={{
-          value: progressValue,
-          label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
-        }}
-      />
-
       <form id="scenarios-create" className="card form-grid" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
           <label className="form-field">
@@ -397,7 +375,7 @@ export function ScenariosSection({ configVersion }: ScenariosSectionProps) {
           )}
         </>
       )}
-    </section>
+    </SectionLayout>
   );
 }
 

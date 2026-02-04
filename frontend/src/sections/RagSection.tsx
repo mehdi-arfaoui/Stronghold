@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { DocumentMetadata, DocumentRecord, ExtractedFactFront, RagResponse } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -153,35 +153,25 @@ export function RagSection({ configVersion }: RagSectionProps) {
         <div className="badge subtle">{documents.length} sources</div>
       </div>
 
-      <PageIntro
-        title="Exploiter les faits IA"
-        objective="Extraire les faits structurés des documents et interroger le corpus pour accélérer les décisions PRA."
-        steps={[
-          "Choisir un document et extraire les faits",
-          "Filtrer le contexte RAG",
-          "Valider la réponse proposée",
-        ]}
-        tips={[
-          "Commencez par les documents avec extraction complète.",
-          "Utilisez les filtres pour limiter le bruit dans le contexte.",
-          "Validez les faits avant d'alimenter les analyses.",
-        ]}
-        links={[
-          { label: "Extraire les faits", href: "#rag-facts", description: "Extraction" },
-          { label: "Poser une question", href: "#rag-query", description: "Formulaire RAG" },
-          { label: "Analyser la réponse", href: "#rag-results", description: "Résultats" },
-        ]}
-        expectedData={[
-          "Documents indexés + extraction disponible",
-          "Question claire et filtres (types, services)",
-          "Sélection de documents pour le contexte",
-        ]}
+      <SectionLayout
+        id="rag"
+        title="Faits IA / RAG"
+        description="Extrayez les faits structurés et interrogez le corpus documentaire."
+        badge={`${documents.length} sources`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="L'extraction IA et le RAG accélèrent les décisions PRA en exploitant les connaissances documentaires."
+        quickLinks={[
+          { label: "Extraire les faits", href: "#rag-facts" },
+          { label: "Poser une question", href: "#rag-query" },
+        ]}
+        tips={[
+          "Commencez par les documents avec extraction complète.",
+          "Utilisez les filtres pour limiter le bruit dans le contexte.",
+        ]}
+      >
       <div className="panel-grid">
         <div id="rag-facts" className="card">
           <div className="card-header">
@@ -394,6 +384,7 @@ export function RagSection({ configVersion }: RagSectionProps) {
           )}
         </div>
       </div>
+      </SectionLayout>
     </section>
   );
 }

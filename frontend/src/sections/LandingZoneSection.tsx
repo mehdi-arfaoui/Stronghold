@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type { InfraComponent } from "../types";
 import { apiFetch } from "../utils/api";
 
@@ -159,35 +159,25 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
         <div className="badge subtle">{components.length} composants</div>
       </div>
 
-      <PageIntro
-        title="Structurer la Landing Zone"
-        objective="Inventorier les composants d'infrastructure pour relier les services critiques et leurs dépendances."
-        steps={[
-          "Créer les composants d'infra",
-          "Renseigner la criticité et la localisation",
-          "Associer les services hébergés",
-        ]}
-        tips={[
-          "Taguez la localisation (région, AZ) pour faciliter les vues PRA.",
-          "Signalez les Single-AZ pour repérer les risques.",
-          "Liez les services critiques pour enrichir l'architecture.",
-        ]}
-        links={[
-          { label: "Ajouter un composant", href: "#landing-create", description: "Formulaire" },
-          { label: "Consulter l'inventaire", href: "#landing-table", description: "Liste" },
-          { label: "Mettre à jour un composant", href: "#landing-edit", description: "Edition" },
-        ]}
-        expectedData={[
-          "Nom, type, provider et localisation",
-          "Criticité + statut Single-AZ",
-          "Services liés et notes contextuelles",
-        ]}
+      <SectionLayout
+        id="landing"
+        title="Landing Zone"
+        description="Inventoriez les composants d'infrastructure et reliez-les aux services critiques."
+        badge={`${components.length} composants`}
         progress={{
           value: progressValue,
           label: `${progressSteps.filter(Boolean).length}/${progressSteps.length} jalons`,
         }}
-      />
-
+        whyThisStep="La Landing Zone structure l'infrastructure pour identifier les points de défaillance et les dépendances PRA."
+        quickLinks={[
+          { label: "Ajouter un composant", href: "#landing-create" },
+          { label: "Consulter l'inventaire", href: "#landing-table" },
+        ]}
+        tips={[
+          "Taguez la localisation (région, AZ) pour faciliter les vues PRA.",
+          "Signalez les Single-AZ pour repérer les risques.",
+        ]}
+      >
       <form id="landing-create" className="form-grid card" onSubmit={handleCreate}>
         <div className="form-grid" style={{ gridTemplateColumns: "repeat(4, minmax(0, 1fr))" }}>
           <label className="form-field">
@@ -416,6 +406,7 @@ export function LandingZoneSection({ configVersion }: LandingZoneSectionProps) {
           </div>
         </form>
       )}
+      </SectionLayout>
     </section>
   );
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import ReactECharts from "echarts-for-react";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import type {
   FinancialComparisonResponse,
   FinancialProviderEstimate,
@@ -158,28 +158,23 @@ export function FinancialSection({ configVersion }: FinancialSectionProps) {
   }, [activeScenario]);
 
   return (
-    <section className="page">
-      <PageIntro
-        title="Coûts"
-        subtitle="Comparez les coûts CAPEX/OPEX multi-cloud par scénario de reprise."
-        objective="Valider l'impact financier des scénarios et prioriser les optimisations."
-        steps={[
-          "Renseigner les paramètres d'infrastructure",
-          "Comparer les scénarios par fournisseur",
-          "Identifier les optimisations possibles",
-        ]}
-        links={[
-          { label: "Documentation FinOps", href: "https://finops.org", description: "Bonnes pratiques" },
-        ]}
-        expectedData={[
-          "Paramètres d'instance et de stockage",
-          "Coûts cumulés par scénario",
-          "Synthèse des optimisations",
-        ]}
-        progress={{ value: 40, label: "Modélisation en cours" }}
-      />
-
-      <div className="card">
+    <SectionLayout
+      id="financial"
+      title="Coûts"
+      description="Comparez les coûts CAPEX/OPEX multi-cloud par scénario de reprise."
+      badge={`${scenarios.length} scénarios`}
+      progress={{ value: 40, label: "Modélisation en cours" }}
+      whyThisStep="L'analyse financière permet de valider l'impact budgétaire des scénarios PRA et d'identifier les optimisations."
+      quickLinks={[
+        { label: "Paramètres", href: "#financial-params" },
+        { label: "Comparatif", href: "#financial-comparison" },
+      ]}
+      tips={[
+        "Ajustez les régions pour comparer les coûts inter-zones.",
+        "Utilisez les suggestions d'optimisation pour réduire l'OPEX.",
+      ]}
+    >
+      <div className="card" id="financial-params">
         <h3>Paramètres de calcul</h3>
         <p className="muted small">
           Ajustez la taille des instances, les volumes et la fréquence de snapshot. Utilisez des
@@ -348,6 +343,6 @@ export function FinancialSection({ configVersion }: FinancialSectionProps) {
           )}
         </div>
       </div>
-    </section>
+    </SectionLayout>
   );
 }

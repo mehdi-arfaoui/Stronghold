@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
-import { PageIntro } from "../components/PageIntro";
+import { SectionLayout } from "../components/ui/SectionLayout";
 import { SectionCard } from "../components/ui/SectionCard";
 import { InfoBadge } from "../components/ui/InfoBadge";
 import type { DiscoveryJob } from "../types";
@@ -468,48 +468,25 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
   } as const;
 
   return (
-    <div className="section-stack discovery-page">
-      <PageIntro
-        title="Découverte"
-        objective="Unifiez scan réseau, imports et sources cloud sur un seul écran pour accélérer la cartographie."
-        steps={[
-          "Choisir un mode (scan, import ou GitHub)",
-          "Configurer les paramètres requis",
-          "Suivre la progression en temps réel",
-          "Déverrouiller les autres modules",
-        ]}
-        links={[
-          {
-            label: "Voir la progression",
-            href: "#discovery-progress",
-            description: "Statut du dernier job",
-          },
-          {
-            label: "Configurer un scan",
-            href: "#discovery-actions",
-            description: "Scan, import ou GitHub",
-          },
-          {
-            label: "Consulter l'historique",
-            href: "#discovery-history",
-            description: "Derniers jobs",
-          },
-        ]}
-        tips={[
-          "La progression temps réel est poussée via WebSocket quand disponible.",
-          "Les imports CSV/JSON peuvent être glissés-déposés pour accélérer la collecte.",
-        ]}
-        expectedData={[
-          "Plages IP ou exports CMDB/NetFlow",
-          "Connecteurs SNMP/SSH/WMI/Hyper-V/VMware/K8s",
-          "Identifiants cloud si nécessaires",
-        ]}
-        progress={{
-          value: progressValue,
-          label: progressLabel,
-        }}
-      />
-
+    <SectionLayout
+      id="discovery"
+      title="Découverte"
+      description="Cartographiez automatiquement votre infrastructure via scan réseau ou import."
+      badge={`${resourceCount} ressources`}
+      progress={{
+        value: progressValue,
+        label: progressLabel,
+      }}
+      whyThisStep="La découverte automatique permet d'inventorier vos assets et déverrouille les modules d'analyse de risques et de continuité."
+      quickLinks={[
+        { label: "Lancer un scan", href: "#discovery-actions" },
+        { label: "Voir l'historique", href: "#discovery-history" },
+      ]}
+      tips={[
+        "Utilisez le drag & drop pour importer vos fichiers CSV/JSON.",
+        "Le WebSocket affiche la progression en temps réel.",
+      ]}
+    >
       {actionMessage && <div className="alert success">{actionMessage}</div>}
       {discoveryCompleted && (
         <div className="alert success discovery-complete-banner">
@@ -706,6 +683,6 @@ export function DiscoveryPage({ configVersion }: DiscoveryPageProps) {
           </div>
         </div>
       </div>
-    </div>
+    </SectionLayout>
   );
 }
