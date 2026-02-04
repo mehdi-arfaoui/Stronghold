@@ -33,7 +33,7 @@ export function useFetchGraphData({
     setLoading(true);
     setError(null);
     try {
-      const response = await apiFetch<GraphApiResponse>(endpoint);
+      const response = (await apiFetch(endpoint)) as GraphApiResponse;
       setRaw(response);
       setData(normalizeGraphResponse(response));
     } catch (err: any) {
