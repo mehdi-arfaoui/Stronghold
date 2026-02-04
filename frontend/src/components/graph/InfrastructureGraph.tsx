@@ -31,6 +31,7 @@ let cytoscapeExtensionsLoaded = false;
 
 const DEFAULT_LAYOUT: LayoutOptions = {
   name: "cose-bilkent",
+  animate: true,
   fit: true,
   padding: 32,
   nodeRepulsion: 9000,
