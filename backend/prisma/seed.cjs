@@ -3,14 +3,40 @@ const crypto = require("crypto");
 
 const prisma = new PrismaClient();
 
-// Default plan configuration for STARTER
-const STARTER_PLAN = {
-  maxUsers: 5,
-  maxStorage: BigInt(1 * 1024 * 1024 * 1024), // 1 GB
-  maxScansMonth: 100,
-  maxDocuments: 500,
-  features: ["discovery", "inventory", "basic_reports"],
+const SEED_PLANS = {
+  STARTER: {
+    maxUsers: 5,
+    maxStorage: BigInt(1 * 1024 * 1024 * 1024), // 1 GB
+    maxScansMonth: 100,
+    maxDocuments: 500,
+    features: ["discovery", "inventory", "basic_reports"],
+  },
+  PRO: {
+    maxUsers: 25,
+    maxStorage: BigInt(10 * 1024 * 1024 * 1024), // 10 GB
+    maxScansMonth: 1000,
+    maxDocuments: 5000,
+    features: [
+      "discovery",
+      "inventory",
+      "bia",
+      "pra",
+      "reports",
+      "exports",
+      "api_access",
+    ],
+  },
+  ENTERPRISE: {
+    maxUsers: -1,
+    maxStorage: BigInt(100 * 1024 * 1024 * 1024), // 100 GB
+    maxScansMonth: -1,
+    maxDocuments: -1,
+    features: ["*"],
+  },
 };
+
+const seedPlanKey = (process.env.SEED_PLAN || "PRO").toUpperCase();
+const seedPlan = SEED_PLANS[seedPlanKey] ?? SEED_PLANS.PRO;
 
 async function main() {
   const apiKey = "dev-key";
@@ -45,13 +71,13 @@ async function main() {
     await prisma.license.create({
       data: {
         tenantId: tenant.id,
-        plan: "STARTER",
+        plan: seedPlanKey in SEED_PLANS ? seedPlanKey : "PRO",
         status: "ACTIVE",
-        maxUsers: STARTER_PLAN.maxUsers,
-        maxStorage: STARTER_PLAN.maxStorage,
-        maxScansMonth: STARTER_PLAN.maxScansMonth,
-        maxDocuments: STARTER_PLAN.maxDocuments,
-        features: STARTER_PLAN.features,
+        maxUsers: seedPlan.maxUsers,
+        maxStorage: seedPlan.maxStorage,
+        maxScansMonth: seedPlan.maxScansMonth,
+        maxDocuments: seedPlan.maxDocuments,
+        features: seedPlan.features,
         usage: {
           create: {}, // Create LicenseUsage with defaults
         },
