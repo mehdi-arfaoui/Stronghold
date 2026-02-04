@@ -8,6 +8,27 @@ const LICENSE_CACHE_TTL = 300; // 5 minutes
 const CACHE_PREFIX = 'license:';
 
 /**
+ * Serializes an object with BigInt support for JSON
+ */
+function serializeWithBigInt(obj: unknown): string {
+  return JSON.stringify(obj, (_key, value) =>
+    typeof value === 'bigint' ? value.toString() + 'n' : value
+  );
+}
+
+/**
+ * Deserializes JSON with BigInt support
+ */
+function deserializeWithBigInt(json: string): unknown {
+  return JSON.parse(json, (_key, value) => {
+    if (typeof value === 'string' && /^\d+n$/.test(value)) {
+      return BigInt(value.slice(0, -1));
+    }
+    return value;
+  });
+}
+
+/**
  * Erreur personnalisée pour licence non trouvée
  */
 export class LicenseNotFoundError extends Error {
@@ -31,7 +52,7 @@ export class LicenseService {
     try {
       const cached = await redis.get(cacheKey);
       if (cached) {
-        return JSON.parse(cached);
+        return deserializeWithBigInt(cached) as LicenseWithUsage;
       }
     } catch (err) {
       // Redis might not be connected, continue without cache
@@ -50,7 +71,7 @@ export class LicenseService {
 
     // Mettre en cache
     try {
-      await redis.setex(cacheKey, LICENSE_CACHE_TTL, JSON.stringify(license));
+      await redis.setex(cacheKey, LICENSE_CACHE_TTL, serializeWithBigInt(license));
     } catch (err) {
       // Redis might not be connected, continue without cache
       console.warn('Redis cache write failed:', err);
