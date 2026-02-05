@@ -4,6 +4,7 @@ import type { HomeStep, HomeStepId } from "../components/home/HomePage";
 export const HOME_STEP_ORDER: HomeStepId[] = [
   "discovery",
   "services",
+  "graph",
   "documents",
   "rag",
   "bia",
