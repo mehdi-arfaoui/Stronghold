@@ -1,4 +1,5 @@
 /* Minimal tslib helpers required by echarts-for-react ESM build. */
+// @ts-nocheck
 /* eslint-disable @typescript-eslint/ban-types, @typescript-eslint/no-explicit-any */
 
 export function __extends(d: Function, b: Function | null): void {

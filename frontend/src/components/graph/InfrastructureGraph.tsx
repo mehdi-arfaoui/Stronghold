@@ -1,7 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import "tippy.js/dist/tippy.css";
 import "tippy.js/themes/light-border.css";
-import type { Core, ElementDefinition, LayoutOptions, Stylesheet } from "cytoscape";
+import type { Core, ElementDefinition, LayoutOptions, StylesheetStyle } from "cytoscape";
 import type { InfrastructureGraphNode } from "../../types/infrastructureGraph";
 import { buildNodeTooltip } from "../../utils/graphTransform";
 import { createInteractionHandlers } from "../../utils/graphInteractions";
@@ -9,7 +9,7 @@ import { createInteractionHandlers } from "../../utils/graphInteractions";
 type InfrastructureGraphProps = {
   elements: ElementDefinition[];
   layout?: LayoutOptions;
-  styles?: Stylesheet[];
+  styles?: StylesheetStyle[];
   isLoading?: boolean;
   onNodeSelect?: (node: InfrastructureGraphNode) => void;
   onNodeHover?: (node: InfrastructureGraphNode | null) => void;
@@ -40,7 +40,7 @@ const DEFAULT_LAYOUT = {
   gravity: 0.25,
 } as LayoutOptions;
 
-const DEFAULT_STYLES: Stylesheet[] = [
+const DEFAULT_STYLES = [
   {
     selector: "node",
     style: {
@@ -131,7 +131,7 @@ const DEFAULT_STYLES: Stylesheet[] = [
       "target-arrow-color": "#f97316",
     },
   },
-];
+] as StylesheetStyle[];
 
 export const InfrastructureGraph = forwardRef<InfrastructureGraphHandle, InfrastructureGraphProps>(
   (
