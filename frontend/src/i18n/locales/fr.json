@@ -253,6 +253,11 @@
       "description": "Définissez la criticité, les objectifs de reprise (RTO/RPO) et les responsables pour chaque service.",
       "actionLabel": "Accéder au catalogue"
     },
+    "graph": {
+      "title": "Visualiser les graphes",
+      "description": "Explorez les dépendances entre services, applications et infrastructure avec des graphes Cytoscape interactifs.",
+      "actionLabel": "Voir les graphes"
+    },
     "rag": {
       "title": "Classifier les documents",
       "description": "Utilisez l'assistant IA pour interroger et organiser votre documentation de manière structurée.",

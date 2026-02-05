@@ -133,6 +133,11 @@
       "description": "Validate criticality, RTO/RPO, and ownership to finalize the catalog.",
       "actionLabel": "Open the catalog"
     },
+    "graph": {
+      "title": "Visualize graphs",
+      "description": "Explore dependencies between services, applications and infrastructure with interactive Cytoscape graphs.",
+      "actionLabel": "View graphs"
+    },
     "rag": {
       "title": "Classify documents",
       "description": "Ask the right questions and organize evidence for downstream analysis.",

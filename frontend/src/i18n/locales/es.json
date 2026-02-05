@@ -133,6 +133,11 @@
       "description": "Valida criticidad, RTO/RPO y propietarios para cerrar el catálogo.",
       "actionLabel": "Abrir el catálogo"
     },
+    "graph": {
+      "title": "Visualizar grafos",
+      "description": "Explora las dependencias entre servicios, aplicaciones e infraestructura con grafos Cytoscape interactivos.",
+      "actionLabel": "Ver grafos"
+    },
     "rag": {
       "title": "Clasificar documentos",
       "description": "Formula las preguntas correctas y organiza evidencias para el análisis.",

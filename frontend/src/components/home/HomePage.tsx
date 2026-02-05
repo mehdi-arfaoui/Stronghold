@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 export type HomeStepId =
   | "discovery"
   | "services"
+  | "graph"
   | "documents"
   | "rag"
   | "bia"
