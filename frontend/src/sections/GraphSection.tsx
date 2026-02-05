@@ -71,9 +71,9 @@ function isEssentialNode(node: InfrastructureGraphData["nodes"][number]) {
 }
 
 export function GraphSection({ configVersion }: GraphSectionProps) {
-  const [view, setView] = useState<GraphView>("landing");
+  const [view, setView] = useState<GraphView>("mixed");
   const [critFilter, setCritFilter] = useState<string>("all");
-  const [showDetails, setShowDetails] = useState(false);
+  const [showDetails, setShowDetails] = useState(true);
   const [infoLevel, setInfoLevel] = useState<InfoLevel>("normal");
   const [selectedNode, setSelectedNode] = useState<InfrastructureGraphData["nodes"][number] | null>(null);
   const [allowedTypes, setAllowedTypes] = useState<Set<InfrastructureNodeType>>(
@@ -406,6 +406,10 @@ export function GraphSection({ configVersion }: GraphSectionProps) {
         <div className="card graph-card">
           {view === "bubbles" ? (
             <ReactECharts option={bubbleOptions as any} style={{ height: 520 }} />
+          ) : filteredNodes.length === 0 ? (
+            <div className="empty-state" style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", minHeight: 480 }}>
+              <p className="muted">Aucun nœud à afficher avec les filtres actuels. Essayez d'ajuster les filtres ou de changer de vue.</p>
+            </div>
           ) : (
             <InfrastructureGraph
               ref={graphRef}

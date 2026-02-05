@@ -1623,8 +1623,14 @@ ul, ol { margin: 0; padding: 0; }
 
 .graph-card {
   height: 560px;
+  min-height: 560px;
   border-radius: var(--radius-lg);
   overflow: hidden;
+}
+
+.graph-card .infrastructure-graph {
+  height: calc(560px - var(--space-5) * 2);
+  min-height: 480px;
 }
 
 .graph-actions {
@@ -1644,6 +1650,7 @@ ul, ol { margin: 0; padding: 0; }
 .graph-canvas {
   height: 100%;
   width: 100%;
+  min-height: 480px;
 }
 
 .graph-loader {
