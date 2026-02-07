@@ -31,6 +31,12 @@ import pricingRoutes from "./routes/pricingRoutes.js";
 import vulnerabilityRoutes from "./routes/vulnerabilityRoutes.js";
 import brandingRoutes from "./routes/brandingRoutes.js";
 import licenseRoutes from "./routes/licenseRoutes.js";
+import resilienceGraphRoutes from "./routes/resilienceGraphRoutes.js";
+import analysisResilienceRoutes from "./routes/analysisResilienceRoutes.js";
+import biaResilienceRoutes from "./routes/biaResilienceRoutes.js";
+import simulationRoutes from "./routes/simulationRoutes.js";
+import riskResilienceRoutes from "./routes/riskResilienceRoutes.js";
+import landingZoneResilienceRoutes from "./routes/landingZoneResilienceRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -531,6 +537,12 @@ const routes = [
   { path: "/vulnerabilities", handler: vulnerabilityRoutes, name: "vulnerabilityRoutes" },
   { path: "/branding", handler: brandingRoutes, name: "brandingRoutes" },
   { path: "/license", handler: licenseRoutes, name: "licenseRoutes" },
+  { path: "/resilience", handler: resilienceGraphRoutes, name: "resilienceGraphRoutes" },
+  { path: "/analysis/resilience", handler: analysisResilienceRoutes, name: "analysisResilienceRoutes" },
+  { path: "/bia-resilience", handler: biaResilienceRoutes, name: "biaResilienceRoutes" },
+  { path: "/simulations", handler: simulationRoutes, name: "simulationRoutes" },
+  { path: "/risks-resilience", handler: riskResilienceRoutes, name: "riskResilienceRoutes" },
+  { path: "/recommendations/landing-zone", handler: landingZoneResilienceRoutes, name: "landingZoneResilienceRoutes" },
 ];
 
 for (const route of routes) {

@@ -76,6 +76,15 @@ model Tenant {
   vulnerabilities            Vulnerability[]
   branding               TenantBranding?
   license                License?
+
+  // Resilience platform
+  infraNodes             InfraNode[]
+  graphAnalyses          GraphAnalysis[]
+  biaReports2            BIAReport2[]
+  biaProcesses2          BIAProcess2[]
+  simulations            Simulation[]
+  scanJobs               ScanJob[]
+  scanSchedules          ScanSchedule[]
 }
 
 model TenantBranding {
@@ -141,7 +150,11 @@ model Risk {
   serviceId String?
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
-  mitigations RiskMitigation[]
+  mitigations  RiskMitigation[]
+  nodeLinks    RiskNodeLink[]
+
+  autoDetected      Boolean  @default(false)
+  detectionMethod   String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1375,4 +1388,209 @@ model LicenseUsage {
   // Reset mensuel
   lastResetAt     DateTime @default(now())
   updatedAt       DateTime @updatedAt
+}
+
+// ============================================================
+// RESILIENCE PLATFORM — Graph, Analysis, BIA, Simulations
+// ============================================================
+
+model InfraNode {
+  id               String   @id @default(cuid())
+  externalId       String?
+  name             String
+  type             String
+  provider         String
+  region           String?
+  availabilityZone String?
+  tags             Json     @default("{}")
+  metadata         Json     @default("{}")
+
+  // Computed scores (filled by GraphAnalysisEngine)
+  criticalityScore      Float?
+  redundancyScore       Float?
+  blastRadius           Int?
+  isSPOF                Boolean  @default(false)
+  betweennessCentrality Float?
+
+  // BIA (filled by BIAEngine)
+  suggestedRTO           Int?
+  suggestedRPO           Int?
+  suggestedMTPD          Int?
+  validatedRTO           Int?
+  validatedRPO           Int?
+  validatedMTPD          Int?
+  impactCategory         String?
+  financialImpactPerHour Float?
+
+  // Relations
+  outEdges         InfraEdge[]    @relation("SourceEdges")
+  inEdges          InfraEdge[]    @relation("TargetEdges")
+  riskLinks        RiskNodeLink[]
+
+  // Tenant & audit
+  tenantId         String
+  tenant           Tenant         @relation(fields: [tenantId], references: [id])
+  lastSeenAt       DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  @@unique([tenantId, externalId])
+  @@index([tenantId])
+  @@index([type])
+  @@index([provider, region])
+}
+
+model InfraEdge {
+  id              String   @id @default(cuid())
+  sourceId        String
+  targetId        String
+  type            String
+  confidence      Float    @default(1.0)
+  inferenceMethod String?
+  confirmed       Boolean  @default(false)
+  metadata        Json     @default("{}")
+
+  source          InfraNode @relation("SourceEdges", fields: [sourceId], references: [id], onDelete: Cascade)
+  target          InfraNode @relation("TargetEdges", fields: [targetId], references: [id], onDelete: Cascade)
+
+  tenantId        String
+  createdAt       DateTime @default(now())
+
+  @@unique([sourceId, targetId, type])
+  @@index([tenantId])
+}
+
+model GraphAnalysis {
+  id              String   @id @default(cuid())
+  resilienceScore Int
+  totalNodes      Int
+  totalEdges      Int
+  spofCount       Int
+  report          Json
+
+  tenantId        String
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model BIAReport2 {
+  id              String        @id @default(cuid())
+  generatedAt     DateTime
+  summary         Json
+
+  processes       BIAProcess2[]
+
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime      @default(now())
+
+  @@index([tenantId])
+}
+
+model BIAProcess2 {
+  id                String   @id @default(cuid())
+  serviceNodeId     String
+  serviceName       String
+  serviceType       String
+
+  suggestedMAO      Int?
+  suggestedMTPD     Int?
+  suggestedRTO      Int?
+  suggestedRPO      Int?
+  suggestedMBCO     Int?
+
+  validatedRTO      Int?
+  validatedRPO      Int?
+  validatedMTPD     Int?
+
+  impactCategory    String
+  criticalityScore  Float
+  recoveryTier      Int
+
+  dependencyChain   Json
+  weakPoints        Json
+  financialImpact   Json
+
+  validationStatus  String   @default("pending")
+  notes             String?
+
+  biaReportId       String
+  biaReport         BIAReport2 @relation(fields: [biaReportId], references: [id], onDelete: Cascade)
+
+  tenantId          String
+  tenant            Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([biaReportId])
+}
+
+model RiskNodeLink {
+  id       String    @id @default(cuid())
+  riskId   String
+  nodeId   String
+
+  risk     Risk      @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  node     InfraNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@unique([riskId, nodeId])
+}
+
+model Simulation {
+  id                    String   @id @default(cuid())
+  name                  String?
+  scenarioType          String
+  scenarioParams        Json
+
+  result                Json
+
+  totalNodesAffected    Int
+  percentageAffected    Float
+  estimatedDowntime     Int
+  estimatedFinancialLoss Float?
+  postIncidentScore     Int
+
+  tenantId              String
+  tenant                Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt             DateTime @default(now())
+
+  @@index([tenantId])
+  @@index([scenarioType])
+}
+
+// === SCAN JOBS ===
+
+model ScanJob {
+  id              String    @id @default(cuid())
+  status          String    // queued, scanning, inferring, reconciling, completed, failed
+  config          Json      // Scan configuration (providers, encrypted credentials)
+  progress        Json?     // Progress state
+  result          Json?     // IngestReport
+  error           String?
+
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, status])
+}
+
+model ScanSchedule {
+  id              String    @id @default(cuid())
+  cronExpression  String
+  config          Json
+  isActive        Boolean   @default(true)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId])
 }
