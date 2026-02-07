@@ -37,6 +37,9 @@ import biaResilienceRoutes from "./routes/biaResilienceRoutes.js";
 import simulationRoutes from "./routes/simulationRoutes.js";
 import riskResilienceRoutes from "./routes/riskResilienceRoutes.js";
 import landingZoneResilienceRoutes from "./routes/landingZoneResilienceRoutes.js";
+import discoveryResilienceRoutes from "./routes/discoveryResilienceRoutes.js";
+import reportRoutes from "./routes/reportRoutes.js";
+import exerciseResilienceRoutes from "./routes/exerciseResilienceRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -543,6 +546,9 @@ const routes = [
   { path: "/simulations", handler: simulationRoutes, name: "simulationRoutes" },
   { path: "/risks-resilience", handler: riskResilienceRoutes, name: "riskResilienceRoutes" },
   { path: "/recommendations/landing-zone", handler: landingZoneResilienceRoutes, name: "landingZoneResilienceRoutes" },
+  { path: "/discovery-resilience", handler: discoveryResilienceRoutes, name: "discoveryResilienceRoutes" },
+  { path: "/reports", handler: reportRoutes, name: "reportRoutes" },
+  { path: "/exercises-resilience", handler: exerciseResilienceRoutes, name: "exerciseResilienceRoutes" },
 ];
 
 for (const route of routes) {
