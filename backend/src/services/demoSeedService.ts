@@ -15,7 +15,7 @@
  *   - EKS : multi-AZ, auto-scaling
  */
 
-import type { PrismaClient } from "@prisma/client";
+import type { PrismaClient, Prisma } from "@prisma/client";
 
 interface NodeDef {
   id: string;
@@ -616,7 +616,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
         region: node.region,
         availabilityZone: node.availabilityZone,
         tags: node.tags,
-        metadata: node.metadata,
+        metadata: node.metadata as Prisma.InputJsonValue,
         tenantId,
         lastSeenAt: new Date(),
       },
@@ -649,7 +649,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       data: {
         sourceId, targetId, type: edge.type,
         confidence: edge.confidence ?? 0.5,
-        inferenceMethod: edge.inferenceMethod,
+        inferenceMethod: edge.inferenceMethod ?? null,
         confirmed: false, tenantId,
       },
     });
