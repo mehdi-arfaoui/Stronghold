@@ -13,6 +13,7 @@
     "prisma:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:seed": "node prisma/seed.cjs",
+    "seed:demo": "tsx prisma/seed-demo.ts",
     "db:reset": "node -e \"const fs=require('fs');const p=require('path');const db=p.join(__dirname,'prisma','dev.db');if(fs.existsSync(db)){fs.rmSync(db);}\" && prisma db push --force-reset --skip-generate && npm run db:seed",
     "discovery:cli": "node scripts/discovery-cli.js",
     "ml:retrain": "tsx scripts/retrainModels.ts"

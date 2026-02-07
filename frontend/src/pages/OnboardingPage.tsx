@@ -100,6 +100,15 @@ export function OnboardingPage() {
     onError: () => toast.error('Erreur lors du lancement'),
   });
 
+  const seedDemoMutation = useMutation({
+    mutationFn: () => discoveryApi.seedDemo(),
+    onSuccess: (res) => {
+      toast.success(res.data.message || 'Environnement de demo charge !');
+      navigate('/discovery');
+    },
+    onError: () => toast.error('Erreur lors du chargement de la demo'),
+  });
+
   const handleSaveProvider = () => {
     if (activeProvider) {
       addConfiguredProvider(activeProvider.id);
@@ -263,6 +272,25 @@ export function OnboardingPage() {
       <p className="text-center text-sm text-muted-foreground">
         Vous pourrez aussi importer des fichiers CSV/JSON ou des templates Terraform plus tard.
       </p>
+
+      {/* Demo data section */}
+      <div className="mt-8 text-center">
+        <p className="text-sm text-muted-foreground mb-2">
+          Pas encore de credentials cloud ?
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={seedDemoMutation.isPending}
+          onClick={() => seedDemoMutation.mutate()}
+        >
+          {seedDemoMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+          Charger un environnement de demonstration
+        </Button>
+        <p className="text-xs text-muted-foreground mt-1">
+          Simule une entreprise e-commerce avec ~45 services AWS + Kubernetes + on-premise
+        </p>
+      </div>
     </div>
   );
 }

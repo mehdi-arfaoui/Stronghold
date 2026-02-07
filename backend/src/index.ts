@@ -381,7 +381,11 @@ const devAllowedOrigins = isDevelopment
       "http://127.0.0.1:3000",
       "http://localhost:5173", // Vite default port
     ]
-  : [];
+  : [
+      // Always allow localhost variants for Docker environments
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+    ];
 
 const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
 
