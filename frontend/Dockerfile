@@ -20,6 +20,7 @@ ENV VITE_API_URL=${VITE_API_URL}
 ENV VITE_API_KEY=${VITE_API_KEY}
 # Fichiers de configuration (changent rarement)
 COPY vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+COPY tailwind.config.ts postcss.config.js ./
 COPY eslint.config.js ./
 # HTML entry point (change rarement)
 COPY index.html ./
