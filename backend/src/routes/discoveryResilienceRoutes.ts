@@ -15,6 +15,7 @@ import {
   ingestDiscoveredResources,
 } from '../discovery/discoveryOrchestrator.js';
 import { discoveryQueue } from '../queues/discoveryQueue.js';
+import { runDemoSeed } from '../services/demoSeedService.js';
 
 const router = Router();
 
@@ -179,6 +180,29 @@ router.post('/ingest', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error ingesting discovery resources:', error);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── POST /discovery/seed-demo — Load demo environment (dev only) ──────────
+router.post('/seed-demo', async (req: TenantRequest, res) => {
+  try {
+    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
+      return res.status(403).json({ error: 'Demo seeding is disabled in production' });
+    }
+
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const summary = await runDemoSeed(prisma, tenantId);
+
+    return res.json({
+      success: true,
+      message: 'Demo environment "ShopMax E-commerce" loaded',
+      ...summary,
+    });
+  } catch (error) {
+    console.error('Error seeding demo data:', error);
+    return res.status(500).json({ error: 'Failed to seed demo data' });
   }
 });
 

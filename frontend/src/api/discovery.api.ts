@@ -23,4 +23,9 @@ export const discoveryApi = {
 
   getSchedules: () =>
     api.get<DiscoverySchedule[]>('/discovery/schedules'),
+
+  seedDemo: () =>
+    api.post<{ success: boolean; nodes: number; totalEdges: number; message: string }>(
+      '/discovery-resilience/seed-demo'
+    ),
 };

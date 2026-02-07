@@ -103,6 +103,7 @@ services:
       PORT: 4000
       HOST: 0.0.0.0
       FRONTEND_URL: http://localhost:3000
+      CORS_ALLOWED_ORIGINS: "http://127.0.0.1:3000,http://localhost:3000"
       CORS_ALLOW_NO_ORIGIN: "true"
       DATABASE_URL: postgresql://pra_user:change_me@postgres:5432/pra_platform?schema=public
       CHROMADB_URL: http://chroma:8000
@@ -115,6 +116,7 @@ services:
       S3_FORCE_PATH_STYLE: "true"
       S3_SIGNED_URL_TTL_SECONDS: 900
       REDIS_URL: redis://redis:6379
+      ALLOW_DEMO_SEED: "true"
     ports:
       - "4000:4000"
     depends_on:
@@ -133,7 +135,7 @@ services:
       target: runtime
       args:
         VITE_BACKEND_URL: http://localhost:4000
-        VITE_API_URL: http://localhost:4000
+        VITE_API_URL: /api
         VITE_API_KEY: dev-key
     image: stronghold-frontend
     container_name: pra_frontend
