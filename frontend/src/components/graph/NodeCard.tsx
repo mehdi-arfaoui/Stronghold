@@ -1,0 +1,77 @@
+import { memo } from 'react';
+import { Handle, Position, type NodeProps } from '@xyflow/react';
+import { AlertTriangle } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { NodeIcon } from './NodeIcon';
+import { NODE_COLOR_MAP } from '@/lib/node-colors';
+import type { NodeType, NodeStatus } from '@/types/graph.types';
+
+export interface InfraNodeData {
+  label: string;
+  nodeType: NodeType;
+  provider?: string;
+  region?: string;
+  isSPOF?: boolean;
+  status?: NodeStatus;
+  criticality?: number;
+  [key: string]: unknown;
+}
+
+type InfraNodeProps = NodeProps & { data: InfraNodeData };
+
+export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProps) {
+  const { label, nodeType, provider, region, isSPOF, status } = data;
+  const borderColor = NODE_COLOR_MAP[nodeType] || '#6b7280';
+
+  return (
+    <div
+      className={cn(
+        'rounded-lg border-2 bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md',
+        selected && 'ring-2 ring-primary ring-offset-2',
+        status === 'down' && 'node-pulse border-severity-critical bg-severity-critical/5',
+        status === 'degraded' && 'border-severity-medium bg-severity-medium/5'
+      )}
+      style={{
+        borderColor: status === 'down' ? undefined : status === 'degraded' ? undefined : borderColor,
+        minWidth: 160,
+      }}
+    >
+      <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-muted-foreground/50" />
+
+      <div className="flex items-center gap-2">
+        <NodeIcon type={nodeType} className="h-4 w-4 shrink-0" style={{ color: borderColor }} />
+        <span className="truncate text-sm font-medium">{label}</span>
+      </div>
+
+      <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+        <span>{nodeType}</span>
+        {region && (
+          <>
+            <span className="text-muted-foreground/50">&middot;</span>
+            <span>{region}</span>
+          </>
+        )}
+      </div>
+
+      {isSPOF && (
+        <div className="mt-1 flex items-center gap-1 text-xs font-medium text-severity-critical">
+          <AlertTriangle className="h-3 w-3" />
+          <span>SPOF</span>
+        </div>
+      )}
+
+      {status === 'down' && (
+        <div className="mt-1 text-xs font-bold text-severity-critical">HORS SERVICE</div>
+      )}
+      {status === 'degraded' && (
+        <div className="mt-1 text-xs font-bold text-severity-medium">DEGRADE</div>
+      )}
+
+      {provider && (
+        <div className="mt-1 text-xs text-muted-foreground/60">{provider}</div>
+      )}
+
+      <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-muted-foreground/50" />
+    </div>
+  );
+});

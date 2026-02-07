@@ -1,187 +1,150 @@
-/* ============================================
-   STRONGHOLD - Styles de base et reset
-   ============================================ */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
-/* Polices */
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap");
+@layer base {
+  :root {
+    --background: 220 20% 97%;
+    --foreground: 220 20% 10%;
 
-/* Reset moderne */
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-}
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 10%;
 
-/* Désactiver les animations pour les utilisateurs qui le préfèrent */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 10%;
+
+    --primary: 220 70% 45%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 96%;
+    --secondary-foreground: 220 20% 10%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 10% 46%;
+
+    --accent: 220 14% 96%;
+    --accent-foreground: 220 20% 10%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 220 70% 45%;
+
+    --radius: 0.5rem;
+
+    /* Resilience scores */
+    --resilience-high: 142 76% 36%;
+    --resilience-medium: 38 92% 50%;
+    --resilience-low: 0 84% 60%;
+
+    /* Severities */
+    --severity-critical: 0 84% 60%;
+    --severity-high: 25 95% 53%;
+    --severity-medium: 38 92% 50%;
+    --severity-low: 142 76% 36%;
+
+    /* Node types */
+    --node-database: 262 83% 58%;
+    --node-compute: 220 70% 50%;
+    --node-network: 38 92% 50%;
+    --node-storage: 142 76% 36%;
+    --node-serverless: 280 68% 60%;
+    --node-external: 200 20% 50%;
+    --node-down: 0 84% 60%;
+    --node-degraded: 38 92% 50%;
+  }
+
+  .dark {
+    --background: 220 20% 8%;
+    --foreground: 220 20% 95%;
+
+    --card: 220 20% 12%;
+    --card-foreground: 220 20% 95%;
+
+    --popover: 220 20% 12%;
+    --popover-foreground: 220 20% 95%;
+
+    --primary: 220 70% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 20% 18%;
+    --secondary-foreground: 220 20% 95%;
+
+    --muted: 220 20% 18%;
+    --muted-foreground: 220 10% 60%;
+
+    --accent: 220 20% 18%;
+    --accent-foreground: 220 20% 95%;
+
+    --destructive: 0 63% 50%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 20% 20%;
+    --input: 220 20% 20%;
+    --ring: 220 70% 55%;
   }
 }
 
-html {
-  /* Améliore le rendu du texte */
-  -webkit-text-size-adjust: 100%;
-  text-size-adjust: 100%;
-  /* Défilement fluide */
-  scroll-behavior: smooth;
-  /* Hauteur minimale */
-  height: 100%;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
 }
 
-html,
-body {
-  height: 100%;
-}
-
-body {
-  margin: 0;
-  font-family: var(--font-family, "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif);
-  font-size: 16px;
-  line-height: 1.5;
-  color: var(--text-primary, #0f172a);
-  background: var(--background-color, #f8fafc);
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  /* Évite le débordement horizontal */
-  overflow-x: hidden;
-}
-
-/* Éléments de média */
-img,
-picture,
-video,
-canvas,
-svg {
-  display: block;
-  max-width: 100%;
-  height: auto;
-}
-
-/* Formulaires */
-input,
-button,
-textarea,
-select {
-  font: inherit;
-  color: inherit;
-}
-
-/* Boutons */
-button {
+/* React Flow overrides */
+.react-flow__node {
   cursor: pointer;
-  border: none;
-  background: none;
 }
 
-/* Liens */
-a {
-  color: inherit;
-  text-decoration: none;
+.react-flow__edge-path {
+  stroke-width: 2;
 }
 
-a:focus-visible {
-  outline: 2px solid var(--primary-500, #3b82f6);
-  outline-offset: 2px;
-  border-radius: 2px;
-}
-
-/* Listes */
-ul,
-ol {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* Tableaux */
-table {
-  border-collapse: collapse;
-  border-spacing: 0;
-}
-
-/* Citations */
-blockquote,
-q {
-  quotes: none;
-}
-
-/* Focus visible pour l'accessibilité */
-:focus-visible {
-  outline: 2px solid var(--primary-500, #3b82f6);
-  outline-offset: 2px;
-}
-
-/* Masquer le focus par défaut pour les clics souris */
-:focus:not(:focus-visible) {
-  outline: none;
-}
-
-/* Sélection */
-::selection {
-  background: var(--primary-200, #bfdbfe);
-  color: var(--primary-900, #1e3a8a);
-}
-
-:root[data-theme="dark"] ::selection {
-  background: var(--primary-700, #1d4ed8);
-  color: var(--neutral-0, #ffffff);
-}
-
-/* Scrollbar personnalisée */
+/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
-
 ::-webkit-scrollbar-track {
-  background: var(--neutral-100, #f1f5f9);
-  border-radius: 4px;
+  background: transparent;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: var(--neutral-300, #cbd5e1);
-  border-radius: 4px;
+  @apply bg-muted-foreground/20 rounded-full;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--neutral-400, #94a3b8);
+  @apply bg-muted-foreground/40;
 }
 
-:root[data-theme="dark"] ::-webkit-scrollbar-track {
-  background: var(--neutral-800, #1e293b);
+/* Gauge animation */
+@keyframes gauge-fill {
+  from {
+    stroke-dashoffset: var(--gauge-circumference);
+  }
+  to {
+    stroke-dashoffset: var(--gauge-offset);
+  }
 }
 
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb {
-  background: var(--neutral-600, #475569);
+.gauge-circle {
+  animation: gauge-fill 1s ease-out forwards;
 }
 
-:root[data-theme="dark"] ::-webkit-scrollbar-thumb:hover {
-  background: var(--neutral-500, #64748b);
+/* Node pulse animation for simulation */
+@keyframes node-pulse {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
 }
 
-/* Conteneur racine */
-#root {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-/* Utilitaires d'accessibilité */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
+.node-pulse {
+  animation: node-pulse 2s ease-in-out infinite;
 }

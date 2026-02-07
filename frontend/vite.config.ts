@@ -1,16 +1,18 @@
-import { fileURLToPath } from "node:url";
-import { defineConfig } from "vitest/config";
-import react from "@vitejs/plugin-react";
-import { visualizer } from "rollup-plugin-visualizer";
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import { visualizer } from 'rollup-plugin-visualizer';
 
-// https://vite.dev/config/
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 export default defineConfig({
   plugins: [
     react(),
-    ...(process.env.ANALYZE === "true"
+    ...(process.env.ANALYZE === 'true'
       ? [
           visualizer({
-            filename: "dist/bundle-report.html",
+            filename: 'dist/bundle-report.html',
             gzipSize: true,
             brotliSize: true,
             open: false,
@@ -20,15 +22,15 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
-      tslib: fileURLToPath(new URL("./node_modules/tslib/tslib.es6.js", import.meta.url)),
+      '@': path.resolve(__dirname, './src'),
     },
   },
   server: {
-    host: "0.0.0.0",
+    host: '0.0.0.0',
     port: 3000,
   },
   test: {
-    environment: "jsdom",
-    setupFiles: "./src/test/setup.ts",
+    environment: 'jsdom',
+    setupFiles: './src/test/setup.ts',
   },
 });
