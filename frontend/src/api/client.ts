@@ -21,8 +21,13 @@ api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err.response?.status === 401) {
-      localStorage.removeItem('stronghold_token');
-      window.location.href = '/login';
+      // Only redirect to login if a JWT session expired (token was present).
+      // Don't redirect for missing/invalid API key — let the caller handle the error.
+      const hadToken = localStorage.getItem('stronghold_token');
+      if (hadToken) {
+        localStorage.removeItem('stronghold_token');
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(err);
   }
