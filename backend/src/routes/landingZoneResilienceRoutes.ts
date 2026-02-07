@@ -35,6 +35,66 @@ router.get('/', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── PATCH /recommendations/landing-zone — Accept/reject recommendations ──────────
+router.patch('/', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const { overrides } = req.body;
+    if (!overrides || !Array.isArray(overrides)) {
+      return res.status(400).json({ error: 'overrides array is required' });
+    }
+
+    // Generate current recommendations
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    if (graph.order === 0) {
+      return res.status(400).json({ error: 'Graph is empty.' });
+    }
+
+    const analysis = await analyzeFullGraph(graph);
+    const bia = generateBIA(graph, analysis);
+    const report = generateLandingZoneRecommendations(bia, analysis);
+
+    // Apply overrides
+    const updatedRecommendations = report.recommendations.map(rec => {
+      const override = overrides.find((o: any) => o.serviceId === rec.serviceId);
+      if (override) {
+        return {
+          ...rec,
+          accepted: override.accepted ?? true,
+          notes: override.notes ?? null,
+        };
+      }
+      return { ...rec, accepted: true, notes: null };
+    });
+
+    // Persist accepted status in infra nodes
+    for (const rec of updatedRecommendations) {
+      if (rec.accepted && rec.strategy) {
+        await prisma.infraNode.updateMany({
+          where: { id: rec.serviceId, tenantId },
+          data: {
+            metadata: JSON.parse(JSON.stringify({
+              recoveryStrategy: rec.strategy,
+              landingZoneAccepted: true,
+            })),
+          },
+        });
+      }
+    }
+
+    return res.json({
+      updated: updatedRecommendations.length,
+      accepted: updatedRecommendations.filter((r: any) => r.accepted).length,
+      rejected: updatedRecommendations.filter((r: any) => !r.accepted).length,
+    });
+  } catch (error) {
+    console.error('Error updating landing zone recommendations:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /recommendations/landing-zone/cost-summary — Cost breakdown ──────────
 router.get('/cost-summary', async (req: TenantRequest, res) => {
   try {

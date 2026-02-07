@@ -10,6 +10,7 @@ import type {
   ScanResult,
   IngestReport,
   CascadeNode,
+  CriticalPath,
 } from './types.js';
 
 // Graphology type: use the imported class directly
@@ -34,6 +35,9 @@ export interface GraphInstance {
   inDegree(key: string): number;
   outDegree(key: string): number;
   nodes(): string[];
+  edges(): string[];
+  source(edge: string): string;
+  target(edge: string): string;
   forEachNode(callback: (key: string, attrs: any) => void): void;
   forEachEdge(key: string | ((key: string, attrs: any, source: string, target: string, sourceAttrs: any, targetAttrs: any) => void), callback?: (key: string, attrs: any, source: string, target: string, sourceAttrs: any, targetAttrs: any) => void): void;
   copy(): GraphInstance;
@@ -439,4 +443,96 @@ export function getGraphStats(graph: GraphInstance): {
   return { totalNodes: graph.order, totalEdges: graph.size, nodesByType, nodesByProvider, nodesByRegion };
 }
 
-// GraphInstance is already exported from the interface declaration above
+// =====================================================
+//  CRITICAL PATHS — paths where removing a single node
+//  cuts connectivity between important endpoints
+// =====================================================
+
+export function getCriticalPaths(graph: GraphInstance): CriticalPath[] {
+  const paths: CriticalPath[] = [];
+
+  // Identify "endpoint" nodes — services that face users or external systems
+  const endpointTypes = new Set([
+    'APPLICATION', 'MICROSERVICE', 'API_GATEWAY', 'LOAD_BALANCER', 'SERVERLESS',
+  ]);
+  const dataTypes = new Set(['DATABASE', 'CACHE', 'OBJECT_STORAGE', 'MESSAGE_QUEUE']);
+
+  const endpoints: string[] = [];
+  const dataSources: string[] = [];
+
+  graph.forEachNode((nodeId: string, attrs: any) => {
+    if (endpointTypes.has(attrs.type)) endpoints.push(nodeId);
+    if (dataTypes.has(attrs.type)) dataSources.push(nodeId);
+  });
+
+  // For each (endpoint → data source) pair, find if there's a single-path dependency
+  for (const ep of endpoints.slice(0, 30)) {
+    for (const ds of dataSources.slice(0, 30)) {
+      if (ep === ds) continue;
+
+      // BFS to find all shortest paths from ep to ds (following outEdges)
+      const allPaths = findAllShortestPaths(graph, ep, ds);
+      if (allPaths.length === 0) continue;
+
+      // If there is exactly one shortest path, every node on it is a bottleneck
+      if (allPaths.length === 1) {
+        const pathNodes = allPaths[0]!;
+        const bottlenecks = pathNodes.slice(1, -1).map((id: string) => {
+          const a = graph.getNodeAttributes(id) as InfraNodeAttrs;
+          return { id, name: a.name, reason: 'Single path between endpoint and data source' };
+        });
+
+        if (bottlenecks.length > 0) {
+          const epAttrs = graph.getNodeAttributes(ep) as InfraNodeAttrs;
+          const dsAttrs = graph.getNodeAttributes(ds) as InfraNodeAttrs;
+          paths.push({
+            from: epAttrs.name,
+            to: dsAttrs.name,
+            path: pathNodes.map((id: string) => {
+              const a = graph.getNodeAttributes(id) as InfraNodeAttrs;
+              return { id, name: a.name, type: a.type };
+            }),
+            bottlenecks,
+          });
+        }
+      }
+    }
+  }
+
+  return paths;
+}
+
+/** BFS to find all shortest paths between two nodes (directed, following outEdges) */
+function findAllShortestPaths(graph: GraphInstance, start: string, end: string): string[][] {
+  if (!graph.hasNode(start) || !graph.hasNode(end)) return [];
+
+  const queue: string[][] = [[start]];
+  const visited = new Map<string, number>(); // node → shortest distance
+  visited.set(start, 0);
+  const results: string[][] = [];
+  let shortestLength = Infinity;
+
+  while (queue.length > 0) {
+    const path = queue.shift()!;
+    const current = path[path.length - 1]!;
+
+    if (path.length > shortestLength) break;
+
+    if (current === end) {
+      shortestLength = path.length;
+      results.push(path);
+      continue;
+    }
+
+    for (const neighbor of graph.outNeighbors(current)) {
+      const newDist = path.length;
+      const prevDist = visited.get(neighbor);
+      if (prevDist === undefined || newDist <= prevDist) {
+        visited.set(neighbor, newDist);
+        queue.push([...path, neighbor]);
+      }
+    }
+  }
+
+  return results;
+}

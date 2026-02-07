@@ -83,6 +83,8 @@ model Tenant {
   biaReports2            BIAReport2[]
   biaProcesses2          BIAProcess2[]
   simulations            Simulation[]
+  scanJobs               ScanJob[]
+  scanSchedules          ScanSchedule[]
 }
 
 model TenantBranding {
@@ -1557,4 +1559,38 @@ model Simulation {
 
   @@index([tenantId])
   @@index([scenarioType])
+}
+
+// === SCAN JOBS ===
+
+model ScanJob {
+  id              String    @id @default(cuid())
+  status          String    // queued, scanning, inferring, reconciling, completed, failed
+  config          Json      // Scan configuration (providers, encrypted credentials)
+  progress        Json?     // Progress state
+  result          Json?     // IngestReport
+  error           String?
+
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId, status])
+}
+
+model ScanSchedule {
+  id              String    @id @default(cuid())
+  cronExpression  String
+  config          Json
+  isActive        Boolean   @default(true)
+  lastRunAt       DateTime?
+  nextRunAt       DateTime?
+
+  tenantId        String
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@index([tenantId])
 }

@@ -136,6 +136,62 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── GET /simulations/:id/report — Exportable simulation report ──────────
+router.get('/:id/report', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const simId = req.params.id as string;
+    const format = (req.query.format as string) || 'json';
+
+    const simulation = await prisma.simulation.findFirst({
+      where: { id: simId, tenantId },
+    });
+
+    if (!simulation) {
+      return res.status(404).json({ error: 'Simulation not found' });
+    }
+
+    const result = simulation.result as any;
+
+    const report = {
+      metadata: {
+        id: simulation.id,
+        name: simulation.name,
+        scenarioType: simulation.scenarioType,
+        createdAt: simulation.createdAt,
+        format,
+      },
+      scenario: simulation.scenarioParams,
+      summary: {
+        totalNodesAffected: simulation.totalNodesAffected,
+        percentageAffected: simulation.percentageAffected,
+        estimatedDowntime: simulation.estimatedDowntime,
+        estimatedFinancialLoss: simulation.estimatedFinancialLoss,
+        postIncidentScore: simulation.postIncidentScore,
+      },
+      affectedNodes: result.affectedNodes || [],
+      cascadeImpact: result.cascadeImpact || [],
+      businessImpact: result.businessImpact || [],
+      recommendations: result.recommendations || [],
+    };
+
+    if (format === 'json') {
+      return res.json(report);
+    }
+
+    // For PDF/DOCX, return JSON with a note — actual rendering requires a template engine
+    return res.json({
+      ...report,
+      _note: `PDF/DOCX export requires a document rendering service. Use this JSON payload with your preferred template engine.`,
+    });
+  } catch (error) {
+    console.error('Error generating simulation report:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /simulations/compare — Compare two simulations ──────────
 router.get('/compare', async (req: TenantRequest, res) => {
   try {

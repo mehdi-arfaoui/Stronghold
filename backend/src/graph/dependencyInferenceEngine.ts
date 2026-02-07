@@ -21,11 +21,149 @@ export function inferDependencies(
 ): ScanEdge[] {
   const inferred: ScanEdge[] = [];
 
+  inferred.push(...inferFromSecurityGroups(nodes));
+  inferred.push(...inferFromNetwork(nodes));
   inferred.push(...inferFromTags(nodes));
   inferred.push(...inferFromNaming(nodes));
   inferred.push(...inferFromPatterns(nodes, existingEdges));
 
   return deduplicateEdges(existingEdges, inferred);
+}
+
+// =====================================================
+//  STRATEGY 1: SECURITY GROUPS
+// =====================================================
+
+/**
+ * If two nodes share the same security group, or if one SG allows
+ * traffic from another, they likely communicate.
+ */
+function inferFromSecurityGroups(nodes: InfraNodeAttrs[]): ScanEdge[] {
+  const edges: ScanEdge[] = [];
+  const sgMap = new Map<string, InfraNodeAttrs[]>();
+
+  // Group nodes by their security groups
+  for (const node of nodes) {
+    const sgs: string[] = node.metadata?.securityGroups as string[] || [];
+    for (const sg of sgs) {
+      if (!sgMap.has(sg)) sgMap.set(sg, []);
+      sgMap.get(sg)!.push(node);
+    }
+  }
+
+  // Nodes in the same SG likely communicate
+  for (const [_sg, groupNodes] of sgMap) {
+    if (groupNodes.length < 2 || groupNodes.length > 50) continue; // skip overly broad SGs
+
+    // Create edges from compute → data tier within same SG
+    const computes = groupNodes.filter(n =>
+      [NodeType.VM, NodeType.CONTAINER, NodeType.SERVERLESS, NodeType.APPLICATION, NodeType.MICROSERVICE]
+        .includes(n.type as NodeType)
+    );
+    const dataNodes = groupNodes.filter(n =>
+      [NodeType.DATABASE, NodeType.CACHE, NodeType.MESSAGE_QUEUE]
+        .includes(n.type as NodeType)
+    );
+
+    for (const compute of computes) {
+      for (const data of dataNodes) {
+        edges.push({
+          source: compute.id,
+          target: data.id,
+          type: EdgeType.CONNECTS_TO,
+          confidence: 0.85,
+          inferenceMethod: 'security_group',
+        });
+      }
+    }
+  }
+
+  return edges;
+}
+
+// =====================================================
+//  STRATEGY 2: NETWORK (same VPC / subnet)
+// =====================================================
+
+/**
+ * Nodes in the same VPC and subnet are likely connected.
+ * Higher confidence for same-subnet, lower for same-VPC-different-subnet.
+ */
+function inferFromNetwork(nodes: InfraNodeAttrs[]): ScanEdge[] {
+  const edges: ScanEdge[] = [];
+  const subnetMap = new Map<string, InfraNodeAttrs[]>();
+  const vpcMap = new Map<string, InfraNodeAttrs[]>();
+
+  for (const node of nodes) {
+    const subnetId = node.metadata?.subnetId as string | undefined;
+    const vpcId = node.metadata?.vpcId as string | undefined;
+
+    if (subnetId) {
+      if (!subnetMap.has(subnetId)) subnetMap.set(subnetId, []);
+      subnetMap.get(subnetId)!.push(node);
+    }
+    if (vpcId) {
+      if (!vpcMap.has(vpcId)) vpcMap.set(vpcId, []);
+      vpcMap.get(vpcId)!.push(node);
+    }
+  }
+
+  // Same subnet → high confidence connection
+  for (const [_subnet, groupNodes] of subnetMap) {
+    if (groupNodes.length < 2 || groupNodes.length > 100) continue;
+
+    const lbs = groupNodes.filter(n => n.type === NodeType.LOAD_BALANCER);
+    const computes = groupNodes.filter(n =>
+      [NodeType.VM, NodeType.CONTAINER].includes(n.type as NodeType)
+    );
+
+    // LB in same subnet as compute → ROUTES_TO
+    for (const lb of lbs) {
+      for (const compute of computes) {
+        edges.push({
+          source: lb.id,
+          target: compute.id,
+          type: EdgeType.ROUTES_TO,
+          confidence: 0.75,
+          inferenceMethod: 'network_subnet',
+        });
+      }
+    }
+  }
+
+  // Same VPC → lower confidence, only for specific patterns
+  for (const [_vpc, groupNodes] of vpcMap) {
+    if (groupNodes.length < 2 || groupNodes.length > 200) continue;
+
+    const computes = groupNodes.filter(n =>
+      [NodeType.VM, NodeType.CONTAINER, NodeType.APPLICATION, NodeType.MICROSERVICE]
+        .includes(n.type as NodeType)
+    );
+    const dbs = groupNodes.filter(n =>
+      [NodeType.DATABASE, NodeType.CACHE].includes(n.type as NodeType)
+    );
+
+    // Compute in same VPC as DB → probable CONNECTS_TO (lower confidence than subnet)
+    for (const compute of computes) {
+      for (const db of dbs) {
+        // Only if not already inferred at subnet level
+        const alreadyInferred = edges.some(
+          e => e.source === compute.id && e.target === db.id
+        );
+        if (!alreadyInferred) {
+          edges.push({
+            source: compute.id,
+            target: db.id,
+            type: EdgeType.CONNECTS_TO,
+            confidence: 0.5,
+            inferenceMethod: 'network_vpc',
+          });
+        }
+      }
+    }
+  }
+
+  return edges;
 }
 
 // =====================================================

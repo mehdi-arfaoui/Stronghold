@@ -368,6 +368,14 @@ export interface CloudAdapter {
   scan(config: unknown): Promise<ScanResult>;
 }
 
+// --- Critical Paths ---
+export interface CriticalPath {
+  from: string;
+  to: string;
+  path: Array<{ id: string; name: string; type: string }>;
+  bottlenecks: Array<{ id: string; name: string; reason: string }>;
+}
+
 // --- Scenario Templates ---
 export interface ScenarioTemplate {
   id: string;

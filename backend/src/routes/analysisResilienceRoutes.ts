@@ -74,6 +74,60 @@ router.post('/', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── GET /analysis/resilience/nodes/:nodeId — Per-node analysis detail ──────────
+router.get('/nodes/:nodeId', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const nodeId = req.params.nodeId as string;
+    const graph = await GraphService.getGraph(prisma, tenantId);
+
+    if (!graph.hasNode(nodeId)) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    const node = graph.getNodeAttributes(nodeId);
+    const blastRadius = GraphService.getBlastRadius(graph, nodeId);
+
+    // Check latest analysis for SPOF/redundancy status
+    const latest = await prisma.graphAnalysis.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    let spofStatus = null;
+    let redundancy = null;
+    if (latest) {
+      const report = latest.report as any;
+      spofStatus = (report.spofs || []).find((s: any) => s.nodeId === nodeId) || null;
+      redundancy = (report.redundancyIssues || []).find((r: any) => r.nodeId === nodeId) || null;
+    }
+
+    // Get DB node for computed scores
+    const dbNode = await prisma.infraNode.findFirst({
+      where: { id: nodeId, tenantId },
+    });
+
+    return res.json({
+      node,
+      spofStatus,
+      redundancy,
+      blastRadius: blastRadius.map(n => ({ id: n.id, name: n.name, type: n.type })),
+      blastRadiusCount: blastRadius.length,
+      scores: dbNode ? {
+        criticalityScore: dbNode.criticalityScore,
+        redundancyScore: dbNode.redundancyScore,
+        betweennessCentrality: dbNode.betweennessCentrality,
+        isSPOF: dbNode.isSPOF,
+      } : null,
+    });
+  } catch (error) {
+    console.error('Error fetching node analysis:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /analysis/resilience/score — Latest resilience score ──────────
 router.get('/score', async (req: TenantRequest, res) => {
   try {
