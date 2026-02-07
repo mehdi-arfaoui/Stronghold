@@ -607,6 +607,9 @@ model Exercise {
   scheduledAt DateTime
   status      String   @default("PLANNED")
 
+  // Resilience platform: link to a what-if simulation
+  resilienceSimulationId String?
+
   runbooks       ExerciseRunbook[]
   checklistItems ExerciseChecklistItem[]
   results        ExerciseResult[]
