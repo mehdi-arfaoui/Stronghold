@@ -114,6 +114,68 @@ router.get('/templates', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── GET /simulations/compare — Compare two simulations ──────────
+// NOTE: Must be defined before /:id to avoid being caught by the parameterized route
+router.get('/compare', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const idA = req.query.a as string;
+    const idB = req.query.b as string;
+
+    if (!idA || !idB) {
+      return res.status(400).json({ error: 'Both a and b simulation IDs are required' });
+    }
+
+    const [simA, simB] = await Promise.all([
+      prisma.simulation.findFirst({ where: { id: idA, tenantId } }),
+      prisma.simulation.findFirst({ where: { id: idB, tenantId } }),
+    ]);
+
+    if (!simA || !simB) {
+      return res.status(404).json({ error: 'One or both simulations not found' });
+    }
+
+    return res.json({
+      simulationA: {
+        id: simA.id,
+        name: simA.name,
+        scenarioType: simA.scenarioType,
+        metrics: {
+          totalNodesAffected: simA.totalNodesAffected,
+          percentageAffected: simA.percentageAffected,
+          estimatedDowntime: simA.estimatedDowntime,
+          estimatedFinancialLoss: simA.estimatedFinancialLoss,
+          postIncidentScore: simA.postIncidentScore,
+        },
+      },
+      simulationB: {
+        id: simB.id,
+        name: simB.name,
+        scenarioType: simB.scenarioType,
+        metrics: {
+          totalNodesAffected: simB.totalNodesAffected,
+          percentageAffected: simB.percentageAffected,
+          estimatedDowntime: simB.estimatedDowntime,
+          estimatedFinancialLoss: simB.estimatedFinancialLoss,
+          postIncidentScore: simB.postIncidentScore,
+        },
+      },
+      deltas: {
+        nodesAffected: simB.totalNodesAffected - simA.totalNodesAffected,
+        percentageAffected: Math.round((simB.percentageAffected - simA.percentageAffected) * 10) / 10,
+        estimatedDowntime: simB.estimatedDowntime - simA.estimatedDowntime,
+        estimatedFinancialLoss: (simB.estimatedFinancialLoss || 0) - (simA.estimatedFinancialLoss || 0),
+        resilienceScoreChange: simB.postIncidentScore - simA.postIncidentScore,
+      },
+    });
+  } catch (error) {
+    console.error('Error comparing simulations:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /simulations/:id — Detail of a simulation ──────────
 router.get('/:id', async (req: TenantRequest, res) => {
   try {
@@ -151,7 +213,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
       return res.status(404).json({ error: 'Simulation not found' });
     }
 
-    await prisma.simulation.delete({ where: { id: simId } });
+    await prisma.simulation.deleteMany({ where: { id: simId, tenantId } });
     return res.json({ deleted: true });
   } catch (error) {
     console.error('Error deleting simulation:', error);
@@ -211,67 +273,6 @@ router.get('/:id/report', async (req: TenantRequest, res) => {
     });
   } catch (error) {
     console.error('Error generating simulation report:', error);
-    return res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// ─── GET /simulations/compare — Compare two simulations ──────────
-router.get('/compare', async (req: TenantRequest, res) => {
-  try {
-    const tenantId = req.tenantId;
-    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
-
-    const idA = req.query.a as string;
-    const idB = req.query.b as string;
-
-    if (!idA || !idB) {
-      return res.status(400).json({ error: 'Both a and b simulation IDs are required' });
-    }
-
-    const [simA, simB] = await Promise.all([
-      prisma.simulation.findFirst({ where: { id: idA, tenantId } }),
-      prisma.simulation.findFirst({ where: { id: idB, tenantId } }),
-    ]);
-
-    if (!simA || !simB) {
-      return res.status(404).json({ error: 'One or both simulations not found' });
-    }
-
-    return res.json({
-      simulationA: {
-        id: simA.id,
-        name: simA.name,
-        scenarioType: simA.scenarioType,
-        metrics: {
-          totalNodesAffected: simA.totalNodesAffected,
-          percentageAffected: simA.percentageAffected,
-          estimatedDowntime: simA.estimatedDowntime,
-          estimatedFinancialLoss: simA.estimatedFinancialLoss,
-          postIncidentScore: simA.postIncidentScore,
-        },
-      },
-      simulationB: {
-        id: simB.id,
-        name: simB.name,
-        scenarioType: simB.scenarioType,
-        metrics: {
-          totalNodesAffected: simB.totalNodesAffected,
-          percentageAffected: simB.percentageAffected,
-          estimatedDowntime: simB.estimatedDowntime,
-          estimatedFinancialLoss: simB.estimatedFinancialLoss,
-          postIncidentScore: simB.postIncidentScore,
-        },
-      },
-      deltas: {
-        nodesAffected: simB.totalNodesAffected - simA.totalNodesAffected,
-        percentageAffected: Math.round((simB.percentageAffected - simA.percentageAffected) * 10) / 10,
-        estimatedDowntime: simB.estimatedDowntime - simA.estimatedDowntime,
-        estimatedFinancialLoss: (simB.estimatedFinancialLoss || 0) - (simA.estimatedFinancialLoss || 0),
-        resilienceScoreChange: simB.postIncidentScore - simA.postIncidentScore,
-      },
-    });
-  } catch (error) {
-    console.error('Error comparing simulations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

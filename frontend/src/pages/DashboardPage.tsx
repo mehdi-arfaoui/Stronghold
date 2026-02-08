@@ -45,7 +45,7 @@ export function DashboardPage() {
         title="Bienvenue sur Stronghold"
         description="Lancez un premier scan pour decouvrir votre infrastructure et obtenir votre score de resilience."
         actionLabel="Commencer le scan"
-        onAction={() => navigate('/onboarding')}
+        onAction={() => navigate('/')}
       />
     );
   }

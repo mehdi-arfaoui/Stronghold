@@ -189,9 +189,17 @@ router.patch('/graph/edges/:edgeId', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'confirmed (boolean) is required' });
     }
 
+    // Verify edge belongs to this tenant before modifying
+    const existingEdge = await prisma.infraEdge.findFirst({
+      where: { id: edgeId, tenantId },
+    });
+    if (!existingEdge) {
+      return res.status(404).json({ error: 'Edge not found' });
+    }
+
     if (!confirmed) {
       // Reject — delete the edge
-      await prisma.infraEdge.delete({ where: { id: edgeId } });
+      await prisma.infraEdge.deleteMany({ where: { id: edgeId, tenantId } });
       await GraphService.loadGraphFromDB(prisma, tenantId);
       return res.json({ deleted: true });
     }
