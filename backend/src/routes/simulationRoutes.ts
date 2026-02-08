@@ -136,6 +136,29 @@ router.get('/:id', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── DELETE /simulations/:id — Delete a simulation ──────────
+router.delete('/:id', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const simId = req.params.id as string;
+    const simulation = await prisma.simulation.findFirst({
+      where: { id: simId, tenantId },
+    });
+
+    if (!simulation) {
+      return res.status(404).json({ error: 'Simulation not found' });
+    }
+
+    await prisma.simulation.delete({ where: { id: simId } });
+    return res.json({ deleted: true });
+  } catch (error) {
+    console.error('Error deleting simulation:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /simulations/:id/report — Exportable simulation report ──────────
 router.get('/:id/report', async (req: TenantRequest, res) => {
   try {

@@ -140,28 +140,61 @@ router.get('/score', async (req: TenantRequest, res) => {
     });
 
     if (!latest) {
-      return res.json({ score: null, message: 'No analysis has been run yet' });
+      return res.json({ overall: 0, breakdown: [], trend: undefined, lastCalculated: undefined });
     }
 
-    const history = await prisma.graphAnalysis.findMany({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      select: {
-        resilienceScore: true,
-        createdAt: true,
-        spofCount: true,
-        totalNodes: true,
-      },
+    const report = latest.report as any;
+
+    // Build breakdown from analysis report data
+    const breakdown: Array<{ category: string; impact: number; label: string; status: string }> = [];
+    const spofCount = latest.spofCount || 0;
+    const spofImpact = -Math.min(30, spofCount * 10);
+    breakdown.push({
+      category: 'spof',
+      impact: spofImpact,
+      label: `SPOF (${spofCount} detectes)`,
+      status: spofCount === 0 ? 'ok' : spofCount <= 2 ? 'warning' : 'critical',
     });
 
+    const redundancyIssues = (report.redundancyIssues || []).length;
+    const redundancyImpact = -Math.min(25, redundancyIssues * 5);
+    breakdown.push({
+      category: 'redundancy',
+      impact: redundancyImpact,
+      label: `Redondance (${redundancyIssues} problemes)`,
+      status: redundancyIssues === 0 ? 'ok' : redundancyIssues <= 3 ? 'warning' : 'critical',
+    });
+
+    const regionalRisks = (report.regionalRisks || []).length;
+    const regionalImpact = -Math.min(15, regionalRisks * 5);
+    breakdown.push({
+      category: 'regional',
+      impact: regionalImpact,
+      label: `Concentration regionale (${regionalRisks} risques)`,
+      status: regionalRisks === 0 ? 'ok' : regionalRisks <= 1 ? 'warning' : 'critical',
+    });
+
+    const circularDeps = (report.circularDeps || []).length;
+    const circularImpact = -Math.min(10, circularDeps * 5);
+    breakdown.push({
+      category: 'circular',
+      impact: circularImpact,
+      label: `Dependencies circulaires (${circularDeps})`,
+      status: circularDeps === 0 ? 'ok' : 'warning',
+    });
+
+    // Trend: delta from previous analysis
+    const previous = await prisma.graphAnalysis.findFirst({
+      where: { tenantId, createdAt: { lt: latest.createdAt } },
+      orderBy: { createdAt: 'desc' },
+    });
+    const trend = previous ? latest.resilienceScore - previous.resilienceScore : undefined;
+
     return res.json({
-      score: latest.resilienceScore,
-      totalNodes: latest.totalNodes,
-      totalEdges: latest.totalEdges,
-      spofCount: latest.spofCount,
-      lastAnalyzed: latest.createdAt,
-      trend: history.reverse(),
+      overall: latest.resilienceScore,
+      breakdown,
+      trend,
+      lastCalculated: latest.createdAt.toISOString(),
     });
   } catch (error) {
     console.error('Error fetching resilience score:', error);
@@ -181,11 +214,18 @@ router.get('/spofs', async (req: TenantRequest, res) => {
     });
 
     if (!latest) {
-      return res.json({ spofs: [], message: 'No analysis has been run yet' });
+      return res.json([]);
     }
 
     const report = latest.report as any;
-    let spofs = report.spofs || [];
+    let spofs = (report.spofs || []).map((s: any) => ({
+      nodeId: s.nodeId,
+      nodeName: s.nodeName,
+      nodeType: s.nodeType,
+      blastRadius: s.blastRadius ?? 0,
+      severity: s.severity,
+      reasons: s.failedChecks?.map((c: any) => c.check || c) || [s.recommendation || 'SPOF detected'],
+    }));
 
     // Filter by severity if requested
     const severity = req.query.severity as string;
@@ -194,7 +234,7 @@ router.get('/spofs', async (req: TenantRequest, res) => {
       spofs = spofs.filter((s: any) => allowed.includes(s.severity));
     }
 
-    return res.json({ spofs, lastAnalyzed: latest.createdAt });
+    return res.json(spofs);
   } catch (error) {
     console.error('Error fetching SPOFs:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -213,14 +253,21 @@ router.get('/redundancy-issues', async (req: TenantRequest, res) => {
     });
 
     if (!latest) {
-      return res.json({ issues: [], message: 'No analysis has been run yet' });
+      return res.json([]);
     }
 
     const report = latest.report as any;
-    return res.json({
-      issues: report.redundancyIssues || [],
-      lastAnalyzed: latest.createdAt,
-    });
+    const issues = (report.redundancyIssues || []).map((issue: any) => ({
+      nodeId: issue.nodeId,
+      nodeName: issue.nodeName,
+      nodeType: issue.nodeType,
+      redundancyScore: issue.redundancyScore ?? 0,
+      multiAZ: issue.failedChecks?.some((c: any) => c.check === 'no_multi_az') === false,
+      replicas: 0,
+      hasBackup: issue.failedChecks?.some((c: any) => c.check === 'no_backup') === false,
+      recommendations: issue.failedChecks?.map((c: any) => c.recommendation || c.check) || [],
+    }));
+    return res.json(issues);
   } catch (error) {
     console.error('Error fetching redundancy issues:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -239,14 +286,19 @@ router.get('/regional-risks', async (req: TenantRequest, res) => {
     });
 
     if (!latest) {
-      return res.json({ risks: [], message: 'No analysis has been run yet' });
+      return res.json([]);
     }
 
     const report = latest.report as any;
-    return res.json({
-      risks: report.regionalRisks || [],
-      lastAnalyzed: latest.createdAt,
-    });
+    const risks = (report.regionalRisks || []).map((r: any) => ({
+      region: r.region,
+      provider: r.provider || 'aws',
+      nodeCount: r.nodeCount ?? 0,
+      criticalNodeCount: r.criticalNodeCount ?? 0,
+      percentage: r.percentage ?? 0,
+      risk: r.severity || r.risk || 'medium',
+    }));
+    return res.json(risks);
   } catch (error) {
     console.error('Error fetching regional risks:', error);
     return res.status(500).json({ error: 'Internal server error' });

@@ -80,6 +80,173 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── Helper: build tier summary from processes ──────────
+function buildTiers(processes: Array<{ recoveryTier: number; serviceName: string; financialImpact: any }>) {
+  const tiers: Record<string, { count: number; services: string[]; totalImpact: number }> = {
+    tier1: { count: 0, services: [], totalImpact: 0 },
+    tier2: { count: 0, services: [], totalImpact: 0 },
+    tier3: { count: 0, services: [], totalImpact: 0 },
+    tier4: { count: 0, services: [], totalImpact: 0 },
+  };
+  for (const p of processes) {
+    const key = `tier${p.recoveryTier}` as keyof typeof tiers;
+    if (tiers[key]) {
+      tiers[key].count++;
+      tiers[key].services.push(p.serviceName);
+      tiers[key].totalImpact += (p.financialImpact as any)?.estimatedCostPerHour || 0;
+    }
+  }
+  return tiers;
+}
+
+// ─── GET /bia-resilience/entries — BIA entries with tiers (frontend expects this) ──────────
+router.get('/entries', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: { orderBy: { criticalityScore: 'desc' } } },
+    });
+
+    if (!report) {
+      return res.json({
+        entries: [],
+        tiers: buildTiers([]),
+      });
+    }
+
+    const entries = report.processes.map(p => ({
+      id: p.id,
+      nodeId: p.serviceNodeId,
+      serviceName: p.serviceName,
+      serviceType: p.serviceType,
+      tier: p.recoveryTier,
+      rto: p.validatedRTO ?? p.suggestedRTO,
+      rpo: p.validatedRPO ?? p.suggestedRPO,
+      mtpd: p.validatedMTPD ?? p.suggestedMTPD,
+      rtoSuggested: p.suggestedRTO,
+      rpoSuggested: p.suggestedRPO,
+      mtpdSuggested: p.suggestedMTPD,
+      validated: p.validationStatus === 'validated',
+      financialImpactPerHour: (p.financialImpact as any)?.estimatedCostPerHour || 0,
+      dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
+      criticalityScore: p.criticalityScore,
+      impactCategory: p.impactCategory,
+      validationStatus: p.validationStatus,
+    }));
+
+    return res.json({
+      entries,
+      tiers: buildTiers(report.processes),
+    });
+  } catch (error) {
+    console.error('Error fetching BIA entries:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /bia-resilience/summary — BIA summary with tiers ──────────
+router.get('/summary', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: true },
+    });
+
+    if (!report) {
+      return res.json({
+        totalServices: 0,
+        validatedCount: 0,
+        tiers: [
+          { tier: 1, label: 'Mission Critical', serviceCount: 0, maxRTO: '0', totalFinancialImpact: 0 },
+          { tier: 2, label: 'Business Critical', serviceCount: 0, maxRTO: '0', totalFinancialImpact: 0 },
+          { tier: 3, label: 'Important', serviceCount: 0, maxRTO: '0', totalFinancialImpact: 0 },
+          { tier: 4, label: 'Non-Critical', serviceCount: 0, maxRTO: '0', totalFinancialImpact: 0 },
+        ],
+      });
+    }
+
+    const tierNames: Record<number, string> = {
+      1: 'Mission Critical',
+      2: 'Business Critical',
+      3: 'Important',
+      4: 'Non-Critical',
+    };
+
+    const tiers = [1, 2, 3, 4].map(tier => {
+      const procs = report.processes.filter(p => p.recoveryTier === tier);
+      const maxRTO = procs.length > 0
+        ? Math.max(...procs.map(p => (p.validatedRTO ?? p.suggestedRTO) || 0))
+        : 0;
+      return {
+        tier,
+        label: tierNames[tier],
+        serviceCount: procs.length,
+        maxRTO: String(maxRTO),
+        totalFinancialImpact: procs.reduce(
+          (sum, p) => sum + ((p.financialImpact as any)?.estimatedCostPerHour || 0), 0
+        ),
+      };
+    });
+
+    return res.json({
+      totalServices: report.processes.length,
+      validatedCount: report.processes.filter(p => p.validationStatus === 'validated').length,
+      tiers,
+    });
+  } catch (error) {
+    console.error('Error fetching BIA summary:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /bia-resilience/export/csv — Export BIA as CSV ──────────
+router.get('/export/csv', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+    });
+
+    const header = 'Service,Type,Tier,Suggested RTO,Suggested RPO,Suggested MTPD,Validated RTO,Validated RPO,Validated MTPD,Impact Category,Criticality Score,Financial Impact/h,Status\n';
+    const rows = (report?.processes || []).map(p =>
+      [
+        `"${p.serviceName}"`,
+        p.serviceType,
+        p.recoveryTier,
+        p.suggestedRTO,
+        p.suggestedRPO,
+        p.suggestedMTPD,
+        p.validatedRTO ?? '',
+        p.validatedRPO ?? '',
+        p.validatedMTPD ?? '',
+        p.impactCategory,
+        p.criticalityScore,
+        (p.financialImpact as any)?.estimatedCostPerHour || 0,
+        p.validationStatus,
+      ].join(',')
+    ).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="bia-export.csv"');
+    return res.send(header + rows);
+  } catch (error) {
+    console.error('Error exporting BIA CSV:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /bia-resilience/report — Latest BIA report ──────────
 router.get('/report', async (req: TenantRequest, res) => {
   try {

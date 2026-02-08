@@ -88,6 +88,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
         include: {
           service: true,
           mitigations: true,
+          nodeLinks: true,
         },
         orderBy: [{ createdAt: "desc" }],
         ...(shouldPaginate ? { take, skip } : {}),
@@ -97,10 +98,16 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     const enriched = risks.map((risk) => {
       const score = riskScore(risk.probability, risk.impact);
+      const level = riskLevel(score);
       return {
         ...risk,
         score,
-        level: riskLevel(score),
+        level,
+        // Aliases for frontend compatibility
+        category: risk.threatType,
+        severity: level,
+        autoDetected: risk.autoDetected ?? false,
+        relatedNodes: risk.nodeLinks?.map((l: any) => l.nodeId) ?? [],
       };
     });
 
@@ -190,6 +197,40 @@ router.get("/matrix", requireRole("READER"), async (req: TenantRequest, res) => 
     });
   } catch (error) {
     console.error("Error in GET /risks/matrix:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const riskId = req.params.id;
+    if (!riskId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
+    const risk = await prisma.risk.findFirst({
+      where: { id: riskId, tenantId },
+      include: { service: true, mitigations: true },
+    });
+
+    if (!risk) {
+      return res.status(404).json({ error: "Risque introuvable pour ce tenant" });
+    }
+
+    const score = riskScore(risk.probability, risk.impact);
+
+    return res.json({
+      ...risk,
+      score,
+      level: riskLevel(score),
+    });
+  } catch (error) {
+    console.error("Error in GET /risks/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -448,6 +489,50 @@ router.post("/:id/mitigations", requireRole("OPERATOR"), async (req: TenantReque
     return res.status(201).json(mitigation);
   } catch (error) {
     console.error("Error in POST /risks/:id/mitigations:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+router.patch("/:id/mitigations/:mitigationId", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: "Tenant not resolved" });
+    }
+
+    const { id: riskId, mitigationId } = req.params;
+    if (!riskId || !mitigationId) {
+      return res.status(400).json({ error: "riskId et mitigationId sont requis" });
+    }
+
+    const risk = await prisma.risk.findFirst({
+      where: { id: riskId, tenantId },
+    });
+    if (!risk) {
+      return res.status(404).json({ error: "Risque introuvable pour ce tenant" });
+    }
+
+    const mitigation = await prisma.riskMitigation.findFirst({
+      where: { id: mitigationId, riskId, tenantId },
+    });
+    if (!mitigation) {
+      return res.status(404).json({ error: "Mitigation introuvable" });
+    }
+
+    const payload = req.body || {};
+    const data: any = {};
+    if (payload.status !== undefined) data.status = payload.status;
+    if (payload.description !== undefined) data.description = payload.description;
+    if (payload.owner !== undefined) data.owner = payload.owner;
+
+    const updated = await prisma.riskMitigation.update({
+      where: { id: mitigationId },
+      data,
+    });
+
+    return res.json(updated);
+  } catch (error) {
+    console.error("Error in PATCH /risks/:id/mitigations/:mitigationId:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
