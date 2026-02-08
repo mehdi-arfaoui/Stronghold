@@ -34,7 +34,8 @@ interface NavSection {
 const NAV_SECTIONS: NavSection[] = [
   {
     items: [
-      { label: 'Tableau de bord', icon: LayoutDashboard, path: '/' },
+      { label: 'Configuration', icon: Shield, path: '/' },
+      { label: 'Tableau de bord', icon: LayoutDashboard, path: '/dashboard' },
       { label: 'Decouverte', icon: Radar, path: '/discovery' },
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
       { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
@@ -98,8 +99,8 @@ export function Sidebar() {
                 </p>
               )}
               {section.items.map((item) => {
-                const isActive = item.path === '/'
-                  ? location.pathname === '/'
+                const isActive = item.path === '/' || item.path === '/dashboard'
+                  ? location.pathname === item.path
                   : location.pathname.startsWith(item.path);
 
                 return (

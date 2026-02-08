@@ -30,7 +30,8 @@ const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { path: '/', element: <DashboardPage /> },
+      { path: '/', element: <OnboardingPage /> },
+      { path: '/dashboard', element: <DashboardPage /> },
       { path: '/discovery', element: <DiscoveryPage /> },
       { path: '/analysis', element: <AnalysisPage /> },
       { path: '/simulations', element: <SimulationPage /> },
@@ -42,7 +43,6 @@ const router = createBrowserRouter([
       { path: '/settings', element: <SettingsPage /> },
     ],
   },
-  { path: '/onboarding', element: <OnboardingPage /> },
   { path: '/login', element: <LoginPage /> },
 ]);
 

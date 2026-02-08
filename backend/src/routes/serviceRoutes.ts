@@ -101,9 +101,6 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     if (!serviceId) {
       return res.status(400).json({ error: "id est requis" });
     }
-    if (!serviceId) {
-      return res.status(400).json({ error: "id est requis" });
-    }
     const payload = req.body || {};
     const issues: { field: string; message: string }[] = [];
     const name =

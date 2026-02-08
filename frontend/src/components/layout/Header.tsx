@@ -12,7 +12,8 @@ import { useUIStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
 
 const ROUTE_TITLES: Record<string, string> = {
-  '/': 'Tableau de bord',
+  '/': 'Configuration',
+  '/dashboard': 'Tableau de bord',
   '/discovery': 'Decouverte',
   '/analysis': 'Analyse & BIA',
   '/simulations': 'Simulations',
@@ -22,7 +23,6 @@ const ROUTE_TITLES: Record<string, string> = {
   '/documents': 'Documents',
   '/report': 'Rapport PRA/PCA',
   '/settings': 'Parametres',
-  '/onboarding': 'Configuration initiale',
 };
 
 export function Header() {
