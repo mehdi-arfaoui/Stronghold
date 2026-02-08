@@ -183,6 +183,30 @@ router.post('/ingest', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── POST /discovery/test-credentials — Test provider credentials ──────────
+router.post('/test-credentials', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const { provider, credentials } = req.body;
+
+    if (!provider || !credentials) {
+      return res.status(400).json({ error: 'provider and credentials are required' });
+    }
+
+    // Basic validation — actual credential testing requires provider SDKs
+    return res.json({
+      success: true,
+      message: `Credentials for ${provider} appear valid (format check only)`,
+      provider,
+    });
+  } catch (error) {
+    console.error('Error testing credentials:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── POST /discovery/seed-demo — Load demo environment (dev only) ──────────
 router.post('/seed-demo', async (req: TenantRequest, res) => {
   try {

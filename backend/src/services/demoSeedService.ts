@@ -16,6 +16,10 @@
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client";
+import * as GraphService from '../graph/graphService.js';
+import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
+import { generateBIA } from '../graph/biaEngine.js';
+import { detectRisks } from '../graph/riskDetectionEngine.js';
 
 interface NodeDef {
   id: string;
@@ -597,6 +601,12 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
 
   // Clean existing resilience data for this tenant
   console.log("Cleaning existing data...");
+  await prisma.riskNodeLink.deleteMany({ where: { risk: { tenantId } } }).catch(() => {});
+  await prisma.riskMitigation.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.risk.deleteMany({ where: { tenantId, autoDetected: true } }).catch(() => {});
+  await prisma.bIAProcess2.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.bIAReport2.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.graphAnalysis.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.infraEdge.deleteMany({ where: { tenantId } });
   await prisma.infraNode.deleteMany({ where: { tenantId } });
   await prisma.simulation.deleteMany({ where: { tenantId } });
@@ -683,11 +693,162 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     },
   });
 
+  // ─── Post-seed: Run graph analysis, BIA generation, and risk detection ───
+  let resilienceScore = 0;
+  let spofCount = 0;
+  let biaProcessCount = 0;
+  let risksDetected = 0;
+
+  try {
+    console.log("Running post-seed graph analysis...");
+    // Force reload from DB
+    const graph = await GraphService.loadGraphFromDB(prisma, tenantId);
+
+    if (graph.order > 0) {
+      // 1. Graph analysis
+      const report = await analyzeFullGraph(graph);
+
+      await prisma.graphAnalysis.create({
+        data: {
+          resilienceScore: report.resilienceScore,
+          totalNodes: report.totalNodes,
+          totalEdges: report.totalEdges,
+          spofCount: report.spofs.length,
+          report: JSON.parse(JSON.stringify({
+            spofs: report.spofs,
+            redundancyIssues: report.redundancyIssues,
+            regionalRisks: report.regionalRisks,
+            circularDeps: report.circularDeps,
+            cascadeChains: report.cascadeChains.slice(0, 20),
+            criticalityScores: Object.fromEntries(report.criticalityScores),
+          })),
+          tenantId,
+        },
+      });
+
+      // Update node scores
+      for (const [nodeId, score] of report.criticalityScores) {
+        const spof = report.spofs.find(s => s.nodeId === nodeId);
+        const blast = GraphService.getBlastRadius(graph, nodeId);
+        await prisma.infraNode.updateMany({
+          where: { id: nodeId, tenantId },
+          data: {
+            criticalityScore: score,
+            isSPOF: !!spof,
+            blastRadius: blast.length,
+          },
+        });
+      }
+
+      resilienceScore = report.resilienceScore;
+      spofCount = report.spofs.length;
+      console.log(`  Graph analysis complete: score=${resilienceScore}, SPOFs=${spofCount}`);
+
+      // 2. BIA generation
+      console.log("Generating BIA...");
+      const biaReport = generateBIA(graph, report);
+
+      await prisma.bIAReport2.create({
+        data: {
+          generatedAt: biaReport.generatedAt,
+          summary: biaReport.summary as any,
+          tenantId,
+          processes: {
+            create: biaReport.processes.map(p => ({
+              serviceNodeId: p.serviceNodeId,
+              serviceName: p.serviceName,
+              serviceType: p.serviceType,
+              suggestedMAO: p.suggestedMAO,
+              suggestedMTPD: p.suggestedMTPD,
+              suggestedRTO: p.suggestedRTO,
+              suggestedRPO: p.suggestedRPO,
+              suggestedMBCO: p.suggestedMBCO,
+              impactCategory: p.impactCategory,
+              criticalityScore: p.criticalityScore,
+              recoveryTier: p.recoveryTier,
+              dependencyChain: p.dependencyChain as any,
+              weakPoints: p.weakPoints as any,
+              financialImpact: p.financialImpact as any,
+              validationStatus: 'pending',
+              tenantId,
+            })),
+          },
+        },
+      });
+
+      for (const p of biaReport.processes) {
+        await prisma.infraNode.updateMany({
+          where: { id: p.serviceNodeId, tenantId },
+          data: {
+            suggestedRTO: p.suggestedRTO,
+            suggestedRPO: p.suggestedRPO,
+            suggestedMTPD: p.suggestedMTPD,
+            impactCategory: p.impactCategory,
+            financialImpactPerHour: p.financialImpact.estimatedCostPerHour,
+          },
+        });
+      }
+
+      biaProcessCount = biaReport.processes.length;
+      console.log(`  BIA generated: ${biaProcessCount} processes`);
+
+      // 3. Risk detection
+      console.log("Detecting risks...");
+      const detectedRisks = detectRisks(graph, report);
+
+      for (const risk of detectedRisks) {
+        const created = await prisma.risk.create({
+          data: {
+            title: risk.title,
+            description: risk.description,
+            threatType: risk.category,
+            probability: risk.probability,
+            impact: risk.impact,
+            status: 'open',
+            autoDetected: true,
+            detectionMethod: risk.detectionMethod,
+            tenantId,
+          },
+        });
+
+        for (const nodeId of risk.linkedNodeIds) {
+          try {
+            await prisma.riskNodeLink.create({
+              data: { riskId: created.id, nodeId },
+            });
+          } catch {
+            // Node might not exist, skip
+          }
+        }
+
+        for (const mitigation of risk.mitigations) {
+          await prisma.riskMitigation.create({
+            data: {
+              riskId: created.id,
+              description: mitigation.title,
+              status: 'pending',
+              tenantId,
+            },
+          });
+        }
+      }
+
+      risksDetected = detectedRisks.length;
+      console.log(`  Risks detected: ${risksDetected}`);
+    }
+  } catch (error) {
+    console.error("Post-seed analysis failed (non-blocking):", error);
+  }
+
   const summary = {
     nodes: nodes.length,
     confirmedEdges: confirmedEdges.length,
     inferredEdges: inferredEdges.length,
     totalEdges: confirmedEdges.length + inferredEdges.length,
+    resilienceScore,
+    spofCount,
+    biaProcesses: biaProcessCount,
+    risksDetected,
     spofs: [
       "payment-db (no replica, no multi-AZ)",
       "redis-main (single instance)",
@@ -700,6 +861,9 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   console.log(`  ${summary.nodes} infrastructure nodes`);
   console.log(`  ${summary.confirmedEdges} confirmed dependencies`);
   console.log(`  ${summary.inferredEdges} inferred dependencies (to validate)`);
+  console.log(`  Resilience score: ${resilienceScore}`);
+  console.log(`  BIA processes: ${biaProcessCount}`);
+  console.log(`  Auto-detected risks: ${risksDetected}`);
 
   return summary;
 }

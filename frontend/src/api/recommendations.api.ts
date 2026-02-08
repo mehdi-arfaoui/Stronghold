@@ -22,11 +22,11 @@ export interface RecommendationsSummary {
 
 export const recommendationsApi = {
   getAll: () =>
-    api.get<Recommendation[]>('/recommendations'),
+    api.get<Recommendation[]>('/recommendations/landing-zone'),
 
   getSummary: () =>
-    api.get<RecommendationsSummary>('/recommendations/summary'),
+    api.get<RecommendationsSummary>('/recommendations/landing-zone/cost-summary'),
 
   updateStatus: (id: string, data: { accepted: boolean; notes?: string }) =>
-    api.patch(`/recommendations/${id}`, data),
+    api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, ...data }] }),
 };

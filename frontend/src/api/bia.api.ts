@@ -3,23 +3,23 @@ import type { BIAEntry, BIASummary } from '@/types/bia.types';
 
 export const biaApi = {
   getEntries: () =>
-    api.get<BIAEntry[]>('/bia/entries'),
+    api.get('/bia-resilience/entries'),
 
   getSummary: () =>
-    api.get<BIASummary>('/bia/summary'),
+    api.get<BIASummary>('/bia-resilience/summary'),
 
   updateEntry: (id: string, data: Partial<BIAEntry>) =>
-    api.patch<BIAEntry>(`/bia/entries/${id}`, data),
+    api.patch<BIAEntry>(`/bia-resilience/processes/${id}`, data),
 
   validateEntry: (id: string) =>
-    api.patch<BIAEntry>(`/bia/entries/${id}/validate`),
+    api.patch<BIAEntry>(`/bia-resilience/processes/${id}`, { validationStatus: 'validated' }),
 
   validateAll: () =>
-    api.post('/bia/validate-all'),
+    api.post('/bia-resilience/validate-all'),
 
   regenerate: () =>
-    api.post('/bia/regenerate'),
+    api.post('/bia-resilience/auto-generate'),
 
   exportCSV: () =>
-    api.get('/bia/export/csv', { responseType: 'blob' }),
+    api.get('/bia-resilience/export/csv', { responseType: 'blob' }),
 };

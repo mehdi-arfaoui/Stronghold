@@ -74,7 +74,8 @@ export function AnalysisPage() {
     },
   });
 
-  const entries = biaQuery.data ?? [];
+  const biaData = biaQuery.data as any;
+  const entries = Array.isArray(biaData) ? biaData : (biaData?.entries ?? []);
   const summary = biaSummaryQuery.data;
   const risks = risksQuery.data ?? [];
   const redundancy = redundancyQuery.data ?? [];
@@ -122,7 +123,7 @@ export function AnalysisPage() {
             </CardContent>
           </Card>
 
-          {summary && summary.tiers.length > 0 && (
+          {summary && Array.isArray(summary.tiers) && summary.tiers.length > 0 && (
             <div className="grid gap-4 md:grid-cols-3">
               {summary.tiers.map((tier) => (
                 <RecoveryTierCard
