@@ -41,8 +41,8 @@ router.post("/:type/configure", requireRole("OPERATOR"), async (req: TenantReque
   }
 
   // Validate integration type
-  const validTypes = ["email", "servicenow", "webhook"];
-  if (!validTypes.includes(type)) {
+  const validTypes: string[] = ["email", "servicenow", "webhook"];
+  if (!type || !validTypes.includes(type)) {
     return res.status(400).json({ error: `Invalid integration type: ${type}` });
   }
 
