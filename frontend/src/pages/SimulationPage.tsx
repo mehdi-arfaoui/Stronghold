@@ -9,6 +9,7 @@ import { ScenarioParams } from '@/components/simulation/ScenarioParams';
 import { SimulationResult } from '@/components/simulation/SimulationResult';
 import { CascadeView } from '@/components/simulation/CascadeView';
 import { BeforeAfterGraph } from '@/components/simulation/BeforeAfterGraph';
+import { WarRoom } from '@/components/simulations/WarRoom';
 import { LoadingState } from '@/components/common/LoadingState';
 import { useSimulation } from '@/hooks/useSimulation';
 import { useGraph } from '@/hooks/useGraph';
@@ -20,6 +21,7 @@ export function SimulationPage() {
   const [selectedScenario, setSelectedScenario] = useState<ScenarioType | null>(null);
   const [paramsOpen, setParamsOpen] = useState(false);
   const [activeSimId, setActiveSimId] = useState<string | undefined>();
+  const [warRoomOpen, setWarRoomOpen] = useState(false);
 
   const { simulations, simulationsLoading, createSimulation, isCreating, simulation } = useSimulation(activeSimId);
   const { allNodes } = useGraph();
@@ -45,6 +47,7 @@ export function SimulationPage() {
       const result = await createSimulation(config);
       setActiveSimId(result.data.id);
       setParamsOpen(false);
+      setWarRoomOpen(true);
       toast.success('Simulation lancee');
     } catch {
       toast.error('Erreur lors du lancement');
@@ -81,9 +84,31 @@ export function SimulationPage() {
         />
       )}
 
-      {/* Active simulation result */}
+      {/* War Room — immersive simulation view */}
       {simulation?.result && (
+        <WarRoom
+          open={warRoomOpen}
+          onClose={() => setWarRoomOpen(false)}
+          scenarioName={simulation.name}
+          scenarioType={simulation.scenarioType}
+          result={simulation.result}
+        />
+      )}
+
+      {/* Active simulation result */}
+      {simulation?.result && !warRoomOpen && (
         <>
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold">Resultats</h2>
+            <button
+              type="button"
+              onClick={() => setWarRoomOpen(true)}
+              className="text-sm text-primary hover:underline"
+            >
+              Ouvrir la War Room
+            </button>
+          </div>
+
           <SimulationResult result={simulation.result} />
 
           {simulation.result.cascadeSteps.length > 0 && (
@@ -129,7 +154,7 @@ export function SimulationPage() {
                   <TableRow
                     key={sim.id}
                     className="cursor-pointer"
-                    onClick={() => setActiveSimId(sim.id)}
+                    onClick={() => { setActiveSimId(sim.id); if (sim.status === 'completed') setWarRoomOpen(true); }}
                   >
                     <TableCell className="text-sm">{formatDate(sim.createdAt)}</TableCell>
                     <TableCell>{sim.name}</TableCell>

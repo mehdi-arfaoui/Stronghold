@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { SeverityBadge } from '@/components/common/SeverityBadge';
 import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
+import { IncidentDeclarationForm } from '@/components/incidents/IncidentDeclarationForm';
 import { formatRelativeTime } from '@/lib/formatters';
 import { incidentsApi } from '@/api/incidents.api';
 
@@ -18,6 +20,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function IncidentsPage() {
+  const [formOpen, setFormOpen] = useState(false);
+
   const query = useQuery({
     queryKey: ['incidents'],
     queryFn: async () => (await incidentsApi.getAll()).data,
@@ -29,13 +33,16 @@ export function IncidentsPage() {
 
   if (incidents.length === 0) {
     return (
-      <EmptyState
-        icon={AlertTriangle}
-        title="Aucun incident"
-        description="Les incidents seront affiches ici lorsqu'ils surviennent."
-        actionLabel="Declarer un incident"
-        onAction={() => {}}
-      />
+      <>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Aucun incident"
+          description="Les incidents seront affiches ici lorsqu'ils surviennent."
+          actionLabel="Declarer un incident"
+          onAction={() => setFormOpen(true)}
+        />
+        <IncidentDeclarationForm open={formOpen} onOpenChange={setFormOpen} />
+      </>
     );
   }
 
@@ -43,10 +50,12 @@ export function IncidentsPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Gestion des incidents</h2>
-        <Button>
+        <Button onClick={() => setFormOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Declarer un incident
         </Button>
       </div>
+
+      <IncidentDeclarationForm open={formOpen} onOpenChange={setFormOpen} />
 
       <div className="space-y-4">
         {incidents.map((inc) => (
