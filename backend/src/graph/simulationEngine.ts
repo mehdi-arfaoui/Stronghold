@@ -97,7 +97,7 @@ export function runSimulation(
   const simGraph = cloneGraph(graph);
 
   // 2. Apply scenario — identify affected nodes
-  const affectedNodeIds = applyScenario(simGraph, scenario);
+  const affectedNodeIds = applyScenario(simGraph, scenario) || [];
   const affectedNodes = affectedNodeIds
     .filter(id => simGraph.hasNode(id))
     .map(id => {

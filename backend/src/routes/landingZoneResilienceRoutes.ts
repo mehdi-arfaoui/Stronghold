@@ -28,7 +28,31 @@ router.get('/', async (req: TenantRequest, res) => {
     const bia = generateBIA(graph, analysis);
     const report = generateLandingZoneRecommendations(bia, analysis);
 
-    return res.json(report);
+    // Transform to frontend Recommendation[] format
+    const recommendations = report.recommendations.map(rec => {
+      const strategyMap: Record<string, string> = {
+        active_active: 'active-active',
+        warm_standby: 'warm-standby',
+        pilot_light: 'pilot-light',
+        backup_restore: 'backup',
+      };
+      return {
+        id: rec.serviceId,
+        nodeId: rec.serviceId,
+        serviceName: rec.serviceName,
+        tier: rec.recoveryTier,
+        strategy: strategyMap[rec.strategy.type] || rec.strategy.type,
+        estimatedCost: rec.estimatedCost,
+        roi: rec.estimatedCost > 0
+          ? Math.round((rec.riskOfInaction * 720 / rec.estimatedCost) * 10) / 10
+          : 0,
+        accepted: null,
+        description: rec.strategy.description,
+        priority: rec.priorityScore,
+      };
+    });
+
+    return res.json(recommendations);
   } catch (error) {
     console.error('Error generating landing zone recommendations:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -111,29 +135,23 @@ router.get('/cost-summary', async (req: TenantRequest, res) => {
     const bia = generateBIA(graph, analysis);
     const report = generateLandingZoneRecommendations(bia, analysis);
 
-    const byTier = [1, 2, 3, 4].map(tier => {
-      const items = report.recommendations.filter(r => r.recoveryTier === tier);
-      return {
-        tier,
-        count: items.length,
-        totalCost: items.reduce((sum, r) => sum + r.estimatedCost, 0),
-        totalRiskOfInaction: items.reduce((sum, r) => sum + r.riskOfInaction, 0),
-      };
-    });
+    const strategyMap: Record<string, string> = {
+      active_active: 'active-active',
+      warm_standby: 'warm-standby',
+      pilot_light: 'pilot-light',
+      backup_restore: 'backup',
+    };
 
-    const totalMonthlyCost = report.summary.estimatedTotalCost;
-    const totalAnnualRisk = byTier.reduce((sum, t) => sum + t.totalRiskOfInaction, 0) * 8760; // hours/year
+    const byStrategy: Record<string, number> = {};
+    for (const rec of report.recommendations) {
+      const key = strategyMap[rec.strategy.type] || rec.strategy.type;
+      byStrategy[key] = (byStrategy[key] || 0) + 1;
+    }
 
     return res.json({
-      byTier,
-      total: totalMonthlyCost,
-      roi: {
-        breakEvenMonths: totalAnnualRisk > 0
-          ? Math.ceil((totalMonthlyCost * 12) / totalAnnualRisk)
-          : null,
-        annualProtectionValue: totalAnnualRisk,
-        annualCost: totalMonthlyCost * 12,
-      },
+      totalCost: report.summary.estimatedTotalCost,
+      byStrategy,
+      totalRecommendations: report.recommendations.length,
     });
   } catch (error) {
     console.error('Error generating cost summary:', error);
