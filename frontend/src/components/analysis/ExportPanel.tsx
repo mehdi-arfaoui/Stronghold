@@ -60,7 +60,7 @@ interface ExportPanelProps {
   activeFilters?: string[];
 }
 
-export function ExportPanel({ open, onOpenChange, totalRows = 0, activeFilters = [] }: ExportPanelProps) {
+export function ExportPanel({ open, onOpenChange, totalRows: _totalRows = 0, activeFilters = [] }: ExportPanelProps) {
   const [format, setFormat] = useState<ExportFormat>('csv');
   const [columns, setColumns] = useState<ExportColumn[]>(DEFAULT_COLUMNS);
   const [exportAll, setExportAll] = useState(true);
