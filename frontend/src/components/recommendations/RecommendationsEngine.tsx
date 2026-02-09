@@ -3,7 +3,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   Lightbulb,
-  RefreshCw,
   List,
   BarChart3,
   DollarSign,
@@ -12,7 +11,6 @@ import {
   ChevronDown,
   ChevronUp,
   Star,
-  ArrowRight,
   Shield,
   Clock,
   Loader2,
@@ -21,7 +19,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Progress } from '@/components/ui/progress';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
@@ -362,7 +359,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               <div className="absolute left-1/2 top-4 bottom-8 w-px bg-border" />
 
               {/* Points */}
-              {recs.map((rec: Recommendation, i: number) => {
+              {recs.map((rec: Recommendation) => {
                 const maxCost = Math.max(...recs.map((r: Recommendation) => r.estimatedCost), 1);
                 const effortPercent = Math.min((rec.estimatedCost / maxCost) * 80 + 10, 90);
                 const impactPercent = Math.min(rec.roi * 20 + 10, 90);

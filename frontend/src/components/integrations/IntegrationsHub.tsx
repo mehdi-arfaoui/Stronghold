@@ -3,9 +3,7 @@ import { toast } from 'sonner';
 import {
   Mail,
   Webhook,
-  ExternalLink,
   Check,
-  X,
   AlertCircle,
   Settings,
   Loader2,
@@ -13,7 +11,6 @@ import {
   Globe,
   MessageSquare,
   Bell,
-  Shield,
   Ticket,
   Plus,
   Trash2,
@@ -24,8 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Card, CardContent } from '@/components/ui/card';
 import {
   Dialog,
   DialogContent,
@@ -168,7 +164,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
     );
   };
 
-  const testWebhook = async (id: string) => {
+  const testWebhook = async (_id: string) => {
     toast.promise(new Promise((r) => setTimeout(r, 1000)), {
       loading: 'Envoi du test...',
       success: 'Webhook test envoye (200 OK)',

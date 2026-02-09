@@ -1,11 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useState, useMemo } from 'react';
 import {
   Search,
-  Filter,
   Crosshair,
-  LayoutGrid,
-  Share2,
   AlertTriangle,
   Shield,
   ShieldAlert,
@@ -18,9 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { analysisApi } from '@/api/analysis.api';
 import type { RedundancyAnalysis } from '@/types/analysis.types';
 
 type RedundancyLevel = 'full' | 'partial' | 'none';

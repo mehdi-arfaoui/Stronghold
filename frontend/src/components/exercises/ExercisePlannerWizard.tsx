@@ -1,14 +1,11 @@
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
-  X,
   ChevronLeft,
   ChevronRight,
   ClipboardCheck,
   Users,
-  Calendar,
-  Target,
   Loader2,
   Plus,
   Trash2,
@@ -119,7 +116,7 @@ export function ExercisePlannerWizard({ open, onOpenChange, scenarios = [] }: Ex
 
   const createMutation = useMutation({
     mutationFn: (exercise: Partial<Exercise>) => exercisesApi.create(exercise),
-    onSuccess: (response) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['exercises'] });
       toast.success('Exercice planifie avec succes', {
         description: `L'exercice "${data.objective || 'Nouvel exercice'}" a ete cree.`,
