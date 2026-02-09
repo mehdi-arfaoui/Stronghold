@@ -16,10 +16,9 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
-import type { SimulationResult, AffectedNode, CascadeStep } from '@/types/simulation.types';
+import type { SimulationResult } from '@/types/simulation.types';
 
 interface WarRoomProps {
   open: boolean;
@@ -46,7 +45,7 @@ function getSeverity(impact: number): keyof typeof SEVERITY_CONFIG {
   return 'low';
 }
 
-export function WarRoom({ open, onClose, scenarioName, scenarioType, result, onGenerateReport }: WarRoomProps) {
+export function WarRoom({ open, onClose, scenarioName, result, onGenerateReport }: WarRoomProps) {
   const [phase, setPhase] = useState<AnimationPhase>('idle');
   const [currentStep, setCurrentStep] = useState(0);
   const [visibleNodes, setVisibleNodes] = useState<Set<string>>(new Set());

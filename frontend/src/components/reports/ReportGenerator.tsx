@@ -1,5 +1,5 @@
-import { useState, useCallback } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
   FileDown,
@@ -8,33 +8,18 @@ import {
   XCircle,
   Clock,
   FileText,
-  FileSpreadsheet,
   Globe,
   Shield,
   Settings,
-  ChevronDown,
-  ChevronUp,
-  Languages,
   Layers,
-  Eye,
-  Download,
   RotateCcw,
-  BarChart3,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
-import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-} from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { reportsApi, type ReportConfig } from '@/api/reports.api';
 import { simulationsApi } from '@/api/simulations.api';
@@ -80,8 +65,6 @@ interface ReportGeneratorProps {
 }
 
 export function ReportGenerator({ className }: ReportGeneratorProps) {
-  const queryClient = useQueryClient();
-  const [showConfig, setShowConfig] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentGeneratingSection, setCurrentGeneratingSection] = useState('');
@@ -124,8 +107,6 @@ export function ReportGenerator({ className }: ReportGeneratorProps) {
   const handleGenerate = async () => {
     setIsGenerating(true);
     setGenerationProgress(0);
-    setShowConfig(false);
-
     // Simulate section-by-section generation
     const enabledList = sections.filter((s) => s.enabled);
 
