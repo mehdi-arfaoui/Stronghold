@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ClipboardCheck, Plus, Calendar } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -5,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
+import { ExercisePlannerWizard } from '@/components/exercises/ExercisePlannerWizard';
 import { exercisesApi } from '@/api/exercises.api';
 
 const STATUS_LABELS: Record<string, string> = {
@@ -15,6 +17,8 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function ExercisesPage() {
+  const [wizardOpen, setWizardOpen] = useState(false);
+
   const query = useQuery({
     queryKey: ['exercises'],
     queryFn: async () => (await exercisesApi.getAll()).data,
@@ -26,13 +30,16 @@ export function ExercisesPage() {
 
   if (exercises.length === 0) {
     return (
-      <EmptyState
-        icon={ClipboardCheck}
-        title="Aucun exercice"
-        description="Planifiez des exercices PRA/PCA pour tester vos procedures de reprise."
-        actionLabel="Planifier un exercice"
-        onAction={() => {}}
-      />
+      <>
+        <EmptyState
+          icon={ClipboardCheck}
+          title="Aucun exercice"
+          description="Planifiez des exercices PRA/PCA pour tester vos procedures de reprise."
+          actionLabel="Planifier un exercice"
+          onAction={() => setWizardOpen(true)}
+        />
+        <ExercisePlannerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      </>
     );
   }
 
@@ -40,10 +47,12 @@ export function ExercisesPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">Exercices PRA/PCA</h2>
-        <Button>
+        <Button onClick={() => setWizardOpen(true)}>
           <Plus className="mr-2 h-4 w-4" /> Planifier un exercice
         </Button>
       </div>
+
+      <ExercisePlannerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
 
       <div className="grid gap-4 md:grid-cols-2">
         {exercises.map((ex) => (

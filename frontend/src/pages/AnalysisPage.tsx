@@ -1,6 +1,7 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RefreshCw, Download, CheckCircle2 } from 'lucide-react';
+import { RefreshCw, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,9 @@ import { RecoveryTierCard } from '@/components/bia/RecoveryTierCard';
 import { RiskMatrix } from '@/components/dashboard/RiskMatrix';
 import { SeverityBadge } from '@/components/common/SeverityBadge';
 import { LoadingState } from '@/components/common/LoadingState';
+import { ValidateAllButton } from '@/components/analysis/ValidateAllButton';
+import { ExportPanel } from '@/components/analysis/ExportPanel';
+import { RedundancyGraph } from '@/components/analysis/RedundancyGraph';
 import { biaApi } from '@/api/bia.api';
 import { risksApi } from '@/api/risks.api';
 import { analysisApi } from '@/api/analysis.api';
@@ -17,6 +21,7 @@ import type { Risk } from '@/types/risks.types';
 
 export function AnalysisPage() {
   const queryClient = useQueryClient();
+  const [exportOpen, setExportOpen] = useState(false);
 
   const biaQuery = useQuery({
     queryKey: ['bia-entries'],
@@ -65,15 +70,6 @@ export function AnalysisPage() {
     },
   });
 
-  const validateAllMutation = useMutation({
-    mutationFn: () => biaApi.validateAll(),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['bia-summary'] });
-      toast.success('Toutes les entrees validees');
-    },
-  });
-
   const biaData = biaQuery.data as any;
   const entries = Array.isArray(biaData) ? biaData : (biaData?.entries ?? []);
   const summary = biaSummaryQuery.data;
@@ -97,17 +93,24 @@ export function AnalysisPage() {
 
         {/* BIA Tab */}
         <TabsContent value="bia" className="space-y-6">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Button variant="outline" size="sm" onClick={() => regenerateMutation.mutate()} disabled={regenerateMutation.isPending}>
               <RefreshCw className="mr-2 h-4 w-4" /> Regenerer le BIA
             </Button>
-            <Button variant="outline" size="sm" onClick={() => { biaApi.exportCSV(); }}>
-              <Download className="mr-2 h-4 w-4" /> Exporter CSV
+            <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+              <Download className="mr-2 h-4 w-4" /> Exporter
             </Button>
-            <Button variant="outline" size="sm" onClick={() => validateAllMutation.mutate()}>
-              <CheckCircle2 className="mr-2 h-4 w-4" /> Valider tout
-            </Button>
+            <ValidateAllButton
+              entries={entries.map((e: any) => ({ id: e.id, serviceName: e.serviceName }))}
+            />
           </div>
+
+          {/* Export Panel (Drawer) */}
+          <ExportPanel
+            open={exportOpen}
+            onOpenChange={setExportOpen}
+            totalRows={entries.length}
+          />
 
           {summary && (
             <BIAValidation totalServices={summary.totalServices} validatedCount={summary.validatedCount} />
@@ -171,33 +174,9 @@ export function AnalysisPage() {
           </Card>
         </TabsContent>
 
-        {/* Redundancy Tab */}
+        {/* Redundancy Tab — Enhanced with RedundancyGraph */}
         <TabsContent value="redundancy" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Analyse de redondance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {redundancy.map((item) => (
-                  <div key={item.nodeId} className="flex items-center justify-between rounded-lg border p-3">
-                    <div>
-                      <p className="font-medium">{item.nodeName}</p>
-                      <p className="text-xs text-muted-foreground">{item.nodeType}</p>
-                    </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <span>Score: {item.redundancyScore}/100</span>
-                      <span>Multi-AZ: {item.multiAZ ? 'Oui' : 'Non'}</span>
-                      <span>Replicas: {item.replicas}</span>
-                    </div>
-                  </div>
-                ))}
-                {redundancy.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Aucune donnee de redondance disponible.</p>
-                )}
-              </div>
-            </CardContent>
-          </Card>
+          <RedundancyGraph data={redundancy} />
         </TabsContent>
 
         {/* Regional Tab */}
