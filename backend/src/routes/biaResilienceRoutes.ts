@@ -8,6 +8,8 @@ import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
+import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
+import type { InfraNodeAttrs } from '../graph/types.js';
 
 const router = Router();
 
@@ -118,25 +120,54 @@ router.get('/entries', async (req: TenantRequest, res) => {
       });
     }
 
-    const entries = report.processes.map(p => ({
+    const graph = await GraphService.getGraph(prisma, tenantId);
+
+    const entries = report.processes.map((p) => {
+      const node = graph.hasNode(p.serviceNodeId)
+        ? (graph.getNodeAttributes(p.serviceNodeId) as InfraNodeAttrs)
+        : undefined;
+
+      const fallbackNode: InfraNodeAttrs = {
+        id: p.serviceNodeId,
+        name: p.serviceName,
+        type: p.serviceType,
+        provider: 'unknown',
+        tags: {},
+        metadata: {},
+        criticalityScore: p.criticalityScore,
+      };
+
+      const suggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
+        graph,
+        explicitCriticalityScore: p.criticalityScore,
+      });
+
+      const validated = p.validationStatus === 'validated';
+
+      return {
       id: p.id,
       nodeId: p.serviceNodeId,
       serviceName: p.serviceName,
       serviceType: p.serviceType,
       tier: p.recoveryTier,
-      rto: p.validatedRTO ?? p.suggestedRTO,
-      rpo: p.validatedRPO ?? p.suggestedRPO,
-      mtpd: p.validatedMTPD ?? p.suggestedMTPD,
-      rtoSuggested: p.suggestedRTO,
-      rpoSuggested: p.suggestedRPO,
-      mtpdSuggested: p.suggestedMTPD,
-      validated: p.validationStatus === 'validated',
+      rto: p.validatedRTO ?? null,
+      rpo: p.validatedRPO ?? null,
+      mtpd: p.validatedMTPD ?? null,
+      rtoSuggested: suggestion.rto,
+      rpoSuggested: suggestion.rpo,
+      mtpdSuggested: suggestion.mtpd,
+      validated,
+      suggestion,
+      effectiveRto: p.validatedRTO ?? suggestion.rto,
+      effectiveRpo: p.validatedRPO ?? suggestion.rpo,
+      effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
       financialImpactPerHour: (p.financialImpact as any)?.estimatedCostPerHour || 0,
       dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
       criticalityScore: p.criticalityScore,
       impactCategory: p.impactCategory,
       validationStatus: p.validationStatus,
-    }));
+      };
+    });
 
     return res.json({
       entries,
