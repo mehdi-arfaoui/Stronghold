@@ -42,6 +42,8 @@ import reportRoutes from "./routes/reportRoutes.js";
 import exerciseResilienceRoutes from "./routes/exerciseResilienceRoutes.js";
 import integrationsRoutes from "./routes/integrationsRoutes.js";
 import currencyRoutes from "./routes/currencyRoutes.js";
+import recommendationEngineRoutes from "./routes/recommendationEngineRoutes.js";
+import knowledgeBaseRoutes from "./routes/knowledgeBaseRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -557,6 +559,8 @@ const routes = [
   { path: "/exercises-resilience", handler: exerciseResilienceRoutes, name: "exerciseResilienceRoutes" },
   { path: "/integrations", handler: integrationsRoutes, name: "integrationsRoutes" },
   { path: "/currency", handler: currencyRoutes, name: "currencyRoutes" },
+  { path: "/recommendations", handler: recommendationEngineRoutes, name: "recommendationEngineRoutes" },
+  { path: "/knowledge-base", handler: knowledgeBaseRoutes, name: "knowledgeBaseRoutes" },
 ];
 
 for (const route of routes) {

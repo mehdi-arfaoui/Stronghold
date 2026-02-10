@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -73,8 +74,30 @@ interface RecommendationsEngineProps {
   className?: string;
 }
 
+
+const priorityBadgeClass: Record<string, string> = {
+  P0: 'bg-red-500/10 text-red-700 border-red-500/20',
+  P1: 'bg-orange-500/10 text-orange-700 border-orange-500/20',
+  P2: 'bg-yellow-500/10 text-yellow-700 border-yellow-500/20',
+  P3: 'bg-blue-500/10 text-blue-700 border-blue-500/20',
+};
+
+function getSourceLabel(source?: string) {
+  if (source === 'rule') return '🔧 Regle';
+  if (source === 'normative') return '📋 Norme';
+  if (source === 'ai') return '🤖 IA';
+  return '🔧 Regle';
+}
+
+function getConfidenceLabel(confidence?: string) {
+  if (confidence === 'high') return '🟢 Haute';
+  if (confidence === 'medium') return '🟡 Moyenne';
+  return '🔴 Faible';
+}
+
 export function RecommendationsEngine({ className }: RecommendationsEngineProps) {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [currency, setCurrency] = useState('EUR');
   const [sortBy, setSortBy] = useState<SortField>('priority');
@@ -102,6 +125,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     queryFn: async () => (await recommendationsApi.getAll()).data,
   });
 
+  const hybridQuery = useQuery({
+    queryKey: ['recommendations-hybrid'],
+    queryFn: async () => (await recommendationsApi.getHybrid()).data.recommendations ?? [],
+  });
+
   const summaryQuery = useQuery({
     queryKey: ['recommendations-summary'],
     queryFn: async () => (await recommendationsApi.getSummary()).data,
@@ -126,7 +154,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
     updateMutation.mutate({ id: rec.id, accepted: true });
 
-    toast.success(`"${rec.serviceName}" integree au plan`, {
+    toast.success(`"${rec.serviceName ?? rec.title ?? 'Recommandation'}" integree au plan`, {
       duration: 5000,
       action: {
         label: 'Annuler',
@@ -163,7 +191,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     setRejectReason('not_priority');
     setRejectNote('');
 
-    toast(`"${rec.serviceName}" rejetee — ${reasonLabel}`, {
+    toast(`"${rec.serviceName ?? rec.title ?? 'Recommandation'}" rejetee — ${reasonLabel}`, {
       duration: 5000,
       action: {
         label: 'Annuler',
@@ -186,9 +214,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const recs = useMemo(() => {
     const data = recsQuery.data ?? [];
     return [...data].sort((a: Recommendation, b: Recommendation) => {
-      if (sortBy === 'cost') return a.estimatedCost - b.estimatedCost;
-      if (sortBy === 'roi') return b.roi - a.roi;
-      return a.priority - b.priority;
+      if (sortBy === 'cost') return (a.estimatedCost ?? 0) - (b.estimatedCost ?? 0);
+      if (sortBy === 'roi') return (b.roi ?? 0) - (a.roi ?? 0);
+      return Number(a.priority ?? 0) - Number(b.priority ?? 0);
     });
   }, [recsQuery.data, sortBy]);
 
@@ -210,7 +238,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const getEffectiveStatus = (rec: Recommendation): boolean | null => {
     const override = localOverrides.get(rec.id);
     if (override) return override.accepted;
-    return rec.accepted;
+    return rec.accepted ?? null;
   };
 
   const isLoading = recsQuery.isLoading;
@@ -291,6 +319,53 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </div>
       </div>
 
+
+      {hybridQuery.data && hybridQuery.data.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Recommandations hybrides (regles + normes)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {hybridQuery.data.map((item) => {
+              const priority = typeof item.priority === 'string' ? item.priority : 'P3';
+              return (
+                <div key={item.id} className="rounded-lg border p-3">
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <Badge variant="outline" className={priorityBadgeClass[priority] ?? priorityBadgeClass.P3}>{priority}</Badge>
+                    <Badge variant="secondary">{getSourceLabel(item.source)}</Badge>
+                    <Badge variant="secondary">{getConfidenceLabel(item.confidence)}</Badge>
+                    {item.normativeReference && (
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Badge variant="outline" className="cursor-help">📎 Ref</Badge>
+                        </TooltipTrigger>
+                        <TooltipContent>{item.normativeReference}</TooltipContent>
+                      </Tooltip>
+                    )}
+                  </div>
+                  <p className="text-sm font-medium">{item.title ?? item.serviceName ?? 'Recommandation'}</p>
+                  <p className="text-sm text-muted-foreground">{item.description ?? 'Aucune description.'}</p>
+                  <p className="mt-1 text-sm">Action: {item.action ?? item.notes ?? 'Non precisee.'}</p>
+                  <div className="mt-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        const ids = item.affectedNodeIds ?? [];
+                        const query = ids.length > 0 ? `?focus=${ids.join(',')}` : '';
+                        navigate(`/discovery${query}`);
+                      }}
+                    >
+                      Voir dans le graphe
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
+
       {/* Summary Cards */}
       {summary && (
         <div className="grid gap-4 sm:grid-cols-3">
@@ -336,7 +411,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         <div className="space-y-3">
           {recs.map((rec: Recommendation, index: number) => {
             const isExpanded = expandedId === rec.id;
-            const strategyInfo = STRATEGY_INFO[rec.strategy];
+            const strategyInfo = rec.strategy ? STRATEGY_INFO[rec.strategy] : undefined;
             const isTopPriority = index < 3;
 
             return (
@@ -362,7 +437,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                             <Star className="h-3 w-3" /> Top Priorite
                           </Badge>
                         )}
-                        <h3 className="font-semibold">{rec.serviceName}</h3>
+                        <h3 className="font-semibold">{rec.serviceName ?? rec.title ?? rec.id}</h3>
                         <Badge variant="outline">Tier {rec.tier}</Badge>
                         {strategyInfo && (
                           <Badge className={strategyInfo.color}>{strategyInfo.label}</Badge>
@@ -372,11 +447,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                       <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <DollarSign className="h-3.5 w-3.5" />
-                          {formatAmount(rec.estimatedCost)}/mois
+                          {formatAmount(rec.estimatedCost ?? 0)}/mois
                         </span>
                         <span className="flex items-center gap-1">
                           <TrendingUp className="h-3.5 w-3.5" />
-                          ROI: {rec.roi}x
+                          ROI: {rec.roi ?? 0}x
                         </span>
                       </div>
                     </button>
@@ -487,12 +562,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                       <div className="grid grid-cols-3 gap-4 text-sm">
                         <div className="text-center p-3 rounded-lg border">
                           <DollarSign className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                          <p className="font-bold">{formatAmount(rec.estimatedCost)}</p>
+                          <p className="font-bold">{formatAmount(rec.estimatedCost ?? 0)}</p>
                           <p className="text-xs text-muted-foreground">par mois</p>
                         </div>
                         <div className="text-center p-3 rounded-lg border">
                           <TrendingUp className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                          <p className="font-bold">{rec.roi}x</p>
+                          <p className="font-bold">{rec.roi ?? 0}x</p>
                           <p className="text-xs text-muted-foreground">ROI estime</p>
                         </div>
                         <div className="text-center p-3 rounded-lg border">
@@ -538,10 +613,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
               {/* Points */}
               {recs.map((rec: Recommendation) => {
-                const maxCost = Math.max(...recs.map((r: Recommendation) => r.estimatedCost), 1);
-                const effortPercent = Math.min((rec.estimatedCost / maxCost) * 80 + 10, 90);
-                const impactPercent = Math.min(rec.roi * 20 + 10, 90);
-                const strategyInfo = STRATEGY_INFO[rec.strategy];
+                const maxCost = Math.max(...recs.map((r: Recommendation) => r.estimatedCost ?? 0), 1);
+                const effortPercent = Math.min(((rec.estimatedCost ?? 0) / maxCost) * 80 + 10, 90);
+                const impactPercent = Math.min((rec.roi ?? 0) * 20 + 10, 90);
+                const strategyInfo = rec.strategy ? STRATEGY_INFO[rec.strategy] : undefined;
 
                 return (
                   <Tooltip key={rec.id}>
@@ -561,12 +636,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                           transform: 'translate(-50%, 50%)',
                         }}
                         onClick={() => setExpandedId(expandedId === rec.id ? null : rec.id)}
-                        aria-label={`${rec.serviceName} — ${strategyInfo?.label}`}
+                        aria-label={`${rec.serviceName ?? rec.title ?? rec.id} — ${strategyInfo?.label ?? "Strategie"}`}
                       />
                     </TooltipTrigger>
                     <TooltipContent>
-                      <p className="font-medium">{rec.serviceName}</p>
-                      <p className="text-xs">Cout: {formatAmount(rec.estimatedCost)}/mois — ROI: {rec.roi}x</p>
+                      <p className="font-medium">{rec.serviceName ?? rec.title ?? rec.id}</p>
+                      <p className="text-xs">Cout: {formatAmount(rec.estimatedCost ?? 0)}/mois — ROI: {rec.roi ?? 0}x</p>
                     </TooltipContent>
                   </Tooltip>
                 );

@@ -14,6 +14,7 @@ import { ReportPage } from '@/pages/ReportPage';
 import { SettingsPage } from '@/pages/SettingsPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 import { LoginPage } from '@/pages/LoginPage';
+import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { useUIStore } from '@/stores/ui.store';
 import { useEffect } from 'react';
 
@@ -41,6 +42,7 @@ const router = createBrowserRouter([
       { path: '/documents', element: <DocumentsPage /> },
       { path: '/report', element: <ReportPage /> },
       { path: '/settings', element: <SettingsPage /> },
+      { path: '/knowledge-base', element: <KnowledgeBasePage /> },
     ],
   },
   { path: '/login', element: <LoginPage /> },

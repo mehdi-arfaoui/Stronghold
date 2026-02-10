@@ -9,6 +9,7 @@ import {
   AlertTriangle,
   FileText,
   FileDown,
+  BookOpen,
   Settings,
   Shield,
   ChevronLeft,
@@ -40,6 +41,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
       { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
       { label: 'Recommandations', icon: Lightbulb, path: '/recommendations' },
+      { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
     ],
   },
   {

@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Check, AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -22,6 +23,7 @@ import type { InfraNode, InfraEdge } from '@/types/graph.types';
 
 export function DiscoveryPage() {
   const queryClient = useQueryClient();
+  const [searchParams] = useSearchParams();
   const { nodes, edges, allNodes, allEdges, isLoading: graphLoading, availableTypes, availableProviders, availableRegions } = useGraph();
   const { layout, selectedNodeId, setSelectedNode } = useGraphStore();
   const { isScanning, currentJob } = useDiscoveryStore();
@@ -32,6 +34,14 @@ export function DiscoveryPage() {
   useDiscovery(scanJobId ?? undefined);
 
   const selectedNode = allNodes.find((n) => n.id === selectedNodeId);
+
+
+  useEffect(() => {
+    const focusIds = searchParams.get('focus')?.split(',').filter(Boolean) ?? [];
+    if (focusIds.length > 0) {
+      setSelectedNode(focusIds[0] ?? null);
+    }
+  }, [searchParams, setSelectedNode]);
 
   const launchScanMutation = useMutation({
     mutationFn: () => discoveryApi.launchScan({ providers: [] }),
