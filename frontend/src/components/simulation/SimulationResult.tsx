@@ -14,17 +14,17 @@ export function SimulationResult({ result }: SimulationResultProps) {
     <div className="space-y-6">
       {/* Impact metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <MetricCard label="Noeuds down" value={result.nodesDown} variant="critical" />
-        <MetricCard label="Degrades" value={result.nodesDegraded} variant="warning" />
-        <MetricCard label="% infra" value={`${Math.round(result.infrastructureImpact)}%`} />
-        <MetricCard label="Downtime" value={formatDuration(result.estimatedDowntime)} />
-        <MetricCard label="Perte financiere" value={formatCurrency(result.financialLoss)} variant="critical" />
+        <MetricCard label="Noeuds down" value={result.nodesDown ?? 0} variant="critical" />
+        <MetricCard label="Degrades" value={result.nodesDegraded ?? 0} variant="warning" />
+        <MetricCard label="% infra" value={`${Math.round(result.infrastructureImpact ?? 0)}%`} />
+        <MetricCard label="Downtime" value={formatDuration(result.estimatedDowntime ?? 0)} />
+        <MetricCard label="Perte financiere" value={formatCurrency(result.financialLoss ?? 0)} variant="critical" />
         <div className="flex items-center justify-center">
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Score</p>
             <p className="text-lg font-bold">
-              {result.resilienceScoreBefore} <span className="text-muted-foreground">&rarr;</span>{' '}
-              <span className="text-severity-critical">{result.resilienceScoreAfter}</span>
+              {result.resilienceScoreBefore ?? 0} <span className="text-muted-foreground">&rarr;</span>{' '}
+              <span className="text-severity-critical">{result.resilienceScoreAfter ?? 0}</span>
             </p>
           </div>
         </div>
@@ -37,7 +37,7 @@ export function SimulationResult({ result }: SimulationResultProps) {
             <CardTitle className="text-base">Avant</CardTitle>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <ResilienceGauge score={result.resilienceScoreBefore} size={140} />
+            <ResilienceGauge score={result.resilienceScoreBefore ?? 0} size={140} />
           </CardContent>
         </Card>
         <Card>
@@ -45,13 +45,13 @@ export function SimulationResult({ result }: SimulationResultProps) {
             <CardTitle className="text-base">Apres</CardTitle>
           </CardHeader>
           <CardContent className="flex justify-center">
-            <ResilienceGauge score={result.resilienceScoreAfter} size={140} />
+            <ResilienceGauge score={result.resilienceScoreAfter ?? 0} size={140} />
           </CardContent>
         </Card>
       </div>
 
       {/* Impacted services table */}
-      {result.impactedServices.length > 0 && (
+      {(result.impactedServices?.length ?? 0) > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Services business impactes</CardTitle>
@@ -66,17 +66,17 @@ export function SimulationResult({ result }: SimulationResultProps) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {result.impactedServices.map((svc) => (
+                {result.impactedServices?.map((svc) => (
                   <TableRow key={svc.serviceName}>
                     <TableCell className="font-medium">{svc.serviceName}</TableCell>
                     <TableCell>
                       <Badge
-                        variant={svc.impact === 'total' ? 'destructive' : svc.impact === 'degraded' ? 'secondary' : 'outline'}
+                        variant={svc?.impact === 'total' ? 'destructive' : svc?.impact === 'degraded' ? 'secondary' : 'outline'}
                       >
-                        {svc.impact === 'total' ? 'Total' : svc.impact === 'degraded' ? 'Degrade' : 'OK'}
+                        {svc?.impact === 'total' ? 'Total' : svc?.impact === 'degraded' ? 'Degrade' : 'OK'}
                       </Badge>
                     </TableCell>
-                    <TableCell>{svc.impact !== 'none' ? formatDuration(svc.estimatedRTO) : 'N/A'}</TableCell>
+                    <TableCell>{svc?.impact !== 'none' ? formatDuration(svc?.estimatedRTO ?? 0) : 'N/A'}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -86,19 +86,19 @@ export function SimulationResult({ result }: SimulationResultProps) {
       )}
 
       {/* Recommendations */}
-      {result.recommendations.length > 0 && (
+      {(result.recommendations?.length ?? 0) > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="text-base">Recommandations</CardTitle>
           </CardHeader>
           <CardContent>
             <ol className="space-y-2 text-sm">
-              {result.recommendations.map((rec, i) => (
+              {result.recommendations?.map((rec, i) => (
                 <li key={i} className="flex gap-2">
                   <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
                     {i + 1}
                   </span>
-                  <span>{rec}</span>
+                  <span>{`${rec.priority} — ${rec.title}: ${rec.action}`}</span>
                 </li>
               ))}
             </ol>

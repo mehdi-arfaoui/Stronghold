@@ -36,20 +36,18 @@ export function BlastRadiusDrawer({
   const [animationDone, setAnimationDone] = useState(false);
   const animRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const totalSteps = result.cascadeSteps.length;
-  const totalAffected = result.affectedNodes.length;
-  const downNodes = result.affectedNodes.filter((n) => n.status === 'down').length;
-  const degradedNodes = result.affectedNodes.filter((n) => n.status === 'degraded').length;
+  const totalSteps = result.cascadeSteps?.length ?? 0;
+  const totalAffected = result.affectedNodes?.length ?? 0;
+  const downNodes = result.affectedNodes?.filter((n) => n.status === 'down').length ?? 0;
+  const degradedNodes = result.affectedNodes?.filter((n) => n.status === 'degraded').length ?? 0;
   const avgRTO =
-    result.impactedServices.length > 0
+    (result.impactedServices?.length ?? 0) > 0
       ? Math.round(
-          result.impactedServices.reduce((sum, s) => sum + s.estimatedRTO, 0) /
-            result.impactedServices.length
+          (result.impactedServices?.reduce((sum, s) => sum + (s.estimatedRTO ?? 0), 0) ?? 0) /
+            (result.impactedServices?.length ?? 1)
         )
       : 0;
-  const dependenciesAffected = result.impactedServices.filter(
-    (s) => s.impact !== 'none'
-  ).length;
+  const dependenciesAffected = result.impactedServices?.filter((s) => s.impact !== 'none').length ?? 0;
 
   // Cascade reveal animation
   const startReveal = useCallback(() => {
@@ -64,7 +62,11 @@ export function BlastRadiusDrawer({
         return;
       }
 
-      const cascadeStep = result.cascadeSteps[step];
+      const cascadeStep = result.cascadeSteps?.[step];
+      if (!cascadeStep) {
+        setAnimationDone(true);
+        return;
+      }
       setRevealedSteps(step + 1);
       setRevealedNodes((prev) => {
         const next = new Set(prev);
@@ -124,9 +126,9 @@ export function BlastRadiusDrawer({
                 Propagation en cascade
               </h3>
               <div className="space-y-3">
-                {result.cascadeSteps.map((step, i) => {
+                {(result.cascadeSteps ?? []).map((step, i) => {
                   const isRevealed = i < revealedSteps;
-                  const nodesInStep = result.affectedNodes.filter((n) =>
+                  const nodesInStep = (result.affectedNodes ?? []).filter((n) =>
                     step.nodesAffected.includes(n.nodeId)
                   );
 
@@ -182,17 +184,17 @@ export function BlastRadiusDrawer({
             </div>
 
             {/* Impact summary after animation completes */}
-            {animationDone && result.recommendations.length > 0 && (
+            {animationDone && (result.recommendations?.length ?? 0) > 0 && (
               <div className="mt-4 rounded-lg border border-severity-medium/30 bg-severity-medium/5 p-4">
                 <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold">
                   <AlertTriangle className="h-4 w-4 text-severity-medium" />
                   Recommandations immediates
                 </h4>
                 <ul className="space-y-1">
-                  {result.recommendations.slice(0, 4).map((rec, i) => (
-                    <li key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
+                  {result.recommendations?.slice(0, 4).map((rec) => (
+                    <li key={rec.id} className="flex items-start gap-2 text-xs text-muted-foreground">
                       <span className="mt-1 shrink-0 text-severity-medium">•</span>
-                      {rec}
+                      <span>{`${rec.priority} — ${rec.title}`}</span>
                     </li>
                   ))}
                 </ul>
@@ -209,7 +211,7 @@ export function BlastRadiusDrawer({
             <MetricCard
               icon={Zap}
               label="Impact infrastructure"
-              value={`${Math.round(result.infrastructureImpact)}%`}
+              value={`${Math.round(result.infrastructureImpact ?? 0)}%`}
               color="text-severity-critical"
               revealed={revealedSteps > 0}
             />
@@ -235,7 +237,7 @@ export function BlastRadiusDrawer({
             <MetricCard
               icon={DollarSign}
               label="Cout estime du downtime"
-              value={formatCurrency(result.financialLoss)}
+              value={formatCurrency(result.financialLoss ?? 0)}
               color="text-severity-high"
               revealed={animationDone}
             />

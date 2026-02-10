@@ -1,7 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { simulationsApi } from '@/api/simulations.api';
 import { useSimulationStore } from '@/stores/simulation.store';
-import type { Simulation, SimulationConfig, SimulationResult } from '@/types/simulation.types';
+import type {
+  Simulation,
+  SimulationConfig,
+  SimulationRecommendation,
+  SimulationResult,
+} from '@/types/simulation.types';
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -9,12 +14,49 @@ function isObject(value: unknown): value is UnknownRecord {
   return value !== null && typeof value === 'object';
 }
 
+function mapRecommendation(raw: unknown, index: number): SimulationRecommendation {
+  const rec = isObject(raw) ? raw : {};
+  const priorityRaw = String(rec.priority ?? 'P2');
+  const priority: SimulationRecommendation['priority'] =
+    priorityRaw === 'P0' || priorityRaw === 'P1' || priorityRaw === 'P2' ? priorityRaw : 'P2';
+  const effortRaw = String(rec.effort ?? 'medium');
+  const effort: SimulationRecommendation['effort'] =
+    effortRaw === 'low' || effortRaw === 'medium' || effortRaw === 'high' ? effortRaw : 'medium';
+  const categoryRaw = String(rec.category ?? 'process');
+  const category: SimulationRecommendation['category'] =
+    categoryRaw === 'failover' ||
+    categoryRaw === 'backup' ||
+    categoryRaw === 'redundancy' ||
+    categoryRaw === 'isolation' ||
+    categoryRaw === 'monitoring' ||
+    categoryRaw === 'process'
+      ? categoryRaw
+      : 'process';
+
+  return {
+    id: String(rec.id ?? `rec-${index}`),
+    priority,
+    title: String(rec.title ?? 'Recommendation'),
+    description: String(rec.description ?? ''),
+    action: String(rec.action ?? rec.title ?? 'Investigate and remediate'),
+    estimatedRto: Number(rec.estimatedRto ?? 0),
+    affectedNodes: Array.isArray(rec.affectedNodes)
+      ? rec.affectedNodes.map((n, i) => String(n ?? `node-${i}`))
+      : [],
+    category,
+    effort,
+    normativeReference: rec.normativeReference ? String(rec.normativeReference) : undefined,
+  };
+}
+
 function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
   const directlyAffected = Array.isArray(raw.directlyAffected) ? raw.directlyAffected : [];
   const cascadeImpacted = Array.isArray(raw.cascadeImpacted) ? raw.cascadeImpacted : [];
   const businessImpact = Array.isArray(raw.businessImpact) ? raw.businessImpact : [];
   const metrics = isObject(raw.metrics) ? raw.metrics : {};
-  const recommendations = Array.isArray(raw.recommendations) ? raw.recommendations : [];
+  const recommendationsRaw = Array.isArray(raw.recommendations) ? raw.recommendations : [];
+  const blastRadiusMetricsRaw = isObject(raw.blastRadiusMetrics) ? raw.blastRadiusMetrics : {};
+  const warRoomDataRaw = isObject(raw.warRoomData) ? raw.warRoomData : {};
 
   const affectedNodes = [
     ...directlyAffected.map((node, index) => {
@@ -33,11 +75,13 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
         nodeId: String(n.id ?? `cascade-${index}`),
         nodeName: String(n.name ?? 'Node'),
         nodeType: String(n.type ?? 'UNKNOWN'),
-        status: n.status === 'degraded' ? 'degraded' as const : 'down' as const,
-        cascadeLevel: Number(n.level ?? 1),
+        status: n.status === 'degraded' ? ('degraded' as const) : ('down' as const),
+        cascadeLevel: Number(n.cascadeDepth ?? n.level ?? 1),
       };
     }),
   ];
+
+  const mappedRecommendations = recommendationsRaw.map((rec, index) => mapRecommendation(rec, index));
 
   return {
     nodesDown: affectedNodes.filter((n) => n.status === 'down').length,
@@ -52,20 +96,92 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
     impactedServices: businessImpact.map((service) => {
       const s = isObject(service) ? service : {};
       return {
-        serviceName: String(s.name ?? 'Service'),
-        impact: s.impactLevel === 'critical' ? 'total' as const : 'degraded' as const,
+        serviceName: String(s.serviceName ?? s.name ?? 'Service'),
+        impact: s.impact === 'total_outage' ? ('total' as const) : ('degraded' as const),
         estimatedRTO: Number(s.estimatedRTO ?? 60),
       };
     }),
-    recommendations: recommendations.map((rec) => {
-      if (!isObject(rec)) return String(rec);
-      return String(rec.message ?? rec.action ?? 'Recommendation');
-    }),
+    recommendations: mappedRecommendations,
+    blastRadiusMetrics: {
+      totalNodesImpacted: Number(blastRadiusMetricsRaw.totalNodesImpacted ?? affectedNodes.length),
+      totalNodesInGraph: Number(blastRadiusMetricsRaw.totalNodesInGraph ?? 0),
+      impactPercentage: Number(blastRadiusMetricsRaw.impactPercentage ?? metrics.percentageInfraAffected ?? 0),
+      criticalServicesImpacted: Number(blastRadiusMetricsRaw.criticalServicesImpacted ?? 0),
+      estimatedDowntimeMinutes: Number(blastRadiusMetricsRaw.estimatedDowntimeMinutes ?? metrics.estimatedDowntimeMinutes ?? 0),
+      propagationDepth: Number(blastRadiusMetricsRaw.propagationDepth ?? 0),
+      recoveryComplexity:
+        blastRadiusMetricsRaw.recoveryComplexity === 'medium' ||
+        blastRadiusMetricsRaw.recoveryComplexity === 'high' ||
+        blastRadiusMetricsRaw.recoveryComplexity === 'critical'
+          ? blastRadiusMetricsRaw.recoveryComplexity
+          : 'low',
+    },
+    warRoomData: {
+      propagationTimeline: Array.isArray(warRoomDataRaw.propagationTimeline)
+        ? warRoomDataRaw.propagationTimeline.map((event, index) => {
+            const e = isObject(event) ? event : {};
+            return {
+              timestampMinutes: Number(e.timestampMinutes ?? index),
+              nodeId: String(e.nodeId ?? `node-${index}`),
+              nodeName: String(e.nodeName ?? 'Node'),
+              nodeType: String(e.nodeType ?? 'UNKNOWN'),
+              impactType:
+                e.impactType === 'cascade' || e.impactType === 'degraded'
+                  ? e.impactType
+                  : ('direct' as const),
+              impactSeverity:
+                e.impactSeverity === 'major' || e.impactSeverity === 'minor'
+                  ? e.impactSeverity
+                  : ('critical' as const),
+              description: String(e.description ?? 'Propagation event'),
+            };
+          })
+        : [],
+      impactedNodes: Array.isArray(warRoomDataRaw.impactedNodes)
+        ? warRoomDataRaw.impactedNodes.map((node, index) => {
+            const n = isObject(node) ? node : {};
+            const statusRaw = String(n.status ?? 'at_risk');
+            return {
+              id: String(n.id ?? `impacted-${index}`),
+              name: String(n.name ?? 'Node'),
+              type: String(n.type ?? 'UNKNOWN'),
+              status:
+                statusRaw === 'down' ||
+                statusRaw === 'degraded' ||
+                statusRaw === 'healthy' ||
+                statusRaw === 'at_risk'
+                  ? statusRaw
+                  : ('at_risk' as const),
+              impactedAt: Number(n.impactedAt ?? 0),
+              estimatedRecovery: Number(n.estimatedRecovery ?? 60),
+            };
+          })
+        : [],
+      remediationActions: Array.isArray(warRoomDataRaw.remediationActions)
+        ? warRoomDataRaw.remediationActions.map((action, index) => {
+            const a = isObject(action) ? action : {};
+            const statusRaw = String(a.status ?? 'pending');
+            const priorityRaw = String(a.priority ?? 'P2');
+            return {
+              id: String(a.id ?? `action-${index}`),
+              title: String(a.title ?? 'Remediation action'),
+              status:
+                statusRaw === 'in_progress' || statusRaw === 'completed'
+                  ? statusRaw
+                  : ('pending' as const),
+              priority:
+                priorityRaw === 'P0' || priorityRaw === 'P1' || priorityRaw === 'P2'
+                  ? priorityRaw
+                  : ('P2' as const),
+            };
+          })
+        : [],
+    },
     cascadeSteps: cascadeImpacted.map((node, index) => {
       const n = isObject(node) ? node : {};
       return {
         step: index + 1,
-        description: String(n.reason ?? n.name ?? 'Propagation'),
+        description: String(n.reason ?? n.cascadeReason ?? n.name ?? 'Propagation'),
         nodesAffected: [String(n.id ?? `cascade-${index}`)],
       };
     }),
@@ -112,9 +228,7 @@ function normalizeSimulationList(raw: unknown): Simulation[] {
   }
 
   if (isObject(raw) && Array.isArray(raw.simulations)) {
-    return raw.simulations
-      .map(normalizeSimulation)
-      .filter((s): s is Simulation => !!s);
+    return raw.simulations.map(normalizeSimulation).filter((s): s is Simulation => !!s);
   }
 
   return [];
@@ -160,11 +274,13 @@ export function useSimulation(id?: string) {
   });
 
   return {
-    simulation: simulationQuery.data,
-    simulationLoading: simulationQuery.isLoading,
+    simulationQuery,
+    simulationsListQuery,
+    createMutation,
+    simulation: simulationQuery.data ?? null,
     simulations: simulationsListQuery.data ?? [],
     simulationsLoading: simulationsListQuery.isLoading,
-    createSimulation: createMutation.mutateAsync,
+    createSimulation: async (config: SimulationConfig) => createMutation.mutateAsync(config),
     isCreating: createMutation.isPending,
   };
 }

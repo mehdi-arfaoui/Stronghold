@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { RESILIENCE_THRESHOLDS } from '@/lib/constants';
 
 interface ResilienceGaugeProps {
@@ -8,10 +8,18 @@ interface ResilienceGaugeProps {
 }
 
 export function ResilienceGauge({ score, size = 200, showLabel = true }: ResilienceGaugeProps) {
+  const [animatedScore, setAnimatedScore] = useState(0);
+
+  useEffect(() => {
+    setAnimatedScore(0);
+    const raf = requestAnimationFrame(() => setAnimatedScore(score ?? 0));
+    return () => cancelAnimationFrame(raf);
+  }, [score]);
+
   const { color, circumference, offset } = useMemo(() => {
     const radius = (size - 20) / 2;
     const c = 2 * Math.PI * radius;
-    const clampedScore = Math.max(0, Math.min(100, score));
+    const clampedScore = Math.max(0, Math.min(100, animatedScore ?? 0));
     const o = c - (clampedScore / 100) * c;
 
     let col: string;
@@ -24,7 +32,7 @@ export function ResilienceGauge({ score, size = 200, showLabel = true }: Resilie
     }
 
     return { color: col, circumference: c, offset: o };
-  }, [score, size]);
+  }, [animatedScore, size]);
 
   const center = size / 2;
   const radius = (size - 20) / 2;
@@ -62,7 +70,7 @@ export function ResilienceGauge({ score, size = 200, showLabel = true }: Resilie
       {/* Center text */}
       <div className="absolute inset-0 flex flex-col items-center justify-center">
         <span className="text-4xl font-bold" style={{ color }}>
-          {Math.round(score)}
+          {Math.round(animatedScore ?? 0)}
         </span>
         {showLabel && <span className="text-sm text-muted-foreground">/100</span>}
       </div>
