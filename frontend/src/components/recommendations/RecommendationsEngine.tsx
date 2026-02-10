@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -16,13 +16,11 @@ import {
   Loader2,
   TrendingUp,
   RefreshCw,
-  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/formatters';
@@ -86,7 +84,6 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const [rejectNote, setRejectNote] = useState('');
   // Track local overrides for optimistic UI (accepted/rejected status + animation)
   const [localOverrides, setLocalOverrides] = useState<Map<string, { accepted: boolean; notes?: string }>>(new Map());
-  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Fetch live exchange rates from backend
   const ratesQuery = useQuery({

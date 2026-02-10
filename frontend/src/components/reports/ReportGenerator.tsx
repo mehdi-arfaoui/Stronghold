@@ -246,10 +246,10 @@ function ReportGeneratorInner({ className }: ReportGeneratorProps) {
   const prereqs: ReportPrerequisite[] = Array.isArray(rawPrereqs) ? rawPrereqs : [];
   const allMet = prereqs.length > 0 && prereqs.every((p) => p.met);
 
-  const rawSimulations = simulationsQuery.data;
+  const rawSimulations: unknown = simulationsQuery.data;
   const simulations: Simulation[] = Array.isArray(rawSimulations)
     ? rawSimulations
-    : Array.isArray((rawSimulations as Record<string, unknown>)?.simulations)
+    : rawSimulations != null && typeof rawSimulations === 'object' && Array.isArray((rawSimulations as Record<string, unknown>).simulations)
       ? ((rawSimulations as Record<string, unknown>).simulations as Simulation[])
       : [];
 
