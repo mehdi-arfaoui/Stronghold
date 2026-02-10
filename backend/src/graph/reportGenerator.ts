@@ -213,9 +213,13 @@ export async function generatePraPcaReport(
   // 5. Load simulations
   const simulations = await loadSimulations(prisma, tenantId, config.includeSimulations);
 
-  // 6. Load exercises (if requested)
-  const exercises = config.includeExercises
-    ? await loadExercises(prisma, tenantId, config.includeExercises)
+  // 6. Load exercises (only when explicitly selected)
+  const includeExercises = Array.isArray(config.includeExercises)
+    ? config.includeExercises.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : [];
+
+  const exercises = includeExercises.length > 0
+    ? await loadExercises(prisma, tenantId, includeExercises)
     : null;
 
   // 7. Build report

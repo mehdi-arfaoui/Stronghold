@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScenarioSelector } from '@/components/simulation/ScenarioSelector';
@@ -47,7 +48,11 @@ export function SimulationPage() {
         params,
       };
       const result = await createSimulation(config);
-      setActiveSimId(result.data.id);
+      if (!result) {
+        throw new Error('Simulation response is empty');
+      }
+
+      setActiveSimId(result.id);
       setParamsOpen(false);
       setBlastRadiusOpen(true);
       toast.success('Simulation lancee');
@@ -114,15 +119,11 @@ export function SimulationPage() {
       {/* Active simulation result */}
       {simulation?.result && !warRoomOpen && (
         <>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold">Resultats</h2>
-            <button
-              type="button"
-              onClick={() => setWarRoomOpen(true)}
-              className="text-sm text-primary hover:underline"
-            >
+            <Button type="button" variant="outline" onClick={() => setWarRoomOpen(true)}>
               Ouvrir la War Room
-            </button>
+            </Button>
           </div>
 
           <SimulationResult result={simulation.result} />
@@ -163,6 +164,7 @@ export function SimulationPage() {
                   <TableHead>Impact</TableHead>
                   <TableHead>Score</TableHead>
                   <TableHead>Statut</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -188,6 +190,21 @@ export function SimulationPage() {
                       <Badge variant={sim.status === 'completed' ? 'default' : sim.status === 'failed' ? 'destructive' : 'secondary'}>
                         {sim.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {sim.status === 'completed' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveSimId(sim.id);
+                            setWarRoomOpen(true);
+                          }}
+                        >
+                          Ouvrir la War Room
+                        </Button>
+                      )}
                     </TableCell>
                   </TableRow>
                 ))}
