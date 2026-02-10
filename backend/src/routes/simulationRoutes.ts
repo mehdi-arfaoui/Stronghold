@@ -6,7 +6,9 @@ import { Router } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
-import { runSimulation, SCENARIO_TEMPLATES, getScenarioOptions } from '../graph/simulationEngine.js';
+import { runSimulation, getScenarioOptions } from '../graph/simulationEngine.js';
+import { SCENARIO_LIBRARY } from '../simulations/data/scenario-library.js';
+import { computeRecoveryPriorities } from '../simulations/recovery-priority.js';
 
 const router = Router();
 
@@ -96,20 +98,49 @@ router.get('/templates', async (req: TenantRequest, res) => {
     const graph = await GraphService.getGraph(prisma, tenantId);
     const dynamicOptions = getScenarioOptions(graph);
 
-    const templates = SCENARIO_TEMPLATES.map(t => ({
-      ...t,
-      dynamicOptions: {
-        regions: dynamicOptions.regions,
-        azs: dynamicOptions.azs,
-        databases: dynamicOptions.databases,
-        vpcs: dynamicOptions.vpcs,
-        thirdParty: dynamicOptions.thirdParty,
-      },
+    const templates = SCENARIO_LIBRARY.map((template) => ({
+      ...template,
+      configurableParams: template.configurableParams.map((param) => {
+        if (param.default === 'dynamic_regions') {
+          const regions = dynamicOptions.regions ?? [];
+          return { ...param, options: regions, default: regions[0] ?? 'unknown-region' };
+        }
+        if (param.default === 'dynamic_azs') {
+          const azs = dynamicOptions.azs ?? [];
+          return { ...param, options: azs, default: azs[0] ?? 'unknown-az' };
+        }
+        return param;
+      }),
     }));
 
-    return res.json({ templates });
+    return res.json({ templates, dynamicOptions });
   } catch (error) {
     console.error('Error fetching simulation templates:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /simulations/recovery-priorities — Tiered recovery plan ──────────
+router.get('/recovery-priorities', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    const priorities = computeRecoveryPriorities(graph);
+
+    return res.json({
+      priorities,
+      summary: {
+        total: priorities.length,
+        T0: priorities.filter((p) => p.tier === 'T0').length,
+        T1: priorities.filter((p) => p.tier === 'T1').length,
+        T2: priorities.filter((p) => p.tier === 'T2').length,
+        T3: priorities.filter((p) => p.tier === 'T3').length,
+      },
+    });
+  } catch (error) {
+    console.error('Error computing recovery priorities:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

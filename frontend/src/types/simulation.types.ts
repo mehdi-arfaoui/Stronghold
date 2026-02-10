@@ -1,11 +1,4 @@
-export type ScenarioType =
-  | 'region_loss'
-  | 'ransomware'
-  | 'database_failure'
-  | 'network_partition'
-  | 'third_party_outage'
-  | 'dns_failure'
-  | 'custom';
+export type ScenarioType = string;
 
 export interface SimulationConfig {
   scenarioType: ScenarioType;
@@ -108,4 +101,44 @@ export interface CascadeStep {
   step: number;
   description: string;
   nodesAffected: string[];
+}
+
+
+export type ScenarioCategory = 'cyber' | 'infrastructure' | 'natural' | 'human';
+
+export interface ScenarioTemplate {
+  id: string;
+  name: string;
+  category: ScenarioCategory;
+  icon: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  impactProfile: {
+    targetNodeTypes: string[];
+    propagationSpeed: 'instant' | 'fast' | 'gradual' | 'slow';
+    propagationPattern: 'broadcast' | 'cascade' | 'targeted' | 'random';
+    dataLoss: boolean;
+    serviceInterruption: boolean;
+    integrityCompromise: boolean;
+  };
+  configurableParams: Array<{
+    key: string;
+    label: string;
+    type: 'select' | 'number' | 'boolean';
+    options?: string[];
+    default: unknown;
+  }>;
+  tags: string[];
+  realWorldExample?: string;
+}
+
+export interface RecoveryPriority {
+  nodeId: string;
+  nodeName: string;
+  score: number;
+  tier: 'T0' | 'T1' | 'T2' | 'T3';
+  rto: number;
+  dependentCount: number;
+  criticalityScore: number;
+  reasoning: string;
 }
