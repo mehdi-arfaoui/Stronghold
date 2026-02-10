@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { Simulation, SimulationConfig } from '@/types/simulation.types';
+import type { RecoveryPriority, ScenarioTemplate, Simulation, SimulationConfig } from '@/types/simulation.types';
 
 export const simulationsApi = {
   create: (config: SimulationConfig) =>
@@ -10,6 +10,12 @@ export const simulationsApi = {
 
   getById: (id: string) =>
     api.get<Simulation>(`/simulations/${id}`),
+
+  getTemplates: () =>
+    api.get<{ templates: ScenarioTemplate[] }>('/simulations/templates'),
+
+  getRecoveryPriorities: () =>
+    api.get<{ priorities: RecoveryPriority[] }>('/simulations/recovery-priorities'),
 
   delete: (id: string) =>
     api.delete(`/simulations/${id}`),

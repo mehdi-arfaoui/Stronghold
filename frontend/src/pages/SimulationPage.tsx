@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { ScenarioSelector } from '@/components/simulation/ScenarioSelector';
-import { ScenarioParams } from '@/components/simulation/ScenarioParams';
+import { RecoveryPriorityKanban } from '@/components/simulation/RecoveryPriorityKanban';
 import { SimulationResult } from '@/components/simulation/SimulationResult';
 import { CascadeView } from '@/components/simulation/CascadeView';
 import { BeforeAfterGraph } from '@/components/simulation/BeforeAfterGraph';
@@ -16,12 +16,37 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { useSimulation } from '@/hooks/useSimulation';
 import { useGraph } from '@/hooks/useGraph';
 import { discoveryApi } from '@/api/discovery.api';
+import { simulationsApi } from '@/api/simulations.api';
 import { formatDate } from '@/lib/formatters';
-import type { ScenarioType, SimulationConfig } from '@/types/simulation.types';
+import type { ScenarioTemplate, SimulationConfig } from '@/types/simulation.types';
+
+function mapScenarioToEngine(template: ScenarioTemplate, customParams: Record<string, unknown>, availableNodeIds: string[]): SimulationConfig {
+  if (template.id === 'complete-region-loss') {
+    return { scenarioType: 'region_loss', name: template.name, params: { region: customParams.region ?? 'unknown-region' } };
+  }
+  if (template.id === 'availability-zone-loss') {
+    return { scenarioType: 'az_loss', name: template.name, params: { az: customParams.az ?? 'unknown-az' } };
+  }
+  if (template.id.includes('ransomware')) {
+    return { scenarioType: 'ransomware', name: template.name, params: { targetType: 'VM', ...customParams } };
+  }
+  if (template.id === 'database-corruption') {
+    return { scenarioType: 'database_failure', name: template.name, params: { databases: availableNodeIds.slice(0, 2), ...customParams } };
+  }
+  if (template.id.includes('network-partition')) {
+    return { scenarioType: 'network_partition', name: template.name, params: { vpcA: 'unknown-vpc-a', vpcB: 'unknown-vpc-b', ...customParams } };
+  }
+  if (template.id === 'saas-provider-outage') {
+    return { scenarioType: 'third_party_outage', name: template.name, params: { service: String(customParams.provider ?? 'Cloudflare') } };
+  }
+  if (template.id.includes('ddos')) {
+    return { scenarioType: 'dns_failure', name: template.name, params: customParams };
+  }
+
+  return { scenarioType: 'custom', name: template.name, params: { nodes: availableNodeIds.slice(0, 3), ...customParams } };
+}
 
 export function SimulationPage() {
-  const [selectedScenario, setSelectedScenario] = useState<ScenarioType | null>(null);
-  const [paramsOpen, setParamsOpen] = useState(false);
   const [activeSimId, setActiveSimId] = useState<string | undefined>();
   const [warRoomOpen, setWarRoomOpen] = useState(false);
   const [blastRadiusOpen, setBlastRadiusOpen] = useState(false);
@@ -35,36 +60,32 @@ export function SimulationPage() {
     enabled: activeSimId !== undefined && simulation?.result !== undefined,
   });
 
-  const handleScenarioSelect = (type: ScenarioType) => {
-    setSelectedScenario(type);
-    setParamsOpen(true);
-  };
+  const templateQuery = useQuery({
+    queryKey: ['simulation-templates-library'],
+    queryFn: async () => (await simulationsApi.getTemplates()).data.templates ?? [],
+  });
 
-  const handleLaunch = async (params: Record<string, unknown>) => {
+  const prioritiesQuery = useQuery({
+    queryKey: ['recovery-priorities'],
+    queryFn: async () => (await simulationsApi.getRecoveryPriorities()).data.priorities ?? [],
+  });
+
+  const handleLaunch = async (template: ScenarioTemplate, params: Record<string, unknown>) => {
     try {
-      const config: SimulationConfig = {
-        scenarioType: selectedScenario!,
-        name: (params.name as string) || `Simulation ${selectedScenario}`,
-        params,
-      };
+      const availableNodeIds = (allNodes ?? []).map((node) => node.id).filter(Boolean);
+      const config = mapScenarioToEngine(template, params ?? {}, availableNodeIds);
       const result = await createSimulation(config);
       if (!result) {
         throw new Error('Simulation response is empty');
       }
 
       setActiveSimId(result.id);
-      setParamsOpen(false);
       setBlastRadiusOpen(true);
-      toast.success('Simulation lancee');
+      toast.success('Simulation lancée');
     } catch {
       toast.error('Erreur lors du lancement');
     }
   };
-
-  const availableRegions = [...new Set(allNodes.map((n) => n.region).filter(Boolean) as string[])];
-  const availableDbNodes = allNodes
-    .filter((n) => n.type === 'DATABASE')
-    .map((n) => ({ id: n.id, name: n.name }));
 
   if (simulationsLoading) {
     return <LoadingState message="Chargement des simulations..." />;
@@ -72,26 +93,18 @@ export function SimulationPage() {
 
   return (
     <div className="space-y-6">
-      {/* Scenario selector */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold">Scenarios predefinies</h2>
-        <ScenarioSelector onSelect={handleScenarioSelect} selectedType={selectedScenario ?? undefined} />
+        <h2 className="mb-4 text-lg font-semibold">Scénarios</h2>
+        <ScenarioSelector
+          templates={templateQuery.data ?? []}
+          isLoading={templateQuery.isLoading}
+          isLaunching={isCreating}
+          onLaunch={handleLaunch}
+        />
       </div>
 
-      {/* Params dialog */}
-      {selectedScenario && (
-        <ScenarioParams
-          scenarioType={selectedScenario}
-          open={paramsOpen}
-          onClose={() => setParamsOpen(false)}
-          onLaunch={handleLaunch}
-          isLoading={isCreating}
-          availableRegions={availableRegions}
-          availableNodes={availableDbNodes}
-        />
-      )}
+      <RecoveryPriorityKanban priorities={prioritiesQuery.data ?? []} />
 
-      {/* Blast Radius — impact visualization after simulation creation */}
       {simulation?.result && (
         <BlastRadiusDrawer
           open={blastRadiusOpen && !warRoomOpen}
@@ -105,7 +118,6 @@ export function SimulationPage() {
         />
       )}
 
-      {/* War Room — immersive simulation view */}
       {simulation?.result && (
         <WarRoom
           open={warRoomOpen}
@@ -116,11 +128,10 @@ export function SimulationPage() {
         />
       )}
 
-      {/* Active simulation result */}
       {simulation?.result && !warRoomOpen && (
         <>
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Resultats</h2>
+            <h2 className="text-lg font-semibold">Résultats</h2>
             <Button type="button" variant="outline" onClick={() => setWarRoomOpen(true)}>
               Ouvrir la War Room
             </Button>
@@ -128,20 +139,20 @@ export function SimulationPage() {
 
           <SimulationResult result={simulation.result} />
 
-          {simulation.result.cascadeSteps.length > 0 && (
+          {simulation.result.cascadeSteps?.length > 0 && (
             <CascadeView steps={simulation.result.cascadeSteps} />
           )}
 
           {graphQuery.data && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Graphe avant/apres</CardTitle>
+                <CardTitle className="text-base">Graphe avant/après</CardTitle>
               </CardHeader>
               <CardContent>
                 <BeforeAfterGraph
                   nodes={graphQuery.data.nodes}
                   edges={graphQuery.data.edges}
-                  affectedNodes={simulation.result.affectedNodes}
+                  affectedNodes={simulation.result.affectedNodes ?? []}
                 />
               </CardContent>
             </Card>
@@ -149,7 +160,6 @@ export function SimulationPage() {
         </>
       )}
 
-      {/* History */}
       {simulations.length > 0 && (
         <Card>
           <CardHeader>
