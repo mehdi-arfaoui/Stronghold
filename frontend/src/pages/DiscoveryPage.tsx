@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Check, AlertTriangle, Loader2 } from 'lucide-react';
+import { Check, AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +26,8 @@ export function DiscoveryPage() {
   const { layout, selectedNodeId, setSelectedNode } = useGraphStore();
   const { isScanning, currentJob } = useDiscoveryStore();
   const [scanJobId, setScanJobId] = useState<string | null>(null);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   useDiscovery(scanJobId ?? undefined);
 
@@ -69,6 +71,32 @@ export function DiscoveryPage() {
   }, []);
 
   const inferredCount = allEdges.filter((e) => e.inferred && !e.confirmed).length;
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullScreen(document.fullscreenElement === graphContainerRef.current);
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const handleToggleFullscreen = useCallback(async () => {
+    const target = graphContainerRef.current;
+    if (!target) {
+      return;
+    }
+
+    try {
+      if (document.fullscreenElement === target) {
+        await document.exitFullscreen();
+      } else {
+        await target.requestFullscreen();
+      }
+    } catch {
+      toast.error('Impossible d\'activer le mode plein ecran');
+    }
+  }, []);
 
   if (graphLoading && !isScanning) {
     return <LoadingState message="Chargement du graphe..." />;
@@ -148,9 +176,28 @@ export function DiscoveryPage() {
       />
 
       {/* Main content */}
-      <div className="flex flex-1 gap-0 overflow-hidden rounded-lg border">
+      <div
+        ref={graphContainerRef}
+        className="flex flex-1 gap-0 overflow-hidden rounded-lg border bg-background"
+      >
         {/* Graph */}
         <div className="relative flex-1">
+          <div className="absolute right-4 top-4 z-20">
+            <Button variant="outline" size="sm" onClick={handleToggleFullscreen}>
+              {isFullScreen ? (
+                <>
+                  <Minimize2 className="mr-2 h-4 w-4" />
+                  Quitter le plein ecran
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="mr-2 h-4 w-4" />
+                  Mode Plein Ecran
+                </>
+              )}
+            </Button>
+          </div>
+
           <InfraGraph
             infraNodes={nodes}
             infraEdges={edges}
