@@ -10,6 +10,7 @@ import { SimulationResult } from '@/components/simulation/SimulationResult';
 import { CascadeView } from '@/components/simulation/CascadeView';
 import { BeforeAfterGraph } from '@/components/simulation/BeforeAfterGraph';
 import { WarRoom } from '@/components/simulations/WarRoom';
+import { BlastRadiusDrawer } from '@/components/simulations/BlastRadiusDrawer';
 import { LoadingState } from '@/components/common/LoadingState';
 import { useSimulation } from '@/hooks/useSimulation';
 import { useGraph } from '@/hooks/useGraph';
@@ -22,6 +23,7 @@ export function SimulationPage() {
   const [paramsOpen, setParamsOpen] = useState(false);
   const [activeSimId, setActiveSimId] = useState<string | undefined>();
   const [warRoomOpen, setWarRoomOpen] = useState(false);
+  const [blastRadiusOpen, setBlastRadiusOpen] = useState(false);
 
   const { simulations, simulationsLoading, createSimulation, isCreating, simulation } = useSimulation(activeSimId);
   const { allNodes } = useGraph();
@@ -47,7 +49,7 @@ export function SimulationPage() {
       const result = await createSimulation(config);
       setActiveSimId(result.data.id);
       setParamsOpen(false);
-      setWarRoomOpen(true);
+      setBlastRadiusOpen(true);
       toast.success('Simulation lancee');
     } catch {
       toast.error('Erreur lors du lancement');
@@ -81,6 +83,20 @@ export function SimulationPage() {
           isLoading={isCreating}
           availableRegions={availableRegions}
           availableNodes={availableDbNodes}
+        />
+      )}
+
+      {/* Blast Radius — impact visualization after simulation creation */}
+      {simulation?.result && (
+        <BlastRadiusDrawer
+          open={blastRadiusOpen && !warRoomOpen}
+          onClose={() => setBlastRadiusOpen(false)}
+          onOpenWarRoom={() => {
+            setBlastRadiusOpen(false);
+            setWarRoomOpen(true);
+          }}
+          scenarioName={simulation.name}
+          result={simulation.result}
         />
       )}
 
