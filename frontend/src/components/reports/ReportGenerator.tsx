@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useState, Component } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
   FileDown,
@@ -13,6 +15,11 @@ import {
   Settings,
   Layers,
   RotateCcw,
+  AlertTriangle,
+  ArrowRight,
+  BarChart3,
+  Target,
+  Activity,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -21,8 +28,10 @@ import { Progress } from '@/components/ui/progress';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { reportsApi, type ReportConfig } from '@/api/reports.api';
+import { reportsApi, type ReportConfig, type ReportPrerequisite } from '@/api/reports.api';
 import { simulationsApi } from '@/api/simulations.api';
+import { biaApi } from '@/api/bia.api';
+import type { Simulation } from '@/types/simulation.types';
 
 type ReportTemplate = 'iso22301' | 'dora' | 'nist' | 'custom';
 type ReportFormat = 'pdf' | 'docx' | 'html';
@@ -60,11 +69,143 @@ const DEFAULT_SECTIONS: ReportSection[] = [
   { id: 'annexes', label: 'Annexes techniques', enabled: true },
 ];
 
+// ─── Error Boundary ──────────
+interface ErrorBoundaryProps {
+  children: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class ReportErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ReportGenerator error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="mx-auto max-w-lg py-20 text-center">
+          <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-severity-critical/10">
+            <AlertTriangle className="h-8 w-8 text-severity-critical" />
+          </div>
+          <h2 className="text-xl font-bold mb-2">Une erreur est survenue</h2>
+          <p className="text-sm text-muted-foreground mb-6">
+            Le module de rapport a rencontre un probleme inattendu.
+            {this.state.error?.message && (
+              <span className="block mt-1 font-mono text-xs text-severity-critical">
+                {this.state.error.message}
+              </span>
+            )}
+          </p>
+          <Button
+            onClick={() => this.setState({ hasError: false, error: null })}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Reessayer
+          </Button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
+
+// ─── Empty State ──────────
+function ReportEmptyState() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="mx-auto max-w-lg py-20 text-center">
+      <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+        <FileText className="h-8 w-8 text-muted-foreground" />
+      </div>
+      <h2 className="text-xl font-bold mb-2">Aucun rapport disponible</h2>
+      <p className="text-sm text-muted-foreground mb-6">
+        Completez d'abord une analyse BIA et lancez une simulation
+        pour pouvoir generer votre rapport PRA/PCA.
+      </p>
+      <Button onClick={() => navigate('/analysis')}>
+        Demarrer l'analyse BIA
+        <ArrowRight className="ml-2 h-4 w-4" />
+      </Button>
+    </div>
+  );
+}
+
+// ─── Executive Summary ──────────
+function ExecutiveSummary({
+  prereqs,
+  simulationCount,
+  biaSummary,
+}: {
+  prereqs: ReportPrerequisite[];
+  simulationCount: number;
+  biaSummary: { totalServices: number; validatedCount: number } | null;
+}) {
+  const safePrereqs = Array.isArray(prereqs) ? prereqs : [];
+  const metCount = safePrereqs.filter((p) => p.met).length;
+  const coverage = safePrereqs.length > 0 ? Math.round((metCount / safePrereqs.length) * 100) : 0;
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <Target className="h-8 w-8 text-primary" />
+          <div>
+            <p className="text-xs text-muted-foreground">Processus critiques</p>
+            <p className="text-xl font-bold">{biaSummary?.totalServices ?? 0}</p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <BarChart3 className="h-8 w-8 text-primary" />
+          <div>
+            <p className="text-xs text-muted-foreground">Simulations realisees</p>
+            <p className="text-xl font-bold">{simulationCount}</p>
+          </div>
+        </CardContent>
+      </Card>
+      <Card>
+        <CardContent className="flex items-center gap-3 p-4">
+          <Activity className="h-8 w-8 text-primary" />
+          <div>
+            <p className="text-xs text-muted-foreground">Couverture du plan</p>
+            <p className="text-xl font-bold">{coverage}%</p>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+// ─── Main Component ──────────
 interface ReportGeneratorProps {
   className?: string;
 }
 
 export function ReportGenerator({ className }: ReportGeneratorProps) {
+  return (
+    <ReportErrorBoundary>
+      <ReportGeneratorInner className={className} />
+    </ReportErrorBoundary>
+  );
+}
+
+function ReportGeneratorInner({ className }: ReportGeneratorProps) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentGeneratingSection, setCurrentGeneratingSection] = useState('');
@@ -81,18 +222,42 @@ export function ReportGenerator({ className }: ReportGeneratorProps) {
 
   const prereqsQuery = useQuery({
     queryKey: ['report-prerequisites'],
-    queryFn: async () => (await reportsApi.getPrerequisites()).data,
+    queryFn: async () => {
+      const { data } = await reportsApi.getPrerequisites();
+      return data;
+    },
   });
 
   const simulationsQuery = useQuery({
     queryKey: ['simulations'],
-    queryFn: async () => (await simulationsApi.getAll()).data,
+    queryFn: async () => {
+      const { data } = await simulationsApi.getAll();
+      return data;
+    },
   });
 
-  const prereqs = prereqsQuery.data ?? [];
-  const allMet = prereqs.every((p) => p.met);
-  const simulations = simulationsQuery.data ?? [];
+  const biaSummaryQuery = useQuery({
+    queryKey: ['bia-summary'],
+    queryFn: async () => (await biaApi.getSummary()).data,
+  });
+
+  // Defensive: ensure arrays even if API returns unexpected shapes
+  const rawPrereqs = prereqsQuery.data;
+  const prereqs: ReportPrerequisite[] = Array.isArray(rawPrereqs) ? rawPrereqs : [];
+  const allMet = prereqs.length > 0 && prereqs.every((p) => p.met);
+
+  const rawSimulations = simulationsQuery.data;
+  const simulations: Simulation[] = Array.isArray(rawSimulations)
+    ? rawSimulations
+    : Array.isArray((rawSimulations as Record<string, unknown>)?.simulations)
+      ? ((rawSimulations as Record<string, unknown>).simulations as Simulation[])
+      : [];
+
+  const biaSummary = biaSummaryQuery.data ?? null;
   const enabledSections = sections.filter((s) => s.enabled);
+
+  // Show empty state when no prerequisites data is available
+  const hasNoData = !prereqsQuery.isLoading && prereqs.length === 0 && !prereqsQuery.isError;
 
   const toggleSection = (id: string) => {
     setSections((prev) =>
@@ -174,8 +339,21 @@ export function ReportGenerator({ className }: ReportGeneratorProps) {
     setIsGenerating(false);
   };
 
+  if (hasNoData) {
+    return <ReportEmptyState />;
+  }
+
+  const completedSimulations = simulations.filter((s) => s.status === 'completed');
+
   return (
     <div className={cn('mx-auto max-w-4xl space-y-6', className)}>
+      {/* Executive Summary */}
+      <ExecutiveSummary
+        prereqs={prereqs}
+        simulationCount={simulations.length}
+        biaSummary={biaSummary ? { totalServices: biaSummary.totalServices, validatedCount: biaSummary.validatedCount } : null}
+      />
+
       {/* Prerequisites */}
       <Card>
         <CardHeader>
@@ -362,11 +540,11 @@ export function ReportGenerator({ className }: ReportGeneratorProps) {
               </div>
 
               {/* Simulations to include */}
-              {simulations.filter((s) => s.status === 'completed').length > 0 && (
+              {completedSimulations.length > 0 && (
                 <div className="mt-4">
                   <Label className="mb-2 block text-xs">Simulations a inclure</Label>
                   <div className="space-y-1.5">
-                    {simulations.filter((s) => s.status === 'completed').map((sim) => (
+                    {completedSimulations.map((sim) => (
                       <label key={sim.id} className="flex items-center gap-2 text-sm cursor-pointer">
                         <Checkbox
                           checked={selectedSimulations.has(sim.id)}

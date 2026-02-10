@@ -1,9 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { CheckCircle2, Loader2, AlertTriangle, XCircle } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { biaApi } from '@/api/bia.api';
 
@@ -14,9 +13,42 @@ export interface ValidationResult {
 }
 
 interface ValidateAllButtonProps {
-  entries: Array<{ id: string; serviceName: string }>;
+  entries: Array<{ id: string; serviceName: string; validationStatus?: string }>;
   onValidationUpdate?: (results: Map<string, ValidationResult>) => void;
   className?: string;
+}
+
+/** SVG circular progress ring that fills proportionally */
+function ProgressRing({ progress, size = 20, strokeWidth = 2.5 }: { progress: number; size?: number; strokeWidth?: number }) {
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const offset = circumference - (progress / 100) * circumference;
+
+  return (
+    <svg width={size} height={size} className="shrink-0 -rotate-90" aria-hidden="true">
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        className="opacity-20"
+      />
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={radius}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={strokeWidth}
+        strokeDasharray={circumference}
+        strokeDashoffset={offset}
+        strokeLinecap="round"
+        className="text-primary transition-[stroke-dashoffset] duration-300 ease-out"
+      />
+    </svg>
+  );
 }
 
 export function ValidateAllButton({ entries, onValidationUpdate, className }: ValidateAllButtonProps) {
@@ -25,9 +57,13 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<Map<string, ValidationResult>>(new Map());
 
+  const pendingEntries = entries.filter(
+    (e) => !e.validationStatus || e.validationStatus === 'pending' || e.validationStatus === 'draft'
+  );
+
   const runValidation = useCallback(async () => {
-    if (entries.length === 0) {
-      toast.info('Aucun element a valider');
+    if (pendingEntries.length === 0) {
+      toast.info('Aucun element en attente de validation');
       return;
     }
 
@@ -36,34 +72,20 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
     setResults(new Map());
 
     const newResults = new Map<string, ValidationResult>();
-    const total = entries.length;
+    const total = pendingEntries.length;
 
     try {
-      // Call the backend validate-all endpoint
+      // Call the backend validate-all endpoint (bulk update)
       const response = await biaApi.validateAll();
-      const backendResults = response.data;
+      const backendData = response.data as { validated?: number };
+      const validatedCount = typeof backendData?.validated === 'number' ? backendData.validated : total;
 
-      // Animate cascade with 150ms delay between each
-      for (let i = 0; i < entries.length; i++) {
-        const entry = entries[i];
-        await new Promise((resolve) => setTimeout(resolve, 150));
+      // Animate cascade with 120ms delay between each for visual feedback
+      for (let i = 0; i < pendingEntries.length; i++) {
+        const entry = pendingEntries[i];
+        await new Promise((resolve) => setTimeout(resolve, 120));
 
-        // Find matching backend result or create a successful one
-        const backendResult = Array.isArray(backendResults)
-          ? backendResults.find((r: { id: string }) => r.id === entry.id)
-          : null;
-
-        const result: ValidationResult = backendResult
-          ? {
-              id: entry.id,
-              status: backendResult.status || 'validated',
-              message: backendResult.message,
-            }
-          : {
-              id: entry.id,
-              status: 'validated',
-            };
-
+        const result: ValidationResult = { id: entry.id, status: 'validated' };
         newResults.set(entry.id, result);
         setResults(new Map(newResults));
         setProgress(((i + 1) / total) * 100);
@@ -75,39 +97,43 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
       const warnings = [...newResults.values()].filter((r) => r.status === 'warning').length;
       const errors = [...newResults.values()].filter((r) => r.status === 'error').length;
 
-      const firstProblemId = [...newResults.entries()].find(
-        ([, r]) => r.status === 'warning' || r.status === 'error'
-      )?.[0];
-
       if (warnings > 0 || errors > 0) {
-        toast.warning(
-          `${validated}/${total} elements valides — ${warnings > 0 ? `${warnings} attention requise` : ''} ${errors > 0 ? `${errors} erreur(s)` : ''}`,
-          {
-            duration: 8000,
-            action: firstProblemId
-              ? {
-                  label: 'Voir les problemes',
-                  onClick: () => {
-                    const el = document.querySelector(`[data-entry-id="${firstProblemId}"]`);
-                    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  },
-                }
-              : undefined,
-          }
-        );
+        const parts: string[] = [];
+        if (warnings > 0) parts.push(`${warnings} attention requise`);
+        if (errors > 0) parts.push(`${errors} erreur(s)`);
+
+        const firstProblemId = [...newResults.entries()].find(
+          ([, r]) => r.status === 'warning' || r.status === 'error'
+        )?.[0];
+
+        toast.warning(`${validated}/${total} elements valides — ${parts.join(', ')}`, {
+          duration: 8000,
+          action: firstProblemId
+            ? {
+                label: 'Voir les problemes',
+                onClick: () => {
+                  const el = document.querySelector(`[data-entry-id="${firstProblemId}"]`);
+                  el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                },
+              }
+            : undefined,
+        });
       } else {
-        toast.success(`${validated}/${total} elements valides avec succes`);
+        toast.success(`${validatedCount} element(s) valide(s) avec succes`);
       }
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
       queryClient.invalidateQueries({ queryKey: ['bia-summary'] });
-    } catch (err) {
+    } catch {
       toast.error('Erreur lors de la validation. Veuillez reessayer.');
     } finally {
-      setIsValidating(false);
+      setTimeout(() => {
+        setIsValidating(false);
+        setProgress(0);
+      }, 600);
     }
-  }, [entries, onValidationUpdate, queryClient]);
+  }, [pendingEntries, onValidationUpdate, queryClient]);
 
   return (
     <div className={cn('flex items-center gap-3', className)}>
@@ -115,25 +141,26 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
         variant="outline"
         size="sm"
         onClick={runValidation}
-        disabled={isValidating}
+        disabled={isValidating || pendingEntries.length === 0}
         aria-label="Valider tous les elements"
+        className={cn(
+          'transition-all duration-300',
+          progress >= 100 && isValidating && 'border-resilience-high text-resilience-high'
+        )}
       >
         {isValidating ? (
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <ProgressRing progress={progress} />
         ) : (
-          <CheckCircle2 className="mr-2 h-4 w-4" />
+          <CheckCircle2 className="h-4 w-4" />
         )}
-        {isValidating ? 'Validation en cours...' : 'Valider tout'}
+        <span className="ml-2">
+          {isValidating
+            ? `Validation... ${results.size}/${pendingEntries.length}`
+            : pendingEntries.length === 0
+              ? 'Tout est valide'
+              : `Valider tout (${pendingEntries.length})`}
+        </span>
       </Button>
-
-      {isValidating && (
-        <div className="flex-1 max-w-xs">
-          <Progress value={progress} className="h-2" />
-          <p className="mt-1 text-xs text-muted-foreground">
-            {Math.round(progress)}% — {results.size}/{entries.length}
-          </p>
-        </div>
-      )}
     </div>
   );
 }

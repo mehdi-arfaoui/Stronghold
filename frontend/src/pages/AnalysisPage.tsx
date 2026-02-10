@@ -101,7 +101,11 @@ export function AnalysisPage() {
               <Download className="mr-2 h-4 w-4" /> Exporter
             </Button>
             <ValidateAllButton
-              entries={entries.map((e: any) => ({ id: e.id, serviceName: e.serviceName }))}
+              entries={entries.map((e: { id: string; serviceName: string; validationStatus?: string }) => ({
+                id: e.id,
+                serviceName: e.serviceName,
+                validationStatus: e.validationStatus,
+              }))}
             />
           </div>
 
