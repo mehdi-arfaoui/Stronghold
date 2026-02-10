@@ -135,6 +135,12 @@ export interface IngestReport extends ReconciliationReport {
   scannedAt: Date;
   totalNodes: number;
   totalEdges: number;
+  validation?: {
+    orphanNodes: number;
+    missingContainsRelations: number;
+    duplicateExternalIds: number;
+    staleNodes: number;
+  };
 }
 
 // --- SPOF ---

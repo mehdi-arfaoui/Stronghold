@@ -48,3 +48,30 @@ export interface CredentialTestResult {
   regionsFound?: number;
   accountsFound?: number;
 }
+
+
+export interface ScanHealthIssue {
+  code: string;
+  message: string;
+  severity: 'warning' | 'error';
+}
+
+export interface ScanHealthProvider {
+  name: string;
+  status: 'connected' | 'partial' | 'error' | 'not_configured';
+  lastScanAt: string | null;
+  resourceCounts: Record<string, number>;
+  errors: ScanHealthIssue[];
+  coveragePercentage: number;
+}
+
+export interface ScanHealthReport {
+  providers: ScanHealthProvider[];
+  graphConsistency: {
+    orphanNodes: number;
+    missingReverseEdges: number;
+    staleNodes: number;
+    totalNodes: number;
+    totalEdges: number;
+  };
+}

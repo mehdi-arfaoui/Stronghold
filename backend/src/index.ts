@@ -578,17 +578,36 @@ logBoot("background.services.deferred", {
 });
 
 // Global error handler - ensure all errors return JSON
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error("Unhandled error:", err);
-  res.status(err.status || 500).json({
-    error: err.message || "Internal server error",
-    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const status = Number(err?.status || err?.statusCode || 500);
+  const message = typeof err?.message === "string" && err.message.trim() ? err.message : "Internal server error";
+  const safeMessage = status >= 500 && process.env.NODE_ENV === "production" ? "Internal server error" : message;
+  console.error(
+    JSON.stringify({
+      level: "error",
+      scope: "http.globalError",
+      status,
+      message,
+      stack: err instanceof Error ? err.stack : undefined,
+    })
+  );
+
+  res.status(status).json({
+    error: {
+      code: `ERR_${status}`,
+      message: safeMessage,
+    },
   });
 });
 
 // 404 handler - ensure 404s return JSON
 app.use((req: express.Request, res: express.Response) => {
-  res.status(404).json({ error: `Route not found: ${req.method} ${req.path}` });
+  res.status(404).json({
+    error: {
+      code: "ERR_404",
+      message: `Route not found: ${req.method} ${req.path}`,
+    },
+  });
 });
 
 const PORT = process.env.PORT || 4000;

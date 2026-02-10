@@ -35,6 +35,7 @@ import { mergeDiscoveredResources } from "../services/discoveryMergeService.js";
 import { discoveryQueue } from "../queues/discoveryQueue.js";
 import { createDiscoverySchedule } from "../services/discoveryScheduleService.js";
 import { importDiscoveryFlows } from "../services/discoveryFlowService.js";
+import { buildScanHealthReport } from "../services/discoveryHealthService.js";
 
 const router = Router();
 const uploadDir = path.join(os.tmpdir(), "discovery-imports");
@@ -264,6 +265,27 @@ router.post(
   requireRole("OPERATOR"),
   handleDiscoveryRun
 );
+
+
+
+/**
+ * GET /discovery/health
+ * Rapport de santé du scan et cohérence du graphe.
+ */
+router.get("/health", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(500).json({ error: { code: "ERR_500", message: "Tenant not resolved" } });
+    }
+
+    const report = await buildScanHealthReport(prisma, tenantId);
+    return res.json({ data: report });
+  } catch (error) {
+    console.error("Error in GET /discovery/health:", error);
+    return res.status(500).json({ error: { code: "ERR_500", message: "Internal server error" } });
+  }
+});
 
 /**
  * POST /discovery/schedules
