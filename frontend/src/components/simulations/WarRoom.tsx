@@ -5,20 +5,17 @@ import {
   Pause,
   RotateCcw,
   Download,
-  AlertTriangle,
   Clock,
-  Users,
   DollarSign,
   Activity,
   Zap,
-  Server,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/lib/formatters';
-import type { SimulationResult } from '@/types/simulation.types';
+import type { SimulationResult, WarRoomData } from '@/types/simulation.types';
 
 interface WarRoomProps {
   open: boolean;
@@ -30,6 +27,7 @@ interface WarRoomProps {
 }
 
 type AnimationPhase = 'idle' | 'initial' | 'propagating' | 'complete';
+type NodeVisualState = 'healthy' | 'at_risk' | 'down';
 
 const SEVERITY_CONFIG = {
   critical: { label: 'CRITIQUE', color: 'bg-severity-critical text-white' },
@@ -48,37 +46,53 @@ function getSeverity(impact: number): keyof typeof SEVERITY_CONFIG {
 export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioType, result, onGenerateReport }: WarRoomProps) {
   const [phase, setPhase] = useState<AnimationPhase>('idle');
   const [currentStep, setCurrentStep] = useState(0);
-  const [visibleNodes, setVisibleNodes] = useState<Set<string>>(new Set());
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [nodeStates, setNodeStates] = useState<Record<string, NodeVisualState>>({});
   const animationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const severity = getSeverity(result.infrastructureImpact);
+  const severity = getSeverity(result.infrastructureImpact ?? 0);
   const sevConfig = SEVERITY_CONFIG[severity];
 
-  const totalAffected = result.affectedNodes.length;
-  const estimatedUsers = result.impactedServices.reduce((acc, s) => acc + (s.impact !== 'none' ? 100 : 0), 0);
-  const hourlyLoss = result.financialLoss / Math.max(result.estimatedDowntime / 60, 1);
+  const warRoomData: WarRoomData = result.warRoomData ?? {
+    propagationTimeline: [],
+    impactedNodes: [],
+    remediationActions: [],
+  };
 
-  // Animation controller
+  const timelineEvents = warRoomData.propagationTimeline ?? [];
+  const impactedNodes = warRoomData.impactedNodes?.length ? warRoomData.impactedNodes : (result.affectedNodes ?? []).map((node) => ({
+    id: node.nodeId,
+    name: node.nodeName,
+    type: node.nodeType,
+    status: node.status,
+    impactedAt: node.cascadeLevel,
+    estimatedRecovery: 60,
+  }));
+
+  const totalNodes = impactedNodes.length ?? 0;
+  const downNodes = Object.values(nodeStates).filter((s) => s === 'down').length;
+  const estimatedUsers = (result.impactedServices ?? []).reduce((acc, s) => acc + (s.impact !== 'none' ? 100 : 0), 0);
+  const hourlyLoss = (result.financialLoss ?? 0) / Math.max((result.estimatedDowntime ?? 0) / 60, 1);
+
   const startAnimation = useCallback(() => {
     setPhase('initial');
     setCurrentStep(0);
-    setVisibleNodes(new Set());
+    setTimelinePosition(0);
+    setNodeStates({});
     setIsPlaying(true);
     setElapsedSeconds(0);
 
-    // Start timer
+    if (timerRef.current) clearInterval(timerRef.current);
     timerRef.current = setInterval(() => {
       setElapsedSeconds((prev) => prev + 1);
     }, 1000);
 
-    // Animate cascade steps
     let step = 0;
     const animateStep = () => {
-      if (step >= result.cascadeSteps.length) {
+      if (step >= timelineEvents.length) {
         setPhase('complete');
         setIsPlaying(false);
         if (timerRef.current) clearInterval(timerRef.current);
@@ -87,23 +101,24 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
 
       setPhase('propagating');
       setCurrentStep(step);
-      const cascadeStep = result.cascadeSteps[step];
+      const event = timelineEvents[step];
 
-      // Add nodes from this step
-      setVisibleNodes((prev) => {
-        const next = new Set(prev);
-        cascadeStep.nodesAffected.forEach((id) => next.add(id));
+      setNodeStates((prev) => {
+        const next = { ...prev };
+        next[event.nodeId] = 'at_risk';
+        setTimeout(() => {
+          setNodeStates((later) => ({ ...later, [event.nodeId]: 'down' }));
+        }, 250);
         return next;
       });
 
-      setTimelinePosition(((step + 1) / result.cascadeSteps.length) * 100);
-      step++;
-      animationRef.current = setTimeout(animateStep, 800);
+      setTimelinePosition(((step + 1) / Math.max(timelineEvents.length, 1)) * 100);
+      step += 1;
+      animationRef.current = setTimeout(animateStep, 700);
     };
 
-    // Start with initial flash
-    setTimeout(animateStep, 500);
-  }, [result]);
+    setTimeout(animateStep, 400);
+  }, [timelineEvents]);
 
   const pauseAnimation = () => {
     setIsPlaying(false);
@@ -111,16 +126,15 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
     if (timerRef.current) clearInterval(timerRef.current);
   };
 
-  const resetAnimation = () => {
+  const resetAnimation = useCallback(() => {
     pauseAnimation();
     setPhase('idle');
     setCurrentStep(0);
-    setVisibleNodes(new Set());
     setTimelinePosition(0);
     setElapsedSeconds(0);
-  };
+    setNodeStates({});
+  }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (animationRef.current) clearTimeout(animationRef.current);
@@ -128,31 +142,25 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
     };
   }, []);
 
-  // Auto-start on open
   useEffect(() => {
     if (open) {
-      const t = setTimeout(startAnimation, 600);
+      const t = setTimeout(startAnimation, 500);
       return () => clearTimeout(t);
     }
-    return () => resetAnimation();
-  }, [open]);
+    resetAnimation();
+    return () => undefined;
+  }, [open, startAnimation, resetAnimation]);
 
   if (!open) return null;
 
   const formatTime = (s: number) => {
     const m = Math.floor(s / 60);
     const sec = s % 60;
-    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    return `${m}:${String(sec).padStart(2, '0')}`;
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col"
-      role="dialog"
-      aria-modal="true"
-      aria-label="War Room — Simulation d'impact"
-    >
-      {/* Header */}
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col" role="dialog" aria-modal="true" aria-label="War Room — Simulation d'impact">
       <div className="flex items-center justify-between border-b bg-card px-6 py-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
@@ -179,160 +187,95 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left: Infrastructure Map */}
-        <div className="flex-1 p-6 overflow-auto">
-          <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-            {result.affectedNodes.map((node, i) => {
-              const isVisible = visibleNodes.has(node.nodeId);
-              const isDown = node.status === 'down';
+        <div className="flex-1 p-6 overflow-auto space-y-6">
+          <div className="rounded-lg border bg-card p-3 text-sm flex flex-wrap gap-4">
+            <span>🔴 Services down: {downNodes}/{Math.max(totalNodes, 1)}</span>
+            <span>⏱️ Temps: {Math.floor(elapsedSeconds / 60)}min</span>
+          </div>
 
+          <div className="grid gap-3 grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
+            {(impactedNodes ?? []).map((node) => {
+              const state = nodeStates[node.id] ?? 'healthy';
               return (
                 <div
-                  key={node.nodeId}
+                  key={node.id}
                   className={cn(
-                    'relative rounded-lg border p-3 transition-all duration-500',
-                    isVisible
-                      ? isDown
-                        ? 'border-severity-critical bg-severity-critical/10 shadow-lg shadow-severity-critical/20'
-                        : 'border-severity-medium bg-severity-medium/10'
-                      : 'border-border bg-card opacity-60'
+                    'rounded-lg border p-3 transition-all duration-500',
+                    state === 'down'
+                      ? 'border-severity-critical bg-severity-critical/10'
+                      : state === 'at_risk'
+                        ? 'border-severity-medium bg-severity-medium/10'
+                        : 'border-border bg-card'
                   )}
-                  style={{
-                    transitionDelay: isVisible ? `${i * 50}ms` : '0ms',
-                  }}
                 >
-                  {isVisible && isDown && (
-                    <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full bg-severity-critical animate-ping" />
-                  )}
-                  <div className="flex items-center gap-2">
-                    <Server className={cn('h-4 w-4', isVisible ? (isDown ? 'text-severity-critical' : 'text-severity-medium') : 'text-muted-foreground')} />
-                    <span className="text-xs font-medium truncate">{node.nodeName}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-muted-foreground">{node.nodeType}</p>
-                  {isVisible && (
-                    <Badge variant="outline" className={cn('mt-2 text-xs', isDown ? 'border-severity-critical text-severity-critical' : 'border-severity-medium text-severity-medium')}>
-                      {isDown ? 'DOWN' : 'DEGRADED'}
-                    </Badge>
-                  )}
+                  <p className="text-xs font-semibold truncate">{node.name}</p>
+                  <p className="text-xs text-muted-foreground">{node.type}</p>
+                  <Badge className="mt-2" variant="outline">
+                    {state === 'down' ? 'DOWN' : state === 'at_risk' ? 'AT RISK' : 'HEALTHY'}
+                  </Badge>
                 </div>
               );
             })}
           </div>
 
-          {result.affectedNodes.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <Activity className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">Aucun noeud impacte dans cette simulation.</p>
+          {(timelineEvents ?? []).map((event, i) => (
+            <div
+              key={`${event.nodeId}-${i}`}
+              className={cn('rounded-md border p-3 text-xs transition-all duration-300', i <= currentStep ? 'border-severity-critical/40 bg-severity-critical/5' : 'opacity-50')}
+            >
+              <p className="font-medium">T+{event.timestampMinutes}m — {event.nodeName}</p>
+              <p className="text-muted-foreground">{event.description}</p>
             </div>
-          )}
+          ))}
         </div>
 
-        {/* Right: Impact Panel */}
-        <div className="w-80 border-l bg-card p-4 space-y-4 overflow-y-auto">
-          <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">
-            Impact en temps reel
-          </h3>
+        <div className="w-96 border-l bg-card p-4 space-y-4 overflow-y-auto">
+          <h3 className="font-semibold text-sm uppercase tracking-wide text-muted-foreground">Actions de remediation</h3>
+          {(warRoomData.remediationActions ?? []).map((action) => (
+            <div key={action.id} className="rounded-lg border p-3">
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium">{action.title}</p>
+                <Badge variant="outline">{action.priority}</Badge>
+              </div>
+              <Badge
+                className="mt-2"
+                variant={action.status === 'completed' ? 'default' : action.status === 'in_progress' ? 'secondary' : 'outline'}
+              >
+                {action.status}
+              </Badge>
+            </div>
+          ))}
 
-          {/* Counter Cards */}
-          <div className="space-y-3">
-            <ImpactCard
-              icon={Server}
-              label="Services impactes"
-              value={visibleNodes.size}
-              total={totalAffected}
-              color="text-severity-critical"
-              animated={phase === 'propagating'}
-            />
-            <ImpactCard
-              icon={Users}
-              label="Utilisateurs affectes"
-              value={phase !== 'idle' ? estimatedUsers : 0}
-              color="text-severity-high"
-              animated={phase === 'propagating'}
-            />
-            <ImpactCard
-              icon={DollarSign}
-              label="Cout/heure"
-              value={phase !== 'idle' ? hourlyLoss : 0}
-              format="currency"
-              color="text-severity-medium"
-              animated={phase === 'propagating'}
-            />
+          <div className="space-y-3 pt-2">
+            <ImpactCard icon={Activity} label="Impactes" value={downNodes} total={totalNodes} color="text-severity-critical" animated={phase === 'propagating'} />
+            <ImpactCard icon={DollarSign} label="Cout/heure" value={hourlyLoss ?? 0} format="currency" color="text-severity-medium" animated={phase === 'propagating'} />
+            <ImpactCard icon={Clock} label="Utilisateurs impactes" value={estimatedUsers ?? 0} color="text-severity-high" animated={phase === 'propagating'} />
           </div>
 
-          {/* RTO/RPO Indicators */}
           <div className="space-y-3 pt-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">RTO/RPO</h4>
-            {result.impactedServices.slice(0, 5).map((svc) => {
-              const rtoMinutes = svc.estimatedRTO;
+            {(result.impactedServices ?? []).slice(0, 5).map((svc) => {
+              const rtoMinutes = Math.max(svc.estimatedRTO ?? 1, 1);
               const rtoProgress = Math.min((elapsedSeconds / 60 / rtoMinutes) * 100, 100);
-              const rtoBreach = rtoProgress >= 100;
-
               return (
                 <div key={svc.serviceName} className="space-y-1">
                   <div className="flex items-center justify-between text-xs">
                     <span className="truncate">{svc.serviceName}</span>
-                    <span className={cn('font-mono', rtoBreach ? 'text-severity-critical' : 'text-muted-foreground')}>
-                      RTO: {rtoMinutes}min
-                    </span>
+                    <span className="font-mono text-muted-foreground">RTO: {rtoMinutes}min</span>
                   </div>
-                  <Progress
-                    value={rtoProgress}
-                    className={cn('h-1.5', rtoBreach ? '[&>div]:bg-severity-critical' : rtoProgress > 75 ? '[&>div]:bg-severity-medium' : '[&>div]:bg-resilience-high')}
-                  />
+                  <Progress value={rtoProgress ?? 0} className="h-1.5" />
                 </div>
               );
             })}
           </div>
-
-          {/* Cascade Steps */}
-          <div className="space-y-2 pt-2">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Propagation</h4>
-            {result.cascadeSteps.map((step, i) => (
-              <div
-                key={i}
-                className={cn(
-                  'rounded-md border p-2 text-xs transition-all duration-300',
-                  i <= currentStep && phase !== 'idle'
-                    ? 'border-severity-critical/50 bg-severity-critical/5'
-                    : 'border-transparent opacity-50'
-                )}
-              >
-                <p className="font-medium">Etape {step.step}</p>
-                <p className="text-muted-foreground">{step.description}</p>
-                <p className="text-severity-critical mt-1">{step.nodesAffected.length} noeud(s)</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Recommendations */}
-          {phase === 'complete' && result.recommendations.length > 0 && (
-            <div className="space-y-2 pt-2">
-              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Recommandations</h4>
-              {result.recommendations.map((rec, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs text-muted-foreground">
-                  <AlertTriangle className="h-3.5 w-3.5 text-severity-medium shrink-0 mt-0.5" />
-                  <span>{rec}</span>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
-      {/* Timeline */}
       <div className="border-t bg-card px-6 py-3">
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
-              onClick={isPlaying ? pauseAnimation : startAnimation}
-              aria-label={isPlaying ? 'Pause' : 'Lecture'}
-            >
+            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={isPlaying ? pauseAnimation : startAnimation} aria-label={isPlaying ? 'Pause' : 'Lecture'}>
               {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
             </Button>
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={resetAnimation} aria-label="Reinitialiser">
@@ -342,27 +285,12 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
 
           <div className="flex-1 relative">
             <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <div
-                className="h-full bg-severity-critical transition-all duration-500 rounded-full"
-                style={{ width: `${timelinePosition}%` }}
-              />
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-              <span>T0 — Debut de l'incident</span>
-              {result.cascadeSteps.length > 0 && (
-                <span>T+{result.cascadeSteps.length} etapes — Propagation complete</span>
-              )}
+              <div className="h-full bg-severity-critical transition-all duration-500 rounded-full" style={{ width: `${timelinePosition ?? 0}%` }} />
             </div>
           </div>
 
           <div className="text-sm text-muted-foreground">
-            {phase === 'complete' ? (
-              <Badge variant="outline" className="text-resilience-high border-resilience-high">Simulation terminee</Badge>
-            ) : phase === 'idle' ? (
-              <span>Pret</span>
-            ) : (
-              <span className="animate-pulse">En cours...</span>
-            )}
+            {phase === 'complete' ? <Badge variant="outline" className="text-resilience-high border-resilience-high">Simulation terminee</Badge> : phase === 'idle' ? <span>Pret</span> : <span className="animate-pulse">En cours...</span>}
           </div>
         </div>
       </div>
@@ -370,7 +298,6 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
   );
 }
 
-/** Impact metric card */
 function ImpactCard({
   icon: Icon,
   label,
@@ -380,7 +307,7 @@ function ImpactCard({
   color,
   animated,
 }: {
-  icon: typeof Server;
+  icon: typeof Activity;
   label: string;
   value: number;
   total?: number;
@@ -395,8 +322,8 @@ function ImpactCard({
         {label}
       </div>
       <p className={cn('text-xl font-bold tabular-nums', color, animated && 'animate-pulse')}>
-        {format === 'currency' ? formatCurrency(value) : value}
-        {total !== undefined && <span className="text-sm font-normal text-muted-foreground">/{total}</span>}
+        {format === 'currency' ? formatCurrency(value ?? 0) : value ?? 0}
+        {total !== undefined && <span className="text-sm font-normal text-muted-foreground">/{total ?? 0}</span>}
       </p>
     </div>
   );

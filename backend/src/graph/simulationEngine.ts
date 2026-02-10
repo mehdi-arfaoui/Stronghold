@@ -129,8 +129,10 @@ export function runSimulation(
     ? Math.max(...businessImpact.map(s => s.estimatedRTO))
     : 60;
 
-  // 6. Generate recommendations
-  const recommendations = generateRecommendations(scenario, affectedNodes, cascade);
+  // 6. Build blast-radius/war-room data and recommendations
+  const blastRadiusMetrics = buildBlastRadiusMetrics(totalAffected, totalNodes, businessImpact, maxRTO, cascade);
+  const warRoomData = buildWarRoomData(affectedNodes, cascade, businessImpact);
+  const recommendations = generateRecommendations(graph, affectedNodes, cascade, businessImpact, maxRTO);
 
   // 7. Post-incident resilience score
   const postIncidentScore = calculatePostIncidentScore(totalAffected, totalNodes, cascade);
@@ -150,7 +152,9 @@ export function runSimulation(
       servicesWithTotalOutage: totalOutageCount,
       servicesWithDegradation: degradedCount,
     },
+    blastRadiusMetrics,
     recommendations,
+    warRoomData,
     postIncidentResilienceScore: postIncidentScore,
   };
 }
@@ -350,89 +354,215 @@ function identifyBusinessImpact(
 // =====================================================
 
 function generateRecommendations(
-  scenario: SimulationScenario,
+  graph: GraphInstance,
   affectedNodes: Array<{ id: string; name: string; type: string }>,
-  cascade: CascadeNode[]
+  cascade: CascadeNode[],
+  businessImpact: SimulationBusinessImpact[],
+  estimatedDowntimeMinutes: number
 ): SimulationRecommendation[] {
   const recs: SimulationRecommendation[] = [];
+  const seen = new Set<string>();
+  const impactedNodeIds = [...affectedNodes.map((n) => n.id), ...cascade.map((n) => n.id)];
 
-  // Region loss → multi-region
-  if (scenario.scenarioType === 'region_loss') {
-    recs.push({
-      title: 'Deploy critical services in multiple regions',
-      description: `${affectedNodes.length} nodes are in a single region. Deploy active-passive or active-active across 2+ regions.`,
-      priority: 'strategic',
-      effort: 'high',
-      estimatedRiskReduction: 40,
-    });
-  }
+  const pushRec = (rec: Omit<SimulationRecommendation, 'id'>) => {
+    const key = `${rec.priority}:${rec.title}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    recs.push({ id: randomUUID(), ...rec });
+  };
 
-  // Database failure → replication
-  if (scenario.scenarioType === 'database_failure') {
-    recs.push({
-      title: 'Enable database replication and automated failover',
-      description: 'Configure read replicas with automated failover to minimize downtime.',
-      priority: 'immediate',
-      effort: 'medium',
-      estimatedRiskReduction: 30,
-    });
-  }
-
-  // High cascade depth → circuit breakers
-  const maxDepth = cascade.length > 0 ? Math.max(...cascade.map(c => c.cascadeDepth)) : 0;
-  if (maxDepth > 3) {
-    recs.push({
-      title: 'Implement circuit breakers to limit cascade failures',
-      description: `Cascade reached depth ${maxDepth}. Add circuit breakers between service layers to contain failures.`,
-      priority: 'planned',
-      effort: 'medium',
-      estimatedRiskReduction: 25,
-    });
-  }
-
-  // Many nodes affected → improve monitoring
-  if (affectedNodes.length + cascade.length > 10) {
-    recs.push({
-      title: 'Enhance monitoring and alerting',
-      description: 'Set up automated health checks and alerting for early detection of cascading failures.',
-      priority: 'planned',
-      effort: 'low',
-      estimatedRiskReduction: 15,
-    });
-  }
-
-  // DNS failure → redundant DNS
-  if (scenario.scenarioType === 'dns_failure') {
-    recs.push({
-      title: 'Configure redundant DNS with secondary provider',
-      description: 'Use a secondary DNS provider as failover to prevent DNS-related outages.',
-      priority: 'immediate',
-      effort: 'low',
-      estimatedRiskReduction: 35,
-    });
-  }
-
-  // Third party → fallback
-  if (scenario.scenarioType === 'third_party_outage') {
-    recs.push({
-      title: 'Implement fallback mechanisms for external dependencies',
-      description: 'Add circuit breakers, caching, and degraded mode for third-party service dependencies.',
-      priority: 'planned',
-      effort: 'medium',
-      estimatedRiskReduction: 20,
-    });
-  }
-
-  // Generic: always recommend documented runbook
-  recs.push({
-    title: 'Create and test recovery runbook for this scenario',
-    description: 'Document step-by-step recovery procedures and validate them through tabletop exercises.',
-    priority: 'planned',
-    effort: 'low',
-    estimatedRiskReduction: 10,
+  const impactedSpofs = affectedNodes.filter((node) => {
+    if (!graph.hasNode(node.id)) return false;
+    const attrs = graph.getNodeAttributes(node.id) as InfraNodeAttrs;
+    return Boolean(attrs.isSPOF);
   });
 
-  return recs;
+  for (const spofNode of impactedSpofs) {
+    pushRec({
+      priority: 'P0',
+      title: `Ajouter redondance pour ${spofNode.name}`,
+      description: `${spofNode.name} est marque comme SPOF et se trouve dans la zone d'impact de la simulation.`,
+      action: `Deployer une instance secondaire et valider le basculement pour ${spofNode.name}.`,
+      estimatedRto: 30,
+      affectedNodes: [spofNode.id],
+      category: 'redundancy',
+      effort: 'medium',
+      normativeReference: 'ISO 22301 A.8.4',
+    });
+  }
+
+  const impactedSet = new Set(impactedNodeIds);
+  graph.forEachNode((nodeId: string, attrs: any) => {
+    if (!impactedSet.has(nodeId)) return;
+    const a = attrs as InfraNodeAttrs;
+    const inBackupScope = a.type === NodeType.DATABASE || a.type === NodeType.OBJECT_STORAGE;
+    const hasBackup =
+      Boolean(a.tags?.backup) ||
+      Boolean(a.tags?.snapshot) ||
+      Boolean((a.metadata as Record<string, unknown> | undefined)?.backupEnabled);
+
+    if (inBackupScope && !hasBackup) {
+      pushRec({
+        priority: 'P1',
+        title: `Backup cross-region pour ${a.name}`,
+        description: `${a.name} n'a pas de backup detecte alors qu'il est impacte par le scenario.`,
+        action: `Activer snapshots chiffrés cross-region pour ${a.name} et tester la restauration.`,
+        estimatedRto: 90,
+        affectedNodes: [nodeId],
+        category: 'backup',
+        effort: 'medium',
+        normativeReference: 'ISO 27001 A.12.3',
+      });
+    }
+  });
+
+  const maxDepth = cascade.length > 0 ? Math.max(...cascade.map((c) => c.cascadeDepth)) : 0;
+  if (maxDepth > 3) {
+    pushRec({
+      priority: 'P1',
+      title: 'Reduire la chaine de dependances',
+      description: `La propagation atteint une profondeur de ${maxDepth} niveaux sans protection suffisante.`,
+      action: 'Introduire des ruptures de chaines (bulkheads/circuit breakers) et de la redondance sur les niveaux intermediaires.',
+      estimatedRto: Math.max(estimatedDowntimeMinutes - 20, 30),
+      affectedNodes: cascade.filter((n) => n.cascadeDepth >= 3).map((n) => n.id),
+      category: 'isolation',
+      effort: 'high',
+      normativeReference: 'NIST SP 800-34 Rev.1',
+    });
+  }
+
+  const breachedServices = businessImpact.filter((service) => {
+    if (!graph.hasNode(service.serviceId)) return false;
+    const attrs = graph.getNodeAttributes(service.serviceId) as InfraNodeAttrs;
+    const mtpd = attrs.validatedMTPD ?? attrs.suggestedMTPD;
+    return typeof mtpd === 'number' && service.estimatedRTO > mtpd;
+  });
+
+  if (breachedServices.length > 0) {
+    pushRec({
+      priority: 'P0',
+      title: 'Plan de reprise insuffisant',
+      description: `${breachedServices.length} service(s) critiques ont un RTO superieur au MTPD.`,
+      action: 'Mettre a jour le runbook de reprise avec objectifs RTO/MTPD alignes et valider en exercice.',
+      estimatedRto: Math.max(...breachedServices.map((s) => s.estimatedRTO)),
+      affectedNodes: breachedServices.map((s) => s.serviceId),
+      category: 'process',
+      effort: 'medium',
+      normativeReference: 'ISO 22301 8.4.4',
+    });
+  }
+
+  if (recs.length === 0) {
+    pushRec({
+      priority: 'P2',
+      title: 'Maintenir la posture de resilience',
+      description: "Aucun risque majeur supplementaire n'a ete detecte pour ce scenario.",
+      action: 'Continuer les tests de bascule trimestriels et la supervision proactive.',
+      estimatedRto: estimatedDowntimeMinutes,
+      affectedNodes: impactedNodeIds,
+      category: 'monitoring',
+      effort: 'low',
+      normativeReference: 'ISO 22301 9.1',
+    });
+  }
+
+  const priorityOrder = { P0: 0, P1: 1, P2: 2 };
+  return recs.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+}
+
+function buildBlastRadiusMetrics(
+  totalAffected: number,
+  totalNodes: number,
+  businessImpact: SimulationBusinessImpact[],
+  estimatedDowntimeMinutes: number,
+  cascade: CascadeNode[]
+): SimulationResult['blastRadiusMetrics'] {
+  const impactPercentage = totalNodes > 0 ? Math.round((totalAffected / totalNodes) * 1000) / 10 : 0;
+  const criticalServicesImpacted = businessImpact.filter((service) => service.impact === 'total_outage').length;
+  const propagationDepth = cascade.length > 0 ? Math.max(...cascade.map((node) => node.cascadeDepth)) : 0;
+
+  let recoveryComplexity: 'low' | 'medium' | 'high' | 'critical' = 'low';
+  if (impactPercentage >= 60 || propagationDepth >= 6) recoveryComplexity = 'critical';
+  else if (impactPercentage >= 35 || propagationDepth >= 4) recoveryComplexity = 'high';
+  else if (impactPercentage >= 15 || propagationDepth >= 2) recoveryComplexity = 'medium';
+
+  return {
+    totalNodesImpacted: totalAffected,
+    totalNodesInGraph: totalNodes,
+    impactPercentage,
+    criticalServicesImpacted,
+    estimatedDowntimeMinutes,
+    propagationDepth,
+    recoveryComplexity,
+  };
+}
+
+function buildWarRoomData(
+  affectedNodes: Array<{ id: string; name: string; type: string }>,
+  cascade: CascadeNode[],
+  businessImpact: SimulationBusinessImpact[]
+): SimulationResult['warRoomData'] {
+  const propagationTimeline = [
+    ...affectedNodes.map((node, index) => ({
+      timestampMinutes: index,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      impactType: 'direct' as const,
+      impactSeverity: 'critical' as const,
+      description: `${node.name} tombe immediatement suite a l'incident initial.`,
+    })),
+    ...cascade.map((node) => ({
+      timestampMinutes: node.cascadeDepth,
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      impactType: node.status === 'degraded' ? 'degraded' as const : 'cascade' as const,
+      impactSeverity: node.status === 'down' ? 'major' as const : 'minor' as const,
+      description: node.cascadeReason,
+    })),
+  ].sort((a, b) => a.timestampMinutes - b.timestampMinutes);
+
+  const impactedNodes = [
+    ...affectedNodes.map((node) => ({
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      status: 'down' as const,
+      impactedAt: 0,
+      estimatedRecovery: 60,
+    })),
+    ...cascade.map((node) => ({
+      id: node.id,
+      name: node.name,
+      type: node.type,
+      status: node.status,
+      impactedAt: node.cascadeDepth,
+      estimatedRecovery: node.status === 'down' ? 120 : 45,
+    })),
+  ];
+
+  const remediationActions: NonNullable<SimulationResult['warRoomData']>['remediationActions'] = businessImpact.slice(0, 5).map((service, index) => ({
+    id: randomUUID(),
+    title: `Restaurer ${service.serviceName}`,
+    status: index === 0 ? 'in_progress' as const : 'pending' as const,
+    priority: service.impact === 'total_outage' ? 'P0' as const : 'P1' as const,
+  }));
+
+  if (remediationActions.length === 0) {
+    remediationActions.push({
+      id: randomUUID(),
+      title: 'Valider les canaux de communication de crise',
+      status: 'pending',
+      priority: 'P2',
+    });
+  }
+
+  return {
+    propagationTimeline,
+    impactedNodes,
+    remediationActions,
+  };
 }
 
 // =====================================================

@@ -302,16 +302,59 @@ export interface SimulationResult {
     servicesWithTotalOutage: number;
     servicesWithDegradation: number;
   };
+  blastRadiusMetrics: BlastRadiusMetrics;
   recommendations: SimulationRecommendation[];
+  warRoomData: WarRoomData;
   postIncidentResilienceScore: number;
 }
 
 export interface SimulationRecommendation {
+  id: string;
+  priority: 'P0' | 'P1' | 'P2';
   title: string;
   description: string;
-  priority: 'immediate' | 'planned' | 'strategic';
+  action: string;
+  estimatedRto: number;
+  affectedNodes: string[];
+  category: 'failover' | 'backup' | 'redundancy' | 'isolation' | 'monitoring' | 'process';
   effort: 'low' | 'medium' | 'high';
-  estimatedRiskReduction: number;
+  normativeReference?: string;
+}
+
+export interface BlastRadiusMetrics {
+  totalNodesImpacted: number;
+  totalNodesInGraph: number;
+  impactPercentage: number;
+  criticalServicesImpacted: number;
+  estimatedDowntimeMinutes: number;
+  propagationDepth: number;
+  recoveryComplexity: 'low' | 'medium' | 'high' | 'critical';
+}
+
+export interface WarRoomData {
+  propagationTimeline: Array<{
+    timestampMinutes: number;
+    nodeId: string;
+    nodeName: string;
+    nodeType: string;
+    impactType: 'direct' | 'cascade' | 'degraded';
+    impactSeverity: 'critical' | 'major' | 'minor';
+    description: string;
+  }>;
+  impactedNodes: Array<{
+    id: string;
+    name: string;
+    type: string;
+    status: 'down' | 'degraded' | 'at_risk' | 'healthy';
+    impactedAt: number;
+    estimatedRecovery: number;
+  }>;
+  remediationActions: Array<{
+    id: string;
+    title: string;
+    status: 'pending' | 'in_progress' | 'completed';
+    priority: 'P0' | 'P1' | 'P2';
+  }>;
 }
 
 // --- Risk Detection Types ---
