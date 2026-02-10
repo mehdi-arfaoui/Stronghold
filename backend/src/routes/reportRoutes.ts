@@ -6,8 +6,172 @@ import { Router, type Response } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import { generatePraPcaReport } from '../graph/reportGenerator.js';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+
+type DocxModule = typeof import('docx');
 
 const router = Router();
+
+function splitLines(text: string): string[] {
+  return text.replace(/\r\n/g, '\n').split('\n');
+}
+
+function formatReportAsText(report: Awaited<ReturnType<typeof generatePraPcaReport>>): string {
+  const summary = report.executiveSummary;
+  const sections = report.sections;
+
+  const topRisks = summary.topRisks.length > 0
+    ? summary.topRisks
+      .slice(0, 5)
+      .map((risk, index) => `${index + 1}. ${risk.title} (P=${risk.probability}, I=${risk.impact})`)
+      .join('\n')
+    : 'Aucun risque prioritaire identifie.';
+
+  const immediateActions = sections.recommendations.immediate.length > 0
+    ? sections.recommendations.immediate.map((action) => `- ${action}`).join('\n')
+    : '- Aucune action immediate renseignee.';
+
+  const actionPlan = sections.actionPlan.actions.length > 0
+    ? sections.actionPlan.actions
+      .slice(0, 10)
+      .map((action) => `- [${action.priority.toUpperCase()}] ${action.action} | Responsable: ${action.responsible} | Echeance: ${action.deadline}`)
+      .join('\n')
+    : '- Aucun plan d\'action detaille disponible.';
+
+  return [
+    '# Rapport PRA/PCA',
+    '',
+    `Genere le: ${new Date(report.metadata.generatedAt).toISOString()}`,
+    `Version: ${report.metadata.version}`,
+    `Standard: ${report.metadata.standard}`,
+    '',
+    '## Resume executif',
+    `Score de resilience: ${summary.resilienceScore}`,
+    `Services tier 1: ${summary.tier1Services}`,
+    `Services tier 2: ${summary.tier2Services}`,
+    `SPOF critiques: ${summary.criticalSPOFs}`,
+    `Noeuds infrastructure: ${summary.totalInfrastructureNodes}`,
+    `Dependances: ${summary.totalDependencies}`,
+    `Evaluation globale: ${summary.overallAssessment}`,
+    '',
+    '## Top risques',
+    topRisks,
+    '',
+    '## BIA',
+    `Processus analyses: ${sections.businessImpactAnalysis.summary.totalProcesses}`,
+    `Exposition financiere totale: ${sections.businessImpactAnalysis.summary.totalFinancialExposure}`,
+    '',
+    '## Simulations',
+    `Simulations executees: ${sections.simulationResults.simulationsRun}`,
+    sections.simulationResults.worstCase
+      ? `Pire scenario: ${sections.simulationResults.worstCase.scenarioName} (${sections.simulationResults.worstCase.nodesAffected} noeuds impactes)`
+      : 'Pire scenario: non disponible',
+    '',
+    '## Recommandations immediates',
+    immediateActions,
+    '',
+    '## Plan d\'action prioritaire',
+    actionPlan,
+  ].join('\n');
+}
+
+function wrapPdfLine(text: string, maxWidth: number, font: any, fontSize: number): string[] {
+  const words = text.split(' ');
+  const wrapped: string[] = [];
+  let current = '';
+
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (font.widthOfTextAtSize(candidate, fontSize) <= maxWidth) {
+      current = candidate;
+    } else {
+      if (current) wrapped.push(current);
+      current = word;
+    }
+  }
+
+  if (current) wrapped.push(current);
+  return wrapped.length > 0 ? wrapped : [''];
+}
+
+async function renderPdfBuffer(content: string): Promise<Buffer> {
+  const pdfDoc = await PDFDocument.create();
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  const margin = 40;
+  const fontSize = 11;
+  const lineHeight = fontSize * 1.4;
+  const pageSize = { width: 595.28, height: 841.89 };
+
+  let page = pdfDoc.addPage([pageSize.width, pageSize.height]);
+  let y = page.getHeight() - margin;
+  const usableWidth = page.getWidth() - margin * 2;
+
+  for (const line of splitLines(content)) {
+    const wrappedLines = wrapPdfLine(line, usableWidth, font, fontSize);
+
+    for (const wrapped of wrappedLines) {
+      if (y <= margin) {
+        page = pdfDoc.addPage([pageSize.width, pageSize.height]);
+        y = page.getHeight() - margin;
+      }
+
+      page.drawText(wrapped, {
+        x: margin,
+        y,
+        size: fontSize,
+        font,
+        color: rgb(0, 0, 0),
+      });
+
+      y -= lineHeight;
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
+}
+
+async function loadDocx(): Promise<DocxModule> {
+  const module = await import('docx');
+  return module as DocxModule;
+}
+
+function toDocxParagraph(docx: DocxModule, line: string) {
+  const docxAny = docx as any;
+  if (line.startsWith('# ')) {
+    return new docxAny.Paragraph({
+      text: line.replace(/^#\s*/, '').trim(),
+      heading: docxAny.HeadingLevel.HEADING_1,
+    });
+  }
+
+  if (line.startsWith('## ')) {
+    return new docxAny.Paragraph({
+      text: line.replace(/^##\s*/, '').trim(),
+      heading: docxAny.HeadingLevel.HEADING_2,
+    });
+  }
+
+  return new docxAny.Paragraph({
+    children: [new docxAny.TextRun(line || ' ')],
+  });
+}
+
+async function renderDocxBuffer(content: string): Promise<Buffer> {
+  const docx = await loadDocx();
+  const docxAny = docx as any;
+  const doc = new docxAny.Document({
+    sections: [
+      {
+        properties: {},
+        children: splitLines(content).map((line) => toDocxParagraph(docx, line)),
+      },
+    ],
+  });
+
+  return docxAny.Packer.toBuffer(doc);
+}
 
 async function getDataAvailability(tenantId: string) {
   const [nodeCount, analysisCount, biaCount, simCount] = await Promise.all([
@@ -63,6 +227,22 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
 
   if (format === 'json') {
     return res.json(report);
+  }
+
+  const textReport = formatReportAsText(report);
+
+  if (format === 'pdf') {
+    const pdfBuffer = await renderPdfBuffer(textReport);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="rapport-pra-pca.pdf"');
+    return res.send(pdfBuffer);
+  }
+
+  if (format === 'docx') {
+    const docxBuffer = await renderDocxBuffer(textReport);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+    res.setHeader('Content-Disposition', 'attachment; filename="rapport-pra-pca.docx"');
+    return res.send(docxBuffer);
   }
 
   return res.json({
