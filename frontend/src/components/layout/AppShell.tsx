@@ -2,6 +2,7 @@ import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { Toaster } from 'sonner';
+import { HelpDrawer } from '@/components/knowledge-base/HelpDrawer';
 
 export function AppShell() {
   return (
@@ -13,6 +14,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <HelpDrawer />
       <Toaster position="top-right" />
     </div>
   );
