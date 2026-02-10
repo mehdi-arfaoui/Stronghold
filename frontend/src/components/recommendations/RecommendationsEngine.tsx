@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -15,17 +15,29 @@ import {
   Clock,
   Loader2,
   TrendingUp,
+  RefreshCw,
+  Undo2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { formatRelativeTime } from '@/lib/formatters';
+import { api } from '@/api/client';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
 
 type ViewMode = 'list' | 'matrix';
 type SortField = 'priority' | 'cost' | 'roi';
+
+const REJECTION_REASONS = [
+  { value: 'out_of_budget', label: 'Hors budget' },
+  { value: 'not_priority', label: 'Non prioritaire' },
+  { value: 'already_covered', label: 'Deja couvert' },
+  { value: 'other', label: 'Autre' },
+] as const;
 
 const CURRENCIES: { value: string; label: string; symbol: string }[] = [
   { value: 'EUR', label: 'EUR', symbol: '\u20AC' },
@@ -69,6 +81,24 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const [currency, setCurrency] = useState('EUR');
   const [sortBy, setSortBy] = useState<SortField>('priority');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('not_priority');
+  const [rejectNote, setRejectNote] = useState('');
+  // Track local overrides for optimistic UI (accepted/rejected status + animation)
+  const [localOverrides, setLocalOverrides] = useState<Map<string, { accepted: boolean; notes?: string }>>(new Map());
+  const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch live exchange rates from backend
+  const ratesQuery = useQuery({
+    queryKey: ['currency-rates', currency],
+    queryFn: async () => {
+      const { data } = await api.get<{ rates: Record<string, number>; cachedAt: string; source: string }>(
+        `/currencies/rates?base=EUR`
+      );
+      return data;
+    },
+    staleTime: 60 * 60 * 1000, // 1 hour
+  });
 
   const recsQuery = useQuery({
     queryKey: ['recommendations'],
@@ -81,14 +111,80 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, accepted }: { id: string; accepted: boolean }) =>
-      recommendationsApi.updateStatus(id, { accepted }),
+    mutationFn: ({ id, accepted, notes }: { id: string; accepted: boolean; notes?: string }) =>
+      recommendationsApi.updateStatus(id, { accepted, notes }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recommendations'] });
       queryClient.invalidateQueries({ queryKey: ['recommendations-summary'] });
-      toast.success('Recommandation mise a jour');
     },
   });
+
+  const handleAccept = useCallback((rec: Recommendation) => {
+    const prevState = localOverrides.get(rec.id);
+    setLocalOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(rec.id, { accepted: true });
+      return next;
+    });
+
+    updateMutation.mutate({ id: rec.id, accepted: true });
+
+    toast.success(`"${rec.serviceName}" integree au plan`, {
+      duration: 5000,
+      action: {
+        label: 'Annuler',
+        onClick: () => {
+          setLocalOverrides((prev) => {
+            const next = new Map(prev);
+            if (prevState) {
+              next.set(rec.id, prevState);
+            } else {
+              next.delete(rec.id);
+            }
+            return next;
+          });
+          // Revert via API: set accepted back to the implicit null by toggling
+          updateMutation.mutate({ id: rec.id, accepted: false, notes: '__undo__' });
+        },
+      },
+    });
+  }, [localOverrides, updateMutation]);
+
+  const handleRejectConfirm = useCallback((rec: Recommendation) => {
+    const reasonLabel = REJECTION_REASONS.find((r) => r.value === rejectReason)?.label ?? rejectReason;
+    const notes = rejectNote ? `${reasonLabel}: ${rejectNote}` : reasonLabel;
+
+    const prevState = localOverrides.get(rec.id);
+    setLocalOverrides((prev) => {
+      const next = new Map(prev);
+      next.set(rec.id, { accepted: false, notes });
+      return next;
+    });
+
+    updateMutation.mutate({ id: rec.id, accepted: false, notes });
+    setRejectingId(null);
+    setRejectReason('not_priority');
+    setRejectNote('');
+
+    toast(`"${rec.serviceName}" rejetee — ${reasonLabel}`, {
+      duration: 5000,
+      action: {
+        label: 'Annuler',
+        onClick: () => {
+          setLocalOverrides((prev) => {
+            const next = new Map(prev);
+            if (prevState) {
+              next.set(rec.id, prevState);
+            } else {
+              next.delete(rec.id);
+            }
+            return next;
+          });
+          updateMutation.mutate({ id: rec.id, accepted: true, notes: '__undo__' });
+        },
+      },
+    });
+  }, [localOverrides, rejectReason, rejectNote, updateMutation]);
 
   const recs = useMemo(() => {
     const data = recsQuery.data ?? [];
@@ -101,15 +197,23 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
   const summary = summaryQuery.data;
   const currencyInfo = CURRENCIES.find((c) => c.value === currency) ?? CURRENCIES[0];
+  const liveRates = ratesQuery.data;
 
   const formatAmount = (amount: number) => {
-    // Simple currency rate approximation for display
-    const rates: Record<string, number> = { EUR: 1, USD: 1.08, GBP: 0.86, CHF: 0.94, CAD: 1.47, JPY: 162 };
+    // Use live rates from backend if available, fall back to defaults
+    const defaultRates: Record<string, number> = { EUR: 1, USD: 1.08, GBP: 0.86, CHF: 0.94, CAD: 1.47, JPY: 162 };
+    const rates = liveRates?.rates ?? defaultRates;
     const rate = rates[currency] ?? 1;
     const converted = amount * rate;
     if (converted >= 1000000) return `${currencyInfo.symbol}${(converted / 1000000).toFixed(1)}M`;
     if (converted >= 1000) return `${currencyInfo.symbol}${(converted / 1000).toFixed(0)}K`;
     return `${currencyInfo.symbol}${Math.round(converted)}`;
+  };
+
+  const getEffectiveStatus = (rec: Recommendation): boolean | null => {
+    const override = localOverrides.get(rec.id);
+    if (override) return override.accepted;
+    return rec.accepted;
   };
 
   const isLoading = recsQuery.isLoading;
@@ -124,19 +228,35 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Currency Selector */}
-          <Select value={currency} onValueChange={setCurrency}>
-            <SelectTrigger className="w-[100px]" aria-label="Devise">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {CURRENCIES.map((c) => (
-                <SelectItem key={c.value} value={c.value}>
-                  {c.label} {c.symbol}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Currency Selector with live rates indicator */}
+          <div className="flex items-center gap-1.5">
+            <Select value={currency} onValueChange={setCurrency}>
+              <SelectTrigger className="w-[100px]" aria-label="Devise">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {CURRENCIES.map((c) => (
+                  <SelectItem key={c.value} value={c.value}>
+                    {c.label} {c.symbol}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {liveRates && (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span className="flex items-center gap-1 text-xs text-muted-foreground cursor-default">
+                    <RefreshCw className="h-3 w-3" />
+                    {liveRates.source === 'live' ? 'Live' : liveRates.source === 'cache' ? 'Cache' : 'Defaut'}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>Taux mis a jour {formatRelativeTime(liveRates.cachedAt)}</p>
+                  <p className="text-xs text-muted-foreground">Source: {liveRates.source}</p>
+                </TooltipContent>
+              </Tooltip>
+            )}
+          </div>
 
           {/* Sort */}
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortField)}>
@@ -265,30 +385,91 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                     </button>
 
                     <div className="flex items-center gap-2 shrink-0">
-                      {rec.accepted === null ? (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => updateMutation.mutate({ id: rec.id, accepted: true })}
-                            disabled={updateMutation.isPending}
+                      {(() => {
+                        const status = getEffectiveStatus(rec);
+                        if (status === null) {
+                          return (
+                            <>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => handleAccept(rec)}
+                                disabled={updateMutation.isPending}
+                                className="transition-all duration-200 hover:border-resilience-high hover:text-resilience-high"
+                              >
+                                <Check className="mr-1 h-3.5 w-3.5" /> Accepter
+                              </Button>
+                              <div className="relative">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  onClick={() => setRejectingId(rejectingId === rec.id ? null : rec.id)}
+                                  disabled={updateMutation.isPending}
+                                >
+                                  <X className="mr-1 h-3.5 w-3.5" /> Rejeter
+                                </Button>
+
+                                {/* Rejection reason popover */}
+                                {rejectingId === rec.id && (
+                                  <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-lg border bg-popover p-4 shadow-lg">
+                                    <p className="mb-2 text-sm font-medium">Raison du refus</p>
+                                    <Select value={rejectReason} onValueChange={setRejectReason}>
+                                      <SelectTrigger className="w-full mb-2" aria-label="Raison">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {REJECTION_REASONS.map((r) => (
+                                          <SelectItem key={r.value} value={r.value}>
+                                            {r.label}
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                    {rejectReason === 'other' && (
+                                      <input
+                                        type="text"
+                                        placeholder="Preciser..."
+                                        value={rejectNote}
+                                        onChange={(e) => setRejectNote(e.target.value)}
+                                        className="mb-2 w-full rounded-md border bg-background px-3 py-1.5 text-sm"
+                                      />
+                                    )}
+                                    <div className="flex gap-2">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="flex-1"
+                                        onClick={() => setRejectingId(null)}
+                                      >
+                                        Annuler
+                                      </Button>
+                                      <Button
+                                        size="sm"
+                                        variant="destructive"
+                                        className="flex-1"
+                                        onClick={() => handleRejectConfirm(rec)}
+                                      >
+                                        Confirmer
+                                      </Button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          );
+                        }
+                        return (
+                          <Badge
+                            variant={status ? 'default' : 'secondary'}
+                            className={cn(
+                              'transition-all duration-300',
+                              status && 'bg-resilience-high/10 text-resilience-high border-resilience-high'
+                            )}
                           >
-                            <Check className="mr-1 h-3.5 w-3.5" /> Accepter
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => updateMutation.mutate({ id: rec.id, accepted: false })}
-                            disabled={updateMutation.isPending}
-                          >
-                            <X className="mr-1 h-3.5 w-3.5" /> Rejeter
-                          </Button>
-                        </>
-                      ) : (
-                        <Badge variant={rec.accepted ? 'default' : 'secondary'}>
-                          {rec.accepted ? 'Accepte' : 'Rejete'}
-                        </Badge>
-                      )}
+                            {status ? 'Integree au plan' : 'Rejetee'}
+                          </Badge>
+                        );
+                      })()}
                       <Button variant="ghost" size="icon" className="h-8 w-8">
                         {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                       </Button>
