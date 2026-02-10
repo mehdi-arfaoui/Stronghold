@@ -48,7 +48,11 @@ export function SimulationPage() {
         params,
       };
       const result = await createSimulation(config);
-      setActiveSimId(result.data.id);
+      if (!result) {
+        throw new Error('Simulation response is empty');
+      }
+
+      setActiveSimId(result.id);
       setParamsOpen(false);
       setBlastRadiusOpen(true);
       toast.success('Simulation lancee');
