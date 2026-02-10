@@ -46,6 +46,10 @@ export interface GraphInstance {
 // In-memory graph instances keyed by tenantId
 const graphInstances = new Map<string, GraphInstance>();
 
+const logInfo = (event: string, metadata: Record<string, unknown> = {}) => {
+  console.info(JSON.stringify({ level: 'info', scope: 'graph.service', event, ...metadata }));
+};
+
 function createGraph(): GraphInstance {
   return new GraphClass({ type: 'directed', multi: false, allowSelfLoops: false }) as GraphInstance;
 }
@@ -123,6 +127,8 @@ export async function ingestScanResults(
   tenantId: string,
   results: ScanResult
 ): Promise<IngestReport> {
+  logInfo('graph.ingest.start', { tenantId, provider: results.provider, nodes: results.nodes.length, edges: results.edges.length });
+
   const report: IngestReport = {
     provider: results.provider,
     scannedAt: results.scannedAt,
@@ -209,6 +215,7 @@ export async function ingestScanResults(
   }
 
   await loadGraphFromDB(prisma, tenantId);
+  logInfo('graph.ingest.completed', { tenantId, provider: results.provider, nodesCreated: report.nodesCreated, nodesUpdated: report.nodesUpdated, edgesCreated: report.edgesCreated, edgesUpdated: report.edgesUpdated });
   return report;
 }
 

@@ -16,6 +16,7 @@ import {
 } from '../discovery/discoveryOrchestrator.js';
 import { discoveryQueue } from '../queues/discoveryQueue.js';
 import { runDemoSeed } from '../services/demoSeedService.js';
+import { buildScanHealthReport } from '../services/discoveryHealthService.js';
 
 const router = Router();
 
@@ -204,6 +205,22 @@ router.post('/test-credentials', async (req: TenantRequest, res) => {
   } catch (error) {
     console.error('Error testing credentials:', error);
     return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+
+
+// ─── GET /discovery/health — Scan health dashboard ──────────
+router.get('/health', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: { code: 'ERR_500', message: 'Tenant not resolved' } });
+
+    const report = await buildScanHealthReport(prisma, tenantId);
+    return res.json({ data: report });
+  } catch (error) {
+    console.error('Error fetching discovery health report:', error);
+    return res.status(500).json({ error: { code: 'ERR_500', message: 'Internal server error' } });
   }
 });
 

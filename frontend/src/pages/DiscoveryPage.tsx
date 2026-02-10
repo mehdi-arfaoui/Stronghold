@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -20,6 +20,7 @@ import { useGraphStore } from '@/stores/graph.store';
 import { useDiscoveryStore } from '@/stores/discovery.store';
 import { discoveryApi } from '@/api/discovery.api';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
+import type { ScanHealthProvider, ScanHealthIssue } from '@/types/discovery.types';
 
 export function DiscoveryPage() {
   const queryClient = useQueryClient();
@@ -32,6 +33,12 @@ export function DiscoveryPage() {
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   useDiscovery(scanJobId ?? undefined);
+
+  const healthQuery = useQuery({
+    queryKey: ['discovery-health'],
+    queryFn: async () => (await discoveryApi.getHealth()).data.data,
+    refetchInterval: 15000,
+  });
 
   const selectedNode = allNodes.find((n) => n.id === selectedNodeId);
 
@@ -178,6 +185,39 @@ export function DiscoveryPage() {
   // Validation phase
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col gap-4">
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Sante du scan</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            {(healthQuery.data?.providers ?? []).map((provider: ScanHealthProvider) => (
+              <div key={provider.name} className="rounded-md border p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-medium">{provider.name}</span>
+                  <Badge variant={provider.status === 'connected' ? 'default' : provider.status === 'partial' ? 'secondary' : 'destructive'}>
+                    {provider.status}
+                  </Badge>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Dernier scan: {provider.lastScanAt ? new Date(provider.lastScanAt).toLocaleString() : 'jamais'}
+                </p>
+                <p className="text-xs text-muted-foreground">Couverture: {provider.coveragePercentage ?? 0}%</p>
+                {(provider.errors ?? []).slice(0, 2).map((err: ScanHealthIssue) => (
+                  <p key={`${provider.name}-${err.code}-${err.message}`} className="mt-1 text-xs text-severity-critical">
+                    {err.code}: {err.message}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </div>
+          <div className="text-xs text-muted-foreground">
+            Cohérence graphe — orphan: {healthQuery.data?.graphConsistency?.orphanNodes ?? 0}, reverse manquants: {healthQuery.data?.graphConsistency?.missingReverseEdges ?? 0}, stale: {healthQuery.data?.graphConsistency?.staleNodes ?? 0}
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Toolbar */}
       <GraphControls
         availableTypes={availableTypes}

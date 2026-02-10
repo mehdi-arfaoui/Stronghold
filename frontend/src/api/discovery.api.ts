@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { ScanConfig, ScanJob, CredentialTestResult, DiscoverySchedule } from '@/types/discovery.types';
+import type { ScanConfig, ScanJob, CredentialTestResult, DiscoverySchedule, ScanHealthReport } from '@/types/discovery.types';
 import type { GraphData } from '@/types/graph.types';
 
 export const discoveryApi = {
@@ -23,6 +23,9 @@ export const discoveryApi = {
 
   getSchedules: () =>
     api.get<DiscoverySchedule[]>('/discovery-resilience/schedules'),
+
+  getHealth: () =>
+    api.get<{ data: ScanHealthReport }>('/discovery/health'),
 
   seedDemo: () =>
     api.post<{ success: boolean; nodes: number; totalEdges: number; message: string }>(

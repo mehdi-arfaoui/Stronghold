@@ -9,6 +9,7 @@ import type { IngestReport } from '../graph/types.js';
 import * as GraphService from '../graph/graphService.js';
 import { inferDependencies } from '../graph/dependencyInferenceEngine.js';
 import { transformToScanResult } from './graphBridge.js';
+import { validateScanConsistency } from '../services/discoveryHealthService.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
 
 export interface DiscoveryScanConfig {
@@ -141,7 +142,13 @@ export async function ingestDiscoveredResources(
   // 3. Ingest into the resilience graph via GraphService
   const report = await GraphService.ingestScanResults(prisma, tenantId, scanResult);
 
-  return report;
+  // 4. Run post-scan validation checks automatically
+  const validation = await validateScanConsistency(prisma, tenantId);
+
+  return {
+    ...report,
+    validation,
+  };
 }
 
 /**
