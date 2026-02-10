@@ -37,6 +37,14 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
     sections,
   } = req.body;
 
+  const sanitizedIncludeSimulations = Array.isArray(includeSimulations)
+    ? includeSimulations.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    : undefined;
+
+  const sanitizedIncludeExercises = Array.isArray(includeExercises)
+    ? includeExercises.filter((id: unknown): id is string => typeof id === 'string' && id.length > 0)
+    : undefined;
+
   const nodeCount = await prisma.infraNode.count({ where: { tenantId } });
   if (nodeCount === 0) {
     return res.status(400).json({
@@ -44,12 +52,14 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
     });
   }
 
-  const report = await generatePraPcaReport(prisma, tenantId, {
-    includeSimulations,
-    includeExercises,
+  const reportConfig = {
+    ...(sanitizedIncludeSimulations ? { includeSimulations: sanitizedIncludeSimulations } : {}),
+    ...(sanitizedIncludeExercises ? { includeExercises: sanitizedIncludeExercises } : {}),
     format: format || 'json',
     sections,
-  });
+  };
+
+  const report = await generatePraPcaReport(prisma, tenantId, reportConfig);
 
   if (format === 'json') {
     return res.json(report);
