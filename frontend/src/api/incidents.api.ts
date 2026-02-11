@@ -32,5 +32,5 @@ export const incidentsApi = {
     api.patch<Incident>(`/incidents/${id}`, data),
 
   addEvent: (id: string, event: Omit<IncidentEvent, 'timestamp'>) =>
-    api.post(`/incidents/${id}/events`, event),
+    api.post(`/incidents/${id}/actions`, event),
 };

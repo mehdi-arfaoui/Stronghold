@@ -70,10 +70,14 @@ export function AnalysisPage() {
     },
   });
 
-  const biaData = biaQuery.data as any;
-  const entries = Array.isArray(biaData) ? biaData : (biaData?.entries ?? []);
+  const biaRaw: unknown = biaQuery.data;
+  const entries = Array.isArray(biaRaw)
+    ? biaRaw
+    : (biaRaw != null && typeof biaRaw === 'object' && 'entries' in biaRaw && Array.isArray((biaRaw as Record<string, unknown>).entries))
+      ? ((biaRaw as Record<string, unknown>).entries as unknown[])
+      : [];
   const summary = biaSummaryQuery.data;
-  const risks = risksQuery.data ?? [];
+  const risks: Risk[] = Array.isArray(risksQuery.data) ? risksQuery.data : [];
   const redundancy = redundancyQuery.data ?? [];
   const regional = regionalQuery.data ?? [];
 
@@ -162,7 +166,7 @@ export function AnalysisPage() {
                     {risk.autoDetected && <span className="text-xs text-muted-foreground">(auto-detecte)</span>}
                   </div>
                   <p className="mt-1 text-sm text-muted-foreground">{risk.description}</p>
-                  {risk.mitigations.length > 0 && (
+                  {(risk.mitigations ?? []).length > 0 && (
                     <div className="mt-2 space-y-1">
                       {risk.mitigations.map((m) => (
                         <p key={m.id} className="text-xs text-muted-foreground">— {m.description} ({m.status})</p>

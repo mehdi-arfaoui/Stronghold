@@ -17,7 +17,7 @@ export const documentsApi = {
   upload: (file: File) => {
     const formData = new FormData();
     formData.append('file', file);
-    return api.post<Document>('/documents/upload', formData, {
+    return api.post<Document>('/documents', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },

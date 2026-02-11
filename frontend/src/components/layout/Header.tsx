@@ -23,6 +23,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/documents': 'Documents',
   '/report': 'Rapport PRA/PCA',
   '/settings': 'Parametres',
+  '/knowledge-base': 'Base de connaissances',
 };
 
 export function Header() {
