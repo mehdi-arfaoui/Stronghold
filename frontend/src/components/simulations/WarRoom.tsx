@@ -63,18 +63,22 @@ export function WarRoom({ open, onClose, scenarioName, scenarioType: _scenarioTy
   };
 
   const timelineEvents = warRoomData.propagationTimeline ?? [];
-  const impactedNodes = warRoomData.impactedNodes?.length ? warRoomData.impactedNodes : (result.affectedNodes ?? []).map((node) => ({
-    id: node.nodeId,
-    name: node.nodeName,
-    type: node.nodeType,
-    status: node.status,
-    impactedAt: node.cascadeLevel,
-    estimatedRecovery: 60,
-  }));
+  const impactedNodes = warRoomData.impactedNodes?.length ? warRoomData.impactedNodes : (result.affectedNodes ?? []).map((node) => {
+    const matchingService = (result.impactedServices ?? []).find((s) => s.serviceName === node.nodeName);
+    return {
+      id: node.nodeId,
+      name: node.nodeName,
+      type: node.nodeType,
+      status: node.status,
+      impactedAt: node.cascadeLevel,
+      estimatedRecovery: matchingService?.estimatedRTO ?? Math.round((result.estimatedDowntime ?? 60) / Math.max((result.affectedNodes ?? []).length, 1)),
+    };
+  });
 
   const totalNodes = impactedNodes.length ?? 0;
   const downNodes = Object.values(nodeStates).filter((s) => s === 'down').length;
-  const estimatedUsers = (result.impactedServices ?? []).reduce((acc, s) => acc + (s.impact !== 'none' ? 100 : 0), 0);
+  const impactedServiceCount = (result.impactedServices ?? []).filter((s) => s.impact !== 'none').length;
+  const estimatedUsers = impactedServiceCount * Math.max(Math.round((result.blastRadiusMetrics?.totalNodesInGraph ?? 10) / Math.max(impactedServiceCount, 1)), 1);
   const hourlyLoss = (result.financialLoss ?? 0) / Math.max((result.estimatedDowntime ?? 0) / 60, 1);
 
   const startAnimation = useCallback(() => {

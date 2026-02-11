@@ -287,6 +287,39 @@ router.get('/pra-pca/latest', async (req: TenantRequest, res) => {
   }
 });
 
+// HTML preview of the report (used by frontend ReportGenerator)
+router.get('/preview', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const nodeCount = await prisma.infraNode.count({ where: { tenantId } });
+    if (nodeCount === 0) {
+      return res.json({ html: '<p>Aucune donnee d\'infrastructure disponible. Lancez un scan de decouverte.</p>' });
+    }
+
+    const report = await generatePraPcaReport(prisma, tenantId, { format: 'json' });
+    const textReport = formatReportAsText(report);
+
+    // Convert markdown-like text to basic HTML
+    const html = textReport
+      .split('\n')
+      .map((line) => {
+        if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`;
+        if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
+        if (line.startsWith('- ')) return `<li>${line.slice(2)}</li>`;
+        if (line.trim() === '') return '<br/>';
+        return `<p>${line}</p>`;
+      })
+      .join('\n');
+
+    return res.json({ html });
+  } catch (error) {
+    console.error('Error generating report preview:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // Frontend prerequisites list used to unlock PRA/PCA generation button
 router.get('/prerequisites', async (req: TenantRequest, res) => {
   try {
