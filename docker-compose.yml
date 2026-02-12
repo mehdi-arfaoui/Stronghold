@@ -120,6 +120,8 @@ services:
     ports:
       - "4000:4000"
     depends_on:
+      backend-migrate:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     healthcheck:
