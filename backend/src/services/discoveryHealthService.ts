@@ -43,7 +43,9 @@ export async function buildScanHealthReport(
   const providerNames = ['AWS', 'AZURE', 'GCP'];
   const providers = await Promise.all(
     providerNames.map(async (providerName) => {
-      const [lastScan, resources, failedScans] = await Promise.all([
+      const providerLower = providerName.toLowerCase();
+
+      const [lastScan, resources, failedScans, infraNodes, lastScanJob] = await Promise.all([
         prisma.discoveryJob.findFirst({
           where: {
             tenantId,
@@ -68,23 +70,57 @@ export async function buildScanHealthReport(
           take: 3,
           select: { errorMessage: true },
         }),
+        // Also check InfraNode records (populated by demo seed or imports)
+        prisma.infraNode.groupBy({
+          by: ['type'],
+          where: { tenantId, provider: providerLower },
+          _count: { _all: true },
+        }),
+        // Check scanJob as well (used by demo seed)
+        prisma.scanJob.findFirst({
+          where: {
+            tenantId,
+            status: 'completed',
+          },
+          orderBy: { completedAt: 'desc' },
+          select: { completedAt: true },
+        }),
       ]);
 
+      // Merge resource counts from discoveryResource + InfraNode
       const resourceCounts = resources.reduce<Record<string, number>>((acc, item) => {
         acc[item.kind] = item._count._all;
         return acc;
       }, {});
 
-      const totalResources = Object.values(resourceCounts).reduce((sum, count) => sum + count, 0);
+      // If no discoveryResource data, fall back to InfraNode data
+      const infraResourceCounts = infraNodes.reduce<Record<string, number>>((acc, item) => {
+        acc[item.type] = item._count._all;
+        return acc;
+      }, {});
+
+      const totalDiscoveryResources = Object.values(resourceCounts).reduce((sum, count) => sum + count, 0);
+      const totalInfraNodes = Object.values(infraResourceCounts).reduce((sum, count) => sum + count, 0);
+
+      // Use whichever source has data, preferring discoveryResource
+      const effectiveCounts = totalDiscoveryResources > 0 ? resourceCounts : infraResourceCounts;
+      const totalResources = Math.max(totalDiscoveryResources, totalInfraNodes);
+
       const errors = failedScans.map((scan) => ({
         code: 'DISCOVERY_SCAN_FAILED',
         message: scan.errorMessage || `${providerName} scan failed`,
         severity: 'error' as const,
       }));
 
+      // Use lastScan from discoveryJob, or fall back to scanJob
+      const effectiveLastScan = lastScan ?? lastScanJob;
+
       let status: ScanHealthStatus = 'not_configured';
-      if (lastScan && totalResources > 0) {
+      if (effectiveLastScan && totalResources > 0) {
         status = errors.length > 0 ? 'partial' : 'connected';
+      } else if (totalResources > 0) {
+        // InfraNodes exist (e.g., from demo seed or import) but no scan job
+        status = 'connected';
       } else if (errors.length > 0) {
         status = 'error';
       }
@@ -94,8 +130,8 @@ export async function buildScanHealthReport(
       return {
         name: providerName,
         status,
-        lastScanAt: lastScan?.completedAt?.toISOString() ?? null,
-        resourceCounts,
+        lastScanAt: effectiveLastScan?.completedAt?.toISOString() ?? null,
+        resourceCounts: effectiveCounts,
         errors,
         coveragePercentage,
       } satisfies ScanHealthProviderReport;

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -185,15 +185,28 @@ function ArticleContent({ content }: { content: string }) {
   return <div className="space-y-2">{elements}</div>;
 }
 
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  useEffect(() => {
+    timerRef.current = setTimeout(() => setDebouncedValue(value), delayMs);
+    return () => clearTimeout(timerRef.current);
+  }, [value, delayMs]);
+
+  return debouncedValue;
+}
+
 export function KnowledgeBasePage() {
   const [search, setSearch] = useState('');
+  const debouncedSearch = useDebouncedValue(search, 350);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<KnowledgeBaseArticle | null>(null);
 
   const kbQuery = useQuery({
-    queryKey: ['knowledge-base', search, selectedCategory ?? ''],
+    queryKey: ['knowledge-base', debouncedSearch, selectedCategory ?? ''],
     queryFn: async () => (await knowledgeBaseApi.getAll({
-      search,
+      search: debouncedSearch,
       category: selectedCategory ?? '',
     })).data.articles,
   });

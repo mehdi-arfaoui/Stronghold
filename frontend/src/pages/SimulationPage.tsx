@@ -92,19 +92,43 @@ export function SimulationPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Page header */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold">Scénarios</h2>
+        <h1 className="text-2xl font-bold">Simulation de pannes</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Testez la resilience de votre infrastructure en simulant des scenarios de pannes realistes.
+        </p>
+      </div>
+
+      {/* Section 1: Scenario Selection */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">1. Choisir un scenario</h2>
+          <p className="text-sm text-muted-foreground">
+            Selectionnez un scenario de panne a simuler sur votre infrastructure.
+          </p>
+        </div>
         <ScenarioSelector
           templates={templateQuery.data ?? []}
           isLoading={templateQuery.isLoading}
           isLaunching={isCreating}
           onLaunch={handleLaunch}
         />
-      </div>
+      </section>
 
-      <RecoveryPriorityKanban priorities={prioritiesQuery.data ?? []} />
+      {/* Section 2: Recovery Priorities */}
+      <section className="space-y-4">
+        <div>
+          <h2 className="text-lg font-semibold">2. Priorites de reprise</h2>
+          <p className="text-sm text-muted-foreground">
+            Organisez l'ordre de reprise des services en fonction de leur criticite metier.
+          </p>
+        </div>
+        <RecoveryPriorityKanban priorities={prioritiesQuery.data ?? []} />
+      </section>
 
+      {/* Drawers (overlays) */}
       {simulation?.result && (
         <BlastRadiusDrawer
           open={blastRadiusOpen && !warRoomOpen}
@@ -128,10 +152,16 @@ export function SimulationPage() {
         />
       )}
 
+      {/* Section 3: Simulation Results */}
       {simulation?.result && !warRoomOpen && (
-        <>
+        <section className="space-y-4">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">Résultats</h2>
+            <div>
+              <h2 className="text-lg font-semibold">3. Resultats de la simulation</h2>
+              <p className="text-sm text-muted-foreground">
+                Analyse d'impact du scenario « {simulation.name} » sur votre infrastructure.
+              </p>
+            </div>
             <Button type="button" variant="outline" onClick={() => setWarRoomOpen(true)}>
               Ouvrir la War Room
             </Button>
@@ -140,13 +170,20 @@ export function SimulationPage() {
           <SimulationResult result={simulation.result} />
 
           {simulation.result.cascadeSteps?.length > 0 && (
-            <CascadeView steps={simulation.result.cascadeSteps} />
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Propagation en cascade</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <CascadeView steps={simulation.result.cascadeSteps} />
+              </CardContent>
+            </Card>
           )}
 
           {graphQuery.data && (
             <Card>
               <CardHeader>
-                <CardTitle className="text-base">Graphe avant/après</CardTitle>
+                <CardTitle className="text-base">Graphe avant / apres</CardTitle>
               </CardHeader>
               <CardContent>
                 <BeforeAfterGraph
@@ -157,71 +194,81 @@ export function SimulationPage() {
               </CardContent>
             </Card>
           )}
-        </>
+        </section>
       )}
 
+      {/* Section 4: Simulation History */}
       {simulations.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Historique des simulations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Date</TableHead>
-                  <TableHead>Scenario</TableHead>
-                  <TableHead>Impact</TableHead>
-                  <TableHead>Score</TableHead>
-                  <TableHead>Statut</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {simulations.map((sim) => (
-                  <TableRow
-                    key={sim.id}
-                    className="cursor-pointer"
-                    onClick={() => { setActiveSimId(sim.id); if (sim.status === 'completed') setWarRoomOpen(true); }}
-                  >
-                    <TableCell className="text-sm">{formatDate(sim.createdAt)}</TableCell>
-                    <TableCell>{sim.name}</TableCell>
-                    <TableCell>
-                      {sim.result ? `${Math.round(sim.result.infrastructureImpact)}%` : '-'}
-                    </TableCell>
-                    <TableCell>
-                      {sim.result ? (
-                        <span>
-                          {sim.result.resilienceScoreBefore} &rarr; {sim.result.resilienceScoreAfter}
-                        </span>
-                      ) : '-'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={sim.status === 'completed' ? 'default' : sim.status === 'failed' ? 'destructive' : 'secondary'}>
-                        {sim.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {sim.status === 'completed' && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveSimId(sim.id);
-                            setWarRoomOpen(true);
-                          }}
-                        >
-                          Ouvrir la War Room
-                        </Button>
-                      )}
-                    </TableCell>
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold">Historique</h2>
+            <p className="text-sm text-muted-foreground">
+              {simulations.length} simulation{simulations.length > 1 ? 's' : ''} realisee{simulations.length > 1 ? 's' : ''}
+            </p>
+          </div>
+          <Card>
+            <CardContent className="pt-4">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Date</TableHead>
+                    <TableHead>Scenario</TableHead>
+                    <TableHead>Impact infra</TableHead>
+                    <TableHead>Score resilience</TableHead>
+                    <TableHead>Statut</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
+                </TableHeader>
+                <TableBody>
+                  {simulations.map((sim) => (
+                    <TableRow
+                      key={sim.id}
+                      className="cursor-pointer"
+                      onClick={() => { setActiveSimId(sim.id); if (sim.status === 'completed') setWarRoomOpen(true); }}
+                    >
+                      <TableCell className="text-sm">{formatDate(sim.createdAt)}</TableCell>
+                      <TableCell className="font-medium">{sim.name}</TableCell>
+                      <TableCell>
+                        {sim.result ? (
+                          <Badge variant={sim.result.infrastructureImpact > 50 ? 'destructive' : 'secondary'}>
+                            {Math.round(sim.result.infrastructureImpact)}%
+                          </Badge>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        {sim.result ? (
+                          <span className="text-sm">
+                            {sim.result.resilienceScoreBefore} &rarr; {sim.result.resilienceScoreAfter}
+                          </span>
+                        ) : '-'}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={sim.status === 'completed' ? 'default' : sim.status === 'failed' ? 'destructive' : 'secondary'}>
+                          {sim.status === 'completed' ? 'Terminee' : sim.status === 'failed' ? 'Echouee' : 'En cours'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-right">
+                        {sim.status === 'completed' && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveSimId(sim.id);
+                              setWarRoomOpen(true);
+                            }}
+                          >
+                            War Room
+                          </Button>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </section>
       )}
     </div>
   );

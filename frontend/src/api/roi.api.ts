@@ -1,5 +1,19 @@
 import { api } from './client';
 
+export interface SPOFRiskDetail {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  provider: string;
+  rtoMinutes: number;
+  dependentServices: number;
+  blastRadius: number;
+  failureProbability: number;
+  annualExpectedLoss: number;
+  recommendedStrategy: string;
+  remediationMonthlyCost: { min: number; max: number; median: number };
+}
+
 export interface ROIReport {
   annualSavings: number;
   roiPercentage: number;
@@ -15,6 +29,7 @@ export interface ROIReport {
     avgRtoHours: number;
     hourlyCost: number;
     annualExpectedLoss: number;
+    perSpof?: SPOFRiskDetail[];
   };
   remediationDetails: {
     monthlyCloudCost: number;
@@ -26,6 +41,7 @@ export interface ROIReport {
     downtimeCostSource: string;
     riskReductionAssumption: string;
     spofFailureProbability: string;
+    calculationDetails?: string;
     disclaimer: string;
   };
 }
