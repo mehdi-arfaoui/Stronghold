@@ -354,4 +354,108 @@ router.get('/prerequisites', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── POST /reports/executive-summary — Board-ready 1-page PDF ──────────
+router.post('/executive-summary', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const { currency = 'EUR', includeROI = true, includeCompliance = true } = req.body;
+
+    // Gather all data
+    const [nodeCount, spofCount, analysisResult, biaReport, simCount, latestAnalysis] = await Promise.all([
+      prisma.infraNode.count({ where: { tenantId } }),
+      prisma.infraNode.count({ where: { tenantId, isSPOF: true } }),
+      prisma.graphAnalysis.findFirst({ where: { tenantId }, orderBy: { createdAt: 'desc' } }),
+      prisma.bIAReport2.findFirst({ where: { tenantId }, orderBy: { createdAt: 'desc' }, include: { processes: true } }),
+      prisma.simulation.count({ where: { tenantId } }),
+      prisma.graphAnalysis.findFirst({ where: { tenantId }, orderBy: { createdAt: 'desc' } }),
+    ]);
+
+    const resilienceScore = latestAnalysis?.resilienceScore ?? 0;
+    const totalEdges = latestAnalysis?.totalEdges ?? 0;
+
+    // Calculate providers from nodes
+    const providers = await prisma.infraNode.groupBy({
+      by: ['provider'],
+      where: { tenantId },
+      _count: true,
+    });
+    const providerList = providers.map(p => p.provider).filter(Boolean);
+
+    const regions = await prisma.infraNode.groupBy({
+      by: ['region'],
+      where: { tenantId, region: { not: null } },
+      _count: true,
+    });
+
+    // ROI data
+    let roiSection = '';
+    if (includeROI) {
+      const { calculateROI } = await import('../services/roiCalculatorService.js');
+      const roi = await calculateROI(prisma, tenantId, { currency });
+      roiSection = [
+        '',
+        'PLAN DE REMEDIATION',
+        `Cout mensuel estime : ${roi.remediationDetails.totalMonthlyCost} ${currency}/mois`,
+        `ROI annuel : ${roi.roiPercentage}% (payback < ${roi.paybackPeriodMonths} mois)`,
+        `Risque annuel actuel : ${roi.breakdown.currentAnnualRisk} ${currency}`,
+        `Reduction de risque estimee : ${roi.breakdown.riskReduction} ${currency}`,
+      ].join('\n');
+    }
+
+    // Compliance data
+    let complianceSection = '';
+    if (includeCompliance) {
+      const { calculateComplianceCoverage } = await import('../constants/compliance-mapping.js');
+      const features = ['discovery', 'graph_analysis', 'spof_analysis', 'risk_detection', 'bia_auto_generate', 'bia_rto_rpo', 'recommendations', 'recovery_strategy', 'simulations', 'report_pra_pca'];
+      const coverage = calculateComplianceCoverage(features);
+      complianceSection = [
+        '',
+        'CONFORMITE',
+        ...Object.entries(coverage).map(([name, c]) => `${name} : ${c.percentage}% de couverture (${c.covered}/${c.total} clauses)`),
+      ].join('\n');
+    }
+
+    // Processes by tier
+    const tier1 = biaReport?.processes.filter(p => p.recoveryTier === 1).length ?? 0;
+    const tier2 = biaReport?.processes.filter(p => p.recoveryTier === 2).length ?? 0;
+
+    const avgRto = biaReport?.processes.length
+      ? Math.round(biaReport.processes.reduce((s, p) => s + (p.validatedRTO ?? p.suggestedRTO ?? 0), 0) / biaReport.processes.length)
+      : 0;
+
+    const content = [
+      'STRONGHOLD — RAPPORT DE RESILIENCE IT',
+      `Date : ${new Date().toLocaleDateString('fr-FR')}`,
+      '',
+      `SCORE DE RESILIENCE : ${resilienceScore}/100`,
+      '',
+      'INFRASTRUCTURE ANALYSEE',
+      `${nodeCount} services | ${providerList.length} provider(s) (${providerList.join(', ')}) | ${regions.length} region(s)`,
+      '',
+      'RISQUES CRITIQUES',
+      `${spofCount} Single Point(s) of Failure detecte(s)`,
+      `RTO moyen actuel : ${avgRto} min`,
+      `${tier1} services Tier 1 (Mission Critical)`,
+      `${tier2} services Tier 2 (Business Critical)`,
+      roiSection,
+      complianceSection,
+      '',
+      'PROCHAINES ETAPES',
+      `1. Corriger les ${spofCount} SPOF critiques`,
+      '2. Activer le monitoring continu (drift detection)',
+      '3. Planifier un exercice de basculement',
+    ].join('\n');
+
+    const pdfBuffer = await renderPdfBuffer(content);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="executive-summary.pdf"');
+    return res.send(pdfBuffer);
+  } catch (error) {
+    console.error('Error generating executive summary:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 export default router;

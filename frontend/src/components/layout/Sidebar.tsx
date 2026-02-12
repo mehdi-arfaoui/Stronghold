@@ -13,6 +13,7 @@ import {
   Settings,
   Shield,
   ChevronLeft,
+  Activity,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,6 +42,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
       { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
       { label: 'Recommandations', icon: Lightbulb, path: '/recommendations' },
+      { label: 'Drift Detection', icon: Activity, path: '/drift' },
       { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
     ],
   },

@@ -1,6 +1,7 @@
 import { createBrowserRouter, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/layout/AppShell';
 import { DashboardPage } from '@/pages/DashboardPage';
 import { DiscoveryPage } from '@/pages/DiscoveryPage';
@@ -15,6 +16,7 @@ import { SettingsPage } from '@/pages/SettingsPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
+import { DriftDetectionPage } from '@/pages/DriftDetectionPage';
 import { useUIStore } from '@/stores/ui.store';
 import { useEffect } from 'react';
 
@@ -43,6 +45,7 @@ const router = createBrowserRouter([
       { path: '/report', element: <ReportPage /> },
       { path: '/settings', element: <SettingsPage /> },
       { path: '/knowledge-base', element: <KnowledgeBasePage /> },
+      { path: '/drift', element: <DriftDetectionPage /> },
     ],
   },
   { path: '/login', element: <LoginPage /> },
@@ -58,11 +61,13 @@ function ThemeInitializer() {
 
 export default function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <ThemeInitializer />
-        <RouterProvider router={router} />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <GlobalErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <TooltipProvider>
+          <ThemeInitializer />
+          <RouterProvider router={router} />
+        </TooltipProvider>
+      </QueryClientProvider>
+    </GlobalErrorBoundary>
   );
 }

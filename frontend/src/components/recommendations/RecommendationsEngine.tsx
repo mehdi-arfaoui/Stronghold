@@ -27,6 +27,7 @@ import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/formatters';
 import { api } from '@/api/client';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
+import { roiApi, type ROIReport } from '@/api/roi.api';
 
 type ViewMode = 'list' | 'matrix';
 type SortField = 'priority' | 'cost' | 'roi';
@@ -135,9 +136,23 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     queryFn: async () => (await recommendationsApi.getSummary()).data,
   });
 
+  const roiQuery = useQuery({
+    queryKey: ['roi-report', currency],
+    queryFn: async () => (await roiApi.getROI({ currency })).data,
+    staleTime: 5 * 60 * 1000,
+  });
+
   const updateMutation = useMutation({
     mutationFn: ({ id, accepted, notes }: { id: string; accepted: boolean; notes?: string }) =>
       recommendationsApi.updateStatus(id, { accepted, notes }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['recommendations'] });
+      queryClient.invalidateQueries({ queryKey: ['recommendations-summary'] });
+    },
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: (id: string) => recommendationsApi.resetStatus(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recommendations'] });
       queryClient.invalidateQueries({ queryKey: ['recommendations-summary'] });
@@ -168,12 +183,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             }
             return next;
           });
-          // Revert via API: set accepted back to the implicit null by toggling
-          updateMutation.mutate({ id: rec.id, accepted: false, notes: '__undo__' });
+          resetMutation.mutate(rec.id);
         },
       },
     });
-  }, [localOverrides, updateMutation]);
+  }, [localOverrides, updateMutation, resetMutation]);
 
   const handleRejectConfirm = useCallback((rec: Recommendation) => {
     const reasonLabel = REJECTION_REASONS.find((r) => r.value === rejectReason)?.label ?? rejectReason;
@@ -205,7 +219,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             }
             return next;
           });
-          updateMutation.mutate({ id: rec.id, accepted: true, notes: '__undo__' });
+          resetMutation.mutate(rec.id);
         },
       },
     });
@@ -397,6 +411,80 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* ROI Analysis */}
+      {roiQuery.data && roiQuery.data.riskDetails.spofCount > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <TrendingUp className="h-5 w-5 text-primary" />
+              ROI de vos recommandations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Risque annuel actuel</p>
+                <p className="text-lg font-bold text-red-600">
+                  {formatAmount(roiQuery.data.breakdown.currentAnnualRisk)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {roiQuery.data.riskDetails.spofCount} SPOF, RTO moy. {roiQuery.data.riskDetails.avgRtoHours}h
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Cout remediation annuel</p>
+                <p className="text-lg font-bold">
+                  {formatAmount(roiQuery.data.breakdown.annualRemediationCost)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {formatAmount(roiQuery.data.remediationDetails.totalMonthlyCost)}/mois
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">ROI net annuel</p>
+                <p className="text-lg font-bold text-green-600">
+                  {formatAmount(roiQuery.data.breakdown.netBenefit)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  ROI: {roiQuery.data.roiPercentage}%
+                </p>
+              </div>
+              <div className="rounded-lg border p-3 text-center">
+                <p className="text-xs text-muted-foreground mb-1">Retour sur investissement</p>
+                <p className="text-lg font-bold">
+                  {roiQuery.data.paybackPeriodMonths < 12
+                    ? `${roiQuery.data.paybackPeriodMonths} mois`
+                    : `${Math.round(roiQuery.data.paybackPeriodMonths / 12 * 10) / 10} ans`
+                  }
+                </p>
+              </div>
+            </div>
+
+            {/* Compliance Coverage */}
+            {Object.keys(roiQuery.data.complianceCoverage).length > 0 && (
+              <div className="flex gap-3 flex-wrap">
+                {Object.entries(roiQuery.data.complianceCoverage).map(([name, cov]) => (
+                  <Tooltip key={name}>
+                    <TooltipTrigger asChild>
+                      <Badge variant="outline" className="cursor-help">
+                        {name} : {cov.percentage}%
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>{cov.covered}/{cov.total} clauses adressees</p>
+                    </TooltipContent>
+                  </Tooltip>
+                ))}
+              </div>
+            )}
+
+            <p className="text-xs text-muted-foreground">
+              Methodologie : {roiQuery.data.methodology.downtimeCostSource}. {roiQuery.data.methodology.riskReductionAssumption}. {roiQuery.data.methodology.disclaimer}
+            </p>
+          </CardContent>
+        </Card>
       )}
 
       {/* Loading */}

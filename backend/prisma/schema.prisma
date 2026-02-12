@@ -85,6 +85,11 @@ model Tenant {
   simulations            Simulation[]
   scanJobs               ScanJob[]
   scanSchedules          ScanSchedule[]
+
+  // Drift detection
+  infraSnapshots         InfraSnapshot[]
+  driftEvents            DriftEvent[]
+  driftSchedule          DriftSchedule?
 }
 
 model TenantBranding {
@@ -1596,4 +1601,75 @@ model ScanSchedule {
   createdAt       DateTime  @default(now())
 
   @@index([tenantId])
+}
+
+// ============================================================
+// DRIFT DETECTION — Infrastructure change monitoring
+// ============================================================
+
+model InfraSnapshot {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  scanId      String?
+  capturedAt  DateTime @default(now())
+  nodeCount   Int
+  edgeCount   Int
+  nodesHash   String
+  metadata    Json     @default("{}")
+
+  drifts      DriftEvent[]
+
+  @@index([tenantId, capturedAt])
+}
+
+model DriftEvent {
+  id            String   @id @default(cuid())
+  tenantId      String
+  tenant        Tenant   @relation(fields: [tenantId], references: [id])
+  snapshotId    String
+  snapshot      InfraSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+
+  type          String   // node_added, node_removed, node_modified, edge_added, edge_removed, config_changed
+  severity      String   // critical, high, medium, low
+  category      String   // security, availability, compliance, capacity
+
+  nodeId        String?
+  nodeName      String?
+  nodeType      String?
+
+  description   String
+  details       Json     @default("{}")
+
+  affectsBIA    Boolean  @default(false)
+  affectsRTO    Boolean  @default(false)
+  affectsSPOF   Boolean  @default(false)
+
+  status        String   @default("open") // open, acknowledged, resolved, ignored
+  resolvedAt    DateTime?
+  resolvedBy    String?
+
+  createdAt     DateTime @default(now())
+
+  @@index([tenantId, status])
+  @@index([tenantId, severity])
+  @@index([snapshotId])
+}
+
+model DriftSchedule {
+  id          String   @id @default(cuid())
+  tenantId    String   @unique
+  tenant      Tenant   @relation(fields: [tenantId], references: [id])
+  cronExpr    String   @default("0 6 * * 1")
+  enabled     Boolean  @default(true)
+  lastRunAt   DateTime?
+  nextRunAt   DateTime?
+
+  alertEmail      String?
+  alertWebhook    String?
+  alertOnCritical Boolean @default(true)
+  alertOnHigh     Boolean @default(true)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
