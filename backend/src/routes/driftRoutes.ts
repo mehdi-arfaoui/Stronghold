@@ -7,7 +7,6 @@ import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import {
   runDriftCheck,
-  captureSnapshot,
   calculateResilienceScore,
 } from '../drift/driftDetectionService.js';
 
@@ -40,7 +39,13 @@ router.post('/check', async (req: TenantRequest, res) => {
       return res.status(429).json({ error: 'Rate limit exceeded. Maximum 5 drift checks per hour.' });
     }
 
-    const result = await runDriftCheck(prisma, tenantId);
+    const modeRaw = req.body?.comparisonMode as string | undefined;
+    if (modeRaw && modeRaw !== 'baseline' && modeRaw !== 'latest') {
+      return res.status(400).json({ error: 'Invalid comparisonMode. Use baseline or latest.' });
+    }
+
+    const comparisonMode: 'baseline' | 'latest' = modeRaw === 'latest' ? 'latest' : 'baseline';
+    const result = await runDriftCheck(prisma, tenantId, { comparisonMode });
     return res.json(result);
   } catch (error) {
     console.error('Error running drift check:', error);
@@ -143,7 +148,7 @@ router.patch('/events/:id', async (req: TenantRequest, res) => {
 
     if (event.count === 0) return res.status(404).json({ error: 'Event not found' });
 
-    const updated = await prisma.driftEvent.findFirst({ where: { id: eventId } });
+    const updated = await prisma.driftEvent.findFirst({ where: { id: eventId, tenantId } });
     return res.json(updated);
   } catch (error) {
     console.error('Error updating drift event:', error);
@@ -306,3 +311,5 @@ router.put('/schedule', async (req: TenantRequest, res) => {
 });
 
 export default router;
+
+

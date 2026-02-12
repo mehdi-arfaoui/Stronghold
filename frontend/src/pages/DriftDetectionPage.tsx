@@ -79,7 +79,7 @@ function DriftPageInner() {
   });
 
   const runCheckMutation = useMutation({
-    mutationFn: () => driftApi.runCheck(),
+    mutationFn: () => driftApi.runCheck('baseline'),
     onSuccess: () => {
       toast.success('Drift check termine');
       queryClient.invalidateQueries({ queryKey: ['drift-score'] });
@@ -130,7 +130,10 @@ function DriftPageInner() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <Activity className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-bold">Drift Detection</h1>
+          <div>
+            <h1 className="text-2xl font-bold">Drift Detection</h1>
+            <p className="text-sm text-muted-foreground">Analyse comparee sur les donnees d'infrastructure importees (mode demo sans identifiants cloud).</p>
+          </div>
           {summary?.byStatus?.open != null && summary.byStatus.open > 0 && (
             <Badge variant="destructive">{summary.byStatus.open} ouvert(s)</Badge>
           )}
@@ -391,3 +394,5 @@ export function DriftDetectionPage() {
     </ModuleErrorBoundary>
   );
 }
+
+

@@ -7,44 +7,102 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Badge } from '@/components/ui/badge';
 import { knowledgeBaseApi } from '@/api/knowledge-base.api';
 
-const PAGE_TAGS: Record<string, string[]> = {
-  '/analysis': ['BIA', 'RTO', 'RPO', 'MTPD', 'MBCO', 'WRT'],
-  '/recommendations': ['PRA', 'RTO', 'RPO', 'SPOF', 'redundance'],
-  '/report': ['PRA', 'PCA', 'BIA', 'ISO22301', 'DORA'],
-  '/simulations': ['PRA', 'failover', 'chaos-engineering', 'test'],
-  '/exercises': ['exercices', 'tabletop', 'PCA', 'PRA'],
-  '/incidents': ['PRA', 'ransomware', 'incident', 'crise'],
-  '/discovery': ['SPOF', 'architecture', 'redundance', 'HA'],
-  '/dashboard': ['BIA', 'PCA', 'resilience', 'maturite'],
-  '/documents': ['PCA', 'PRA', 'gouvernance', 'ISO22301'],
+type HelpContext = {
+  label: string;
+  slugs: string[];
+  tags: string[];
 };
+
+const HELP_CONTEXTS: Record<string, HelpContext> = {
+  '/discovery': {
+    label: 'Discovery',
+    slugs: ['spof-single-point-of-failure', 'haute-disponibilite', 'resilience-cloud', 'chaos-engineering'],
+    tags: ['SPOF', 'architecture', 'redundance', 'cloud'],
+  },
+  '/analysis': {
+    label: 'Analysis & BIA',
+    slugs: ['quest-ce-quun-bia', 'methodologie-bia', 'rto-explique', 'rpo-explique', 'mtpd-explique'],
+    tags: ['BIA', 'RTO', 'RPO', 'MTPD'],
+  },
+  '/simulations': {
+    label: 'Simulations',
+    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'chaos-engineering', 'strategies-reprise'],
+    tags: ['simulation', 'tabletop', 'failover', 'test'],
+  },
+  '/recommendations': {
+    label: 'Recommendations',
+    slugs: ['strategies-reprise', 'spof-single-point-of-failure', 'resilience-cloud', 'failover-switchover'],
+    tags: ['PRA', 'SPOF', 'failover', 'redundance'],
+  },
+  '/report': {
+    label: 'Reporting',
+    slugs: ['iso-22301-overview', 'dora-reglement-europeen', 'pca-vs-pra-differences'],
+    tags: ['ISO22301', 'DORA', 'PCA', 'PRA'],
+  },
+  '/exercises': {
+    label: 'Exercises',
+    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'modele-maturite-pca'],
+    tags: ['exercices', 'tabletop', 'maturite'],
+  },
+  '/incidents': {
+    label: 'Incidents',
+    slugs: ['communication-de-crise', 'mode-degrade', 'failover-switchover'],
+    tags: ['incident', 'crise', 'PCA'],
+  },
+};
+
+const DEFAULT_CONTEXT: HelpContext = {
+  label: 'Knowledge Base',
+  slugs: ['quest-ce-quun-bia', 'pca-plan-continuite-activite', 'pra-plan-reprise-activite'],
+  tags: ['PRA', 'PCA', 'BIA'],
+};
+
+function resolveContext(pathname: string): HelpContext {
+  const exact = HELP_CONTEXTS[pathname];
+  if (exact) return exact;
+
+  const prefixEntry = Object.entries(HELP_CONTEXTS)
+    .filter(([key]) => pathname.startsWith(key))
+    .sort((a, b) => b[0].length - a[0].length)[0];
+
+  return prefixEntry ? prefixEntry[1] : DEFAULT_CONTEXT;
+}
 
 export function HelpDrawer() {
   const location = useLocation();
-  const tags = useMemo(() => PAGE_TAGS[location.pathname] ?? ['PRA', 'BIA', 'PCA'], [location.pathname]);
+  const context = useMemo(() => resolveContext(location.pathname), [location.pathname]);
 
   const kbQuery = useQuery({
-    queryKey: ['knowledge-base-help', tags.join(',')],
+    queryKey: ['knowledge-base-help', context.label],
     queryFn: async () => (await knowledgeBaseApi.getAll()).data.articles,
   });
 
-  const relevantArticles = useMemo(() =>
-    (kbQuery.data ?? [])
+  const relevantArticles = useMemo(() => {
+    const articles = kbQuery.data ?? [];
+
+    const curated = context.slugs
+      .map((slug) => articles.find((article) => article.slug === slug))
+      .filter((article): article is NonNullable<typeof article> => Boolean(article));
+
+    if (curated.length > 0) {
+      return curated.slice(0, 6);
+    }
+
+    return articles
       .map((article) => ({
         article,
-        score: article.tags.filter((tag) => tags.includes(tag)).length,
+        score: article.tags.filter((tag) => context.tags.includes(tag)).length,
       }))
       .filter(({ score }) => score > 0)
       .sort((a, b) => b.score - a.score)
-      .slice(0, 5)
-      .map(({ article }) => article),
-    [kbQuery.data, tags]
-  );
+      .slice(0, 6)
+      .map(({ article }) => article);
+  }, [kbQuery.data, context]);
 
   return (
     <Sheet>
       <SheetTrigger asChild>
-        <Button className="fixed bottom-6 right-6 z-30 rounded-full shadow-lg gap-1.5" size="sm">
+        <Button className="fixed bottom-6 right-6 z-30 gap-1.5 rounded-full shadow-lg" size="sm">
           <BookOpen className="h-4 w-4" />
           Aide
         </Button>
@@ -52,32 +110,30 @@ export function HelpDrawer() {
       <SheetContent side="right">
         <SheetHeader>
           <SheetTitle>Articles suggeres</SheetTitle>
-          <p className="text-sm text-muted-foreground">
-            Contenu pertinent pour cette page
-          </p>
+          <p className="text-sm text-muted-foreground">Contexte: {context.label}</p>
         </SheetHeader>
         <div className="mt-4 space-y-3">
           {relevantArticles.length === 0 && (
-            <p className="text-sm text-muted-foreground py-4 text-center">Aucun article suggere pour cette page.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">Aucun article suggere pour cette page.</p>
           )}
           {relevantArticles.map((article) => (
-            <div key={article.id} className="rounded-lg border p-3 space-y-2">
-              <p className="font-medium text-sm">{article.title}</p>
+            <div key={article.id} className="space-y-2 rounded-lg border p-3">
+              <p className="text-sm font-medium">{article.title}</p>
               <p className="text-xs text-muted-foreground">{article.summary}</p>
               <div className="flex items-center justify-between gap-2">
                 <div className="flex flex-wrap gap-1">
-                  {article.tags.filter((t) => tags.includes(t)).slice(0, 3).map((tag) => (
+                  {article.tags.filter((t) => context.tags.includes(t)).slice(0, 3).map((tag) => (
                     <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                   ))}
                 </div>
-                <Link to="/knowledge-base" className="text-xs text-primary underline shrink-0">
+                <Link to={`/knowledge-base?article=${encodeURIComponent(article.slug)}`} className="shrink-0 text-xs text-primary underline">
                   Ouvrir
                 </Link>
               </div>
             </div>
           ))}
-          <div className="pt-2 border-t">
-            <Link to="/knowledge-base" className="text-sm text-primary font-medium hover:underline">
+          <div className="border-t pt-2">
+            <Link to="/knowledge-base" className="text-sm font-medium text-primary hover:underline">
               Voir toute la base de connaissances
             </Link>
           </div>
@@ -86,3 +142,4 @@ export function HelpDrawer() {
     </Sheet>
   );
 }
+

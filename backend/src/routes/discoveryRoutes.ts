@@ -35,6 +35,7 @@ import { mergeDiscoveredResources } from "../services/discoveryMergeService.js";
 import { discoveryQueue } from "../queues/discoveryQueue.js";
 import { createDiscoverySchedule } from "../services/discoveryScheduleService.js";
 import { importDiscoveryFlows } from "../services/discoveryFlowService.js";
+import { ensureBaselineSnapshot } from "../drift/driftDetectionService.js";
 import { buildScanHealthReport } from "../services/discoveryHealthService.js";
 
 const router = Router();
@@ -605,6 +606,13 @@ router.post(
         }))
       );
 
+      void ensureBaselineSnapshot(prisma, tenantId, 'import-baseline').catch((error) => {
+        console.warn('Unable to ensure baseline snapshot after discovery import', {
+          tenantId,
+          message: error instanceof Error ? error.message : 'unknown',
+        });
+      });
+
       await prisma.discoveryJob.updateMany({
         where: { id: job.id, tenantId },
         data: {
@@ -735,6 +743,13 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
       }))
     );
 
+    void ensureBaselineSnapshot(prisma, tenantId, 'import-baseline').catch((error) => {
+      console.warn('Unable to ensure baseline snapshot after discovery import', {
+        tenantId,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    });
+
     await prisma.discoveryJob.updateMany({
       where: { id: job.id, tenantId },
       data: {
@@ -775,3 +790,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
 });
 
 export default router;
+
+
+
+

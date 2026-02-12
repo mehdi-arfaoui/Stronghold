@@ -51,8 +51,8 @@ export interface DriftSchedule {
 }
 
 export const driftApi = {
-  runCheck: () =>
-    api.post('/drift/check'),
+  runCheck: (comparisonMode: 'baseline' | 'latest' = 'baseline') =>
+    api.post('/drift/check', { comparisonMode }),
 
   getEvents: (params?: { status?: string; severity?: string; limit?: number }) =>
     api.get<{ events: DriftEvent[]; summary: { byStatus: Record<string, number>; bySeverity: Record<string, number> } }>('/drift/events', { params }),
@@ -78,3 +78,4 @@ export const driftApi = {
   updateSchedule: (data: Partial<DriftSchedule>) =>
     api.put<DriftSchedule>('/drift/schedule', data),
 };
+

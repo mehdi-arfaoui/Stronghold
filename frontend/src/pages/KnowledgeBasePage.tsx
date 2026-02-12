@@ -1,5 +1,6 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSearchParams } from 'react-router-dom';
 import {
   BookOpen,
   Search,
@@ -202,6 +203,9 @@ export function KnowledgeBasePage() {
   const debouncedSearch = useDebouncedValue(search, 350);
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedArticle, setSelectedArticle] = useState<KnowledgeBaseArticle | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const articleParam = searchParams.get('article');
+  const termParam = searchParams.get('term');
 
   const kbQuery = useQuery({
     queryKey: ['knowledge-base', debouncedSearch, selectedCategory ?? ''],
@@ -244,6 +248,42 @@ export function KnowledgeBasePage() {
     return map;
   }, [allArticles]);
 
+  const openArticle = (article: KnowledgeBaseArticle) => {
+    setSelectedArticle(article);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('article', article.slug);
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  const closeArticle = () => {
+    setSelectedArticle(null);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.delete('article');
+    setSearchParams(nextParams, { replace: true });
+  };
+
+  useEffect(() => {
+    if (termParam == null) return;
+    if (termParam !== search) {
+      setSearch(termParam);
+      setSelectedCategory(null);
+    }
+  }, [termParam, search]);
+
+  useEffect(() => {
+    if (!articleParam) {
+      if (selectedArticle) {
+        setSelectedArticle(null);
+      }
+      return;
+    }
+
+    const found = allArticles.find((a) => a.slug === articleParam) ?? articles.find((a) => a.slug === articleParam) ?? null;
+    if (found && selectedArticle?.id !== found.id) {
+      setSelectedArticle(found);
+    }
+  }, [articleParam, allArticles, articles, selectedArticle?.id]);
+
   if (kbQuery.isLoading && !articles.length) {
     return <LoadingState message="Chargement de la base de connaissances..." />;
   }
@@ -265,7 +305,16 @@ export function KnowledgeBasePage() {
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           value={search}
-          onChange={(e) => { setSearch(e.target.value ?? ''); setSelectedCategory(null); }}
+          onChange={(e) => {
+            const value = e.target.value ?? '';
+            setSearch(value);
+            setSelectedCategory(null);
+            const nextParams = new URLSearchParams(searchParams);
+            if (value) nextParams.set('term', value);
+            else nextParams.delete('term');
+            nextParams.delete('article');
+            setSearchParams(nextParams, { replace: true });
+          }}
           placeholder="Rechercher un article, un terme (RTO, PCA, failover...)"
           className="pl-9"
         />
@@ -274,7 +323,13 @@ export function KnowledgeBasePage() {
             variant="ghost"
             size="icon"
             className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7"
-            onClick={() => setSearch('')}
+            onClick={() => {
+              setSearch('');
+              const nextParams = new URLSearchParams(searchParams);
+              nextParams.delete('term');
+              nextParams.delete('article');
+              setSearchParams(nextParams, { replace: true });
+            }}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
@@ -296,7 +351,7 @@ export function KnowledgeBasePage() {
           ) : (
             <div className="grid gap-3">
               {filteredArticles.map((article) => (
-                <ArticleCard key={article.id} article={article} onClick={() => setSelectedArticle(article)} />
+                <ArticleCard key={article.id} article={article} onClick={() => openArticle(article)} />
               ))}
             </div>
           )}
@@ -324,7 +379,7 @@ export function KnowledgeBasePage() {
           </div>
           <div className="grid gap-3">
             {filteredArticles.map((article) => (
-              <ArticleCard key={article.id} article={article} onClick={() => setSelectedArticle(article)} />
+              <ArticleCard key={article.id} article={article} onClick={() => openArticle(article)} />
             ))}
           </div>
         </div>
@@ -360,7 +415,7 @@ export function KnowledgeBasePage() {
       )}
 
       {/* Article detail dialog */}
-      <Dialog open={!!selectedArticle} onOpenChange={(open) => { if (!open) setSelectedArticle(null); }}>
+      <Dialog open={!!selectedArticle} onOpenChange={(open) => { if (!open) closeArticle(); }}>
         <DialogContent className="max-w-2xl max-h-[85vh] p-0 gap-0">
           <DialogHeader className="px-6 pt-6 pb-4">
             <div className="flex items-start gap-3">
@@ -401,8 +456,12 @@ export function KnowledgeBasePage() {
                   {selectedArticle.tags.map((tag) => (
                     <Badge key={tag} variant="outline" className="text-xs cursor-pointer" onClick={() => {
                       setSearch(tag);
-                      setSelectedArticle(null);
                       setSelectedCategory(null);
+                      closeArticle();
+                      const nextParams = new URLSearchParams(searchParams);
+                      nextParams.set('term', tag);
+                      nextParams.delete('article');
+                      setSearchParams(nextParams, { replace: true });
                     }}>
                       {tag}
                     </Badge>
@@ -447,3 +506,10 @@ function ArticleCard({ article, onClick }: { article: KnowledgeBaseArticle; onCl
     </Card>
   );
 }
+
+
+
+
+
+
+

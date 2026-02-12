@@ -20,6 +20,7 @@ import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { detectRisks } from '../graph/riskDetectionEngine.js';
+import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
 
 interface NodeDef {
   id: string;
@@ -600,7 +601,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   console.log('Seeding demo environment "ShopMax E-commerce"...');
 
   // Clean existing resilience data for this tenant
-  console.log("Cleaning existing data...");
+  console.log('Cleaning existing data...');
   await prisma.riskNodeLink.deleteMany({ where: { risk: { tenantId } } }).catch(() => {});
   await prisma.riskMitigation.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.risk.deleteMany({ where: { tenantId, autoDetected: true } }).catch(() => {});
@@ -612,72 +613,62 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   await prisma.simulation.deleteMany({ where: { tenantId } });
   await prisma.scanJob.deleteMany({ where: { tenantId } });
 
-  // Map local IDs to generated cuid IDs
-  const idMap = new Map<string, string>();
-
   console.log(`Creating ${nodes.length} nodes...`);
-  for (const node of nodes) {
-    const created = await prisma.infraNode.create({
-      data: {
-        externalId: node.externalId,
-        name: node.name,
-        type: node.type,
-        provider: node.provider,
-        region: node.region ?? null,
-        availabilityZone: node.availabilityZone ?? null,
-        tags: node.tags,
-        metadata: node.metadata as Prisma.InputJsonValue,
-        tenantId,
-        lastSeenAt: new Date(),
-      },
-    });
-    idMap.set(node.id, created.id);
-  }
+  await prisma.infraNode.createMany({
+    data: nodes.map((node) => ({
+      id: node.id,
+      externalId: node.externalId,
+      name: node.name,
+      type: node.type,
+      provider: node.provider,
+      region: node.region ?? null,
+      availabilityZone: node.availabilityZone ?? null,
+      tags: node.tags as Prisma.InputJsonValue,
+      metadata: node.metadata as Prisma.InputJsonValue,
+      tenantId,
+      lastSeenAt: new Date(),
+    })),
+  });
 
   console.log(`Creating ${confirmedEdges.length} confirmed edges...`);
-  for (const edge of confirmedEdges) {
-    const sourceId = idMap.get(edge.sourceId);
-    const targetId = idMap.get(edge.targetId);
-    if (!sourceId || !targetId) {
-      console.warn(`Skipping edge ${edge.sourceId} -> ${edge.targetId}: missing node`);
-      continue;
-    }
-    await prisma.infraEdge.create({
-      data: { sourceId, targetId, type: edge.type, confidence: 1.0, confirmed: true, tenantId },
-    });
-  }
+  await prisma.infraEdge.createMany({
+    data: confirmedEdges.map((edge) => ({
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      type: edge.type,
+      confidence: 1.0,
+      confirmed: true,
+      tenantId,
+    })),
+  });
 
   console.log(`Creating ${inferredEdges.length} inferred edges...`);
-  for (const edge of inferredEdges) {
-    const sourceId = idMap.get(edge.sourceId);
-    const targetId = idMap.get(edge.targetId);
-    if (!sourceId || !targetId) {
-      console.warn(`Skipping inferred edge ${edge.sourceId} -> ${edge.targetId}: missing node`);
-      continue;
-    }
-    await prisma.infraEdge.create({
-      data: {
-        sourceId, targetId, type: edge.type,
-        confidence: edge.confidence ?? 0.5,
-        inferenceMethod: edge.inferenceMethod ?? null,
-        confirmed: false, tenantId,
-      },
-    });
-  }
+  await prisma.infraEdge.createMany({
+    data: inferredEdges.map((edge) => ({
+      sourceId: edge.sourceId,
+      targetId: edge.targetId,
+      type: edge.type,
+      confidence: edge.confidence ?? 0.5,
+      inferenceMethod: edge.inferenceMethod ?? null,
+      confirmed: false,
+      tenantId,
+    })),
+  });
 
-  console.log("Creating completed scan job...");
+  console.log('Creating completed scan job...');
   await prisma.scanJob.create({
     data: {
-      status: "completed",
+      status: 'completed',
       config: {
         providers: [
-          { type: "aws", regions: ["eu-west-1", "eu-central-1"] },
-          { type: "kubernetes", clusters: ["eks-production"] },
-          { type: "on_premise", ipRanges: ["192.168.1.0/24"] },
+          { type: 'aws', regions: ['eu-west-1', 'eu-central-1'] },
+          { type: 'kubernetes', clusters: ['eks-production'] },
+          { type: 'on_premise', ipRanges: ['192.168.1.0/24'] },
         ],
       },
       progress: {
-        totalAdapters: 3, completedAdapters: 3,
+        totalAdapters: 3,
+        completedAdapters: 3,
         nodesDiscovered: nodes.length,
         edgesDiscovered: confirmedEdges.length + inferredEdges.length,
       },
@@ -693,19 +684,16 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     },
   });
 
-  // ─── Post-seed: Run graph analysis, BIA generation, and risk detection ───
   let resilienceScore = 0;
   let spofCount = 0;
   let biaProcessCount = 0;
   let risksDetected = 0;
 
   try {
-    console.log("Running post-seed graph analysis...");
-    // Force reload from DB
+    console.log('Running post-seed graph analysis...');
     const graph = await GraphService.loadGraphFromDB(prisma, tenantId);
 
     if (graph.order > 0) {
-      // 1. Graph analysis
       const report = await analyzeFullGraph(graph);
 
       await prisma.graphAnalysis.create({
@@ -726,49 +714,49 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
         },
       });
 
-      // Update node scores
-      for (const [nodeId, score] of report.criticalityScores) {
-        const spof = report.spofs.find(s => s.nodeId === nodeId);
-        const blast = GraphService.getBlastRadius(graph, nodeId);
-        await prisma.infraNode.updateMany({
-          where: { id: nodeId, tenantId },
-          data: {
-            criticalityScore: score,
-            isSPOF: !!spof,
-            blastRadius: blast.length,
-          },
-        });
-      }
+      await Promise.all(
+        [...report.criticalityScores.entries()].map(async ([nodeId, score]) => {
+          const spof = report.spofs.find((item) => item.nodeId === nodeId);
+          const blast = GraphService.getBlastRadius(graph, nodeId);
+          await prisma.infraNode.updateMany({
+            where: { id: nodeId, tenantId },
+            data: {
+              criticalityScore: score,
+              isSPOF: Boolean(spof),
+              blastRadius: blast.length,
+            },
+          });
+        })
+      );
 
       resilienceScore = report.resilienceScore;
       spofCount = report.spofs.length;
       console.log(`  Graph analysis complete: score=${resilienceScore}, SPOFs=${spofCount}`);
 
-      // 2. BIA generation
-      console.log("Generating BIA...");
+      console.log('Generating BIA...');
       const biaReport = generateBIA(graph, report);
 
       await prisma.bIAReport2.create({
         data: {
           generatedAt: biaReport.generatedAt,
-          summary: biaReport.summary as any,
+          summary: biaReport.summary as Prisma.InputJsonValue,
           tenantId,
           processes: {
-            create: biaReport.processes.map(p => ({
-              serviceNodeId: p.serviceNodeId,
-              serviceName: p.serviceName,
-              serviceType: p.serviceType,
-              suggestedMAO: p.suggestedMAO,
-              suggestedMTPD: p.suggestedMTPD,
-              suggestedRTO: p.suggestedRTO,
-              suggestedRPO: p.suggestedRPO,
-              suggestedMBCO: p.suggestedMBCO,
-              impactCategory: p.impactCategory,
-              criticalityScore: p.criticalityScore,
-              recoveryTier: p.recoveryTier,
-              dependencyChain: p.dependencyChain as any,
-              weakPoints: p.weakPoints as any,
-              financialImpact: p.financialImpact as any,
+            create: biaReport.processes.map((processItem) => ({
+              serviceNodeId: processItem.serviceNodeId,
+              serviceName: processItem.serviceName,
+              serviceType: processItem.serviceType,
+              suggestedMAO: processItem.suggestedMAO,
+              suggestedMTPD: processItem.suggestedMTPD,
+              suggestedRTO: processItem.suggestedRTO,
+              suggestedRPO: processItem.suggestedRPO,
+              suggestedMBCO: processItem.suggestedMBCO,
+              impactCategory: processItem.impactCategory,
+              criticalityScore: processItem.criticalityScore,
+              recoveryTier: processItem.recoveryTier,
+              dependencyChain: processItem.dependencyChain as unknown as Prisma.InputJsonValue,
+              weakPoints: processItem.weakPoints as unknown as Prisma.InputJsonValue,
+              financialImpact: processItem.financialImpact as unknown as Prisma.InputJsonValue,
               validationStatus: 'pending',
               tenantId,
             })),
@@ -776,28 +764,32 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
         },
       });
 
-      for (const p of biaReport.processes) {
-        await prisma.infraNode.updateMany({
-          where: { id: p.serviceNodeId, tenantId },
-          data: {
-            suggestedRTO: p.suggestedRTO,
-            suggestedRPO: p.suggestedRPO,
-            suggestedMTPD: p.suggestedMTPD,
-            impactCategory: p.impactCategory,
-            financialImpactPerHour: p.financialImpact.estimatedCostPerHour,
-          },
-        });
-      }
+      await Promise.all(
+        biaReport.processes.map((processItem) =>
+          prisma.infraNode.updateMany({
+            where: { id: processItem.serviceNodeId, tenantId },
+            data: {
+              suggestedRTO: processItem.suggestedRTO,
+              suggestedRPO: processItem.suggestedRPO,
+              suggestedMTPD: processItem.suggestedMTPD,
+              impactCategory: processItem.impactCategory,
+              financialImpactPerHour: processItem.financialImpact.estimatedCostPerHour,
+            },
+          })
+        )
+      );
 
       biaProcessCount = biaReport.processes.length;
       console.log(`  BIA generated: ${biaProcessCount} processes`);
 
-      // 3. Risk detection
-      console.log("Detecting risks...");
+      console.log('Detecting risks...');
       const detectedRisks = detectRisks(graph, report);
+      const validNodeIds = new Set(
+        (await prisma.infraNode.findMany({ where: { tenantId }, select: { id: true } })).map((node) => node.id)
+      );
 
       for (const risk of detectedRisks) {
-        const created = await prisma.risk.create({
+        const createdRisk = await prisma.risk.create({
           data: {
             title: risk.title,
             description: risk.description,
@@ -811,25 +803,21 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
           },
         });
 
-        for (const nodeId of risk.linkedNodeIds) {
-          try {
-            await prisma.riskNodeLink.create({
-              data: { riskId: created.id, nodeId },
-            });
-          } catch {
-            // Node might not exist, skip
-          }
+        const nodeLinks = risk.linkedNodeIds
+          .filter((nodeId) => validNodeIds.has(nodeId))
+          .map((nodeId) => ({ riskId: createdRisk.id, nodeId }));
+        if (nodeLinks.length > 0) {
+          await prisma.riskNodeLink.createMany({ data: nodeLinks });
         }
 
-        for (const mitigation of risk.mitigations) {
-          await prisma.riskMitigation.create({
-            data: {
-              riskId: created.id,
-              description: mitigation.title,
-              status: 'pending',
-              tenantId,
-            },
-          });
+        const mitigations = risk.mitigations.map((mitigation) => ({
+          riskId: createdRisk.id,
+          description: mitigation.title,
+          status: 'pending',
+          tenantId,
+        }));
+        if (mitigations.length > 0) {
+          await prisma.riskMitigation.createMany({ data: mitigations });
         }
       }
 
@@ -837,8 +825,15 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       console.log(`  Risks detected: ${risksDetected}`);
     }
   } catch (error) {
-    console.error("Post-seed analysis failed (non-blocking):", error);
+    console.error('Post-seed analysis failed (non-blocking):', error);
   }
+
+  void ensureBaselineSnapshot(prisma, tenantId, 'demo-seed').catch((error) => {
+    console.warn('Unable to ensure baseline snapshot after demo seed', {
+      tenantId,
+      message: error instanceof Error ? error.message : 'unknown',
+    });
+  });
 
   const summary = {
     nodes: nodes.length,
@@ -850,10 +845,10 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     biaProcesses: biaProcessCount,
     risksDetected,
     spofs: [
-      "payment-db (no replica, no multi-AZ)",
-      "redis-main (single instance)",
-      "erp-server (single on-premise server)",
-      "api-gateway (single entry point)",
+      'payment-db (no replica, no multi-AZ)',
+      'redis-main (single instance)',
+      'erp-server (single on-premise server)',
+      'api-gateway (single entry point)',
     ],
   };
 
@@ -867,3 +862,4 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
 
   return summary;
 }
+
