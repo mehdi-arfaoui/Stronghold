@@ -950,55 +950,139 @@ export async function applyDiscoveryImport(
     let createdInfraLinks = 0;
     let ignoredEdges = 0;
 
-    for (const node of payload.nodes) {
-      const description = buildDiscoveryDescription(node);
-      if (node.kind === "service") {
-        const existing = await tx.service.findFirst({
-          where: { tenantId, name: node.name },
-        });
-        if (existing) {
-          serviceMap.set(node.externalId, existing.id);
-          continue;
+    const serviceNodes = payload.nodes.filter((node) => node.kind === 'service');
+    const infraNodes = payload.nodes.filter((node) => node.kind === 'infra');
+
+    const uniqueServiceByName = new Map<string, DiscoveryNode>();
+    for (const node of serviceNodes) {
+      if (!uniqueServiceByName.has(node.name)) {
+        uniqueServiceByName.set(node.name, node);
+      }
+    }
+
+    const serviceNames = [...uniqueServiceByName.keys()];
+    const serviceIdByName = new Map<string, string>();
+    if (serviceNames.length > 0) {
+      const existingServices = await tx.service.findMany({
+        where: { tenantId, name: { in: serviceNames } },
+        select: { id: true, name: true },
+      });
+      for (const service of existingServices) {
+        if (!serviceIdByName.has(service.name)) {
+          serviceIdByName.set(service.name, service.id);
         }
-        const created = await tx.service.create({
-          data: {
+      }
+
+      const servicesToCreate = serviceNames
+        .filter((name) => !serviceIdByName.has(name))
+        .map((name) => {
+          const node = uniqueServiceByName.get(name)!;
+          return {
             tenantId,
             name: node.name,
             type: node.type,
-            description,
+            description: buildDiscoveryDescription(node),
             criticality: normalizeCriticality(node.criticality),
             businessPriority: null,
             recoveryPriority: null,
             domain: null,
-          },
+          };
         });
-        serviceMap.set(node.externalId, created.id);
-        createdServices += 1;
-        continue;
+
+      if (servicesToCreate.length > 0) {
+        const created = await tx.service.createMany({ data: servicesToCreate });
+        createdServices += created.count;
+
+        const refreshedServices = await tx.service.findMany({
+          where: { tenantId, name: { in: serviceNames } },
+          select: { id: true, name: true },
+        });
+        for (const service of refreshedServices) {
+          if (!serviceIdByName.has(service.name)) {
+            serviceIdByName.set(service.name, service.id);
+          }
+        }
+      }
+    }
+
+    for (const node of serviceNodes) {
+      const serviceId = serviceIdByName.get(node.name);
+      if (serviceId) {
+        serviceMap.set(node.externalId, serviceId);
+      }
+    }
+
+    const uniqueInfraByKey = new Map<string, DiscoveryNode>();
+    for (const node of infraNodes) {
+      const key = `${node.name}::${node.type}`;
+      if (!uniqueInfraByKey.has(key)) {
+        uniqueInfraByKey.set(key, node);
+      }
+    }
+
+    const infraKeys = [...uniqueInfraByKey.keys()];
+    const infraIdByKey = new Map<string, string>();
+    if (infraKeys.length > 0) {
+      const infraMatchers = infraKeys.map((key) => {
+        const node = uniqueInfraByKey.get(key)!;
+        return { name: node.name, type: node.type };
+      });
+
+      const existingInfra = await tx.infraComponent.findMany({
+        where: { tenantId, OR: infraMatchers },
+        select: { id: true, name: true, type: true },
+      });
+      for (const infra of existingInfra) {
+        const key = `${infra.name}::${infra.type}`;
+        if (!infraIdByKey.has(key)) {
+          infraIdByKey.set(key, infra.id);
+        }
       }
 
-      const infraExisting = await tx.infraComponent.findFirst({
-        where: { tenantId, name: node.name, type: node.type },
-      });
-      if (infraExisting) {
-        infraMap.set(node.externalId, infraExisting.id);
-        continue;
+      const infraToCreate = infraKeys
+        .filter((key) => !infraIdByKey.has(key))
+        .map((key) => {
+          const node = uniqueInfraByKey.get(key)!;
+          return {
+            tenantId,
+            name: node.name,
+            type: node.type,
+            provider: node.provider ?? null,
+            location: node.location ?? null,
+            criticality: node.criticality ? normalizeCriticality(node.criticality) : null,
+            notes: buildDiscoveryDescription(node),
+            isSingleAz: false,
+          };
+        });
+
+      if (infraToCreate.length > 0) {
+        const created = await tx.infraComponent.createMany({ data: infraToCreate });
+        createdInfra += created.count;
+
+        const refreshedInfra = await tx.infraComponent.findMany({
+          where: { tenantId, OR: infraMatchers },
+          select: { id: true, name: true, type: true },
+        });
+        for (const infra of refreshedInfra) {
+          const key = `${infra.name}::${infra.type}`;
+          if (!infraIdByKey.has(key)) {
+            infraIdByKey.set(key, infra.id);
+          }
+        }
       }
-      const infraCreated = await tx.infraComponent.create({
-        data: {
-          tenantId,
-          name: node.name,
-          type: node.type,
-          ...(node.provider !== undefined ? { provider: node.provider } : {}),
-          ...(node.location !== undefined ? { location: node.location } : {}),
-          criticality: node.criticality ? normalizeCriticality(node.criticality) : null,
-          notes: description,
-          isSingleAz: false,
-        },
-      });
-      infraMap.set(node.externalId, infraCreated.id);
-      createdInfra += 1;
     }
+
+    for (const node of infraNodes) {
+      const infraId = infraIdByKey.get(`${node.name}::${node.type}`);
+      if (infraId) {
+        infraMap.set(node.externalId, infraId);
+      }
+    }
+
+    const dependencyCandidates: Array<{ fromServiceId: string; toServiceId: string; dependencyType: string }> = [];
+    const dependencyKeys = new Set<string>();
+    const infraLinkCandidates: Array<{ serviceId: string; infraId: string }> = [];
+    const infraLinkKeys = new Set<string>();
 
     for (const edge of payload.edges) {
       const fromServiceId = serviceMap.get(edge.source);
@@ -1007,71 +1091,90 @@ export async function applyDiscoveryImport(
       const targetInfraId = infraMap.get(edge.target);
 
       if (fromServiceId && toServiceId) {
-        const existing = await tx.serviceDependency.findFirst({
-          where: {
-            tenantId,
-            fromServiceId,
-            toServiceId,
-            dependencyType: edge.dependencyType || "dépendance",
-          },
-        });
-        if (!existing) {
-          await tx.serviceDependency.create({
-            data: {
-              tenantId,
-              fromServiceId,
-              toServiceId,
-              dependencyType: edge.dependencyType || "dépendance",
-            },
-          });
-          createdDependencies += 1;
+        const dependencyType = edge.dependencyType || 'dependance';
+        const key = `${fromServiceId}::${toServiceId}::${dependencyType}`;
+        if (!dependencyKeys.has(key)) {
+          dependencyKeys.add(key);
+          dependencyCandidates.push({ fromServiceId, toServiceId, dependencyType });
         }
         continue;
       }
 
       if (fromServiceId && targetInfraId) {
-        const existing = await tx.serviceInfraLink.findFirst({
-          where: {
-            tenantId,
-            serviceId: fromServiceId,
-            infraId: targetInfraId,
-          },
-        });
-        if (!existing) {
-          await tx.serviceInfraLink.create({
-            data: {
-              tenantId,
-              serviceId: fromServiceId,
-              infraId: targetInfraId,
-            },
-          });
-          createdInfraLinks += 1;
+        const key = `${fromServiceId}::${targetInfraId}`;
+        if (!infraLinkKeys.has(key)) {
+          infraLinkKeys.add(key);
+          infraLinkCandidates.push({ serviceId: fromServiceId, infraId: targetInfraId });
         }
         continue;
       }
 
       if (toServiceId && sourceInfraId) {
-        const existing = await tx.serviceInfraLink.findFirst({
-          where: {
-            tenantId,
-            serviceId: toServiceId,
-            infraId: sourceInfraId,
-          },
-        });
-        if (!existing) {
-          await tx.serviceInfraLink.create({
-            data: {
-              tenantId,
-              serviceId: toServiceId,
-              infraId: sourceInfraId,
-            },
-          });
-          createdInfraLinks += 1;
+        const key = `${toServiceId}::${sourceInfraId}`;
+        if (!infraLinkKeys.has(key)) {
+          infraLinkKeys.add(key);
+          infraLinkCandidates.push({ serviceId: toServiceId, infraId: sourceInfraId });
         }
         continue;
       }
 
       ignoredEdges += 1;
+    }
+
+    if (dependencyCandidates.length > 0) {
+      const existingDependencies = await tx.serviceDependency.findMany({
+        where: {
+          tenantId,
+          fromServiceId: { in: [...new Set(dependencyCandidates.map((item) => item.fromServiceId))] },
+          toServiceId: { in: [...new Set(dependencyCandidates.map((item) => item.toServiceId))] },
+          dependencyType: { in: [...new Set(dependencyCandidates.map((item) => item.dependencyType))] },
+        },
+        select: { fromServiceId: true, toServiceId: true, dependencyType: true },
+      });
+      const existingDependencyKeys = new Set(
+        existingDependencies.map((dep) => `${dep.fromServiceId}::${dep.toServiceId}::${dep.dependencyType}`)
+      );
+
+      const dependenciesToCreate = dependencyCandidates.filter(
+        (dep) => !existingDependencyKeys.has(`${dep.fromServiceId}::${dep.toServiceId}::${dep.dependencyType}`)
+      );
+      if (dependenciesToCreate.length > 0) {
+        const created = await tx.serviceDependency.createMany({
+          data: dependenciesToCreate.map((dep) => ({
+            tenantId,
+            fromServiceId: dep.fromServiceId,
+            toServiceId: dep.toServiceId,
+            dependencyType: dep.dependencyType,
+          })),
+        });
+        createdDependencies += created.count;
+      }
+    }
+
+    if (infraLinkCandidates.length > 0) {
+      const existingLinks = await tx.serviceInfraLink.findMany({
+        where: {
+          tenantId,
+          serviceId: { in: [...new Set(infraLinkCandidates.map((item) => item.serviceId))] },
+          infraId: { in: [...new Set(infraLinkCandidates.map((item) => item.infraId))] },
+        },
+        select: { serviceId: true, infraId: true },
+      });
+      const existingLinkKeys = new Set(existingLinks.map((link) => `${link.serviceId}::${link.infraId}`));
+
+      const linksToCreate = infraLinkCandidates.filter(
+        (link) => !existingLinkKeys.has(`${link.serviceId}::${link.infraId}`)
+      );
+      if (linksToCreate.length > 0) {
+        const created = await tx.serviceInfraLink.createMany({
+          data: linksToCreate.map((link) => ({
+            tenantId,
+            serviceId: link.serviceId,
+            infraId: link.infraId,
+          })),
+        });
+        createdInfraLinks += created.count;
+      }
     }
 
     return {
@@ -1083,7 +1186,6 @@ export async function applyDiscoveryImport(
     };
   });
 }
-
 export function encryptDiscoveryCredentials(payload: Record<string, unknown>, secret: string) {
   const vaultEncrypted = encryptJsonSecret(payload);
   if (vaultEncrypted) {
@@ -1158,3 +1260,6 @@ export function buildJobResponse(job: any) {
     updatedAt: job.updatedAt,
   };
 }
+
+
+

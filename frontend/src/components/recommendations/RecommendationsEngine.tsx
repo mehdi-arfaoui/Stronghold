@@ -249,6 +249,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     return `${currencyInfo.symbol}${Math.round(converted)}`;
   };
 
+  const formatRoi = (roi?: number | null) => {
+    if (roi == null || Number.isNaN(roi)) return 'N/A';
+    if (roi > 0 && roi < 1) return `${Math.round(roi * 100)}%`;
+    return `${roi.toFixed(1)}x`;
+  };
+
   const getEffectiveStatus = (rec: Recommendation): boolean | null => {
     const override = localOverrides.get(rec.id);
     if (override) return override.accepted;
@@ -360,6 +366,16 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   <p className="text-sm font-medium">{item.title ?? item.serviceName ?? 'Recommandation'}</p>
                   <p className="text-sm text-muted-foreground">{item.description ?? 'Aucune description.'}</p>
                   <p className="mt-1 text-sm">Action: {item.action ?? item.notes ?? 'Non precisee.'}</p>
+                  <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                    <div className="rounded-md border bg-muted/20 p-2">
+                      <p className="font-medium text-foreground">Cout estime</p>
+                      <p>{formatAmount(item.estimatedCost ?? 0)}/mois</p>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-2">
+                      <p className="font-medium text-foreground">ROI estime</p>
+                      <p>{formatRoi(item.roi)}</p>
+                    </div>
+                  </div>
                   <div className="mt-2">
                     <Button
                       variant="outline"
@@ -599,15 +615,15 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                         )}
                       </div>
                       <p className="mt-1 text-sm text-muted-foreground">{rec.description}</p>
-                      <div className="mt-2 flex gap-4 text-sm text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <DollarSign className="h-3.5 w-3.5" />
-                          {formatAmount(rec.estimatedCost ?? 0)}/mois
-                        </span>
-                        <span className="flex items-center gap-1">
-                          <TrendingUp className="h-3.5 w-3.5" />
-                          ROI: {rec.roi ?? 0}x
-                        </span>
+                      <div className="mt-2 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                        <div className="rounded-md border bg-muted/20 p-2">
+                          <p className="font-medium text-foreground">Cout estime</p>
+                          <p>{formatAmount(rec.estimatedCost ?? 0)}/mois</p>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 p-2">
+                          <p className="font-medium text-foreground">ROI estime</p>
+                          <p>{formatRoi(rec.roi)}</p>
+                        </div>
                       </div>
                     </button>
 
@@ -722,7 +738,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                         </div>
                         <div className="text-center p-3 rounded-lg border">
                           <TrendingUp className="h-5 w-5 mx-auto text-muted-foreground mb-1" />
-                          <p className="font-bold">{rec.roi ?? 0}x</p>
+                          <p className="font-bold">{formatRoi(rec.roi)}</p>
                           <p className="text-xs text-muted-foreground">ROI estime</p>
                         </div>
                         <div className="text-center p-3 rounded-lg border">
@@ -796,7 +812,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                     </TooltipTrigger>
                     <TooltipContent>
                       <p className="font-medium">{rec.serviceName ?? rec.title ?? rec.id}</p>
-                      <p className="text-xs">Cout: {formatAmount(rec.estimatedCost ?? 0)}/mois — ROI: {rec.roi ?? 0}x</p>
+                      <p className="text-xs">Cout: {formatAmount(rec.estimatedCost ?? 0)}/mois — ROI: {formatRoi(rec.roi)}</p>
                     </TooltipContent>
                   </Tooltip>
                 );
@@ -819,3 +835,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     </div>
   );
 }
+
+
+
+
+
+
+
