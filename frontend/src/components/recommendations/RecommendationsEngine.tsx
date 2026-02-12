@@ -419,7 +419,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
-              ROI de vos recommandations
+              Analyse ROI detaillee
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -443,8 +443,8 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 </p>
               </div>
               <div className="rounded-lg border p-3 text-center">
-                <p className="text-xs text-muted-foreground mb-1">ROI net annuel</p>
-                <p className="text-lg font-bold text-green-600">
+                <p className="text-xs text-muted-foreground mb-1">Benefice net annuel</p>
+                <p className={cn('text-lg font-bold', roiQuery.data.breakdown.netBenefit > 0 ? 'text-green-600' : 'text-red-600')}>
                   {formatAmount(roiQuery.data.breakdown.netBenefit)}
                 </p>
                 <p className="text-xs text-muted-foreground">
@@ -461,6 +461,65 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 </p>
               </div>
             </div>
+
+            {/* Per-SPOF Breakdown */}
+            {roiQuery.data.riskDetails.perSpof && roiQuery.data.riskDetails.perSpof.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Detail par SPOF</p>
+                <div className="overflow-x-auto rounded-lg border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-muted/50">
+                        <th className="px-3 py-2 text-left font-medium">Composant</th>
+                        <th className="px-3 py-2 text-left font-medium">Type</th>
+                        <th className="px-3 py-2 text-right font-medium">P(panne)</th>
+                        <th className="px-3 py-2 text-right font-medium">RTO</th>
+                        <th className="px-3 py-2 text-right font-medium">Dependances</th>
+                        <th className="px-3 py-2 text-right font-medium">Perte attendue/an</th>
+                        <th className="px-3 py-2 text-left font-medium">Strategie</th>
+                        <th className="px-3 py-2 text-right font-medium">Cout/mois</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roiQuery.data.riskDetails.perSpof.map((spof) => (
+                        <tr key={spof.nodeId} className="border-b last:border-0">
+                          <td className="px-3 py-2 font-medium">{spof.nodeName}</td>
+                          <td className="px-3 py-2">
+                            <Badge variant="outline" className="text-xs">{spof.nodeType}</Badge>
+                          </td>
+                          <td className="px-3 py-2 text-right">{spof.failureProbability}%</td>
+                          <td className="px-3 py-2 text-right">{spof.rtoMinutes < 60 ? `${spof.rtoMinutes}min` : `${Math.round(spof.rtoMinutes / 60 * 10) / 10}h`}</td>
+                          <td className="px-3 py-2 text-right">{spof.dependentServices}</td>
+                          <td className="px-3 py-2 text-right font-medium text-red-600">{formatAmount(spof.annualExpectedLoss)}</td>
+                          <td className="px-3 py-2">
+                            <Badge className={
+                              spof.recommendedStrategy === 'active-active' ? 'bg-severity-critical/10 text-severity-critical' :
+                              spof.recommendedStrategy === 'warm-standby' ? 'bg-severity-high/10 text-severity-high' :
+                              spof.recommendedStrategy === 'pilot-light' ? 'bg-severity-medium/10 text-severity-medium' :
+                              'bg-severity-low/10 text-severity-low'
+                            }>
+                              {STRATEGY_INFO[spof.recommendedStrategy]?.label ?? spof.recommendedStrategy}
+                            </Badge>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="cursor-help">{formatAmount(spof.remediationMonthlyCost.median)}</span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Min: {formatAmount(spof.remediationMonthlyCost.min)}</p>
+                                <p>Max: {formatAmount(spof.remediationMonthlyCost.max)}</p>
+                                <p className="text-xs text-muted-foreground mt-1">Tarifs publics {spof.provider.toUpperCase()}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             {/* Compliance Coverage */}
             {Object.keys(roiQuery.data.complianceCoverage).length > 0 && (
@@ -480,9 +539,17 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               </div>
             )}
 
-            <p className="text-xs text-muted-foreground">
-              Methodologie : {roiQuery.data.methodology.downtimeCostSource}. {roiQuery.data.methodology.riskReductionAssumption}. {roiQuery.data.methodology.disclaimer}
-            </p>
+            {/* Detailed Methodology */}
+            <div className="rounded-lg bg-muted/30 p-3 space-y-1">
+              <p className="text-xs font-medium text-muted-foreground">Methodologie de calcul</p>
+              <p className="text-xs text-muted-foreground">{roiQuery.data.methodology.downtimeCostSource}</p>
+              <p className="text-xs text-muted-foreground">{roiQuery.data.methodology.riskReductionAssumption}</p>
+              <p className="text-xs text-muted-foreground">{roiQuery.data.methodology.spofFailureProbability}</p>
+              {roiQuery.data.methodology.calculationDetails && (
+                <p className="text-xs text-muted-foreground">{roiQuery.data.methodology.calculationDetails}</p>
+              )}
+              <p className="text-xs text-muted-foreground italic mt-2">{roiQuery.data.methodology.disclaimer}</p>
+            </div>
           </CardContent>
         </Card>
       )}
