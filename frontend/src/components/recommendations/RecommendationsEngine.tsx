@@ -27,7 +27,7 @@ import { cn } from '@/lib/utils';
 import { formatRelativeTime } from '@/lib/formatters';
 import { api } from '@/api/client';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
-import { roiApi, type ROIReport } from '@/api/roi.api';
+import { roiApi } from '@/api/roi.api';
 
 type ViewMode = 'list' | 'matrix';
 type SortField = 'priority' | 'cost' | 'roi';
