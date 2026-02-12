@@ -273,31 +273,8 @@ function ReportGeneratorInner({ className }: ReportGeneratorProps) {
     setIsGenerating(true);
     setGenerationProgress(0);
 
-    // Simulate section-by-section generation
     const enabledList = sections.filter((s) => s.enabled);
 
-    for (let i = 0; i < enabledList.length; i++) {
-      const section = enabledList[i];
-      setCurrentGeneratingSection(section.label);
-
-      // Mark section as generating
-      setSections((prev) =>
-        prev.map((s) => (s.id === section.id ? { ...s, generating: true } : s))
-      );
-
-      await new Promise((r) => setTimeout(r, 400 + Math.random() * 600));
-
-      // Mark section as generated
-      setSections((prev) =>
-        prev.map((s) =>
-          s.id === section.id ? { ...s, generating: false, generated: true } : s
-        )
-      );
-
-      setGenerationProgress(((i + 1) / enabledList.length) * 100);
-    }
-
-    // Final download
     try {
       const config: ReportConfig = {
         format: format === 'html' ? 'pdf' : format,
@@ -305,7 +282,35 @@ function ReportGeneratorInner({ className }: ReportGeneratorProps) {
         includeExercises: [...selectedExercises],
       };
 
+      // Start progress animation while backend generates
+      let progressIndex = 0;
+      const progressInterval = setInterval(() => {
+        if (progressIndex < enabledList.length) {
+          const section = enabledList[progressIndex];
+          setCurrentGeneratingSection(section.label);
+
+          setSections((prev) =>
+            prev.map((s) => {
+              if (s.id === section.id) return { ...s, generating: true };
+              if (enabledList.indexOf(s) < progressIndex && s.enabled) return { ...s, generating: false, generated: true };
+              return s;
+            })
+          );
+
+          setGenerationProgress(((progressIndex + 1) / enabledList.length) * 90);
+          progressIndex++;
+        }
+      }, 300);
+
       const response = await reportsApi.generate(config);
+
+      clearInterval(progressInterval);
+
+      // Mark all sections as generated
+      setSections((prev) =>
+        prev.map((s) => s.enabled ? { ...s, generating: false, generated: true } : s)
+      );
+      setGenerationProgress(100);
 
       const blob = response.data instanceof Blob
         ? response.data

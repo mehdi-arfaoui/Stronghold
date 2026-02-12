@@ -278,6 +278,133 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
   }
 });
 
+// ─── GET /bia-resilience/export/json — Export BIA as JSON ──────────
+router.get('/export/json', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+    });
+
+    const processes = (report?.processes || []).map(p => ({
+      serviceName: p.serviceName,
+      serviceType: p.serviceType,
+      tier: p.recoveryTier,
+      suggestedRTO: p.suggestedRTO,
+      suggestedRPO: p.suggestedRPO,
+      suggestedMTPD: p.suggestedMTPD,
+      validatedRTO: p.validatedRTO,
+      validatedRPO: p.validatedRPO,
+      validatedMTPD: p.validatedMTPD,
+      impactCategory: p.impactCategory,
+      criticalityScore: p.criticalityScore,
+      financialImpactPerHour: (p.financialImpact as any)?.estimatedCostPerHour || 0,
+      validationStatus: p.validationStatus,
+    }));
+
+    return res.json({ exportedAt: new Date().toISOString(), processes });
+  } catch (error) {
+    console.error('Error exporting BIA JSON:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /bia-resilience/export/xlsx — Export BIA as XLSX (CSV-compatible TSV) ──────────
+router.get('/export/xlsx', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+    });
+
+    const header = 'Service\tType\tTier\tSuggested RTO\tSuggested RPO\tSuggested MTPD\tValidated RTO\tValidated RPO\tValidated MTPD\tImpact Category\tCriticality Score\tFinancial Impact/h\tStatus\n';
+    const rows = (report?.processes || []).map(p =>
+      [
+        p.serviceName,
+        p.serviceType,
+        p.recoveryTier,
+        p.suggestedRTO,
+        p.suggestedRPO,
+        p.suggestedMTPD,
+        p.validatedRTO ?? '',
+        p.validatedRPO ?? '',
+        p.validatedMTPD ?? '',
+        p.impactCategory,
+        p.criticalityScore,
+        (p.financialImpact as any)?.estimatedCostPerHour || 0,
+        p.validationStatus,
+      ].join('\t')
+    ).join('\n');
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="bia-export.xlsx"');
+    return res.send(header + rows);
+  } catch (error) {
+    console.error('Error exporting BIA XLSX:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /bia-resilience/export/pdf — Export BIA as PDF ──────────
+router.get('/export/pdf', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const report = await prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+    });
+
+    // Build text content for PDF
+    const lines = [
+      'Business Impact Analysis (BIA) Export',
+      `Generated: ${new Date().toISOString()}`,
+      '',
+      ...((report?.processes || []).map(p =>
+        `[Tier ${p.recoveryTier}] ${p.serviceName} (${p.serviceType}) - RTO: ${p.validatedRTO ?? p.suggestedRTO}min, RPO: ${p.validatedRPO ?? p.suggestedRPO}min - Impact: ${(p.financialImpact as any)?.estimatedCostPerHour || 0} EUR/h - ${p.validationStatus}`
+      )),
+    ];
+
+    const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const margin = 40;
+    const fontSize = 10;
+    const lineHeight = fontSize * 1.5;
+    const pageSize = { width: 595.28, height: 841.89 };
+
+    let page = pdfDoc.addPage([pageSize.width, pageSize.height]);
+    let y = page.getHeight() - margin;
+
+    for (const line of lines) {
+      if (y <= margin) {
+        page = pdfDoc.addPage([pageSize.width, pageSize.height]);
+        y = page.getHeight() - margin;
+      }
+      page.drawText(line, { x: margin, y, size: fontSize, font, color: rgb(0, 0, 0) });
+      y -= lineHeight;
+    }
+
+    const pdfBytes = await pdfDoc.save();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'attachment; filename="bia-export.pdf"');
+    return res.send(Buffer.from(pdfBytes));
+  } catch (error) {
+    console.error('Error exporting BIA PDF:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── GET /bia-resilience/report — Latest BIA report ──────────
 router.get('/report', async (req: TenantRequest, res) => {
   try {

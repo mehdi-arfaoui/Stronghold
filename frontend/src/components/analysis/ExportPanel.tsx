@@ -90,18 +90,16 @@ export function ExportPanel({ open, onOpenChange, totalRows: _totalRows = 0, act
     setExportProgress(0);
 
     try {
-      // Simulate progress for UX
       const progressInterval = setInterval(() => {
         setExportProgress((prev) => Math.min(prev + 10, 90));
       }, 200);
 
-      const response = await biaApi.exportCSV();
+      const selectedKeys = enabledColumns.map((c) => c.key);
+      const response = await biaApi.exportFormat(format, { columns: selectedKeys, exportAll });
 
       clearInterval(progressInterval);
       setExportProgress(100);
 
-      // Create download
-      const blob = response.data instanceof Blob ? response.data : new Blob([response.data as BlobPart]);
       const mimeTypes: Record<ExportFormat, string> = {
         csv: 'text/csv',
         xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -109,8 +107,10 @@ export function ExportPanel({ open, onOpenChange, totalRows: _totalRows = 0, act
         json: 'application/json',
       };
 
-      const downloadBlob = new Blob([blob], { type: mimeTypes[format] });
-      const url = URL.createObjectURL(downloadBlob);
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([typeof response.data === 'string' ? response.data : JSON.stringify(response.data)], { type: mimeTypes[format] });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `bia-export.${format}`;

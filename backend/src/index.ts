@@ -44,11 +44,14 @@ import integrationsRoutes from "./routes/integrationsRoutes.js";
 import currencyRoutes from "./routes/currencyRoutes.js";
 import recommendationEngineRoutes from "./routes/recommendationEngineRoutes.js";
 import knowledgeBaseRoutes from "./routes/knowledgeBaseRoutes.js";
+import driftRoutes from "./routes/driftRoutes.js";
+import roiRoutes from "./routes/roiRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
 import { startApiKeyRotationWorker } from "./workers/apiKeyRotationWorker.js";
 import { startLicenseQuotaResetWorker } from "./workers/licenseQuotaResetWorker.js";
+import { startDriftScheduler } from "./workers/driftScheduler.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
@@ -123,6 +126,13 @@ const backgroundServices: BackgroundService[] = [
     enabled: process.env.LICENSE_QUOTA_RESET_ENABLED !== "false",
     start: async () => {
       await startLicenseQuotaResetWorker();
+    },
+  },
+  {
+    name: "driftScheduler",
+    enabled: process.env.DRIFT_CHECK_ENABLED !== "false",
+    start: async () => {
+      await startDriftScheduler();
     },
   },
 ];
@@ -561,6 +571,8 @@ const routes = [
   { path: "/currency", handler: currencyRoutes, name: "currencyRoutes" },
   { path: "/recommendations", handler: recommendationEngineRoutes, name: "recommendationEngineRoutes" },
   { path: "/knowledge-base", handler: knowledgeBaseRoutes, name: "knowledgeBaseRoutes" },
+  { path: "/drift", handler: driftRoutes, name: "driftRoutes" },
+  { path: "/roi", handler: roiRoutes, name: "roiRoutes" },
 ];
 
 for (const route of routes) {

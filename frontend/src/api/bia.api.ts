@@ -22,4 +22,10 @@ export const biaApi = {
 
   exportCSV: () =>
     api.get('/bia-resilience/export/csv', { responseType: 'blob' }),
+
+  exportFormat: (format: string, options?: { columns?: string[]; exportAll?: boolean }) =>
+    api.get(`/bia-resilience/export/${format}`, {
+      responseType: format === 'json' ? 'json' : 'blob',
+      params: options,
+    }),
 };

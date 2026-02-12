@@ -40,4 +40,7 @@ export const recommendationsApi = {
 
   updateStatus: (id: string, data: { accepted: boolean; notes?: string }) =>
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, ...data }] }),
+
+  resetStatus: (id: string) =>
+    api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, accepted: null, notes: null }] }),
 };
