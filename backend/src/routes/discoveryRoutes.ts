@@ -42,6 +42,12 @@ import { buildScanHealthReport } from "../services/discoveryHealthService.js";
 const router = Router();
 const uploadDir = path.join(os.tmpdir(), "discovery-imports");
 fs.mkdirSync(uploadDir, { recursive: true });
+const DISCOVERY_ALLOWED_MIME_TYPES = new Set([
+  "application/json",
+  "text/csv",
+  "application/vnd.ms-excel",
+  "text/plain",
+]);
 const upload = multer({
   storage: multer.diskStorage({
     destination: (
@@ -54,7 +60,13 @@ const upload = multer({
       cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: unknown, file: MulterFile, cb: (error: Error | null, acceptFile?: boolean) => void) => {
+    if (!DISCOVERY_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      return cb(new Error("Type de fichier non autorisé"));
+    }
+    return cb(null, true);
+  },
 });
 
 function resolveCredentials(payload: any) {
