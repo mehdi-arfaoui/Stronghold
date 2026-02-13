@@ -15,6 +15,11 @@ import graphRoutes from "./routes/graphRoutes.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import infraRoutes from "./routes/infraRoutes.js";
 import { tenantMiddleware } from "./middleware/tenantMiddleware.js";
+import {
+  globalRateLimitLong,
+  globalRateLimitMedium,
+  globalRateLimitShort,
+} from "./middleware/rateLimitMiddleware.js";
 import scenarioRoutes from "./routes/scenarioRoutes.js";
 import scenarioCatalogRoutes from "./routes/scenarioCatalogRoutes.js";
 import cyberScenarioRoutes from "./routes/cyberScenarioRoutes.js";
@@ -486,6 +491,9 @@ app.use((req, res, next) => {
   });
 });
 app.use(express.json());
+app.use(globalRateLimitShort);
+app.use(globalRateLimitMedium);
+app.use(globalRateLimitLong);
 
 // ✅ health-check sans tenant
 app.get("/health/live", (_req, res) => {

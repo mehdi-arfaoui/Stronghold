@@ -5,6 +5,7 @@
 import { Router, type Response } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
+import { reportRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { generatePraPcaReport } from '../graph/reportGenerator.js';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
@@ -252,7 +253,7 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
 }
 
 // ─── POST /reports/pra-pca — Generate PRA/PCA report ──────────
-router.post('/pra-pca', async (req: TenantRequest, res) => {
+router.post('/pra-pca', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     return await handleReportGeneration(req, res);
   } catch (error) {
@@ -262,7 +263,7 @@ router.post('/pra-pca', async (req: TenantRequest, res) => {
 });
 
 // Compatibility route for frontend report generator
-router.post('/generate', async (req: TenantRequest, res) => {
+router.post('/generate', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     req.body = { ...req.body, format: req.body?.format ?? 'pdf' };
     return await handleReportGeneration(req, res);
@@ -355,7 +356,7 @@ router.get('/prerequisites', async (req: TenantRequest, res) => {
 });
 
 // ─── POST /reports/executive-summary — Board-ready 1-page PDF ──────────
-router.post('/executive-summary', async (req: TenantRequest, res) => {
+router.post('/executive-summary', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });

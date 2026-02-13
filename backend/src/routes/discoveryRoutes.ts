@@ -13,6 +13,7 @@ import {
   requireQuota,
   incrementQuotaOnSuccess,
 } from "../middleware/licenseMiddleware.js";
+import { scanRateLimit } from "../middleware/rateLimitMiddleware.js";
 import {
   buildValidationError,
   parseOptionalBoolean,
@@ -250,6 +251,7 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
 
 router.post(
   "/run",
+  scanRateLimit,
   requireValidLicense(),
   requireFeature("discovery"),
   requireQuota("scans", 1),
@@ -259,6 +261,7 @@ router.post(
 );
 router.post(
   "/scan",
+  scanRateLimit,
   requireValidLicense(),
   requireFeature("discovery"),
   requireQuota("scans", 1),

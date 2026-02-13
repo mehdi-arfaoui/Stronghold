@@ -2,6 +2,7 @@ import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { reportRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { requireValidLicense, requireFeature } from "../middleware/licenseMiddleware.js";
 import {
   buildValidationError,
@@ -216,7 +217,7 @@ router.get("/processes", async (req: TenantRequest, res) => {
   }
 });
 
-router.post("/reports/generate", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+router.post("/reports/generate", reportRateLimit, requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

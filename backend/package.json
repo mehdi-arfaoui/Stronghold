@@ -60,6 +60,7 @@
     "dotenv": "^17.2.3",
     "elasticlunr": "^0.9.5",
     "express": "^5.1.0",
+    "express-rate-limit": "8.2.1",
     "graphology": "^0.26.0",
     "graphology-components": "^1.5.4",
     "graphology-metrics": "^2.4.0",

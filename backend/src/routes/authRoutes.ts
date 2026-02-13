@@ -3,6 +3,7 @@ import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { authProvisionRateLimit, authRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { generateApiKey } from "../services/apiKeyService.js";
 import { decryptSecret, encryptSecret } from "../services/secretVaultService.js";
 
@@ -67,6 +68,7 @@ router.get(
 
 router.post(
   "/api-keys",
+  authProvisionRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -113,6 +115,7 @@ router.post(
 
 router.post(
   "/api-keys/:id/review",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -153,6 +156,7 @@ router.post(
 
 router.post(
   "/api-keys/:id/reveal",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -213,6 +217,7 @@ router.post(
 
 router.post(
   "/api-keys/rotate",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
