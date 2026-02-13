@@ -1,12 +1,34 @@
 import axios from 'axios';
 
+function resolveApiBaseUrl(): string {
+  const configuredBaseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (!configuredBaseUrl) {
+    return '/api';
+  }
+
+  try {
+    const resolved = new URL(configuredBaseUrl, window.location.origin);
+    const isSameOrigin = resolved.origin === window.location.origin;
+
+    // Prevent misrouting API calls to the SPA root (which returns index.html)
+    // when VITE_API_URL is set to something like http://localhost:3000.
+    if (isSameOrigin && !resolved.pathname.startsWith('/api')) {
+      return '/api';
+    }
+  } catch {
+    // Keep configured value if URL parsing fails.
+  }
+
+  return configuredBaseUrl;
+}
+
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: resolveApiBaseUrl(),
   timeout: 30000,
 });
 
 api.interceptors.request.use((config) => {
-  const apiKey = localStorage.getItem('stronghold_api_key');
+  const apiKey = localStorage.getItem('stronghold_api_key')?.trim();
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }
@@ -29,6 +51,11 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+
+    if (err.response?.status === 403 && err.response?.data?.error === 'Invalid API key') {
+      localStorage.removeItem('stronghold_api_key');
+    }
+
     return Promise.reject(err);
   }
 );
