@@ -18,7 +18,7 @@ WORKDIR /app
 # Package manifests (changent rarement)
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --no-audit --fund=false
+    npm ci --no-audit --fund=false --ignore-scripts
 
 # Stage 3: Build
 FROM deps AS build
