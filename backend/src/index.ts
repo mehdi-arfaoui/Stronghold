@@ -1,6 +1,7 @@
 import express from "express";
 import http from "http";
 import cors, { type CorsOptions } from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
@@ -388,6 +389,35 @@ const buildReadinessReport = async (): Promise<{
 };
 
 const app = express();
+
+app.use(
+  helmet({
+    contentSecurityPolicy:
+      process.env.NODE_ENV === "production"
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", "data:", "https:"],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'", "https:", "data:"],
+              objectSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+            },
+          }
+        : false,
+    crossOriginEmbedderPolicy: process.env.NODE_ENV === "production",
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    xContentTypeOptions: true,
+    xXssProtection: true,
+  })
+);
 
 const isDevelopment = process.env.NODE_ENV !== "production";
 const allowNoOrigin =
