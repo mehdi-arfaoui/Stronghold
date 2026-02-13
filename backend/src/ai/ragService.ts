@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import prisma from "../prismaClient.js";
 import { Prisma, PrismaClient } from "@prisma/client";
 import type { ExtractedFact } from "@prisma/client";
@@ -372,7 +373,7 @@ async function retrieveLexicalRagContext(options: RagQueryOptions): Promise<{
     try {
       rawText = resolveEncryptedDocumentText(doc) ?? "";
     } catch (err: any) {
-      console.warn("Failed to decrypt document text for RAG", {
+      appLogger.warn("Failed to decrypt document text for RAG", {
         documentId: doc.id,
         message: err?.message,
       });
@@ -616,7 +617,7 @@ export async function retrieveRagContext(options: RagQueryOptions): Promise<{
       vectorResult = await retrieveVectorRagContext(options);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
+      appLogger.warn("Vector RAG retrieval failed, falling back to lexical retrieval.", {
         tenantId: options.tenantId,
         message: message.slice(0, 300),
       });

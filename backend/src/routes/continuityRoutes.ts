@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -75,7 +76,7 @@ router.post(
 
     return res.status(201).json(strategy);
   } catch (error) {
-    console.error("Error creating backup strategy", error);
+    appLogger.error("Error creating backup strategy", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -101,7 +102,7 @@ router.get("/backup-strategies", async (req: TenantRequest, res) => {
 
     return res.json(strategies);
   } catch (error) {
-    console.error("Error fetching backup strategies", error);
+    appLogger.error("Error fetching backup strategies", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -154,7 +155,7 @@ router.post(
 
     return res.status(201).json(policy);
   } catch (error) {
-    console.error("Error creating security policy", error);
+    appLogger.error("Error creating security policy", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -178,7 +179,7 @@ router.get("/security-policies", async (req: TenantRequest, res) => {
 
     return res.json(policies);
   } catch (error) {
-    console.error("Error fetching security policies", error);
+    appLogger.error("Error fetching security policies", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -234,7 +235,7 @@ router.post(
 
     return res.status(201).json(cycle);
   } catch (error) {
-    console.error("Error creating dependency cycle", error);
+    appLogger.error("Error creating dependency cycle", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -260,7 +261,7 @@ router.get("/dependency-cycles", async (req: TenantRequest, res) => {
 
     return res.json(cycles);
   } catch (error) {
-    console.error("Error fetching dependency cycles", error);
+    appLogger.error("Error fetching dependency cycles", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

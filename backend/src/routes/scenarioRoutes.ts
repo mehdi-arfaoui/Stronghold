@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { Prisma } from "@prisma/client";
@@ -73,7 +74,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(scenarios);
   } catch (error) {
-    console.error("Error fetching scenarios:", error);
+    appLogger.error("Error fetching scenarios:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -187,7 +188,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.status(201).json(fullScenario);
   } catch (error) {
-    console.error("Error creating scenario:", error);
+    appLogger.error("Error creating scenario:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -344,7 +345,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.json(fullScenario);
   } catch (error) {
-    console.error("Error updating scenario:", error);
+    appLogger.error("Error updating scenario:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -377,7 +378,7 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
 
     return res.status(204).send();
   } catch (error) {
-    console.error("Error deleting scenario:", error);
+    appLogger.error("Error deleting scenario:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -454,7 +455,7 @@ router.post("/:id/steps", requireRole("OPERATOR"), async (req: TenantRequest, re
 
     return res.status(201).json(step);
   } catch (error) {
-    console.error("Error creating runbook step:", error);
+    appLogger.error("Error creating runbook step:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -544,7 +545,7 @@ router.put("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantRequ
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating runbook step:", error);
+    appLogger.error("Error updating runbook step:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -576,7 +577,7 @@ router.delete("/:id/steps/:stepId", requireRole("OPERATOR"), async (req: TenantR
     await prisma.runbookStep.delete({ where: { id: stepId } });
     return res.status(204).send();
   } catch (error) {
-    console.error("Error deleting runbook step:", error);
+    appLogger.error("Error deleting runbook step:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

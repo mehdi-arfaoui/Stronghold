@@ -3,8 +3,10 @@ import type { ApiRole } from "@prisma/client";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { authProvisionRateLimit, authRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { generateApiKey } from "../services/apiKeyService.js";
 import { decryptSecret, encryptSecret } from "../services/secretVaultService.js";
+import { appLogger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -59,7 +61,7 @@ router.get(
         }))
       );
     } catch (error) {
-      console.error("Error in GET /auth/api-keys:", error);
+      appLogger.error("Error in GET /auth/api-keys:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -67,6 +69,7 @@ router.get(
 
 router.post(
   "/api-keys",
+  authProvisionRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -105,7 +108,7 @@ router.post(
         vaulted: Boolean(encrypted),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys:", error);
+      appLogger.error("Error in POST /auth/api-keys:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -113,6 +116,7 @@ router.post(
 
 router.post(
   "/api-keys/:id/review",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -145,7 +149,7 @@ router.post(
 
       return res.status(200).json(key);
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/:id/review:", error);
+      appLogger.error("Error in POST /auth/api-keys/:id/review:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -153,6 +157,7 @@ router.post(
 
 router.post(
   "/api-keys/:id/reveal",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -205,7 +210,7 @@ router.post(
         revealedAt: new Date(),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/:id/reveal:", error);
+      appLogger.error("Error in POST /auth/api-keys/:id/reveal:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -213,6 +218,7 @@ router.post(
 
 router.post(
   "/api-keys/rotate",
+  authRateLimit,
   requireRole("ADMIN"),
   async (req: TenantRequest, res) => {
     try {
@@ -259,7 +265,7 @@ router.post(
         vaulted: Boolean(encrypted),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/rotate:", error);
+      appLogger.error("Error in POST /auth/api-keys/rotate:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

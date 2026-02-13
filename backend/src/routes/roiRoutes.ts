@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // ROI & Financial Analysis Routes
 // ============================================================
@@ -32,7 +33,7 @@ router.get('/', async (req: TenantRequest, res) => {
 
     return res.json(roi);
   } catch (error) {
-    console.error('Error calculating ROI:', error);
+    appLogger.error('Error calculating ROI:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Job, Worker } from "bullmq";
 import prisma from "../prismaClient.js";
 import { createRedisConnection } from "../queues/discoveryQueue.js";
@@ -292,7 +293,7 @@ export function startDiscoveryWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("Discovery worker failed", job?.id, err);
+    appLogger.error("Discovery worker failed", job?.id, err);
   });
 
   return worker;

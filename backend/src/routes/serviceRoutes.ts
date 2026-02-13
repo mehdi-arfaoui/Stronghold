@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -81,7 +82,7 @@ router.get("/", async (req: TenantRequest, res) => {
 
     return res.json(services);
   } catch (error) {
-    console.error("Error in GET /services:", error);
+    appLogger.error("Error in GET /services:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -256,7 +257,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error in PUT /services/:id:", error);
+    appLogger.error("Error in PUT /services/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -296,7 +297,7 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
 
     return res.status(204).send();
   } catch (error) {
-    console.error("Error in DELETE /services/:id:", error);
+    appLogger.error("Error in DELETE /services/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -412,7 +413,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.status(201).json(service);
   } catch (error) {
-    console.error("Error in POST /services:", error);
+    appLogger.error("Error in POST /services:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -483,7 +484,7 @@ router.post(
 
     return res.status(201).json(dependency);
   } catch (error) {
-    console.error("Error in POST /services/:id/dependencies:", error);
+    appLogger.error("Error in POST /services/:id/dependencies:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -536,7 +537,7 @@ router.get("/graph", async (req: TenantRequest, res) => {
 
     return res.json({ nodes, edges });
   } catch (error) {
-    console.error("Error in GET /services/graph:", error);
+    appLogger.error("Error in GET /services/graph:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

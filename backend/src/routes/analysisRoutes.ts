@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -807,7 +808,7 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
       },
     });
   } catch (error) {
-    console.error("Error in /analysis/pra-dashboard:", error);
+    appLogger.error("Error in /analysis/pra-dashboard:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -822,7 +823,7 @@ router.get("/compliance-report", requireRole("READER"), async (req: TenantReques
     const report = await evaluateCompliance(prisma, tenantId);
     return res.json(report);
   } catch (error) {
-    console.error("Error in /analysis/compliance-report:", error);
+    appLogger.error("Error in /analysis/compliance-report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -850,7 +851,7 @@ router.get("/compliance/report", requireRole("READER"), async (req: TenantReques
     const report = await buildComplianceReport(prisma, tenantId, templateId);
     return res.json(report);
   } catch (error) {
-    console.error("Error in /analysis/compliance/report:", error);
+    appLogger.error("Error in /analysis/compliance/report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -870,7 +871,7 @@ router.get("/compliance/statement-of-applicability", requireRole("READER"), asyn
     const soa = await buildStatementOfApplicability(prisma, tenantId, checklistId);
     return res.json(soa);
   } catch (error) {
-    console.error("Error in /analysis/compliance/statement-of-applicability:", error);
+    appLogger.error("Error in /analysis/compliance/statement-of-applicability:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -933,7 +934,7 @@ router.get("/maturity-score", requireRole("READER"), async (req: TenantRequest, 
       ...maturityScore,
     });
   } catch (error) {
-    console.error("Error in /analysis/maturity-score:", error);
+    appLogger.error("Error in /analysis/maturity-score:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -952,7 +953,7 @@ router.get("/next-actions", requireRole("READER"), async (req: TenantRequest, re
       ...nextActions,
     });
   } catch (error) {
-    console.error("Error in /analysis/next-actions:", error);
+    appLogger.error("Error in /analysis/next-actions:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1024,7 +1025,7 @@ router.get("/risk-heatmap", requireRole("READER"), async (req: TenantRequest, re
       data,
     });
   } catch (error) {
-    console.error("Error in /analysis/risk-heatmap:", error);
+    appLogger.error("Error in /analysis/risk-heatmap:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1086,7 +1087,7 @@ router.post("/rag-query", requireRole("READER"), async (req: TenantRequest, res)
       },
     });
   } catch (error) {
-    console.error("Error in /analysis/rag-query:", error);
+    appLogger.error("Error in /analysis/rag-query:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1136,7 +1137,7 @@ router.post("/pra-rag-report", requireRole("READER"), async (req: TenantRequest,
       },
     });
   } catch (error) {
-    console.error("Error in /analysis/pra-rag-report:", error);
+    appLogger.error("Error in /analysis/pra-rag-report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1184,7 +1185,7 @@ router.post("/runbook-draft", requireRole("READER"), async (req: TenantRequest, 
       },
     });
   } catch (error) {
-    console.error("Error in /analysis/runbook-draft:", error);
+    appLogger.error("Error in /analysis/runbook-draft:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1226,7 +1227,7 @@ router.post("/feedback/entities", requireRole("OPERATOR"), async (req: TenantReq
 
     return res.status(201).json({ feedback });
   } catch (error) {
-    console.error("Error in POST /analysis/feedback/entities:", error);
+    appLogger.error("Error in POST /analysis/feedback/entities:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1278,7 +1279,7 @@ router.post(
 
       return res.status(201).json({ feedback });
     } catch (error) {
-      console.error("Error in POST /analysis/feedback/recommendations:", error);
+      appLogger.error("Error in POST /analysis/feedback/recommendations:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1323,7 +1324,7 @@ router.post("/feedback/user", requireRole("OPERATOR"), async (req: TenantRequest
 
     return res.status(201).json({ feedback });
   } catch (error) {
-    console.error("Error in POST /analysis/feedback/user:", error);
+    appLogger.error("Error in POST /analysis/feedback/user:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1375,7 +1376,7 @@ router.post(
 
       return res.status(201).json({ feedback });
     } catch (error) {
-      console.error("Error in POST /analysis/feedback/rag-experiments:", error);
+      appLogger.error("Error in POST /analysis/feedback/rag-experiments:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -1397,7 +1398,7 @@ router.post("/ml-training/run", requireRole("OPERATOR"), async (req: TenantReque
     const tuning = await runMlTrainingForTenant(tenantId, trigger ?? "manual");
     return res.json({ status: "completed", ragTuning: tuning });
   } catch (error) {
-    console.error("Error in POST /analysis/ml-training/run:", error);
+    appLogger.error("Error in POST /analysis/ml-training/run:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1429,7 +1430,7 @@ router.get("/basic", requireRole("READER"), async (req: TenantRequest, res) => {
     const warnings = buildAppContinuityWarnings(services);
     return res.json(warnings);
   } catch (error) {
-    console.error("Error in /analysis/basic:", error);
+    appLogger.error("Error in /analysis/basic:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1457,7 +1458,7 @@ router.get("/infra-basic", requireRole("READER"), async (req: TenantRequest, res
     const findings = buildInfraFindings(infra);
     return res.json(findings);
   } catch (error) {
-    console.error("Error in /analysis/infra-basic:", error);
+    appLogger.error("Error in /analysis/infra-basic:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1473,7 +1474,7 @@ router.get("/report", requireRole("READER"), async (req: TenantRequest, res) => 
     const text = await buildPraReportText(tenantId);
     res.type("text/plain").send(text);
   } catch (error) {
-    console.error("Error in /analysis/report:", error);
+    appLogger.error("Error in /analysis/report:", error);
     return res.status(500).send("Internal server error");
   }
 });
@@ -1490,7 +1491,7 @@ router.get("/report/pdf", requireRole("READER"), async (req: TenantRequest, res)
     res.setHeader("Content-Disposition", "attachment; filename=\"rapport-pra.pdf\"");
     res.send(pdfBuffer);
   } catch (error) {
-    console.error("Error in /analysis/report/pdf:", error);
+    appLogger.error("Error in /analysis/report/pdf:", error);
     return res.status(500).send("Internal server error");
   }
 });
@@ -1601,7 +1602,7 @@ router.post("/financial-report", requireRole("READER"), async (req: TenantReques
 
     return res.json(report);
   } catch (error: any) {
-    console.error("Error in POST /analysis/financial-report:", error);
+    appLogger.error("Error in POST /analysis/financial-report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -1677,7 +1678,7 @@ router.post("/pra-options", requireRole("READER"), async (req: TenantRequest, re
       recommendations: recs,
     });
   } catch (error) {
-    console.error("Error in /analysis/pra-options:", error);
+    appLogger.error("Error in /analysis/pra-options:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2037,7 +2038,7 @@ router.get("/full-report-json", requireRole("READER"), async (req: TenantRequest
 
     return res.json(report);
   } catch (error) {
-    console.error("Error in /analysis/full-report-json:", error);
+    appLogger.error("Error in /analysis/full-report-json:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -2070,7 +2071,7 @@ router.post(
       if (error instanceof MissingExtractedTextError) {
         return res.status(error.status).json({ error: error.message });
       }
-      console.error("Error in POST /analysis/documents/:id/extracted-facts:", error);
+      appLogger.error("Error in POST /analysis/documents/:id/extracted-facts:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -2103,7 +2104,7 @@ router.post(
       if (error instanceof ExtractedFactNotFoundError) {
         return res.status(error.status).json({ error: error.message });
       }
-      console.error(
+      appLogger.error(
         "Error in POST /analysis/documents/:id/classification-feedback:",
         error
       );

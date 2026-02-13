@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import prisma from '../prismaClient.js';
 import { redis } from '../lib/redis.js';
 import { PLANS, type PlanKey } from '../config/plans.js';
@@ -56,7 +57,7 @@ export class LicenseService {
       }
     } catch (err) {
       // Redis might not be connected, continue without cache
-      console.warn('Redis cache read failed:', err);
+      appLogger.warn('Redis cache read failed:', err);
     }
 
     // Récupérer depuis la DB
@@ -84,7 +85,7 @@ export class LicenseService {
       await redis.setex(cacheKey, LICENSE_CACHE_TTL, serializeWithBigInt(license));
     } catch (err) {
       // Redis might not be connected, continue without cache
-      console.warn('Redis cache write failed:', err);
+      appLogger.warn('Redis cache write failed:', err);
     }
 
     return license;
@@ -387,7 +388,7 @@ export class LicenseService {
         await redis.del(...keys);
       }
     } catch (err) {
-      console.warn('Failed to invalidate license cache:', err);
+      appLogger.warn('Failed to invalidate license cache:', err);
     }
 
     return result.count;
@@ -400,7 +401,7 @@ export class LicenseService {
     try {
       await redis.del(`${CACHE_PREFIX}${tenantId}`);
     } catch (err) {
-      console.warn('Failed to invalidate license cache:', err);
+      appLogger.warn('Failed to invalidate license cache:', err);
     }
   }
 }

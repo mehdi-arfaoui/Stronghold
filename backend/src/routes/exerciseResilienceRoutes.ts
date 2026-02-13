@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Exercise Resilience Routes — Augmented exercises with simulation
 // ============================================================
@@ -29,7 +30,7 @@ router.post('/auto-checklist', async (req: TenantRequest, res) => {
     if (error.message === 'Simulation not found') {
       return res.status(404).json({ error: 'Simulation not found' });
     }
-    console.error('Error generating auto-checklist:', error);
+    appLogger.error('Error generating auto-checklist:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -96,7 +97,7 @@ router.post('/link', async (req: TenantRequest, res) => {
 
     return res.json({ linked: true, checklistGenerated: false });
   } catch (error) {
-    console.error('Error linking exercise to simulation:', error);
+    appLogger.error('Error linking exercise to simulation:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -121,7 +122,7 @@ router.get('/:exerciseId/comparison', async (req: TenantRequest, res) => {
     if (error.message === 'Linked simulation not found') {
       return res.status(404).json({ error: 'Linked simulation not found' });
     }
-    console.error('Error comparing exercise with simulation:', error);
+    appLogger.error('Error comparing exercise with simulation:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

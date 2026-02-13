@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Simulation Routes — What-if scenario simulations
 // ============================================================
@@ -55,7 +56,7 @@ router.post('/', async (req: TenantRequest, res) => {
 
     return res.json(result);
   } catch (error) {
-    console.error('Error running simulation:', error);
+    appLogger.error('Error running simulation:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -84,7 +85,7 @@ router.get('/', async (req: TenantRequest, res) => {
 
     return res.json({ simulations });
   } catch (error) {
-    console.error('Error listing simulations:', error);
+    appLogger.error('Error listing simulations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -115,7 +116,7 @@ router.get('/templates', async (req: TenantRequest, res) => {
 
     return res.json({ templates, dynamicOptions });
   } catch (error) {
-    console.error('Error fetching simulation templates:', error);
+    appLogger.error('Error fetching simulation templates:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -140,7 +141,7 @@ router.get('/recovery-priorities', async (req: TenantRequest, res) => {
       },
     });
   } catch (error) {
-    console.error('Error computing recovery priorities:', error);
+    appLogger.error('Error computing recovery priorities:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -202,7 +203,7 @@ router.get('/compare', async (req: TenantRequest, res) => {
       },
     });
   } catch (error) {
-    console.error('Error comparing simulations:', error);
+    appLogger.error('Error comparing simulations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -224,7 +225,7 @@ router.get('/:id', async (req: TenantRequest, res) => {
 
     return res.json(simulation.result);
   } catch (error) {
-    console.error('Error fetching simulation:', error);
+    appLogger.error('Error fetching simulation:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -247,7 +248,7 @@ router.delete('/:id', async (req: TenantRequest, res) => {
     await prisma.simulation.deleteMany({ where: { id: simId, tenantId } });
     return res.json({ deleted: true });
   } catch (error) {
-    console.error('Error deleting simulation:', error);
+    appLogger.error('Error deleting simulation:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -303,7 +304,7 @@ router.get('/:id/report', async (req: TenantRequest, res) => {
       _note: `PDF/DOCX export requires a document rendering service. Use this JSON payload with your preferred template engine.`,
     });
   } catch (error) {
-    console.error('Error generating simulation report:', error);
+    appLogger.error('Error generating simulation report:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

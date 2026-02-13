@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Drift Detection Routes
 // ============================================================
@@ -48,7 +49,7 @@ router.post('/check', async (req: TenantRequest, res) => {
     const result = await runDriftCheck(prisma, tenantId, { comparisonMode });
     return res.json(result);
   } catch (error) {
-    console.error('Error running drift check:', error);
+    appLogger.error('Error running drift check:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -94,7 +95,7 @@ router.get('/events', async (req: TenantRequest, res) => {
       },
     });
   } catch (error) {
-    console.error('Error fetching drift events:', error);
+    appLogger.error('Error fetching drift events:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -116,7 +117,7 @@ router.get('/events/:id', async (req: TenantRequest, res) => {
     if (!event) return res.status(404).json({ error: 'Event not found' });
     return res.json(event);
   } catch (error) {
-    console.error('Error fetching drift event:', error);
+    appLogger.error('Error fetching drift event:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -151,7 +152,7 @@ router.patch('/events/:id', async (req: TenantRequest, res) => {
     const updated = await prisma.driftEvent.findFirst({ where: { id: eventId, tenantId } });
     return res.json(updated);
   } catch (error) {
-    console.error('Error updating drift event:', error);
+    appLogger.error('Error updating drift event:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -178,7 +179,7 @@ router.get('/snapshots', async (req: TenantRequest, res) => {
       drifts: undefined,
     })));
   } catch (error) {
-    console.error('Error fetching snapshots:', error);
+    appLogger.error('Error fetching snapshots:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -222,7 +223,7 @@ router.get('/score', async (req: TenantRequest, res) => {
       scheduleEnabled: schedule?.enabled ?? false,
     });
   } catch (error) {
-    console.error('Error calculating score:', error);
+    appLogger.error('Error calculating score:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -244,7 +245,7 @@ router.get('/score/history', async (req: TenantRequest, res) => {
 
     return res.json(analyses);
   } catch (error) {
-    console.error('Error fetching score history:', error);
+    appLogger.error('Error fetching score history:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -269,7 +270,7 @@ router.get('/schedule', async (req: TenantRequest, res) => {
 
     return res.json(schedule);
   } catch (error) {
-    console.error('Error fetching drift schedule:', error);
+    appLogger.error('Error fetching drift schedule:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -305,7 +306,7 @@ router.put('/schedule', async (req: TenantRequest, res) => {
 
     return res.json(schedule);
   } catch (error) {
-    console.error('Error updating drift schedule:', error);
+    appLogger.error('Error updating drift schedule:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

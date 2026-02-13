@@ -2,6 +2,7 @@ import { Queue, Worker } from "bullmq";
 import { createRedisConnection } from "../queues/discoveryQueue.js";
 import prisma from "../prismaClient.js";
 import { runDriftCheck } from "../drift/driftDetectionService.js";
+import { appLogger } from "../utils/logger.js";
 
 const schedulerQueueName = "driftScheduler";
 
@@ -37,22 +38,22 @@ async function runSchedulerCycle() {
       ) {
         if (schedule.alertWebhook) {
           await sendWebhookAlert(schedule.alertWebhook, schedule.tenantId, result).catch(
-            (err) => console.error("[Drift] Webhook alert failed", schedule.tenantId, err)
+            (err) => appLogger.error("[Drift] Webhook alert failed", schedule.tenantId, err)
           );
         }
         // Email alerts would be handled by a mail service when available
         if (schedule.alertEmail) {
-          console.log(
+          appLogger.info(
             `[Drift] Alert email would be sent to ${schedule.alertEmail} for tenant ${schedule.tenantId}: ${result.drifts.length} drift(s) detected`
           );
         }
       }
 
-      console.log(
+      appLogger.info(
         `[Drift] Check completed for tenant ${schedule.tenantId}: ${result.drifts.length} drift(s), score=${result.resilienceScore.current}`
       );
     } catch (err) {
-      console.error("[Drift] Check failed for tenant", schedule.tenantId, err);
+      appLogger.error("[Drift] Check failed for tenant", schedule.tenantId, err);
     }
   }
 }
@@ -141,13 +142,13 @@ export async function startDriftScheduler() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("[Drift] Scheduler failed", job?.id, err);
+    appLogger.error("[Drift] Scheduler failed", job?.id, err);
   });
 
   worker.on("completed", (job) => {
-    console.log("[Drift] Scheduler cycle completed", job?.id);
+    appLogger.info("[Drift] Scheduler cycle completed", { jobId: job?.id });
   });
 
-  console.log(`[Drift] Scheduler started with pattern: ${cronPattern}`);
+  appLogger.info(`[Drift] Scheduler started with pattern: ${cronPattern}`);
   return worker;
 }

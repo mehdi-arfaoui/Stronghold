@@ -5,7 +5,9 @@
 import { Router, type Response } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
+import { reportRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { generatePraPcaReport } from '../graph/reportGenerator.js';
+import { appLogger } from "../utils/logger.js";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 
 type DocxModule = typeof import('docx');
@@ -252,22 +254,22 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
 }
 
 // ─── POST /reports/pra-pca — Generate PRA/PCA report ──────────
-router.post('/pra-pca', async (req: TenantRequest, res) => {
+router.post('/pra-pca', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     return await handleReportGeneration(req, res);
   } catch (error) {
-    console.error('Error generating PRA/PCA report:', error);
+    appLogger.error('Error generating PRA/PCA report:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // Compatibility route for frontend report generator
-router.post('/generate', async (req: TenantRequest, res) => {
+router.post('/generate', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     req.body = { ...req.body, format: req.body?.format ?? 'pdf' };
     return await handleReportGeneration(req, res);
   } catch (error) {
-    console.error('Error generating PRA/PCA report (compat):', error);
+    appLogger.error('Error generating PRA/PCA report (compat):', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -282,7 +284,7 @@ router.get('/pra-pca/latest', async (req: TenantRequest, res) => {
       dataAvailability: await getDataAvailability(tenantId),
     });
   } catch (error) {
-    console.error('Error fetching report metadata:', error);
+    appLogger.error('Error fetching report metadata:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -315,7 +317,7 @@ router.get('/preview', async (req: TenantRequest, res) => {
 
     return res.json({ html });
   } catch (error) {
-    console.error('Error generating report preview:', error);
+    appLogger.error('Error generating report preview:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -349,13 +351,13 @@ router.get('/prerequisites', async (req: TenantRequest, res) => {
       },
     ]);
   } catch (error) {
-    console.error('Error fetching report prerequisites:', error);
+    appLogger.error('Error fetching report prerequisites:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
 
 // ─── POST /reports/executive-summary — Board-ready 1-page PDF ──────────
-router.post('/executive-summary', async (req: TenantRequest, res) => {
+router.post('/executive-summary', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -453,7 +455,7 @@ router.post('/executive-summary', async (req: TenantRequest, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="executive-summary.pdf"');
     return res.send(pdfBuffer);
   } catch (error) {
-    console.error('Error generating executive summary:', error);
+    appLogger.error('Error generating executive summary:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

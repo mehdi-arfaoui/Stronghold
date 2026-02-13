@@ -2,6 +2,8 @@ import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { reportRateLimit } from "../middleware/rateLimitMiddleware.js";
+import { appLogger } from "../utils/logger.js";
 import { requireValidLicense, requireFeature } from "../middleware/licenseMiddleware.js";
 import {
   buildValidationError,
@@ -82,7 +84,7 @@ router.get("/summary", requireRole("READER"), async (req: TenantRequest, res) =>
     const summary = await buildBiaSummary(prisma, tenantId);
     return res.json(summary);
   } catch (error) {
-    console.error("Error fetching BIA summary", error);
+    appLogger.error("Error fetching BIA summary", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -97,7 +99,7 @@ router.get("/dashboard", requireRole("READER"), async (req: TenantRequest, res) 
     const dashboard = await buildBiaDashboard(prisma, tenantId);
     return res.json(dashboard);
   } catch (error) {
-    console.error("Error fetching BIA dashboard", error);
+    appLogger.error("Error fetching BIA dashboard", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -187,7 +189,7 @@ router.post("/processes", requireRole("OPERATOR"), async (req: TenantRequest, re
 
     return res.status(201).json(process);
   } catch (error) {
-    console.error("Error creating business process", error);
+    appLogger.error("Error creating business process", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -211,12 +213,12 @@ router.get("/processes", async (req: TenantRequest, res) => {
 
     return res.json(processes);
   } catch (error) {
-    console.error("Error fetching business processes", error);
+    appLogger.error("Error fetching business processes", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
 
-router.post("/reports/generate", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+router.post("/reports/generate", reportRateLimit, requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -247,7 +249,7 @@ router.post("/reports/generate", requireRole("OPERATOR"), async (req: TenantRequ
 
     return res.json(report);
   } catch (error) {
-    console.error("Error generating BIA report", error);
+    appLogger.error("Error generating BIA report", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -263,7 +265,7 @@ router.get("/integration/summary", requireRole("READER"), async (req: TenantRequ
     const summary = await getBiaIntegrationSummary(prisma, tenantId);
     return res.json(summary);
   } catch (error) {
-    console.error("Error fetching BIA integration summary", error);
+    appLogger.error("Error fetching BIA integration summary", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -287,7 +289,7 @@ router.get("/integration/process/:processId", requireRole("READER"), async (req:
 
     return res.json(integration);
   } catch (error) {
-    console.error("Error fetching process integration", error);
+    appLogger.error("Error fetching process integration", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -321,7 +323,7 @@ router.post("/integration/process/:processId/link-risk", requireRole("OPERATOR")
 
     return res.json({ success: true, message: "Risque lié au processus" });
   } catch (error) {
-    console.error("Error linking risk to process", error);
+    appLogger.error("Error linking risk to process", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -371,7 +373,7 @@ router.post("/integration/process/:processId/create-risk", requireRole("OPERATOR
 
     return res.status(201).json(risk);
   } catch (error) {
-    console.error("Error creating risk for process", error);
+    appLogger.error("Error creating risk for process", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -387,7 +389,7 @@ router.get("/settings", requireRole("READER"), async (req: TenantRequest, res) =
     const settings = await getBiaSettings(prisma, tenantId);
     return res.json(settings);
   } catch (error) {
-    console.error("Error fetching BIA settings", error);
+    appLogger.error("Error fetching BIA settings", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -424,7 +426,7 @@ router.post("/settings/templates", requireRole("OPERATOR"), async (req: TenantRe
 
     return res.status(201).json(template);
   } catch (error) {
-    console.error("Error creating process template", error);
+    appLogger.error("Error creating process template", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -448,7 +450,7 @@ router.delete("/settings/templates/:templateId", requireRole("OPERATOR"), async 
 
     return res.status(204).send();
   } catch (error) {
-    console.error("Error deleting process template", error);
+    appLogger.error("Error deleting process template", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -478,7 +480,7 @@ router.patch("/settings/templates/:templateId/toggle", requireRole("OPERATOR"), 
 
     return res.json(template);
   } catch (error) {
-    console.error("Error toggling template", error);
+    appLogger.error("Error toggling template", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -498,7 +500,7 @@ router.put("/settings/thresholds", requireRole("OPERATOR"), async (req: TenantRe
     const updated = await updateCriticalityThresholds(prisma, tenantId, thresholds);
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating thresholds", error);
+    appLogger.error("Error updating thresholds", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -518,7 +520,7 @@ router.put("/settings/alerts", requireRole("OPERATOR"), async (req: TenantReques
     const updated = await updateAlertConfigurations(prisma, tenantId, configs);
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating alert configurations", error);
+    appLogger.error("Error updating alert configurations", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -534,7 +536,7 @@ router.put("/settings/display", requireRole("OPERATOR"), async (req: TenantReque
     const updated = await updateDisplayPreferences(prisma, tenantId, preferences);
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating display preferences", error);
+    appLogger.error("Error updating display preferences", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -556,7 +558,7 @@ router.post("/settings/reset", requireRole("OPERATOR"), async (req: TenantReques
     const settings = await resetToDefaults(prisma, tenantId, section);
     return res.json(settings);
   } catch (error) {
-    console.error("Error resetting settings", error);
+    appLogger.error("Error resetting settings", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

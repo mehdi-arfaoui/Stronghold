@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // GraphService — Central graph engine using graphology
 // ============================================================
@@ -47,7 +48,7 @@ export interface GraphInstance {
 const graphInstances = new Map<string, GraphInstance>();
 
 const logInfo = (event: string, metadata: Record<string, unknown> = {}) => {
-  console.info(JSON.stringify({ level: 'info', scope: 'graph.service', event, ...metadata }));
+  appLogger.info(JSON.stringify({ level: 'info', scope: 'graph.service', event, ...metadata }));
 };
 
 function createGraph(): GraphInstance {

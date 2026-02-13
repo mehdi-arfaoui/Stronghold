@@ -5,6 +5,7 @@ export type ValidationIssue = {
 
 type StringOptions = {
   minLength?: number;
+  maxLength?: number;
   allowNull?: boolean;
 };
 
@@ -47,6 +48,10 @@ export function parseRequiredString(
     addIssue(issues, field, "ne doit pas être vide");
     return undefined;
   }
+  if (options.maxLength && trimmed.length > options.maxLength) {
+    addIssue(issues, field, `doit contenir au maximum ${options.maxLength} caractères`);
+    return undefined;
+  }
   if (options.minLength && trimmed.length < options.minLength) {
     addIssue(issues, field, `doit contenir au moins ${options.minLength} caractères`);
     return undefined;
@@ -77,6 +82,10 @@ export function parseOptionalString(
   const trimmed = value.trim();
   if (!trimmed) {
     return null;
+  }
+  if (options.maxLength && trimmed.length > options.maxLength) {
+    addIssue(issues, field, `doit contenir au maximum ${options.maxLength} caractères`);
+    return undefined;
   }
   if (options.minLength && trimmed.length < options.minLength) {
     addIssue(issues, field, `doit contenir au moins ${options.minLength} caractères`);

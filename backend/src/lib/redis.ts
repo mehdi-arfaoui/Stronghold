@@ -1,4 +1,5 @@
 import { Redis, type RedisOptions } from 'ioredis';
+import { appLogger } from '../utils/logger.js';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -44,11 +45,11 @@ export const redis = new Redis({
 
 // Handle connection events
 redis.on('error', (err) => {
-  console.error('Redis connection error:', err.message);
+  appLogger.error('Redis connection error:', err.message);
 });
 
 redis.on('connect', () => {
-  console.log('Redis connected');
+  appLogger.info('Redis connected');
 });
 
 // Connect on first use
@@ -59,7 +60,7 @@ const ensureConnected = async () => {
       await redis.connect();
       connected = true;
     } catch (err) {
-      console.error('Failed to connect to Redis:', err);
+      appLogger.error('Failed to connect to Redis:', err);
       throw err;
     }
   }

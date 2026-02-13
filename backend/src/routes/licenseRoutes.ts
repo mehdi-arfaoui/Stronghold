@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from 'express';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import { licenseService } from '../services/licenseService.js';
@@ -42,7 +43,7 @@ router.get('/', requireValidLicense(), async (req: TenantRequest, res) => {
       metadata: license.metadata ?? null,
     });
   } catch (error) {
-    console.error('Get license error:', error);
+    appLogger.error('Get license error:', error);
     return res.status(500).json({ error: 'Failed to get license' });
   }
 });
@@ -133,7 +134,7 @@ router.get('/usage', requireValidLicense(), async (req: TenantRequest, res) => {
       },
     });
   } catch (error) {
-    console.error('Get license usage error:', error);
+    appLogger.error('Get license usage error:', error);
     res.status(500).json({ error: 'Failed to get license usage' });
   }
 });
@@ -187,7 +188,7 @@ router.post('/check-feature', requireValidLicense(), async (req: TenantRequest, 
       upgradeUrl: hasAccess ? null : '/settings/billing',
     });
   } catch (error) {
-    console.error('Check feature error:', error);
+    appLogger.error('Check feature error:', error);
     res.status(500).json({ error: 'Failed to check feature' });
   }
 });
@@ -217,7 +218,7 @@ router.post('/check-quota', requireValidLicense(), async (req: TenantRequest, re
       upgradeUrl: quota.allowed ? null : '/settings/billing',
     });
   } catch (error) {
-    console.error('Check quota error:', error);
+    appLogger.error('Check quota error:', error);
     res.status(500).json({ error: 'Failed to check quota' });
   }
 });

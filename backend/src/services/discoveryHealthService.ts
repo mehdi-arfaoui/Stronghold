@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import type { PrismaClient } from '@prisma/client';
 import { EdgeType } from '../graph/types.js';
 
@@ -33,7 +34,7 @@ export interface ScanValidationReport {
 const LOGGER_SCOPE = 'discovery.health';
 
 const logInfo = (event: string, metadata: Record<string, unknown> = {}) => {
-  console.info(JSON.stringify({ level: 'info', scope: LOGGER_SCOPE, event, ...metadata }));
+  appLogger.info(JSON.stringify({ level: 'info', scope: LOGGER_SCOPE, event, ...metadata }));
 };
 
 export async function buildScanHealthReport(

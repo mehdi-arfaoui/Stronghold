@@ -1,6 +1,7 @@
 import express from "express";
 import http from "http";
 import cors, { type CorsOptions } from "cors";
+import helmet from "helmet";
 import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
@@ -8,12 +9,20 @@ import { Redis } from "ioredis";
 import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
+import { GlobalExceptionFilter } from "./filters/global-exception.filter.js";
+import { appLogger } from "./utils/logger.js";
 
 import serviceRoutes from "./routes/serviceRoutes.js";
 import graphRoutes from "./routes/graphRoutes.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import infraRoutes from "./routes/infraRoutes.js";
 import { tenantMiddleware } from "./middleware/tenantMiddleware.js";
+import {
+  globalRateLimitLong,
+  globalRateLimitMedium,
+  globalRateLimitShort,
+} from "./middleware/rateLimitMiddleware.js";
+import { requestValidationGuard } from "./middleware/requestValidationMiddleware.js";
 import scenarioRoutes from "./routes/scenarioRoutes.js";
 import scenarioCatalogRoutes from "./routes/scenarioCatalogRoutes.js";
 import cyberScenarioRoutes from "./routes/cyberScenarioRoutes.js";
@@ -102,7 +111,7 @@ const VECTOR_DB_OPTIONAL =
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const logBoot = (step: string, meta: Record<string, unknown> = {}) => {
-  console.log(JSON.stringify({ level: "info", msg: "boot", step, ...meta }));
+  appLogger.info("boot", { step, ...meta });
 };
 
 const backgroundServices: BackgroundService[] = [
@@ -388,61 +397,75 @@ const buildReadinessReport = async (): Promise<{
 };
 
 const app = express();
+const globalExceptionFilter = new GlobalExceptionFilter();
+
+app.use(
+  helmet({
+    contentSecurityPolicy:
+      process.env.NODE_ENV === "production"
+        ? {
+            directives: {
+              defaultSrc: ["'self'"],
+              scriptSrc: ["'self'"],
+              styleSrc: ["'self'", "'unsafe-inline'"],
+              imgSrc: ["'self'", "data:", "https:"],
+              connectSrc: ["'self'"],
+              fontSrc: ["'self'", "https:", "data:"],
+              objectSrc: ["'none'"],
+              frameAncestors: ["'none'"],
+            },
+          }
+        : false,
+    crossOriginEmbedderPolicy: process.env.NODE_ENV === "production",
+    strictTransportSecurity: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+    referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+    xContentTypeOptions: true,
+    xXssProtection: true,
+  })
+);
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const allowNoOrigin =
-  String(process.env.CORS_ALLOW_NO_ORIGIN || "false").toLowerCase() === "true";
 
-const baseAllowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.CORS_ORIGIN,
-  ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
-]
-  .filter((origin): origin is string => typeof origin === "string" && origin.length > 0)
+const configuredOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+  .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const devAllowedOrigins = isDevelopment
-  ? [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:5173", // Vite default port
-    ]
-  : [
-      // Always allow localhost variants for Docker environments
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ];
+const devOrigins = isDevelopment
+  ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
+  : [];
 
-const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
+const allowedOrigins = new Set([...configuredOrigins, ...devOrigins]);
 
 logBoot("config.loaded", {
   nodeEnv: process.env.NODE_ENV || "development",
   allowedOriginsCount: allowedOrigins.size,
-  allowNoOrigin,
+  allowNoOrigin: true,
 });
 
 // Configure CORS to allow requests from frontend
-const corsOptions: CorsOptions = {
+const corsOptions = {
   origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Allow requests with no origin only when explicitly enabled
+    // Allow requests with no origin (health checks, CLI, mobile clients)
     if (!origin) {
-      if (allowNoOrigin) {
-        return callback(null, true);
-      }
-      return callback(new Error("Origin not allowed by CORS"));
+      return callback(null, true);
     }
 
     if (allowedOrigins.has(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error("Origin not allowed by CORS"));
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-correlation-id"],
-};
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Tenant-Id", "x-api-key"],
+  maxAge: 86400,
+} as CorsOptions;
 
 const corsMiddleware = cors(corsOptions);
 app.use((req, res, next) => {
@@ -455,7 +478,12 @@ app.use((req, res, next) => {
     next();
   });
 });
-app.use(express.json());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(requestValidationGuard);
+app.use(globalRateLimitShort);
+app.use(globalRateLimitMedium);
+app.use(globalRateLimitLong);
 
 // ✅ health-check sans tenant
 app.get("/health/live", (_req, res) => {
@@ -602,28 +630,9 @@ logBoot("background.services.deferred", {
   apiKeyRotationWorker: process.env.API_KEY_ROTATION_ENABLED !== "false",
 });
 
-// Global error handler - ensure all errors return JSON
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const status = Number(err?.status || err?.statusCode || 500);
-  const message = typeof err?.message === "string" && err.message.trim() ? err.message : "Internal server error";
-  const safeMessage = status >= 500 && process.env.NODE_ENV === "production" ? "Internal server error" : message;
-  console.error(
-    JSON.stringify({
-      level: "error",
-      scope: "http.globalError",
-      status,
-      message,
-      stack: err instanceof Error ? err.stack : undefined,
-    })
-  );
-
-  res.status(status).json({
-    error: {
-      code: `ERR_${status}`,
-      message: safeMessage,
-    },
-  });
-});
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) =>
+  globalExceptionFilter.catch(err, req, res, next)
+);
 
 // 404 handler - ensure 404s return JSON
 app.use((req: express.Request, res: express.Response) => {
@@ -642,21 +651,21 @@ const server = http.createServer(app);
 initDiscoveryWebSocket(server);
 
 server.listen(Number(PORT), HOST, () => {
-  console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
+  appLogger.info(`API PRA/PCA running on ${HOST}:${PORT}`);
   logBoot("server.listening", { host: HOST, port: Number(PORT) });
   const originList = [...allowedOrigins.values()];
-  console.log(
+  appLogger.info(
     `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
   );
-  console.log(
+  appLogger.info(
     `Health checks available at http://${HOST}:${PORT}/health/live (liveness) and /health/ready (readiness)`
   );
   if (deploymentConfig.mode === "saas") {
-    console.log("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
+    appLogger.info("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
   } else {
-    console.log("Deployment mode: On-premise (auto-mise à jour désactivée).");
+    appLogger.info("Deployment mode: On-premise (auto-mise à jour désactivée).");
     if (onPremiseLicense) {
-      console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
+      appLogger.info(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
     }
   }
 

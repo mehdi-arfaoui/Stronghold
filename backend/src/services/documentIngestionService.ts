@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import * as fs from "fs";
 import * as path from "path";
 import { execFile } from "node:child_process";
@@ -584,7 +585,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
     }
   } catch (e: any) {
     const message = e?.message || String(e);
-    console.error("[documentIngestion] extraction error", {
+    appLogger.error("[documentIngestion] extraction error", {
       event: "extraction_error",
       correlationId,
       tenantId,
@@ -728,7 +729,7 @@ export async function ingestDocumentText(documentId: string, tenantId: string) {
       });
     }
   } catch (vecErr: any) {
-    console.error("[documentIngestion] vectorization error", {
+    appLogger.error("[documentIngestion] vectorization error", {
       correlationId,
       tenantId,
       documentId: doc.id,

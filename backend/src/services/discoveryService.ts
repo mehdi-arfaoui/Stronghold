@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import crypto from "crypto";
 import { z, ZodError } from "zod";
 import prisma from "../prismaClient.js";
@@ -1218,7 +1219,7 @@ export function decryptDiscoveryCredentials(
         algorithm: "AES-256-GCM",
       });
     } catch (error) {
-      console.warn("Secret vault decryption failed, falling back to legacy key", {
+      appLogger.warn("Secret vault decryption failed, falling back to legacy key", {
         message: (error as Error).message,
       });
     }

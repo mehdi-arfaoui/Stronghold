@@ -13,6 +13,8 @@ import {
   requireQuota,
   incrementQuotaOnSuccess,
 } from "../middleware/licenseMiddleware.js";
+import { scanRateLimit } from "../middleware/rateLimitMiddleware.js";
+import { appLogger } from "../utils/logger.js";
 import {
   buildValidationError,
   parseOptionalBoolean,
@@ -41,6 +43,12 @@ import { buildScanHealthReport } from "../services/discoveryHealthService.js";
 const router = Router();
 const uploadDir = path.join(os.tmpdir(), "discovery-imports");
 fs.mkdirSync(uploadDir, { recursive: true });
+const DISCOVERY_ALLOWED_MIME_TYPES = new Set([
+  "application/json",
+  "text/csv",
+  "application/vnd.ms-excel",
+  "text/plain",
+]);
 const upload = multer({
   storage: multer.diskStorage({
     destination: (
@@ -53,7 +61,13 @@ const upload = multer({
       cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}-${safeName}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req: unknown, file: MulterFile, cb: (error: Error | null, acceptFile?: boolean) => void) => {
+    if (!DISCOVERY_ALLOWED_MIME_TYPES.has(file.mimetype)) {
+      return cb(new Error("Type de fichier non autorisé"));
+    }
+    return cb(null, true);
+  },
 });
 
 function resolveCredentials(payload: any) {
@@ -243,13 +257,14 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
 
     return res.status(201).json(buildJobResponse(queuedJob));
   } catch (error) {
-    console.error("Error in POST /discovery/run:", error);
+    appLogger.error("Error in POST /discovery/run:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 }
 
 router.post(
   "/run",
+  scanRateLimit,
   requireValidLicense(),
   requireFeature("discovery"),
   requireQuota("scans", 1),
@@ -259,6 +274,7 @@ router.post(
 );
 router.post(
   "/scan",
+  scanRateLimit,
   requireValidLicense(),
   requireFeature("discovery"),
   requireQuota("scans", 1),
@@ -283,7 +299,7 @@ router.get("/health", async (req: TenantRequest, res) => {
     const report = await buildScanHealthReport(prisma, tenantId);
     return res.json({ data: report });
   } catch (error) {
-    console.error("Error in GET /discovery/health:", error);
+    appLogger.error("Error in GET /discovery/health:", error);
     return res.status(500).json({ error: { code: "ERR_500", message: "Internal server error" } });
   }
 });
@@ -334,7 +350,7 @@ router.post("/schedules", requireRole("OPERATOR"), async (req: TenantRequest, re
 
     return res.status(201).json(schedule);
   } catch (error) {
-    console.error("Error in POST /discovery/schedules:", error);
+    appLogger.error("Error in POST /discovery/schedules:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -357,7 +373,7 @@ router.get("/schedules", async (req: TenantRequest, res) => {
 
     return res.json(schedules);
   } catch (error) {
-    console.error("Error in GET /discovery/schedules:", error);
+    appLogger.error("Error in GET /discovery/schedules:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -395,7 +411,7 @@ router.post("/flows/import", requireRole("OPERATOR"), async (req: TenantRequest,
     const result = await importDiscoveryFlows(tenantId, payload.jobId || null, records);
     return res.status(201).json(result);
   } catch (error) {
-    console.error("Error in POST /discovery/flows/import:", error);
+    appLogger.error("Error in POST /discovery/flows/import:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -429,7 +445,7 @@ router.get("/resources", requireValidLicense(), requireFeature("inventory"), asy
 
     return res.json({ resources, limit, offset });
   } catch (error) {
-    console.error("Error in GET /discovery/resources:", error);
+    appLogger.error("Error in GET /discovery/resources:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -459,7 +475,7 @@ router.get("/status/:jobId", async (req: TenantRequest, res) => {
 
     return res.json(buildJobResponse(job));
   } catch (error) {
-    console.error("Error in GET /discovery/status:", error);
+    appLogger.error("Error in GET /discovery/status:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -496,7 +512,7 @@ router.get("/history", async (req: TenantRequest, res) => {
       }))
     );
   } catch (error) {
-    console.error("Error in GET /discovery/history:", error);
+    appLogger.error("Error in GET /discovery/history:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -530,7 +546,7 @@ router.post(
 
       return res.json(suggestions);
     } catch (error) {
-      console.error("Error in POST /discovery/suggestions:", error);
+      appLogger.error("Error in POST /discovery/suggestions:", error);
       if (error instanceof DiscoveryImportError) {
         return res.status(400).json({ error: error.message, details: error.details });
       }
@@ -607,7 +623,7 @@ router.post(
       );
 
       void ensureBaselineSnapshot(prisma, tenantId, 'import-baseline').catch((error) => {
-        console.warn('Unable to ensure baseline snapshot after discovery import', {
+        appLogger.warn('Unable to ensure baseline snapshot after discovery import', {
           tenantId,
           message: error instanceof Error ? error.message : 'unknown',
         });
@@ -633,7 +649,7 @@ router.post(
 
       return res.status(201).json(buildJobResponse(completed));
     } catch (error) {
-      console.error("Error in POST /discovery/import:", error);
+      appLogger.error("Error in POST /discovery/import:", error);
       if (error instanceof DiscoveryImportError) {
         if (jobId && tenantId) {
           await prisma.discoveryJob.updateMany({
@@ -744,7 +760,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
     );
 
     void ensureBaselineSnapshot(prisma, tenantId, 'import-baseline').catch((error) => {
-      console.warn('Unable to ensure baseline snapshot after discovery import', {
+      appLogger.warn('Unable to ensure baseline snapshot after discovery import', {
         tenantId,
         message: error instanceof Error ? error.message : 'unknown',
       });
@@ -770,7 +786,7 @@ router.post("/github-import", requireRole("OPERATOR"), async (req: TenantRequest
 
     return res.status(201).json(buildJobResponse(completed));
   } catch (error) {
-    console.error("Error in POST /discovery/github-import:", error);
+    appLogger.error("Error in POST /discovery/github-import:", error);
     if (error instanceof DiscoveryImportError || error instanceof DiscoveryGitHubImportError) {
       if (jobId && tenantId) {
         await prisma.discoveryJob.updateMany({

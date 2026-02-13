@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import prisma from "../prismaClient.js";
 import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
 import { Prisma, PrismaClient } from "@prisma/client";
@@ -144,7 +145,7 @@ async function recordAiExtractionError(params: {
       },
     });
   } catch (storeErr) {
-    console.warn("[extractedFactService] unable to store AI extraction error", {
+    appLogger.warn("[extractedFactService] unable to store AI extraction error", {
       tenantId: params.tenantId,
       documentId: params.documentId,
       correlationId: params.correlationId,
@@ -172,7 +173,7 @@ export async function getOrCreateExtractedFacts(
   try {
     documentText = resolveEncryptedDocumentText(document) ?? "";
   } catch (err: any) {
-    console.warn("Failed to decrypt document text for facts extraction", {
+    appLogger.warn("Failed to decrypt document text for facts extraction", {
       documentId: document.id,
       message: err?.message,
     });
@@ -213,7 +214,7 @@ export async function getOrCreateExtractedFacts(
     aiFacts = classification.facts;
   } catch (err: any) {
     const message = err?.message || "Unknown OpenAI analysis error";
-    console.error("[extractedFactService] analysis failed", {
+    appLogger.error("[extractedFactService] analysis failed", {
       event: "ai_extraction_error",
       correlationId,
       tenantId,

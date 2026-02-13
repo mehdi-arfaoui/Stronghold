@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -112,7 +113,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.status(201).json(exercise);
   } catch (error: any) {
-    console.error("Error creating exercise", { message: error?.message });
+    appLogger.error("Error creating exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -134,7 +135,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(exercises);
   } catch (error: any) {
-    console.error("Error listing exercises", { message: error?.message });
+    appLogger.error("Error listing exercises", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -166,7 +167,7 @@ router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(exercise);
   } catch (error: any) {
-    console.error("Error fetching exercise", { message: error?.message });
+    appLogger.error("Error fetching exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -245,7 +246,7 @@ router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
 
     return res.json(updated);
   } catch (error: any) {
-    console.error("Error updating exercise", { message: error?.message });
+    appLogger.error("Error updating exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -300,7 +301,7 @@ router.patch(
 
       return res.json(updated);
     } catch (error: any) {
-      console.error("Error updating checklist item", { message: error?.message });
+      appLogger.error("Error updating checklist item", { message: error?.message });
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -351,7 +352,7 @@ router.post("/:id/results", requireRole("OPERATOR"), async (req: TenantRequest, 
 
     return res.status(201).json(result);
   } catch (error: any) {
-    console.error("Error recording exercise result", { message: error?.message });
+    appLogger.error("Error recording exercise result", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -411,7 +412,7 @@ router.post("/:id/analysis", requireRole("OPERATOR"), async (req: TenantRequest,
 
     return res.status(201).json(saved);
   } catch (error: any) {
-    console.error("Error generating exercise analysis", { message: error?.message });
+    appLogger.error("Error generating exercise analysis", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -468,7 +469,7 @@ router.get("/:id/report", requireRole("READER"), async (req: TenantRequest, res)
       },
     });
   } catch (error: any) {
-    console.error("Error generating exercise report", { message: error?.message });
+    appLogger.error("Error generating exercise report", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -518,7 +519,7 @@ router.post("/:id/assistant", requireRole("OPERATOR"), async (req: TenantRequest
       ...output,
     });
   } catch (error: any) {
-    console.error("Error generating exercise assistant report", { message: error?.message });
+    appLogger.error("Error generating exercise assistant report", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -551,7 +552,7 @@ router.post("/:id/simulations", requireRole("OPERATOR"), async (req: TenantReque
 
     return res.status(201).json(simulation);
   } catch (error: any) {
-    console.error("Error running cyber simulation", { message: error?.message });
+    appLogger.error("Error running cyber simulation", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -573,7 +574,7 @@ router.get("/:id/simulations", requireRole("READER"), async (req: TenantRequest,
 
     return res.json(simulations);
   } catch (error: any) {
-    console.error("Error fetching simulations", { message: error?.message });
+    appLogger.error("Error fetching simulations", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
