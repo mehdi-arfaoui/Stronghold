@@ -9,9 +9,11 @@ import type {
 } from "./discoveryTypes.js";
 
 const require = createRequire(import.meta.url);
+// SECURITY: known vuln in transitive dep, no fix available as of 2026-02 (xml2js via node-nmap).
 const nmap = require("node-nmap");
 const snmp = require("net-snmp");
 const { Client: SshClient } = require("ssh2");
+// SECURITY: known vuln in transitive dep, no fix available as of 2026-02 (xml2js via node-wmi).
 const wmi = require("node-wmi");
 
 function emptyResult(): DiscoveryConnectorResult {
@@ -440,6 +442,7 @@ export async function scanKubernetes(
   credentials: DiscoveryCredentials
 ): Promise<DiscoveryConnectorResult & { edges?: K8sEdge[] }> {
   if (!credentials.kubernetes?.kubeconfig) return emptyResult();
+  // SECURITY: known vuln in transitive dep, no non-breaking fix as of 2026-02 (@kubernetes/client-node chain).
   const k8s = require("@kubernetes/client-node");
   const kc = new k8s.KubeConfig();
   kc.loadFromString(credentials.kubernetes.kubeconfig);

@@ -1,0 +1,2 @@
+-- Intentionally empty migration.
+-- This migration exists to preserve ordered Prisma migration history.
