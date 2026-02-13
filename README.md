@@ -98,7 +98,7 @@ Payload JSON attendu pour `/discovery/scan` :
 ```bash
 node backend/scripts/import-github-discovery.mjs \
   --backend http://localhost:4000 \
-  --api-key dev-key \
+  --api-key "$SEED_API_KEY" \
   --repo https://github.com/organisation/infra-discovery \
   --file exports/discovery.json \
   --ref main

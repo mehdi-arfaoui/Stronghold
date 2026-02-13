@@ -22,13 +22,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 API_URL="http://localhost:4000"
-API_KEY="dev-key"
-
-echo ""
-echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}   Test de Decouverte Stronghold${NC}"
-echo -e "${BLUE}========================================${NC}"
-echo ""
+API_KEY="${SEED_API_KEY:-}"
 
 # Fonction pour afficher les messages
 info() {
@@ -46,6 +40,17 @@ warning() {
 error() {
     echo -e "${RED}[ERREUR]${NC} $1"
 }
+
+if [ -z "$API_KEY" ]; then
+    error "SEED_API_KEY n'est pas defini. Exportez SEED_API_KEY avant d'executer ce script."
+    exit 1
+fi
+
+echo ""
+echo -e "${BLUE}========================================${NC}"
+echo -e "${BLUE}   Test de Decouverte Stronghold${NC}"
+echo -e "${BLUE}========================================${NC}"
+echo ""
 
 # Etape 1: Verifier Docker
 info "Verification de Docker..."

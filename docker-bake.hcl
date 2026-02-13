@@ -5,16 +5,16 @@ variable "CACHE_DIR" {
   default = "/tmp/.buildx-cache"
 }
 
-variable "VITE_BACKEND_URL" {
-  default = "http://localhost:4000"
-}
-
 variable "VITE_API_URL" {
   default = "http://localhost:4000"
 }
 
-variable "VITE_API_KEY" {
-  default = "dev-key"
+variable "VITE_APP_VERSION" {
+  default = "dev"
+}
+
+variable "VITE_ENV" {
+  default = "development"
 }
 
 group "default" {
@@ -53,9 +53,9 @@ target "frontend" {
   target     = "runtime"
   tags       = ["stronghold-frontend:latest"]
   args = {
-    VITE_BACKEND_URL = "${VITE_BACKEND_URL}"
     VITE_API_URL     = "${VITE_API_URL}"
-    VITE_API_KEY     = "${VITE_API_KEY}"
+    VITE_APP_VERSION = "${VITE_APP_VERSION}"
+    VITE_ENV         = "${VITE_ENV}"
   }
   cache-from = ["type=local,src=${CACHE_DIR}/frontend"]
   cache-to   = ["type=local,dest=${CACHE_DIR}-new/frontend,mode=max"]

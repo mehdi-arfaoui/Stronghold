@@ -12,8 +12,14 @@ import { runDemoSeed } from "../src/services/demoSeedService.js";
 const prisma = new PrismaClient();
 
 async function main() {
+  const seedApiKey = process.env.SEED_API_KEY;
+  if (!seedApiKey) {
+    console.error("SEED_API_KEY is required");
+    process.exit(1);
+  }
+
   const tenant = await prisma.tenant.findFirst({
-    where: { apiKey: "dev-key" },
+    where: { apiKey: seedApiKey },
   });
 
   if (!tenant) {

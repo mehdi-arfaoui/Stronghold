@@ -39,7 +39,10 @@ const seedPlanKey = (process.env.SEED_PLAN || "PRO").toUpperCase();
 const seedPlan = SEED_PLANS[seedPlanKey] ?? SEED_PLANS.PRO;
 
 async function main() {
-  const apiKey = "dev-key";
+  const apiKey = process.env.SEED_API_KEY;
+  if (!apiKey) {
+    throw new Error("SEED_API_KEY is required");
+  }
   const apiKeyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
 
   const tenant = await prisma.tenant.upsert({
