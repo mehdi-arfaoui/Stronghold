@@ -34,6 +34,15 @@ export const PLANS = {
     features: ['*'],                          // Toutes
     price: null,                              // Sur devis
   },
+  OWNER: {
+    name: 'Owner',
+    maxUsers: -1,
+    maxStorage: -1,
+    maxScansMonth: -1,
+    maxDocuments: -1,
+    features: ['*'],
+    price: 0,
+  },
   CUSTOM: {
     name: 'Custom',
     maxUsers: -1,

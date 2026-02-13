@@ -21,7 +21,7 @@ function serializeWithBigInt(obj: unknown): string {
  */
 function deserializeWithBigInt(json: string): unknown {
   return JSON.parse(json, (_key, value) => {
-    if (typeof value === 'string' && /^\d+n$/.test(value)) {
+    if (typeof value === 'string' && /^-?\d+n$/.test(value)) {
       return BigInt(value.slice(0, -1));
     }
     return value;
@@ -67,6 +67,16 @@ export class LicenseService {
 
     if (!license) {
       throw new LicenseNotFoundError(tenantId);
+    }
+
+    // Track the last successful license validation/read in DB.
+    const checkedAt = new Date();
+    if (!license.lastCheckedAt || checkedAt.getTime() - license.lastCheckedAt.getTime() >= 60_000) {
+      await prisma.license.update({
+        where: { id: license.id },
+        data: { lastCheckedAt: checkedAt },
+      });
+      license.lastCheckedAt = checkedAt;
     }
 
     // Mettre en cache
@@ -140,8 +150,13 @@ export class LicenseService {
   async hasFeature(tenantId: string, feature: string): Promise<boolean> {
     const license = await this.getLicense(tenantId);
 
+    // OWNER bypasses all feature checks.
+    if (license.plan === 'OWNER') {
+      return true;
+    }
+
     // Licence non active = pas d'accès
-    if (license.status !== 'ACTIVE') {
+    if (license.status !== 'ACTIVE' && license.status !== 'TRIAL') {
       return false;
     }
 
@@ -190,13 +205,23 @@ export class LicenseService {
 
     const { current, max } = quotaMap[quotaType];
 
+    // OWNER bypasses all quotas.
+    if (license.plan === 'OWNER') {
+      return {
+        allowed: true,
+        current,
+        max: -1,
+        remaining: -1,
+      };
+    }
+
     // -1 signifie illimité
     if (max === -1) {
       return {
         allowed: true,
         current,
         max,
-        remaining: Infinity,
+        remaining: -1,
       };
     }
 
@@ -277,6 +302,11 @@ export class LicenseService {
     try {
       const license = await this.getLicense(tenantId);
 
+      // OWNER bypasses all license guards.
+      if (license.plan === 'OWNER') {
+        return { valid: true };
+      }
+
       if (license.status === 'SUSPENDED') {
         return { valid: false, reason: 'License suspended' };
       }
@@ -287,6 +317,10 @@ export class LicenseService {
 
       if (license.status === 'EXPIRED') {
         return { valid: false, reason: 'License expired' };
+      }
+
+      if (license.status !== 'ACTIVE' && license.status !== 'TRIAL') {
+        return { valid: false, reason: `License ${String(license.status).toLowerCase()}` };
       }
 
       // Vérifier expiration

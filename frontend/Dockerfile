@@ -11,13 +11,12 @@ RUN --mount=type=cache,target=/root/.npm \
 # Stage 2: Build
 FROM deps AS build
 WORKDIR /app
-# Build arguments for Vite
-ARG VITE_BACKEND_URL
 ARG VITE_API_URL
-ARG VITE_API_KEY
-ENV VITE_BACKEND_URL=${VITE_BACKEND_URL}
+ARG VITE_APP_VERSION
+ARG VITE_ENV
 ENV VITE_API_URL=${VITE_API_URL}
-ENV VITE_API_KEY=${VITE_API_KEY}
+ENV VITE_APP_VERSION=${VITE_APP_VERSION}
+ENV VITE_ENV=${VITE_ENV}
 # Fichiers de configuration (changent rarement)
 COPY vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
 COPY tailwind.config.ts postcss.config.js ./

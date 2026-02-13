@@ -6,7 +6,7 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const apiKey = import.meta.env.VITE_API_KEY || localStorage.getItem('stronghold_api_key');
+  const apiKey = localStorage.getItem('stronghold_api_key');
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }

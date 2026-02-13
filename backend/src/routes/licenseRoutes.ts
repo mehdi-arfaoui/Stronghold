@@ -7,6 +7,47 @@ import { requireValidLicense } from '../middleware/licenseMiddleware.js';
 const router = Router();
 
 /**
+ * GET /license
+ * Retourne la licence courante du tenant
+ */
+router.get('/', requireValidLicense(), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant not identified' });
+    }
+
+    const license = await licenseService.getLicense(tenantId);
+    const plan = PLANS[license.plan as keyof typeof PLANS];
+
+    return res.json({
+      id: license.id,
+      tenantId: license.tenantId,
+      plan: {
+        name: plan?.name ?? license.plan,
+        type: license.plan,
+      },
+      status: license.status,
+      issuedAt: license.issuedAt ?? license.startsAt,
+      startsAt: license.startsAt,
+      expiresAt: license.expiresAt,
+      lastCheckedAt: license.lastCheckedAt ?? null,
+      features: license.features,
+      limits: {
+        maxUsers: license.maxUsers,
+        maxStorage: Number(license.maxStorage),
+        maxScansMonth: license.maxScansMonth,
+        maxDocuments: license.maxDocuments,
+      },
+      metadata: license.metadata ?? null,
+    });
+  } catch (error) {
+    console.error('Get license error:', error);
+    return res.status(500).json({ error: 'Failed to get license' });
+  }
+});
+
+/**
  * GET /license/usage
  * Récupère l'usage actuel de la licence
  */
@@ -49,20 +90,22 @@ router.get('/usage', requireValidLicense(), async (req: TenantRequest, res) => {
         type: license.plan,
       },
       status: license.status,
+      issuedAt: license.issuedAt ?? license.startsAt,
       startsAt: license.startsAt,
       expiresAt: license.expiresAt,
+      lastCheckedAt: license.lastCheckedAt ?? null,
       quotas: {
         users: {
           current: usage?.currentUsers ?? 0,
           max: license.maxUsers,
-          remaining: license.maxUsers === -1 ? Infinity : license.maxUsers - (usage?.currentUsers ?? 0),
+          remaining: license.maxUsers === -1 ? -1 : license.maxUsers - (usage?.currentUsers ?? 0),
           percentage: calculatePercentage(usage?.currentUsers ?? 0, license.maxUsers),
           unlimited: license.maxUsers === -1,
         },
         storage: {
           current: currentStorage,
           max: maxStorage,
-          remaining: maxStorage === -1 ? Infinity : maxStorage - currentStorage,
+          remaining: maxStorage === -1 ? -1 : maxStorage - currentStorage,
           percentage: calculatePercentage(currentStorage, maxStorage),
           currentFormatted: formatBytes(currentStorage),
           maxFormatted: maxStorage === -1 ? 'Unlimited' : formatBytes(maxStorage),
@@ -71,7 +114,7 @@ router.get('/usage', requireValidLicense(), async (req: TenantRequest, res) => {
         scans: {
           current: usage?.scansThisMonth ?? 0,
           max: license.maxScansMonth,
-          remaining: license.maxScansMonth === -1 ? Infinity : license.maxScansMonth - (usage?.scansThisMonth ?? 0),
+          remaining: license.maxScansMonth === -1 ? -1 : license.maxScansMonth - (usage?.scansThisMonth ?? 0),
           percentage: calculatePercentage(usage?.scansThisMonth ?? 0, license.maxScansMonth),
           resetsAt: getNextMonthStart(),
           unlimited: license.maxScansMonth === -1,
@@ -79,7 +122,7 @@ router.get('/usage', requireValidLicense(), async (req: TenantRequest, res) => {
         documents: {
           current: usage?.documentsCount ?? 0,
           max: license.maxDocuments,
-          remaining: license.maxDocuments === -1 ? Infinity : license.maxDocuments - (usage?.documentsCount ?? 0),
+          remaining: license.maxDocuments === -1 ? -1 : license.maxDocuments - (usage?.documentsCount ?? 0),
           percentage: calculatePercentage(usage?.documentsCount ?? 0, license.maxDocuments),
           unlimited: license.maxDocuments === -1,
         },

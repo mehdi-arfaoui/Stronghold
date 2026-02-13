@@ -2,6 +2,8 @@ import express from "express";
 import http from "http";
 import cors, { type CorsOptions } from "cors";
 import dotenv from "dotenv";
+import fs from "node:fs";
+import path from "node:path";
 import { Redis } from "ioredis";
 import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
@@ -54,9 +56,20 @@ import { startLicenseQuotaResetWorker } from "./workers/licenseQuotaResetWorker.
 import { startDriftScheduler } from "./workers/driftScheduler.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
+import { loadValidatedEnv } from "./config/env.validation.js";
 import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
 
-dotenv.config();
+const envCandidates = [
+  path.resolve(process.cwd(), ".env"),
+  path.resolve(process.cwd(), "..", ".env"),
+];
+for (const envPath of envCandidates) {
+  if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath, override: false });
+  }
+}
+
+loadValidatedEnv();
 initTelemetry();
 const onPremiseLicense = ensureOnPremiseLicense();
 
