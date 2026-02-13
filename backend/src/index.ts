@@ -9,6 +9,7 @@ import { Redis } from "ioredis";
 import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
+import { GlobalExceptionFilter } from "./filters/global-exception.filter.js";
 
 import serviceRoutes from "./routes/serviceRoutes.js";
 import graphRoutes from "./routes/graphRoutes.js";
@@ -395,6 +396,7 @@ const buildReadinessReport = async (): Promise<{
 };
 
 const app = express();
+const globalExceptionFilter = new GlobalExceptionFilter();
 
 app.use(
   helmet({
@@ -642,28 +644,9 @@ logBoot("background.services.deferred", {
   apiKeyRotationWorker: process.env.API_KEY_ROTATION_ENABLED !== "false",
 });
 
-// Global error handler - ensure all errors return JSON
-app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const status = Number(err?.status || err?.statusCode || 500);
-  const message = typeof err?.message === "string" && err.message.trim() ? err.message : "Internal server error";
-  const safeMessage = status >= 500 && process.env.NODE_ENV === "production" ? "Internal server error" : message;
-  console.error(
-    JSON.stringify({
-      level: "error",
-      scope: "http.globalError",
-      status,
-      message,
-      stack: err instanceof Error ? err.stack : undefined,
-    })
-  );
-
-  res.status(status).json({
-    error: {
-      code: `ERR_${status}`,
-      message: safeMessage,
-    },
-  });
-});
+app.use((err: unknown, req: express.Request, res: express.Response, next: express.NextFunction) =>
+  globalExceptionFilter.catch(err, req, res, next)
+);
 
 // 404 handler - ensure 404s return JSON
 app.use((req: express.Request, res: express.Response) => {
