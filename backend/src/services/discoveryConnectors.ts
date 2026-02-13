@@ -34,6 +34,30 @@ function toPort(value: unknown) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+const IP_REGEX =
+  /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
+const CIDR_REGEX =
+  /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:[0-9]|[12][0-9]|3[0-2])$/;
+const HOSTNAME_REGEX =
+  /^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+function validateScanTarget(target: string): boolean {
+  return IP_REGEX.test(target) || CIDR_REGEX.test(target) || HOSTNAME_REGEX.test(target);
+}
+
+function sanitizeScanTargets(targets: string[]): string[] {
+  const normalized = targets
+    .map((target) => String(target || "").trim())
+    .filter((target) => target.length > 0);
+
+  const invalidTargets = normalized.filter((target) => !validateScanTarget(target));
+  if (invalidTargets.length > 0) {
+    throw new Error(`Invalid scan target(s): ${invalidTargets.join(", ")}`);
+  }
+
+  return normalized;
+}
+
 /**
  * Parse nmap XML/JSON output to extract open ports with service information.
  * Handles the node-nmap library output format.
@@ -94,6 +118,8 @@ export async function scanNetworkWithServices(
   options: NetworkScanOptions = {}
 ): Promise<DiscoveryConnectorResult> {
   if (ipRanges.length === 0) return emptyResult();
+  const sanitizedTargets = sanitizeScanTargets(ipRanges);
+  if (sanitizedTargets.length === 0) return emptyResult();
 
   if (process.env.NMAP_PATH) {
     nmap.nmapLocation = process.env.NMAP_PATH;
@@ -112,7 +138,7 @@ export async function scanNetworkWithServices(
   const nmapArgs = `-sS -sV --top-ports ${topPorts} -T4 -n --open`;
 
   const scanResults = await new Promise<any[]>((resolve, reject) => {
-    const scan = new nmap.NmapScan(ipRanges.join(" "), nmapArgs);
+    const scan = new nmap.NmapScan(sanitizedTargets.join(" "), nmapArgs);
     const timeoutId = setTimeout(() => {
       scan.cancelScan?.();
       reject(new Error(`Nmap scan timed out after ${timeout}ms`));
@@ -302,12 +328,14 @@ export async function scanNetwork(
   credentials: DiscoveryCredentials
 ): Promise<DiscoveryConnectorResult> {
   if (ipRanges.length === 0) return emptyResult();
+  const sanitizedTargets = sanitizeScanTargets(ipRanges);
+  if (sanitizedTargets.length === 0) return emptyResult();
   if (process.env.NMAP_PATH) {
     nmap.nmapLocation = process.env.NMAP_PATH;
   }
 
   const scanResults = await new Promise<any[]>((resolve, reject) => {
-    const scan = new nmap.NmapScan(ipRanges.join(" "), "-sP -n");
+    const scan = new nmap.NmapScan(sanitizedTargets.join(" "), "-sP -n");
     scan.on("complete", (data: any[]) => resolve(data || []));
     scan.on("error", (error: Error) => reject(error));
     scan.startScan();

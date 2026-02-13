@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
+import DOMPurify from 'dompurify';
 import {
   BookOpen,
   Search,
@@ -125,9 +126,14 @@ function ArticleContent({ content }: { content: string }) {
   }
 
   function inlineMd(text: string): string {
-    return text
+    const html = text
       .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
       .replace(/`(.+?)`/g, '<code class="rounded bg-muted px-1 py-0.5 text-xs font-mono">$1</code>');
+
+    return DOMPurify.sanitize(html, {
+      ALLOWED_TAGS: ['strong', 'code'],
+      ALLOWED_ATTR: ['class'],
+    });
   }
 
   for (let i = 0; i < lines.length; i++) {
