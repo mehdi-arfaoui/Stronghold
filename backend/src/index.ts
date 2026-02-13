@@ -428,59 +428,43 @@ app.use(
 );
 
 const isDevelopment = process.env.NODE_ENV !== "production";
-const allowNoOrigin =
-  String(process.env.CORS_ALLOW_NO_ORIGIN || "false").toLowerCase() === "true";
 
-const baseAllowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.CORS_ORIGIN,
-  ...(process.env.CORS_ALLOWED_ORIGINS || "").split(","),
-]
-  .filter((origin): origin is string => typeof origin === "string" && origin.length > 0)
+const configuredOrigins = (process.env.CORS_ORIGINS || "http://localhost:5173")
+  .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
 
-const devAllowedOrigins = isDevelopment
-  ? [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://localhost:5173", // Vite default port
-    ]
-  : [
-      // Always allow localhost variants for Docker environments
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-    ];
+const devOrigins = isDevelopment
+  ? ["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173"]
+  : [];
 
-const allowedOrigins = new Set([...baseAllowedOrigins, ...devAllowedOrigins]);
+const allowedOrigins = new Set([...configuredOrigins, ...devOrigins]);
 
 logBoot("config.loaded", {
   nodeEnv: process.env.NODE_ENV || "development",
   allowedOriginsCount: allowedOrigins.size,
-  allowNoOrigin,
+  allowNoOrigin: true,
 });
 
 // Configure CORS to allow requests from frontend
-const corsOptions: CorsOptions = {
+const corsOptions = {
   origin(origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
-    // Allow requests with no origin only when explicitly enabled
+    // Allow requests with no origin (health checks, CLI, mobile clients)
     if (!origin) {
-      if (allowNoOrigin) {
-        return callback(null, true);
-      }
-      return callback(new Error("Origin not allowed by CORS"));
+      return callback(null, true);
     }
 
     if (allowedOrigins.has(origin)) {
       return callback(null, true);
     }
 
-    return callback(new Error("Origin not allowed by CORS"));
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "x-api-key", "x-correlation-id"],
-};
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Tenant-Id", "x-api-key"],
+  maxAge: 86400,
+} as CorsOptions;
 
 const corsMiddleware = cors(corsOptions);
 app.use((req, res, next) => {
