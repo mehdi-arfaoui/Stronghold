@@ -1,6 +1,7 @@
 import { Queue, Worker } from "bullmq";
 import { createRedisConnection } from "../queues/discoveryQueue.js";
 import { rotateExpiringApiKeys } from "../services/apiKeyRotationService.js";
+import { appLogger } from "../utils/logger.js";
 
 const rotationQueueName = "apiKeyRotationScheduler";
 
@@ -27,7 +28,7 @@ export async function startApiKeyRotationWorker() {
       if (result.reason) {
         console.warn("API key rotation skipped", { reason: result.reason });
       } else {
-        console.log("API key rotation summary", {
+        appLogger.info("API key rotation summary", {
           rotated: result.rotated,
           skipped: result.skipped,
         });

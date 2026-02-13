@@ -10,6 +10,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "./prismaClient.js";
 import { getPrometheusMetricsHandler, initTelemetry } from "./observability/telemetry.js";
 import { GlobalExceptionFilter } from "./filters/global-exception.filter.js";
+import { appLogger } from "./utils/logger.js";
 
 import serviceRoutes from "./routes/serviceRoutes.js";
 import graphRoutes from "./routes/graphRoutes.js";
@@ -110,7 +111,7 @@ const VECTOR_DB_OPTIONAL =
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const logBoot = (step: string, meta: Record<string, unknown> = {}) => {
-  console.log(JSON.stringify({ level: "info", msg: "boot", step, ...meta }));
+  appLogger.info("boot", { step, ...meta });
 };
 
 const backgroundServices: BackgroundService[] = [
@@ -650,21 +651,21 @@ const server = http.createServer(app);
 initDiscoveryWebSocket(server);
 
 server.listen(Number(PORT), HOST, () => {
-  console.log(`API PRA/PCA running on ${HOST}:${PORT}`);
+  appLogger.info(`API PRA/PCA running on ${HOST}:${PORT}`);
   logBoot("server.listening", { host: HOST, port: Number(PORT) });
   const originList = [...allowedOrigins.values()];
-  console.log(
+  appLogger.info(
     `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
   );
-  console.log(
+  appLogger.info(
     `Health checks available at http://${HOST}:${PORT}/health/live (liveness) and /health/ready (readiness)`
   );
   if (deploymentConfig.mode === "saas") {
-    console.log("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
+    appLogger.info("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
   } else {
-    console.log("Deployment mode: On-premise (auto-mise à jour désactivée).");
+    appLogger.info("Deployment mode: On-premise (auto-mise à jour désactivée).");
     if (onPremiseLicense) {
-      console.log(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
+      appLogger.info(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
     }
   }
 

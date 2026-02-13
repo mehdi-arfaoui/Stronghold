@@ -1,14 +1,15 @@
 import { Queue, Worker } from "bullmq";
 import { createRedisConnection } from "../queues/discoveryQueue.js";
 import { licenseService } from "../services/licenseService.js";
+import { appLogger } from "../utils/logger.js";
 
 const queueName = "licenseQuotaReset";
 
 async function runMonthlyReset() {
-  console.log("[License] Starting monthly quota reset...");
+  appLogger.info("[License] Starting monthly quota reset...");
   try {
     const count = await licenseService.resetMonthlyQuotas();
-    console.log(`[License] Reset monthly quotas for ${count} licenses`);
+    appLogger.info(`[License] Reset monthly quotas for ${count} licenses`);
   } catch (error) {
     console.error("[License] Failed to reset monthly quotas:", error);
     throw error;
@@ -46,9 +47,9 @@ export async function startLicenseQuotaResetWorker() {
   });
 
   worker.on("completed", (job) => {
-    console.log("[License] Monthly quota reset completed", job?.id);
+    appLogger.info("[License] Monthly quota reset completed", { jobId: job?.id });
   });
 
-  console.log(`[License] Quota reset worker scheduled with pattern: ${cronPattern}`);
+  appLogger.info(`[License] Quota reset worker scheduled with pattern: ${cronPattern}`);
   return worker;
 }

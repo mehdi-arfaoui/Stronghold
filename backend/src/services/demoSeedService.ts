@@ -21,6 +21,7 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { detectRisks } from '../graph/riskDetectionEngine.js';
 import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
+import { appLogger } from "../utils/logger.js";
 
 interface NodeDef {
   id: string;
@@ -598,10 +599,10 @@ const inferredEdges: EdgeDef[] = [
 ];
 
 export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
-  console.log('Seeding demo environment "ShopMax E-commerce"...');
+  appLogger.info('Seeding demo environment "ShopMax E-commerce"...');
 
   // Clean existing resilience data for this tenant
-  console.log('Cleaning existing data...');
+  appLogger.info('Cleaning existing data...');
   await prisma.riskNodeLink.deleteMany({ where: { risk: { tenantId } } }).catch(() => {});
   await prisma.riskMitigation.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.risk.deleteMany({ where: { tenantId, autoDetected: true } }).catch(() => {});
@@ -613,7 +614,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   await prisma.simulation.deleteMany({ where: { tenantId } });
   await prisma.scanJob.deleteMany({ where: { tenantId } });
 
-  console.log(`Creating ${nodes.length} nodes...`);
+  appLogger.info(`Creating ${nodes.length} nodes...`);
   await prisma.infraNode.createMany({
     data: nodes.map((node) => ({
       id: node.id,
@@ -630,7 +631,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
-  console.log(`Creating ${confirmedEdges.length} confirmed edges...`);
+  appLogger.info(`Creating ${confirmedEdges.length} confirmed edges...`);
   await prisma.infraEdge.createMany({
     data: confirmedEdges.map((edge) => ({
       sourceId: edge.sourceId,
@@ -642,7 +643,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
-  console.log(`Creating ${inferredEdges.length} inferred edges...`);
+  appLogger.info(`Creating ${inferredEdges.length} inferred edges...`);
   await prisma.infraEdge.createMany({
     data: inferredEdges.map((edge) => ({
       sourceId: edge.sourceId,
@@ -655,7 +656,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
-  console.log('Creating completed scan job...');
+  appLogger.info('Creating completed scan job...');
   await prisma.scanJob.create({
     data: {
       status: 'completed',
@@ -690,7 +691,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   let risksDetected = 0;
 
   try {
-    console.log('Running post-seed graph analysis...');
+    appLogger.info('Running post-seed graph analysis...');
     const graph = await GraphService.loadGraphFromDB(prisma, tenantId);
 
     if (graph.order > 0) {
@@ -731,9 +732,9 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
 
       resilienceScore = report.resilienceScore;
       spofCount = report.spofs.length;
-      console.log(`  Graph analysis complete: score=${resilienceScore}, SPOFs=${spofCount}`);
+      appLogger.info(`Graph analysis complete: score=${resilienceScore}, SPOFs=${spofCount}`);
 
-      console.log('Generating BIA...');
+      appLogger.info('Generating BIA...');
       const biaReport = generateBIA(graph, report);
 
       await prisma.bIAReport2.create({
@@ -780,9 +781,9 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       );
 
       biaProcessCount = biaReport.processes.length;
-      console.log(`  BIA generated: ${biaProcessCount} processes`);
+      appLogger.info(`BIA generated: ${biaProcessCount} processes`);
 
-      console.log('Detecting risks...');
+      appLogger.info('Detecting risks...');
       const detectedRisks = detectRisks(graph, report);
       const validNodeIds = new Set(
         (await prisma.infraNode.findMany({ where: { tenantId }, select: { id: true } })).map((node) => node.id)
@@ -822,7 +823,7 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       }
 
       risksDetected = detectedRisks.length;
-      console.log(`  Risks detected: ${risksDetected}`);
+      appLogger.info(`Risks detected: ${risksDetected}`);
     }
   } catch (error) {
     console.error('Post-seed analysis failed (non-blocking):', error);
@@ -852,13 +853,13 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     ],
   };
 
-  console.log('Demo environment "ShopMax E-commerce" seeded successfully!');
-  console.log(`  ${summary.nodes} infrastructure nodes`);
-  console.log(`  ${summary.confirmedEdges} confirmed dependencies`);
-  console.log(`  ${summary.inferredEdges} inferred dependencies (to validate)`);
-  console.log(`  Resilience score: ${resilienceScore}`);
-  console.log(`  BIA processes: ${biaProcessCount}`);
-  console.log(`  Auto-detected risks: ${risksDetected}`);
+  appLogger.info('Demo environment "ShopMax E-commerce" seeded successfully!');
+  appLogger.info(`${summary.nodes} infrastructure nodes`);
+  appLogger.info(`${summary.confirmedEdges} confirmed dependencies`);
+  appLogger.info(`${summary.inferredEdges} inferred dependencies (to validate)`);
+  appLogger.info(`Resilience score: ${resilienceScore}`);
+  appLogger.info(`BIA processes: ${biaProcessCount}`);
+  appLogger.info(`Auto-detected risks: ${risksDetected}`);
 
   return summary;
 }

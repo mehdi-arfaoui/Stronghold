@@ -1,4 +1,5 @@
 import { Redis, type RedisOptions } from 'ioredis';
+import { appLogger } from '../utils/logger.js';
 
 const REDIS_URL = process.env.REDIS_URL || 'redis://localhost:6379';
 
@@ -48,7 +49,7 @@ redis.on('error', (err) => {
 });
 
 redis.on('connect', () => {
-  console.log('Redis connected');
+  appLogger.info('Redis connected');
 });
 
 // Connect on first use

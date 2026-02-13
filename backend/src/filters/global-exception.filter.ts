@@ -1,4 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
+import { appLogger } from "../utils/logger.js";
 
 type ErrorResponseBody = {
   statusCode: number;
@@ -26,17 +27,13 @@ export class GlobalExceptionFilter {
         ? (exception as any).message
         : "Internal server error";
 
-    console.error(
-      JSON.stringify({
-        level: "error",
-        scope: "http.globalExceptionFilter",
-        method: req.method,
-        path: req.originalUrl || req.url,
-        status,
-        message: exceptionMessage,
-        stack: exception instanceof Error ? exception.stack : undefined,
-      })
-    );
+    appLogger.error("http.globalExceptionFilter", {
+      method: req.method,
+      path: req.originalUrl || req.url,
+      status,
+      message: exceptionMessage,
+      stack: exception instanceof Error ? exception.stack : undefined,
+    });
 
     const body: ErrorResponseBody = {
       statusCode: status,
