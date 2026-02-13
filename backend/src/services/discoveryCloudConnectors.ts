@@ -622,7 +622,7 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
     credentials: { client_email: clientEmail, private_key: privateKey },
   });
   const [instances] = await sqlClient.list({ project: projectId });
-  instances.items?.forEach((instance) => {
+  instances.items?.forEach((instance: any) => {
     resources.push(
       buildResource({
         source: "gcp",
