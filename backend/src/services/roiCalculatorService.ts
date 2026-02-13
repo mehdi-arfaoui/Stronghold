@@ -78,6 +78,7 @@ const SUBSCRIPTION_COSTS: Record<string, number> = {
   STARTER: 200,
   PRO: 800,
   ENTERPRISE: 2000,
+  OWNER: 0,
   CUSTOM: 1500,
 };
 

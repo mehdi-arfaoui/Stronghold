@@ -90,6 +90,7 @@ services:
       SEED_ON_START: ${SEED_ON_START:-true}
       SEED_API_KEY: ${SEED_API_KEY}
       SEED_PLAN: ${SEED_PLAN}
+      OWNER_API_KEY: ${OWNER_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -128,6 +129,7 @@ services:
       LICENSE_SIGNING_SECRET: ${LICENSE_SIGNING_SECRET}
       DISCOVERY_SECRET: ${DISCOVERY_SECRET}
       OWNER_EMAIL: ${OWNER_EMAIL}
+      OWNER_API_KEY: ${OWNER_API_KEY:-}
       OWNER_PASSWORD: ${OWNER_PASSWORD}
       ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED}
     ports:

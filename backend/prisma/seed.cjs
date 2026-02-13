@@ -33,66 +33,152 @@ const SEED_PLANS = {
     maxDocuments: -1,
     features: ["*"],
   },
+  OWNER: {
+    maxUsers: -1,
+    maxStorage: BigInt(-1),
+    maxScansMonth: -1,
+    maxDocuments: -1,
+    features: ["*"],
+  },
 };
 
 const seedPlanKey = (process.env.SEED_PLAN || "PRO").toUpperCase();
-const seedPlan = SEED_PLANS[seedPlanKey] ?? SEED_PLANS.PRO;
 
-async function main() {
-  const apiKey = process.env.SEED_API_KEY;
-  if (!apiKey) {
-    throw new Error("SEED_API_KEY is required");
-  }
-  const apiKeyHash = crypto.createHash("sha256").update(apiKey).digest("hex");
+function hashKey(raw) {
+  return crypto.createHash("sha256").update(raw).digest("hex");
+}
+
+async function upsertTenantApiKeyAndLicense(params) {
+  const {
+    tenantName,
+    tenantApiKey,
+    apiKeyLabel,
+    planKey,
+    metadata = null,
+  } = params;
+  const selectedPlan = SEED_PLANS[planKey] ?? SEED_PLANS.PRO;
+  const keyHash = hashKey(tenantApiKey);
 
   const tenant = await prisma.tenant.upsert({
-    where: { apiKey },
-    update: {},
-    create: { name: "Dev Tenant", apiKey },
+    where: { apiKey: tenantApiKey },
+    update: { name: tenantName },
+    create: { name: tenantName, apiKey: tenantApiKey },
   });
 
-  // Create ApiKey entry for the tenant
   await prisma.apiKey.upsert({
-    where: { keyHash: apiKeyHash },
+    where: { keyHash },
     update: {
-      revokedAt: null, // Ensure it's not revoked
+      revokedAt: null,
+      role: "ADMIN",
+      tenantId: tenant.id,
+      label: apiKeyLabel,
     },
     create: {
       tenantId: tenant.id,
-      label: "Dev API Key",
-      keyHash: apiKeyHash,
+      label: apiKeyLabel,
+      keyHash,
       role: "ADMIN",
     },
   });
 
-  // Create License for the tenant
-  const existingLicense = await prisma.license.findUnique({
+  const license = await prisma.license.upsert({
     where: { tenantId: tenant.id },
+    create: {
+      tenantId: tenant.id,
+      plan: planKey,
+      status: "ACTIVE",
+      maxUsers: selectedPlan.maxUsers,
+      maxStorage: selectedPlan.maxStorage,
+      maxScansMonth: selectedPlan.maxScansMonth,
+      maxDocuments: selectedPlan.maxDocuments,
+      features: selectedPlan.features,
+      expiresAt: null,
+      metadata,
+      usage: {
+        create: {},
+      },
+    },
+    update: {
+      plan: planKey,
+      status: "ACTIVE",
+      maxUsers: selectedPlan.maxUsers,
+      maxStorage: selectedPlan.maxStorage,
+      maxScansMonth: selectedPlan.maxScansMonth,
+      maxDocuments: selectedPlan.maxDocuments,
+      features: selectedPlan.features,
+      expiresAt: null,
+      metadata,
+    },
   });
 
-  if (!existingLicense) {
-    await prisma.license.create({
-      data: {
-        tenantId: tenant.id,
-        plan: seedPlanKey in SEED_PLANS ? seedPlanKey : "PRO",
-        status: "ACTIVE",
-        maxUsers: seedPlan.maxUsers,
-        maxStorage: seedPlan.maxStorage,
-        maxScansMonth: seedPlan.maxScansMonth,
-        maxDocuments: seedPlan.maxDocuments,
-        features: seedPlan.features,
-        usage: {
-          create: {}, // Create LicenseUsage with defaults
-        },
-      },
-    });
-    console.log("Seeded license for tenant");
-  } else {
-    console.log("License already exists for tenant");
+  await prisma.licenseUsage.upsert({
+    where: { licenseId: license.id },
+    create: {
+      licenseId: license.id,
+      currentUsers: 1,
+      currentStorage: BigInt(0),
+      scansThisMonth: 0,
+      documentsCount: 0,
+    },
+    update: {},
+  });
+
+  return { tenant, license };
+}
+
+async function seedDevTenant() {
+  const apiKey = process.env.SEED_API_KEY;
+  if (!apiKey) {
+    throw new Error("SEED_API_KEY is required");
   }
 
-  console.log("Seeded tenant", { id: tenant.id, name: tenant.name });
+  const planKey = seedPlanKey in SEED_PLANS ? seedPlanKey : "PRO";
+
+  const { tenant } = await upsertTenantApiKeyAndLicense({
+    tenantName: "Dev Tenant",
+    tenantApiKey: apiKey,
+    apiKeyLabel: "Dev API Key",
+    planKey,
+    metadata: {
+      seededBy: "seed.cjs",
+      type: "development",
+    },
+  });
+
+  console.log("Seeded tenant", { id: tenant.id, name: tenant.name, plan: planKey });
   console.log("Seeded API key for tenant");
+}
+
+async function seedOwnerLicense() {
+  const ownerEmail = process.env.OWNER_EMAIL || "mehdi@stronghold.io";
+  const ownerApiKey =
+    process.env.OWNER_API_KEY ||
+    `owner_${hashKey(ownerEmail).slice(0, 40)}`;
+
+  const { tenant, license } = await upsertTenantApiKeyAndLicense({
+    tenantName: "Stronghold HQ",
+    tenantApiKey: ownerApiKey,
+    apiKeyLabel: `Owner API Key (${ownerEmail})`,
+    planKey: "OWNER",
+    metadata: {
+      isFounder: true,
+      ownerEmail,
+      createdBy: "system-seed",
+    },
+  });
+
+  console.log("Owner license seeded", {
+    tenantId: tenant.id,
+    tenantName: tenant.name,
+    plan: license.plan,
+    status: license.status,
+    expiresAt: license.expiresAt,
+  });
+}
+
+async function main() {
+  await seedDevTenant();
+  await seedOwnerLicense();
 }
 
 main()

@@ -1342,11 +1342,13 @@ enum PlanType {
   STARTER
   PRO
   ENTERPRISE
+  OWNER
   CUSTOM
 }
 
 enum LicenseStatus {
   ACTIVE
+  TRIAL
   SUSPENDED
   EXPIRED
   CANCELLED
@@ -1362,8 +1364,11 @@ model License {
   status        LicenseStatus @default(ACTIVE)
 
   // Validité
+  issuedAt      DateTime      @default(now())
   startsAt      DateTime      @default(now())
   expiresAt     DateTime?
+  lastCheckedAt DateTime?
+  metadata      Json?
 
   // Quotas
   maxUsers      Int           @default(5)

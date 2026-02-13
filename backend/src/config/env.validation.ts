@@ -35,6 +35,8 @@ const EnvironmentVariablesSchema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASSWORD: z.string().optional(),
     SMTP_FROM: z.string().optional(),
+    OWNER_EMAIL: z.string().optional(),
+    OWNER_API_KEY: z.string().optional(),
   })
   .passthrough();
 
