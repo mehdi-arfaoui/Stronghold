@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
@@ -19,7 +20,7 @@ router.get('/hybrid', async (req: TenantRequest, res) => {
     const recommendations = generateHybridRecommendations(graph);
     return res.json({ recommendations });
   } catch (error) {
-    console.error('Error generating hybrid recommendations:', error);
+    appLogger.error('Error generating hybrid recommendations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

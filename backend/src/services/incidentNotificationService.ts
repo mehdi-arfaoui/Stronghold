@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import prisma from "../prismaClient.js";
 
 type IncidentEventPayload = {
@@ -77,14 +78,14 @@ export async function notifyIncidentEvent(payload: IncidentEventPayload) {
 
         if (!res.ok) {
           const text = await res.text();
-          console.warn("Incident notification failed", {
+          appLogger.warn("Incident notification failed", {
             channelId: channel.id,
             status: res.status,
             body: text.slice(0, 200),
           });
         }
       } catch (error: any) {
-        console.warn("Incident notification error", {
+        appLogger.warn("Incident notification error", {
           channelId: channel.id,
           message: error?.message,
         });

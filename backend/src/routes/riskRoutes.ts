@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -122,7 +123,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(enriched);
   } catch (error) {
-    console.error("Error in GET /risks:", error);
+    appLogger.error("Error in GET /risks:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -137,7 +138,7 @@ router.get("/summary", requireRole("READER"), async (req: TenantRequest, res) =>
     const summary = await buildRiskSummary(prisma, tenantId);
     return res.json(summary);
   } catch (error) {
-    console.error("Error in GET /risks/summary:", error);
+    appLogger.error("Error in GET /risks/summary:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -196,7 +197,7 @@ router.get("/matrix", requireRole("READER"), async (req: TenantRequest, res) => 
       totalRisks: risks.length,
     });
   } catch (error) {
-    console.error("Error in GET /risks/matrix:", error);
+    appLogger.error("Error in GET /risks/matrix:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -230,7 +231,7 @@ router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
       level: riskLevel(score),
     });
   } catch (error) {
-    console.error("Error in GET /risks/:id:", error);
+    appLogger.error("Error in GET /risks/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -351,7 +352,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       level: riskLevel(score),
     });
   } catch (error) {
-    console.error("Error in POST /risks:", error);
+    appLogger.error("Error in POST /risks:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -437,7 +438,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
       level: riskLevel(score),
     });
   } catch (error) {
-    console.error("Error in PUT /risks/:id:", error);
+    appLogger.error("Error in PUT /risks/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -488,7 +489,7 @@ router.post("/:id/mitigations", requireRole("OPERATOR"), async (req: TenantReque
 
     return res.status(201).json(mitigation);
   } catch (error) {
-    console.error("Error in POST /risks/:id/mitigations:", error);
+    appLogger.error("Error in POST /risks/:id/mitigations:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -532,7 +533,7 @@ router.patch("/:id/mitigations/:mitigationId", requireRole("OPERATOR"), async (r
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error in PATCH /risks/:id/mitigations/:mitigationId:", error);
+    appLogger.error("Error in PATCH /risks/:id/mitigations/:mitigationId:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

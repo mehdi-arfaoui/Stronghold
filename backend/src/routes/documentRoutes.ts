@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import * as fs from "fs";
 import multer from "multer";
@@ -260,7 +261,7 @@ router.post(
         }
       }
     } catch (error) {
-      console.error("Error in POST /documents:", error);
+      appLogger.error("Error in POST /documents:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -307,7 +308,7 @@ router.post("/presign", requireRole("OPERATOR"), async (req: TenantRequest, res)
       storagePath: `s3://${bucket}/${objectKey}`,
     });
   } catch (error) {
-    console.error("Error in POST /documents/presign:", error);
+    appLogger.error("Error in POST /documents/presign:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -385,7 +386,7 @@ router.post("/register", requireRole("OPERATOR"), async (req: TenantRequest, res
 
     return res.status(201).json({ ...doc, signedUrl });
   } catch (error) {
-    console.error("Error in POST /documents/register:", error);
+    appLogger.error("Error in POST /documents/register:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -444,7 +445,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
             dlp: buildDlpAlert(doc, sensitivityReport),
           };
         } catch (err: any) {
-          console.error("Error signing document URL", {
+          appLogger.error("Error signing document URL", {
             tenantId: doc.tenantId,
             documentId: doc.id,
             message: err?.message,
@@ -470,7 +471,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(docsWithSignedPaths);
   } catch (error) {
-    console.error("Error in GET /documents:", error);
+    appLogger.error("Error in GET /documents:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -522,7 +523,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error in PUT /documents/:id:", error);
+    appLogger.error("Error in PUT /documents/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -564,7 +565,7 @@ router.post(
       if (error instanceof DocumentClassificationDocumentNotFoundError) {
         return res.status(error.status).json({ error: error.message });
       }
-      console.error("Error in POST /documents/:id/classification-feedback:", error);
+      appLogger.error("Error in POST /documents/:id/classification-feedback:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -597,7 +598,7 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
 
     return res.status(204).send();
   } catch (error) {
-    console.error("Error in DELETE /documents/:id:", error);
+    appLogger.error("Error in DELETE /documents/:id:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -636,7 +637,7 @@ router.get("/:id/extraction-suggestions", requireRole("OPERATOR"), async (req: T
 
     return res.json({ documentId: docId, suggestions });
   } catch (error) {
-    console.error("Error in GET /documents/:id/extraction-suggestions:", error);
+    appLogger.error("Error in GET /documents/:id/extraction-suggestions:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -678,7 +679,7 @@ router.post(
 
       return res.json(result);
     } catch (error) {
-      console.error("Error in POST /documents/:id/extraction-suggestions/approve:", error);
+      appLogger.error("Error in POST /documents/:id/extraction-suggestions/approve:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -721,7 +722,7 @@ router.post(
 
       return res.json(result);
     } catch (error) {
-      console.error("Error in POST /documents/:id/extraction-suggestions/reject:", error);
+      appLogger.error("Error in POST /documents/:id/extraction-suggestions/reject:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -764,7 +765,7 @@ router.get("/:id/sensitivity-report", requireRole("READER"), async (req: TenantR
       alert: buildDlpAlert(doc, report),
     });
   } catch (error) {
-    console.error("Error in GET /documents/:id/sensitivity-report:", error);
+    appLogger.error("Error in GET /documents/:id/sensitivity-report:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -785,7 +786,7 @@ router.post("/:id/extract", requireRole("OPERATOR"), async (req: TenantRequest, 
     const updated = await enqueueDocumentIngestion(docId, tenantId);
     return res.json(updated);
   } catch (error: any) {
-    console.error("Error in POST /documents/:id/extract:", error);
+    appLogger.error("Error in POST /documents/:id/extract:", error);
     return res
       .status(500)
       .json({ error: "Internal server error", details: error?.message });
@@ -821,7 +822,7 @@ router.post("/extract-all-pending", requireRole("OPERATOR"), async (req: TenantR
       documents: results,
     });
   } catch (error: any) {
-    console.error("Error in POST /documents/extract-all-pending:", error);
+    appLogger.error("Error in POST /documents/extract-all-pending:", error);
     return res
       .status(500)
       .json({ error: "Internal server error", details: error?.message });

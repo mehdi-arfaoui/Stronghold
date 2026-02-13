@@ -38,7 +38,7 @@ async function runSchedulerCycle() {
       ) {
         if (schedule.alertWebhook) {
           await sendWebhookAlert(schedule.alertWebhook, schedule.tenantId, result).catch(
-            (err) => console.error("[Drift] Webhook alert failed", schedule.tenantId, err)
+            (err) => appLogger.error("[Drift] Webhook alert failed", schedule.tenantId, err)
           );
         }
         // Email alerts would be handled by a mail service when available
@@ -53,7 +53,7 @@ async function runSchedulerCycle() {
         `[Drift] Check completed for tenant ${schedule.tenantId}: ${result.drifts.length} drift(s), score=${result.resilienceScore.current}`
       );
     } catch (err) {
-      console.error("[Drift] Check failed for tenant", schedule.tenantId, err);
+      appLogger.error("[Drift] Check failed for tenant", schedule.tenantId, err);
     }
   }
 }
@@ -142,7 +142,7 @@ export async function startDriftScheduler() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("[Drift] Scheduler failed", job?.id, err);
+    appLogger.error("[Drift] Scheduler failed", job?.id, err);
   });
 
   worker.on("completed", (job) => {

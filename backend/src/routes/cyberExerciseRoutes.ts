@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -60,7 +61,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(exercises);
   } catch (error: any) {
-    console.error("Error listing cyber exercises", { message: error?.message });
+    appLogger.error("Error listing cyber exercises", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -85,7 +86,7 @@ router.get("/:id", requireRole("READER"), async (req: TenantRequest, res) => {
 
     return res.json(exercise);
   } catch (error: any) {
-    console.error("Error fetching cyber exercise", { message: error?.message });
+    appLogger.error("Error fetching cyber exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -123,7 +124,7 @@ router.post("/", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.status(201).json(created);
   } catch (error: any) {
-    console.error("Error creating cyber exercise", { message: error?.message });
+    appLogger.error("Error creating cyber exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -162,7 +163,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.json(updated);
   } catch (error: any) {
-    console.error("Error updating cyber exercise", { message: error?.message });
+    appLogger.error("Error updating cyber exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -180,7 +181,7 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     await deleteCyberExercise(tenantId, exerciseId);
     return res.status(204).send();
   } catch (error: any) {
-    console.error("Error deleting cyber exercise", { message: error?.message });
+    appLogger.error("Error deleting cyber exercise", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });

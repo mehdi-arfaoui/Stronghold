@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Resilience Graph Routes — InfraNode graph + analysis endpoints
 // ============================================================
@@ -23,7 +24,7 @@ router.get('/graph', async (req: TenantRequest, res) => {
 
     return res.json({ ...data, stats });
   } catch (error) {
-    console.error('Error fetching resilience graph:', error);
+    appLogger.error('Error fetching resilience graph:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -37,7 +38,7 @@ router.get('/graph/stats', async (req: TenantRequest, res) => {
     const graph = await GraphService.getGraph(prisma, tenantId);
     return res.json(GraphService.getGraphStats(graph));
   } catch (error) {
-    console.error('Error fetching graph stats:', error);
+    appLogger.error('Error fetching graph stats:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -71,7 +72,7 @@ router.get('/graph/nodes/:nodeId', async (req: TenantRequest, res) => {
       blastRadiusCount: blastRadius.length,
     });
   } catch (error) {
-    console.error('Error fetching node detail:', error);
+    appLogger.error('Error fetching node detail:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -101,7 +102,7 @@ router.get('/graph/blast-radius/:nodeId', async (req: TenantRequest, res) => {
       totalImpacted: blastRadius.length,
     });
   } catch (error) {
-    console.error('Error computing blast radius:', error);
+    appLogger.error('Error computing blast radius:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -138,7 +139,7 @@ router.post('/graph/nodes', async (req: TenantRequest, res) => {
 
     return res.status(201).json(node);
   } catch (error) {
-    console.error('Error creating node:', error);
+    appLogger.error('Error creating node:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -171,7 +172,7 @@ router.post('/graph/edges', async (req: TenantRequest, res) => {
 
     return res.status(201).json(edge);
   } catch (error) {
-    console.error('Error creating edge:', error);
+    appLogger.error('Error creating edge:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -212,7 +213,7 @@ router.patch('/graph/edges/:edgeId', async (req: TenantRequest, res) => {
     await GraphService.loadGraphFromDB(prisma, tenantId);
     return res.json(edge);
   } catch (error) {
-    console.error('Error updating edge:', error);
+    appLogger.error('Error updating edge:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -238,7 +239,7 @@ router.post('/graph/ingest', async (req: TenantRequest, res) => {
 
     return res.json(report);
   } catch (error) {
-    console.error('Error ingesting scan results:', error);
+    appLogger.error('Error ingesting scan results:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

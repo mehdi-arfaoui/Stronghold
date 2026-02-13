@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -61,7 +62,7 @@ router.post("/components", requireRole("OPERATOR"), async (req: TenantRequest, r
 
     return res.json(infra);
   } catch (error) {
-    console.error("Error creating infra component:", error);
+    appLogger.error("Error creating infra component:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -152,7 +153,7 @@ router.put("/components/:id", requireRole("OPERATOR"), async (req: TenantRequest
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating infra component:", error);
+    appLogger.error("Error updating infra component:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -178,7 +179,7 @@ router.get("/components", async (req: TenantRequest, res) => {
 
     return res.json(infra);
   } catch (error) {
-    console.error("Error fetching infra components:", error);
+    appLogger.error("Error fetching infra components:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -220,7 +221,7 @@ router.post("/link", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
 
     return res.json(link);
   } catch (error) {
-    console.error("Error linking service to infra:", error);
+    appLogger.error("Error linking service to infra:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -249,7 +250,7 @@ router.delete("/components/:id", requireRole("OPERATOR"), async (req: TenantRequ
 
     return res.status(204).send();
   } catch (error) {
-    console.error("Error deleting infra component:", error);
+    appLogger.error("Error deleting infra component:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

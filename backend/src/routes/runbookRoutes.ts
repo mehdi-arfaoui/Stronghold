@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import multer from "multer";
 import * as os from "os";
@@ -184,7 +185,7 @@ router.post("/templates", async (req: TenantRequest, res) => {
       }
     }
     } catch (error: any) {
-      console.error("Error uploading runbook template", { message: error?.message });
+      appLogger.error("Error uploading runbook template", { message: error?.message });
       return res.status(500).json({ error: "Internal server error" });
     }
   });
@@ -237,7 +238,7 @@ router.post("/templates/presign", requireRole("OPERATOR"), async (req: TenantReq
       format,
     });
   } catch (error: any) {
-    console.error("Error in POST /runbooks/templates/presign:", { message: error?.message });
+    appLogger.error("Error in POST /runbooks/templates/presign:", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -313,7 +314,7 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
     const signedUrl = await getSignedUrlForObject(bucket, key);
     return res.status(201).json({ ...template, signedUrl });
   } catch (error: any) {
-    console.error("Error in POST /runbooks/templates/register:", { message: error?.message });
+    appLogger.error("Error in POST /runbooks/templates/register:", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -342,7 +343,7 @@ router.get("/templates", async (req: TenantRequest, res) => {
 
     return res.json(enriched);
   } catch (error: any) {
-    console.error("Error listing runbook templates", { message: error?.message });
+    appLogger.error("Error listing runbook templates", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -372,7 +373,7 @@ router.get("/templates/:id", async (req: TenantRequest, res) => {
 
     return res.json({ ...tpl, signedUrl });
   } catch (error: any) {
-    console.error("Error fetching runbook template", { message: error?.message });
+    appLogger.error("Error fetching runbook template", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -404,7 +405,7 @@ router.put("/templates/:id", requireRole("OPERATOR"), async (req: TenantRequest,
 
     return res.json(updated);
   } catch (error: any) {
-    console.error("Error updating runbook template", { message: error?.message });
+    appLogger.error("Error updating runbook template", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -435,7 +436,7 @@ router.delete("/templates/:id", requireRole("OPERATOR"), async (req: TenantReque
 
     return res.status(204).send();
   } catch (error: any) {
-    console.error("Error deleting runbook template", { message: error?.message });
+    appLogger.error("Error deleting runbook template", { message: error?.message });
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -452,7 +453,7 @@ router.get("/", async (req: TenantRequest, res) => {
     const enriched = await Promise.all(runbooks.map((rb) => withDownloadUrls(rb)));
     return res.json(enriched);
   } catch (error) {
-    console.error("Error fetching runbooks", error);
+    appLogger.error("Error fetching runbooks", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -473,7 +474,7 @@ router.get("/:id", async (req: TenantRequest, res) => {
     const enriched = await withDownloadUrls(runbook);
     return res.json(enriched);
   } catch (error) {
-    console.error("Error fetching runbook", error);
+    appLogger.error("Error fetching runbook", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -515,7 +516,7 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
 
     return res.json(updated);
   } catch (error) {
-    console.error("Error updating runbook", error);
+    appLogger.error("Error updating runbook", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -537,7 +538,7 @@ router.delete("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) =
     await prisma.runbook.deleteMany({ where: { id: runbookId, tenantId } });
     return res.status(204).send();
   } catch (error) {
-    console.error("Error deleting runbook", error);
+    appLogger.error("Error deleting runbook", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -559,7 +560,7 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
     const enriched = await withDownloadUrls(output.runbook);
     return res.status(201).json({ ...output, runbook: enriched });
   } catch (error: any) {
-    console.error("Error generating runbook", {
+    appLogger.error("Error generating runbook", {
       message: error?.message,
     });
     return res.status(500).json({ error: "Internal server error", details: error?.message });

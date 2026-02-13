@@ -11,7 +11,7 @@ async function runMonthlyReset() {
     const count = await licenseService.resetMonthlyQuotas();
     appLogger.info(`[License] Reset monthly quotas for ${count} licenses`);
   } catch (error) {
-    console.error("[License] Failed to reset monthly quotas:", error);
+    appLogger.error("[License] Failed to reset monthly quotas:", error);
     throw error;
   }
 }
@@ -43,7 +43,7 @@ export async function startLicenseQuotaResetWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("[License] Monthly quota reset failed", job?.id, err);
+    appLogger.error("[License] Monthly quota reset failed", job?.id, err);
   });
 
   worker.on("completed", (job) => {

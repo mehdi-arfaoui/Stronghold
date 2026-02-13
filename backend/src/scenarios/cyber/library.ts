@@ -1,3 +1,4 @@
+import { appLogger } from "../../utils/logger.js";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
@@ -30,7 +31,7 @@ function loadScenario(fileName: string): CyberScenario {
     const raw = readFileSync(join(baseDir, fileName), "utf-8");
     return JSON.parse(raw) as CyberScenario;
   } catch (error) {
-    console.warn(`Scenario file ${fileName} not found or invalid`, error);
+    appLogger.warn(`Scenario file ${fileName} not found or invalid`, error);
     const fallbackId = fileName.replace(".json", "");
     return {
       id: fallbackId,

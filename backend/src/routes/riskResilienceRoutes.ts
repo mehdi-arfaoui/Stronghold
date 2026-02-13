@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Risk Resilience Routes — Auto-detected risks from graph
 // ============================================================
@@ -103,7 +104,7 @@ router.post('/auto-detect', async (req: TenantRequest, res) => {
       totalDetected: detectedRisks.length,
     });
   } catch (error) {
-    console.error('Error detecting risks:', error);
+    appLogger.error('Error detecting risks:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -145,7 +146,7 @@ router.get('/matrix', async (req: TenantRequest, res) => {
 
     return res.json({ matrix, stats, lastUpdated: new Date() });
   } catch (error) {
-    console.error('Error fetching risk matrix:', error);
+    appLogger.error('Error fetching risk matrix:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -173,7 +174,7 @@ router.get('/by-node/:nodeId', async (req: TenantRequest, res) => {
 
     return res.json({ risks, nodeId });
   } catch (error) {
-    console.error('Error fetching node risks:', error);
+    appLogger.error('Error fetching node risks:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

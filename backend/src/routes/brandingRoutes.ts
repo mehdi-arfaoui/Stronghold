@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -33,7 +34,7 @@ router.get("/", requireRole("READER"), async (req: TenantRequest, res) => {
       accentColor: branding?.accentColor ?? null,
     });
   } catch (error) {
-    console.error("Error in GET /branding:", error);
+    appLogger.error("Error in GET /branding:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -96,7 +97,7 @@ router.put("/", requireRole("ADMIN"), async (req: TenantRequest, res) => {
       accentColor: branding.accentColor ?? null,
     });
   } catch (error) {
-    console.error("Error in PUT /branding:", error);
+    appLogger.error("Error in PUT /branding:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

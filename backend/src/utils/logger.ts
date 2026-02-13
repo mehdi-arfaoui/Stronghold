@@ -25,7 +25,27 @@ function sanitizeValue(value: unknown, depth = 0): unknown {
   return String(value);
 }
 
-function write(level: LogLevel, message: string, meta?: unknown) {
+function normalizeLogArgs(args: unknown[]): { message: string; meta?: unknown } {
+  if (args.length === 0) {
+    return { message: "" };
+  }
+
+  const [first, ...rest] = args;
+  const message = typeof first === "string" ? first : String(first);
+
+  if (rest.length === 0) {
+    return { message };
+  }
+
+  if (rest.length === 1) {
+    return { message, meta: rest[0] };
+  }
+
+  return { message, meta: rest };
+}
+
+function write(level: LogLevel, ...args: unknown[]) {
+  const { message, meta } = normalizeLogArgs(args);
   const payload = {
     level,
     message,
@@ -42,13 +62,13 @@ function write(level: LogLevel, message: string, meta?: unknown) {
 }
 
 export const appLogger = {
-  info(message: string, meta?: unknown) {
-    write("info", message, meta);
+  info(...args: unknown[]) {
+    write("info", ...args);
   },
-  warn(message: string, meta?: unknown) {
-    write("warn", message, meta);
+  warn(...args: unknown[]) {
+    write("warn", ...args);
   },
-  error(message: string, meta?: unknown) {
-    write("error", message, meta);
+  error(...args: unknown[]) {
+    write("error", ...args);
   },
 };

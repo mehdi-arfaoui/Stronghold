@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -78,7 +79,7 @@ router.get("/", requireRole("ADMIN"), async (req: TenantRequest, res) => {
       logs,
     });
   } catch (error) {
-    console.error("Error in GET /audit-logs:", error);
+    appLogger.error("Error in GET /audit-logs:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

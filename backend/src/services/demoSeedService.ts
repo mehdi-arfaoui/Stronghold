@@ -826,11 +826,11 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       appLogger.info(`Risks detected: ${risksDetected}`);
     }
   } catch (error) {
-    console.error('Post-seed analysis failed (non-blocking):', error);
+    appLogger.error('Post-seed analysis failed (non-blocking):', error);
   }
 
   void ensureBaselineSnapshot(prisma, tenantId, 'demo-seed').catch((error) => {
-    console.warn('Unable to ensure baseline snapshot after demo seed', {
+    appLogger.warn('Unable to ensure baseline snapshot after demo seed', {
       tenantId,
       message: error instanceof Error ? error.message : 'unknown',
     });

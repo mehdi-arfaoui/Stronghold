@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 type AlertPayload = {
   event:
     | "llm.quota"
@@ -38,13 +39,13 @@ export async function notifyN8nAlert(payload: AlertPayload) {
 
     if (!res.ok) {
       const text = await res.text();
-      console.warn("n8n alert webhook failed", {
+      appLogger.warn("n8n alert webhook failed", {
         status: res.status,
         body: text.slice(0, 200),
       });
     }
   } catch (error: any) {
-    console.warn("n8n alert webhook error", {
+    appLogger.warn("n8n alert webhook error", {
       message: error?.message,
     });
   }

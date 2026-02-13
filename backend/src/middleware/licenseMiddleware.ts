@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import type { Response, NextFunction } from 'express';
 import type { TenantRequest } from './tenantMiddleware.js';
 import { licenseService, LicenseNotFoundError } from '../services/licenseService.js';
@@ -38,7 +39,7 @@ export function requireValidLicense() {
 
       next();
     } catch (error) {
-      console.error('License validation error:', error);
+      appLogger.error('License validation error:', error);
       return res.status(500).json({
         error: 'LICENSE_CHECK_FAILED',
         message: 'Unable to validate license',
@@ -78,7 +79,7 @@ export function requireFeature(feature: string) {
 
       next();
     } catch (error) {
-      console.error('Feature check error:', error);
+      appLogger.error('Feature check error:', error);
       return res.status(500).json({
         error: 'FEATURE_CHECK_FAILED',
         message: 'Unable to check feature access',
@@ -131,7 +132,7 @@ export function requireQuota(
 
       next();
     } catch (error) {
-      console.error('Quota check error:', error);
+      appLogger.error('Quota check error:', error);
       return res.status(500).json({
         error: 'QUOTA_CHECK_FAILED',
         message: 'Unable to check quota',
@@ -156,7 +157,7 @@ export function incrementQuotaOnSuccess() {
 
         // Fire and forget - ne pas bloquer la réponse
         licenseService.incrementUsage(tenantId, type, amount)
-          .catch(err => console.error('Failed to increment quota:', err));
+          .catch(err => appLogger.error('Failed to increment quota:', err));
       }
 
       return originalJson(body);

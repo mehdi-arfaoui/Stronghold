@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import type { Request, Response, NextFunction } from "express";
 import type { MulterFile } from "multer";
 import crypto from "crypto";
@@ -34,7 +35,7 @@ export const tenantMiddleware = async (
     const apiKey = req.header("x-api-key");
 
     if (!apiKey) {
-      console.warn("tenantMiddleware: missing x-api-key header");
+      appLogger.warn("tenantMiddleware: missing x-api-key header");
       return res.status(401).json({ error: "Missing x-api-key header" });
     }
 
@@ -56,7 +57,7 @@ export const tenantMiddleware = async (
         : await prisma.tenant.findUnique({ where: { apiKey } });
 
     if (!resolvedTenant) {
-      console.warn("tenantMiddleware: invalid API key provided");
+      appLogger.warn("tenantMiddleware: invalid API key provided");
       return res.status(403).json({ error: "Invalid API key" });
     }
 
@@ -97,13 +98,13 @@ export const tenantMiddleware = async (
           });
         }
       } catch (err) {
-        console.warn("Failed to persist audit log", { message: (err as any)?.message });
+        appLogger.warn("Failed to persist audit log", { message: (err as any)?.message });
       }
     });
 
     next();
   } catch (error) {
-    console.error("Error in tenantMiddleware:", error);
+    appLogger.error("Error in tenantMiddleware:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };

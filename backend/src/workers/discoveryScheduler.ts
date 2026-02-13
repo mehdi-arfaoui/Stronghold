@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Queue, Worker } from "bullmq";
 import { createRedisConnection, discoveryQueue } from "../queues/discoveryQueue.js";
 import { enqueueScheduledJob, listDueDiscoverySchedules } from "../services/discoveryScheduleService.js";
@@ -37,7 +38,7 @@ export async function startDiscoveryScheduler() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("Discovery scheduler failed", job?.id, err);
+    appLogger.error("Discovery scheduler failed", job?.id, err);
   });
 
   await discoveryQueue.waitUntilReady();

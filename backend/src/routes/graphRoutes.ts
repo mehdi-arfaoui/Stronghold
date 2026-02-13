@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
@@ -186,7 +187,7 @@ router.get("/dependencies-only", async (req: TenantRequest, res) => {
 
     return res.json({ nodes, edges });
   } catch (error) {
-    console.error("Error building dependency graph:", error);
+    appLogger.error("Error building dependency graph:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -348,7 +349,7 @@ router.get("/", async (req: TenantRequest, res) => {
       },
     });
   } catch (error) {
-    console.error("Error building graph:", error);
+    appLogger.error("Error building graph:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -420,7 +421,7 @@ router.get("/flows", async (req: TenantRequest, res) => {
 
     return res.json({ nodes: Array.from(nodes.values()), edges });
   } catch (error) {
-    console.error("Error building flow graph:", error);
+    appLogger.error("Error building flow graph:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

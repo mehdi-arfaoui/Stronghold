@@ -26,7 +26,7 @@ export async function startApiKeyRotationWorker() {
     async () => {
       const result = await rotateExpiringApiKeys();
       if (result.reason) {
-        console.warn("API key rotation skipped", { reason: result.reason });
+        appLogger.warn("API key rotation skipped", { reason: result.reason });
       } else {
         appLogger.info("API key rotation summary", {
           rotated: result.rotated,
@@ -38,7 +38,7 @@ export async function startApiKeyRotationWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("API key rotation failed", job?.id, err);
+    appLogger.error("API key rotation failed", job?.id, err);
   });
 
   return worker;

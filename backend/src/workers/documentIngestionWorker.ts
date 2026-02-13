@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Job, Worker } from "bullmq";
 import prisma from "../prismaClient.js";
 import { createDocumentIngestionConnection } from "../queues/documentIngestionQueue.js";
@@ -50,7 +51,7 @@ export function startDocumentIngestionWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    console.error("Document ingestion worker failed", job?.id, err);
+    appLogger.error("Document ingestion worker failed", job?.id, err);
   });
 
   return worker;

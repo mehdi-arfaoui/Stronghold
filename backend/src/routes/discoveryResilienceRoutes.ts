@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Discovery Resilience Routes — Auto-scan, jobs, schedules
 // Bridges existing discovery with resilience graph ingestion
@@ -70,7 +71,7 @@ router.post('/auto-scan', async (req: TenantRequest, res) => {
 
     return res.json({ jobId, status: 'queued' });
   } catch (error) {
-    console.error('Error launching auto-scan:', error);
+    appLogger.error('Error launching auto-scan:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -90,7 +91,7 @@ router.get('/scan-jobs/:jobId', async (req: TenantRequest, res) => {
 
     return res.json(status);
   } catch (error) {
-    console.error('Error fetching scan job status:', error);
+    appLogger.error('Error fetching scan job status:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -106,7 +107,7 @@ router.get('/scan-jobs', async (req: TenantRequest, res) => {
 
     return res.json({ jobs });
   } catch (error) {
-    console.error('Error listing scan jobs:', error);
+    appLogger.error('Error listing scan jobs:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -135,7 +136,7 @@ router.post('/schedules', async (req: TenantRequest, res) => {
 
     return res.status(201).json({ id: scheduleId, cronExpression, status: 'active' });
   } catch (error) {
-    console.error('Error creating scan schedule:', error);
+    appLogger.error('Error creating scan schedule:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -149,7 +150,7 @@ router.get('/schedules', async (req: TenantRequest, res) => {
     const schedules = await listScanSchedules(prisma, tenantId);
     return res.json({ schedules });
   } catch (error) {
-    console.error('Error listing scan schedules:', error);
+    appLogger.error('Error listing scan schedules:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -179,7 +180,7 @@ router.post('/ingest', async (req: TenantRequest, res) => {
 
     return res.json(report);
   } catch (error) {
-    console.error('Error ingesting discovery resources:', error);
+    appLogger.error('Error ingesting discovery resources:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -203,7 +204,7 @@ router.post('/test-credentials', async (req: TenantRequest, res) => {
       provider,
     });
   } catch (error) {
-    console.error('Error testing credentials:', error);
+    appLogger.error('Error testing credentials:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -219,7 +220,7 @@ router.get('/health', async (req: TenantRequest, res) => {
     const report = await buildScanHealthReport(prisma, tenantId);
     return res.json({ data: report });
   } catch (error) {
-    console.error('Error fetching discovery health report:', error);
+    appLogger.error('Error fetching discovery health report:', error);
     return res.status(500).json({ error: { code: 'ERR_500', message: 'Internal server error' } });
   }
 });
@@ -242,7 +243,7 @@ router.post('/seed-demo', async (req: TenantRequest, res) => {
       ...summary,
     });
   } catch (error) {
-    console.error('Error seeding demo data:', error);
+    appLogger.error('Error seeding demo data:', error);
     return res.status(500).json({ error: 'Failed to seed demo data' });
   }
 });

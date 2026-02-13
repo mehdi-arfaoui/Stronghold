@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // BIA Resilience Routes — Auto-generated BIA from graph
 // ============================================================
@@ -77,7 +78,7 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
 
     return res.json(dbReport);
   } catch (error) {
-    console.error('Error generating BIA:', error);
+    appLogger.error('Error generating BIA:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -174,7 +175,7 @@ router.get('/entries', async (req: TenantRequest, res) => {
       tiers: buildTiers(report.processes),
     });
   } catch (error) {
-    console.error('Error fetching BIA entries:', error);
+    appLogger.error('Error fetching BIA entries:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -233,7 +234,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
       tiers,
     });
   } catch (error) {
-    console.error('Error fetching BIA summary:', error);
+    appLogger.error('Error fetching BIA summary:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -273,7 +274,7 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="bia-export.csv"');
     return res.send(header + rows);
   } catch (error) {
-    console.error('Error exporting BIA CSV:', error);
+    appLogger.error('Error exporting BIA CSV:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -308,7 +309,7 @@ router.get('/export/json', async (req: TenantRequest, res) => {
 
     return res.json({ exportedAt: new Date().toISOString(), processes });
   } catch (error) {
-    console.error('Error exporting BIA JSON:', error);
+    appLogger.error('Error exporting BIA JSON:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -348,7 +349,7 @@ router.get('/export/xlsx', async (req: TenantRequest, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="bia-export.xlsx"');
     return res.send(header + rows);
   } catch (error) {
-    console.error('Error exporting BIA XLSX:', error);
+    appLogger.error('Error exporting BIA XLSX:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -400,7 +401,7 @@ router.get('/export/pdf', async (req: TenantRequest, res) => {
     res.setHeader('Content-Disposition', 'attachment; filename="bia-export.pdf"');
     return res.send(Buffer.from(pdfBytes));
   } catch (error) {
-    console.error('Error exporting BIA PDF:', error);
+    appLogger.error('Error exporting BIA PDF:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -423,7 +424,7 @@ router.get('/report', async (req: TenantRequest, res) => {
 
     return res.json(report);
   } catch (error) {
-    console.error('Error fetching BIA report:', error);
+    appLogger.error('Error fetching BIA report:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -462,7 +463,7 @@ router.patch('/processes/:processId', async (req: TenantRequest, res) => {
 
     return res.json(process);
   } catch (error) {
-    console.error('Error updating BIA process:', error);
+    appLogger.error('Error updating BIA process:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -507,7 +508,7 @@ router.post('/validate-all', async (req: TenantRequest, res) => {
 
     return res.json({ validated: report.processes.length });
   } catch (error) {
-    console.error('Error validating BIA:', error);
+    appLogger.error('Error validating BIA:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -549,7 +550,7 @@ router.get('/matrix', async (req: TenantRequest, res) => {
 
     return res.json({ tiers });
   } catch (error) {
-    console.error('Error fetching BIA matrix:', error);
+    appLogger.error('Error fetching BIA matrix:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

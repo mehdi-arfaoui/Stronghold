@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Analysis Resilience Routes — SPOF, redundancy, resilience score
 // ============================================================
@@ -69,7 +70,7 @@ router.post('/', async (req: TenantRequest, res) => {
       cascadeChains: report.cascadeChains.slice(0, 20),
     });
   } catch (error) {
-    console.error('Error running graph analysis:', error);
+    appLogger.error('Error running graph analysis:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -123,7 +124,7 @@ router.get('/nodes/:nodeId', async (req: TenantRequest, res) => {
       } : null,
     });
   } catch (error) {
-    console.error('Error fetching node analysis:', error);
+    appLogger.error('Error fetching node analysis:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -197,7 +198,7 @@ router.get('/score', async (req: TenantRequest, res) => {
       lastCalculated: latest.createdAt.toISOString(),
     });
   } catch (error) {
-    console.error('Error fetching resilience score:', error);
+    appLogger.error('Error fetching resilience score:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -236,7 +237,7 @@ router.get('/spofs', async (req: TenantRequest, res) => {
 
     return res.json(spofs);
   } catch (error) {
-    console.error('Error fetching SPOFs:', error);
+    appLogger.error('Error fetching SPOFs:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -269,7 +270,7 @@ router.get('/redundancy-issues', async (req: TenantRequest, res) => {
     }));
     return res.json(issues);
   } catch (error) {
-    console.error('Error fetching redundancy issues:', error);
+    appLogger.error('Error fetching redundancy issues:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -300,7 +301,7 @@ router.get('/regional-risks', async (req: TenantRequest, res) => {
     }));
     return res.json(risks);
   } catch (error) {
-    console.error('Error fetching regional risks:', error);
+    appLogger.error('Error fetching regional risks:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

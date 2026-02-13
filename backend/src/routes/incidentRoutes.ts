@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import prisma from "../prismaClient.js";
 import { Prisma } from "@prisma/client";
@@ -93,7 +94,7 @@ router.get("/dashboard", async (req: TenantRequest, res) => {
 
     return res.json({ summary, recentIncidents, recentActions });
   } catch (error: any) {
-    console.error("Error fetching incident dashboard", error);
+    appLogger.error("Error fetching incident dashboard", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -112,7 +113,7 @@ router.get("/notification-channels", async (req: TenantRequest, res) => {
 
     return res.json(channels);
   } catch (error: any) {
-    console.error("Error fetching notification channels", error);
+    appLogger.error("Error fetching notification channels", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -150,7 +151,7 @@ router.post(
 
       return res.status(201).json(channel);
     } catch (error: any) {
-      console.error("Error creating notification channel", error);
+      appLogger.error("Error creating notification channel", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -201,7 +202,7 @@ router.patch(
 
       return res.json(updated);
     } catch (error: any) {
-      console.error("Error updating notification channel", error);
+      appLogger.error("Error updating notification channel", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -226,7 +227,7 @@ router.get("/", async (req: TenantRequest, res) => {
 
     return res.json(incidents);
   } catch (error: any) {
-    console.error("Error fetching incidents", error);
+    appLogger.error("Error fetching incidents", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -257,7 +258,7 @@ router.get("/:id", async (req: TenantRequest, res) => {
 
     return res.json(incident);
   } catch (error: any) {
-    console.error("Error fetching incident", error);
+    appLogger.error("Error fetching incident", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -351,7 +352,7 @@ router.post(
 
       return res.status(201).json(incident);
     } catch (error: any) {
-      console.error("Error creating incident", error);
+      appLogger.error("Error creating incident", error);
       if (error?.message?.includes("date de détection")) {
         return res.status(400).json({ error: error.message });
       }
@@ -526,7 +527,7 @@ router.patch(
 
       return res.json(updatedIncident);
     } catch (error: any) {
-      console.error("Error updating incident", error);
+      appLogger.error("Error updating incident", error);
       if (error?.message?.includes("date de détection")) {
         return res.status(400).json({ error: error.message });
       }
@@ -556,7 +557,7 @@ router.get("/:id/actions", async (req: TenantRequest, res) => {
 
     return res.json(actions);
   } catch (error: any) {
-    console.error("Error fetching incident actions", error);
+    appLogger.error("Error fetching incident actions", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -597,7 +598,7 @@ router.post(
 
       return res.status(201).json(action);
     } catch (error: any) {
-      console.error("Error creating incident action", error);
+      appLogger.error("Error creating incident action", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

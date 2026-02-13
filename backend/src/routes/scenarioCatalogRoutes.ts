@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -19,7 +20,7 @@ router.get("/", async (req: TenantRequest, res) => {
     const catalog = await listScenarioCatalog(tenantId);
     return res.json(catalog);
   } catch (error) {
-    console.error("Error fetching scenario catalog:", error);
+    appLogger.error("Error fetching scenario catalog:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -38,7 +39,7 @@ router.post("/sync", requireRole("OPERATOR"), async (req: TenantRequest, res) =>
     const result = await syncScenarioCatalog(tenantId);
     return res.status(200).json(result);
   } catch (error) {
-    console.error("Error syncing scenario catalog:", error);
+    appLogger.error("Error syncing scenario catalog:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });

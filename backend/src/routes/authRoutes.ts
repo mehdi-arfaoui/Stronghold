@@ -6,6 +6,7 @@ import { requireRole } from "../middleware/tenantMiddleware.js";
 import { authProvisionRateLimit, authRateLimit } from "../middleware/rateLimitMiddleware.js";
 import { generateApiKey } from "../services/apiKeyService.js";
 import { decryptSecret, encryptSecret } from "../services/secretVaultService.js";
+import { appLogger } from "../utils/logger.js";
 
 const router = Router();
 
@@ -60,7 +61,7 @@ router.get(
         }))
       );
     } catch (error) {
-      console.error("Error in GET /auth/api-keys:", error);
+      appLogger.error("Error in GET /auth/api-keys:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -107,7 +108,7 @@ router.post(
         vaulted: Boolean(encrypted),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys:", error);
+      appLogger.error("Error in POST /auth/api-keys:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -148,7 +149,7 @@ router.post(
 
       return res.status(200).json(key);
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/:id/review:", error);
+      appLogger.error("Error in POST /auth/api-keys/:id/review:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -209,7 +210,7 @@ router.post(
         revealedAt: new Date(),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/:id/reveal:", error);
+      appLogger.error("Error in POST /auth/api-keys/:id/reveal:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }
@@ -264,7 +265,7 @@ router.post(
         vaulted: Boolean(encrypted),
       });
     } catch (error) {
-      console.error("Error in POST /auth/api-keys/rotate:", error);
+      appLogger.error("Error in POST /auth/api-keys/rotate:", error);
       return res.status(500).json({ error: "Internal server error" });
     }
   }

@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 import { Router } from "express";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
@@ -78,7 +79,7 @@ router.post(
     const updated = await ingestDocumentText(String(documentId), tenantId);
     return res.json(updated);
   } catch (error: any) {
-    console.error("Error in POST /webhooks/n8n/document-ingestion:", error);
+    appLogger.error("Error in POST /webhooks/n8n/document-ingestion:", error);
     return res
       .status(500)
       .json({ error: "Internal server error", details: error?.message });

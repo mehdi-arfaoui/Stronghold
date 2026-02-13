@@ -1,3 +1,4 @@
+import { appLogger } from "../utils/logger.js";
 // ============================================================
 // Landing Zone Resilience Routes — Recovery recommendations
 // ============================================================
@@ -54,7 +55,7 @@ router.get('/', async (req: TenantRequest, res) => {
 
     return res.json(recommendations);
   } catch (error) {
-    console.error('Error generating landing zone recommendations:', error);
+    appLogger.error('Error generating landing zone recommendations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -114,7 +115,7 @@ router.patch('/', async (req: TenantRequest, res) => {
       rejected: updatedRecommendations.filter((r: any) => !r.accepted).length,
     });
   } catch (error) {
-    console.error('Error updating landing zone recommendations:', error);
+    appLogger.error('Error updating landing zone recommendations:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -154,7 +155,7 @@ router.get('/cost-summary', async (req: TenantRequest, res) => {
       totalRecommendations: report.recommendations.length,
     });
   } catch (error) {
-    console.error('Error generating cost summary:', error);
+    appLogger.error('Error generating cost summary:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
