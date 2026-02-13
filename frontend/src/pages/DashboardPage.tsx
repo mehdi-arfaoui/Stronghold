@@ -51,8 +51,21 @@ export function DashboardPage() {
   }
 
   const score = scoreQuery.data;
-  const spofs = spofsQuery.data ?? [];
-  const risks = risksQuery.data ?? [];
+  const spofs = Array.isArray(spofsQuery.data) ? spofsQuery.data : [];
+  const risks = Array.isArray(risksQuery.data) ? risksQuery.data : [];
+
+  if (typeof score?.overall !== 'number') {
+    return (
+      <EmptyState
+        icon={Shield}
+        title="Configuration API invalide"
+        description="Verifiez VITE_API_URL et la cle API en localStorage (stronghold_api_key)."
+        actionLabel="Aller a la decouverte"
+        onAction={() => navigate('/')}
+      />
+    );
+  }
+
   const criticalSpofs = spofs.filter((s) => s.severity === 'critical').length;
 
   return (
