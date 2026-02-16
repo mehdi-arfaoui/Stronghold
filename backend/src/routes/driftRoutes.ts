@@ -10,6 +10,7 @@ import {
   runDriftCheck,
   calculateResilienceScore,
 } from '../drift/driftDetectionService.js';
+import { FinancialEngineService } from '../services/financial-engine.service.js';
 
 const router = Router();
 
@@ -28,6 +29,106 @@ function checkDriftRateLimit(tenantId: string): boolean {
   if (bucket.count >= DRIFT_CHECK_MAX) return false;
   bucket.count++;
   return true;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function firstRecord(...values: unknown[]): Record<string, unknown> {
+  for (const value of values) {
+    const record = asRecord(value);
+    if (Object.keys(record).length > 0) return record;
+  }
+  return {};
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  if (typeof value === 'boolean') return value;
+  return undefined;
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return undefined;
+}
+
+function deriveDriftStates(
+  event: {
+    type: string;
+    description: string;
+    affectsSPOF: boolean;
+    affectsRTO: boolean;
+  },
+  details: Record<string, unknown>,
+  costPerHour: number,
+) {
+  const previousDetails = firstRecord(
+    details.previousState,
+    details.previous,
+    details.before,
+    details.oldValue,
+  );
+  const currentDetails = firstRecord(
+    details.currentState,
+    details.current,
+    details.after,
+    details.newValue,
+  );
+
+  const previousState = {
+    isSPOF: asBoolean(previousDetails.isSPOF) ?? false,
+    hasRedundancy: asBoolean(previousDetails.hasRedundancy) ?? true,
+    rtoMinutes: asNumber(previousDetails.rtoMinutes) ?? asNumber(details.previousRTO) ?? 120,
+    rpoMinutes: asNumber(previousDetails.rpoMinutes) ?? asNumber(details.previousRPO) ?? 60,
+    inPRARegion: asBoolean(previousDetails.inPRARegion) ?? true,
+    inBIA: asBoolean(previousDetails.inBIA) ?? true,
+    hasBackup: asBoolean(previousDetails.hasBackup) ?? true,
+    costPerHour,
+  };
+
+  const currentState = {
+    isSPOF: asBoolean(currentDetails.isSPOF) ?? previousState.isSPOF,
+    hasRedundancy: asBoolean(currentDetails.hasRedundancy) ?? previousState.hasRedundancy,
+    rtoMinutes: asNumber(currentDetails.rtoMinutes) ?? asNumber(details.currentRTO) ?? previousState.rtoMinutes,
+    rpoMinutes: asNumber(currentDetails.rpoMinutes) ?? asNumber(details.currentRPO) ?? previousState.rpoMinutes,
+    inPRARegion: asBoolean(currentDetails.inPRARegion) ?? previousState.inPRARegion,
+    inBIA: asBoolean(currentDetails.inBIA) ?? previousState.inBIA,
+    hasBackup: asBoolean(currentDetails.hasBackup) ?? previousState.hasBackup,
+    costPerHour,
+  };
+
+  if (event.type === 'node_added') {
+    currentState.inBIA = false;
+  }
+
+  if (event.type === 'node_removed' || event.type === 'edge_removed') {
+    currentState.hasRedundancy = false;
+  }
+
+  if (event.affectsSPOF || event.description.toLowerCase().includes('spof')) {
+    currentState.isSPOF = true;
+    currentState.hasRedundancy = false;
+  }
+
+  if (event.affectsRTO) {
+    currentState.rtoMinutes = Math.max(currentState.rtoMinutes ?? 120, (previousState.rtoMinutes ?? 120) + 60);
+  }
+
+  if (event.description.toLowerCase().includes('region') || event.description.toLowerCase().includes('concentration')) {
+    currentState.inPRARegion = false;
+  }
+
+  if (event.description.toLowerCase().includes('backup')) {
+    currentState.hasBackup = false;
+  }
+
+  return { previousState, currentState };
 }
 
 // ─── POST /drift/check — Launch immediate drift check ──────────
@@ -75,6 +176,90 @@ router.get('/events', async (req: TenantRequest, res) => {
       include: { snapshot: { select: { id: true, capturedAt: true, nodeCount: true, edgeCount: true } } },
     });
 
+    const nodeIds = Array.from(new Set(events.map((event) => event.nodeId).filter(Boolean))) as string[];
+    const [profile, nodes, overrides] = await Promise.all([
+      prisma.organizationProfile.findUnique({ where: { tenantId } }),
+      nodeIds.length > 0
+        ? prisma.infraNode.findMany({
+            where: { tenantId, id: { in: nodeIds } },
+            include: { inEdges: true, outEdges: true },
+          })
+        : Promise.resolve([]),
+      nodeIds.length > 0
+        ? prisma.nodeFinancialOverride.findMany({
+            where: { tenantId, nodeId: { in: nodeIds } },
+          })
+        : Promise.resolve([]),
+    ]);
+    const nodeById = new Map(nodes.map((node) => [node.id, node]));
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+
+    const enrichedEvents = events.map((event) => {
+      let costPerHour = 500;
+      if (event.nodeId) {
+        const node = nodeById.get(event.nodeId);
+        if (node) {
+          const override = overrideByNodeId.get(node.id);
+          const impact = FinancialEngineService.calculateNodeFinancialImpact(
+            {
+              id: node.id,
+              name: node.name,
+              type: node.type,
+              provider: node.provider,
+              region: node.region,
+              isSPOF: node.isSPOF,
+              criticalityScore: node.criticalityScore,
+              redundancyScore: node.redundancyScore,
+              impactCategory: node.impactCategory,
+              suggestedRTO: node.suggestedRTO,
+              validatedRTO: node.validatedRTO,
+              suggestedRPO: node.suggestedRPO,
+              validatedRPO: node.validatedRPO,
+              suggestedMTPD: node.suggestedMTPD,
+              validatedMTPD: node.validatedMTPD,
+              dependentsCount: node.inEdges.length,
+              inEdges: node.inEdges,
+              outEdges: node.outEdges,
+            },
+            profile,
+            override ? { customCostPerHour: override.customCostPerHour } : undefined,
+          );
+          costPerHour = impact.estimatedCostPerHour;
+        }
+      }
+
+      const details = asRecord(event.details);
+      const { previousState, currentState } = deriveDriftStates(
+        {
+          type: event.type,
+          description: event.description,
+          affectsSPOF: event.affectsSPOF,
+          affectsRTO: event.affectsRTO,
+        },
+        details,
+        costPerHour,
+      );
+
+      const financialImpact = FinancialEngineService.calculateDriftFinancialImpact(
+        {
+          id: event.id,
+          type: event.type,
+          severity: event.severity,
+          description: event.description,
+          details: event.details,
+          affectsSPOF: event.affectsSPOF,
+          affectsRTO: event.affectsRTO,
+        },
+        previousState,
+        currentState,
+      );
+
+      return {
+        ...event,
+        financialImpact,
+      };
+    });
+
     const counts = await prisma.driftEvent.groupBy({
       by: ['status'],
       where: { tenantId },
@@ -88,7 +273,7 @@ router.get('/events', async (req: TenantRequest, res) => {
     });
 
     return res.json({
-      events,
+      events: enrichedEvents,
       summary: {
         byStatus: Object.fromEntries(counts.map(c => [c.status, c._count])),
         bySeverity: Object.fromEntries(severityCounts.map(c => [c.severity, c._count])),

@@ -119,15 +119,25 @@ export function runSimulation(
   const totalOutageCount = cascade.filter(c => c.status === 'down').length + affectedNodeIds.length;
   const degradedCount = cascade.filter(c => c.status === 'degraded').length;
 
-  // Estimate financial loss
-  const financialLoss = businessImpact.reduce(
-    (sum, s) => sum + s.financialImpactPerHour, 0
-  );
-
   // Estimate downtime based on worst-case RTO
   const maxRTO = businessImpact.length > 0
     ? Math.max(...businessImpact.map(s => s.estimatedRTO))
     : 60;
+
+  // Scenario total cost = sum(impacted nodes hourly cost) x estimated downtime (hours).
+  // This follows the financial model shown in Simulation/War Room.
+  const impactedNodeIdsForCost = new Set<string>([
+    ...affectedNodeIds,
+    ...cascade.map((node) => node.id),
+  ]);
+  const hourlyLoss = Array.from(impactedNodeIdsForCost).reduce((sum, nodeId) => {
+    if (!simGraph.hasNode(nodeId)) return sum;
+    const attrs = simGraph.getNodeAttributes(nodeId) as InfraNodeAttrs;
+    const nodeHourlyCost = Number(attrs.financialImpactPerHour);
+    return sum + (Number.isFinite(nodeHourlyCost) && nodeHourlyCost > 0 ? nodeHourlyCost : 200);
+  }, 0);
+  const estimatedDowntimeHours = Math.max(maxRTO / 60, 1);
+  const financialLoss = Math.round(hourlyLoss * estimatedDowntimeHours);
 
   // 6. Build blast-radius/war-room data and recommendations
   const blastRadiusMetrics = buildBlastRadiusMetrics(totalAffected, totalNodes, businessImpact, maxRTO, cascade);

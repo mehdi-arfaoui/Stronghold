@@ -17,6 +17,7 @@ import { OnboardingPage } from '@/pages/OnboardingPage';
 import { LoginPage } from '@/pages/LoginPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { DriftDetectionPage } from '@/pages/DriftDetectionPage';
+import { FinancialDashboardPage } from '@/pages/FinancialDashboardPage';
 import { useUIStore } from '@/stores/ui.store';
 import { useEffect } from 'react';
 
@@ -46,6 +47,7 @@ const router = createBrowserRouter([
       { path: '/settings', element: <SettingsPage /> },
       { path: '/knowledge-base', element: <KnowledgeBasePage /> },
       { path: '/drift', element: <DriftDetectionPage /> },
+      { path: '/finance', element: <FinancialDashboardPage /> },
     ],
   },
   { path: '/login', element: <LoginPage /> },

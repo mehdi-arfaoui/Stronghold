@@ -12,6 +12,16 @@ interface SimulationResultProps {
 export function SimulationResult({ result }: SimulationResultProps) {
   return (
     <div className="space-y-6">
+      <Card className="border-severity-critical/30 bg-severity-critical/5">
+        <CardContent className="p-6">
+          <p className="text-xs uppercase tracking-wide text-muted-foreground">Cout total estime du scenario</p>
+          <p className="mt-2 text-3xl font-bold text-severity-critical">{formatCurrency(result.financialLoss ?? 0)}</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Somme des noeuds impactes x cout/h x duree estimee de l incident.
+          </p>
+        </CardContent>
+      </Card>
+
       {/* Impact metrics */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <MetricCard label="Noeuds down" value={result.nodesDown ?? 0} variant="critical" />

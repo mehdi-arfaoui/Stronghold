@@ -14,6 +14,7 @@ import {
   Shield,
   ChevronLeft,
   Activity,
+  CircleDollarSign,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,9 @@ const NAV_SECTIONS: NavSection[] = [
       { label: 'Decouverte', icon: Radar, path: '/discovery' },
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
       { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
+      { label: 'Plans & Exercices', icon: ClipboardCheck, path: '/exercises' },
       { label: 'Recommandations', icon: Lightbulb, path: '/recommendations' },
+      { label: 'ROI & Finance', icon: CircleDollarSign, path: '/finance' },
       { label: 'Drift Detection', icon: Activity, path: '/drift' },
       { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
     ],
@@ -49,7 +52,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Operations',
     items: [
-      { label: 'Exercices', icon: ClipboardCheck, path: '/exercises' },
       { label: 'Incidents', icon: AlertTriangle, path: '/incidents' },
       { label: 'Documents', icon: FileText, path: '/documents' },
     ],

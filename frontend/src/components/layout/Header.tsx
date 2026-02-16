@@ -18,7 +18,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/analysis': 'Analyse & BIA',
   '/simulations': 'Simulations',
   '/recommendations': 'Recommandations',
-  '/exercises': 'Exercices',
+  '/exercises': 'Plans & Exercices',
   '/incidents': 'Incidents',
   '/documents': 'Documents',
   '/report': 'Rapport PRA/PCA',
