@@ -30,6 +30,15 @@ export interface BIAEntry {
   effectiveMtpd?: number;
   validated: boolean;
   financialImpactPerHour?: number;
+  financialConfidence?: 'user_defined' | 'estimated' | 'low_confidence';
+  financialSources?: string[];
+  financialIsOverride?: boolean;
+  financialOverride?: {
+    customCostPerHour: number;
+    justification?: string | null;
+    validatedBy?: string | null;
+    validatedAt?: string | null;
+  } | null;
   dependencies: string[];
 }
 

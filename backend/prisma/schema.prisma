@@ -1,5 +1,5 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native"]
 }
 
@@ -16,66 +16,66 @@ model Tenant {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  apiKeys                       ApiKey[]
-  services                      Service[]
-  infraComponents               InfraComponent[]
-  scenarios                     Scenario[]
-  scenarioCatalogs              ScenarioCatalog[]
-  runbookSteps                  RunbookStep[]
-  scenarioServices              ScenarioService[]
-  ServiceDependency             ServiceDependency[]
-  ServiceInfraLink              ServiceInfraLink[]
-  documents                     Document[]
-  extractedFacts                ExtractedFact[]
-  aiExtractionErrors            AiExtractionError[]
-  documentExtractionSuggestions DocumentExtractionSuggestion[]
-  documentSensitivityReports    DocumentSensitivityReport[]
+  apiKeys                         ApiKey[]
+  services                        Service[]
+  infraComponents                 InfraComponent[]
+  scenarios                       Scenario[]
+  scenarioCatalogs                ScenarioCatalog[]
+  runbookSteps                    RunbookStep[]
+  scenarioServices                ScenarioService[]
+  ServiceDependency               ServiceDependency[]
+  ServiceInfraLink                ServiceInfraLink[]
+  documents                       Document[]
+  extractedFacts                  ExtractedFact[]
+  aiExtractionErrors              AiExtractionError[]
+  documentExtractionSuggestions   DocumentExtractionSuggestion[]
+  documentSensitivityReports      DocumentSensitivityReport[]
   documentClassificationFeedbacks DocumentClassificationFeedback[]
-  entityFeedbacks               EntityFeedback[]
-  recommendationFeedbacks       RecommendationFeedback[]
-  userFeedbacks                 UserFeedback[]
-  ragExperimentAssignments      RagExperimentAssignment[]
-  ragExperimentFeedbacks        RagExperimentFeedback[]
-  ragTuningConfigs              RagTuningConfig[]
-  mlTrainingRuns                MlTrainingRun[]
-  backupStrategies              BackupStrategy[]
-  securityPolicies              SecurityPolicy[]
-  policyLinks                   SecurityPolicyService[]
-  dependencyCycles              DependencyCycle[]
-  dependencyCycleLinks          DependencyCycleService[]
-  runbooks                      Runbook[]
-  auditLogs                     AuditLog[]
-  businessProcesses             BusinessProcess[]
-  businessProcessLinks          BusinessProcessService[]
-  exerciseEvidence              ExerciseEvidence[]
+  entityFeedbacks                 EntityFeedback[]
+  recommendationFeedbacks         RecommendationFeedback[]
+  userFeedbacks                   UserFeedback[]
+  ragExperimentAssignments        RagExperimentAssignment[]
+  ragExperimentFeedbacks          RagExperimentFeedback[]
+  ragTuningConfigs                RagTuningConfig[]
+  mlTrainingRuns                  MlTrainingRun[]
+  backupStrategies                BackupStrategy[]
+  securityPolicies                SecurityPolicy[]
+  policyLinks                     SecurityPolicyService[]
+  dependencyCycles                DependencyCycle[]
+  dependencyCycleLinks            DependencyCycleService[]
+  runbooks                        Runbook[]
+  auditLogs                       AuditLog[]
+  businessProcesses               BusinessProcess[]
+  businessProcessLinks            BusinessProcessService[]
+  exerciseEvidence                ExerciseEvidence[]
 
-  RunbookTemplate        RunbookTemplate[]
-  incidents              Incident[]
-  incidentActions        IncidentAction[]
-  incidentServices       IncidentService[]
-  incidentDocuments      IncidentDocument[]
-  exercises              Exercise[]
-  notificationChannels   NotificationChannel[]
-  risks                  Risk[]
-  riskMitigations        RiskMitigation[]
-  exerciseRunbooks       ExerciseRunbook[]
-  exerciseChecklistItems ExerciseChecklistItem[]
-  exerciseResults        ExerciseResult[]
-  exerciseAnalyses       ExerciseAnalysis[]
-  exerciseSimulations    ExerciseSimulation[]
-  cyberExercises         CyberExercise[]
-  discoveryJobs          DiscoveryJob[]
-  discoveryScanAudits    DiscoveryScanAudit[]
-  discoveryResources     DiscoveryResource[]
+  RunbookTemplate          RunbookTemplate[]
+  incidents                Incident[]
+  incidentActions          IncidentAction[]
+  incidentServices         IncidentService[]
+  incidentDocuments        IncidentDocument[]
+  exercises                Exercise[]
+  notificationChannels     NotificationChannel[]
+  risks                    Risk[]
+  riskMitigations          RiskMitigation[]
+  exerciseRunbooks         ExerciseRunbook[]
+  exerciseChecklistItems   ExerciseChecklistItem[]
+  exerciseResults          ExerciseResult[]
+  exerciseAnalyses         ExerciseAnalysis[]
+  exerciseSimulations      ExerciseSimulation[]
+  cyberExercises           CyberExercise[]
+  discoveryJobs            DiscoveryJob[]
+  discoveryScanAudits      DiscoveryScanAudit[]
+  discoveryResources       DiscoveryResource[]
   discoveryResourceMatches DiscoveryResourceMatch[]
-  discoverySchedules     DiscoverySchedule[]
-  discoveryFlows         DiscoveryFlow[]
+  discoverySchedules       DiscoverySchedule[]
+  discoveryFlows           DiscoveryFlow[]
   discoveryResourceChanges DiscoveryResourceChange[]
-  discoveredResources    DiscoveredResource[]
-  discoveryHistory       DiscoveryHistory[]
-  vulnerabilities            Vulnerability[]
-  branding               TenantBranding?
-  license                License?
+  discoveredResources      DiscoveredResource[]
+  discoveryHistory         DiscoveryHistory[]
+  vulnerabilities          Vulnerability[]
+  branding                 TenantBranding?
+  license                  License?
 
   // Resilience platform
   infraNodes             InfraNode[]
@@ -85,23 +85,27 @@ model Tenant {
   simulations            Simulation[]
   scanJobs               ScanJob[]
   scanSchedules          ScanSchedule[]
+  organizationProfile    OrganizationProfile?
+  nodeFinancialOverrides NodeFinancialOverride[]
+  remediationTasks       RemediationTask[]
+  praExercises           PRAExercise[]
 
   // Drift detection
-  infraSnapshots         InfraSnapshot[]
-  driftEvents            DriftEvent[]
-  driftSchedule          DriftSchedule?
+  infraSnapshots InfraSnapshot[]
+  driftEvents    DriftEvent[]
+  driftSchedule  DriftSchedule?
 }
 
 model TenantBranding {
-  id            String  @id @default(cuid())
-  tenantId      String  @unique
-  tenant        Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  logoUrl       String?
-  primaryColor  String?
+  id             String   @id @default(cuid())
+  tenantId       String   @unique
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  logoUrl        String?
+  primaryColor   String?
   secondaryColor String?
-  accentColor   String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  accentColor    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Service {
@@ -132,7 +136,7 @@ model Service {
   vulnerabilities      Vulnerability[]
   businessProcessLinks BusinessProcessService[]
   incidentServices     IncidentService[]
-  discoveredResources DiscoveredResource[] @relation("DiscoveredResourceService")
+  discoveredResources  DiscoveredResource[]     @relation("DiscoveredResourceService")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,11 +159,11 @@ model Risk {
   serviceId String?
   service   Service? @relation(fields: [serviceId], references: [id], onDelete: SetNull)
 
-  mitigations  RiskMitigation[]
-  nodeLinks    RiskNodeLink[]
+  mitigations RiskMitigation[]
+  nodeLinks   RiskNodeLink[]
 
-  autoDetected      Boolean  @default(false)
-  detectionMethod   String?
+  autoDetected    Boolean @default(false)
+  detectionMethod String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -188,33 +192,33 @@ model Vulnerability {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  serviceId String
-  service   Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  serviceId  String
+  service    Service             @relation(fields: [serviceId], references: [id], onDelete: Cascade)
   resourceId String?
   resource   DiscoveredResource? @relation(fields: [resourceId], references: [id], onDelete: SetNull)
 
-  fingerprint   String
-  cveId         String
-  source        String?
-  summary       String?
-  severityScore Float
-  severityLabel String
-  packageName   String?
+  fingerprint    String
+  cveId          String
+  source         String?
+  summary        String?
+  severityScore  Float
+  severityLabel  String
+  packageName    String?
   packageVersion String?
-  fixedVersion  String?
-  references    Json?
-  remediation   Json?
-  status        String @default("open")
-  metadata      Json?
+  fixedVersion   String?
+  references     Json?
+  remediation    Json?
+  status         String  @default("open")
+  metadata       Json?
 
   discoveredAt DateTime @default(now())
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  @@unique([tenantId, fingerprint])
   @@index([tenantId, serviceId])
   @@index([tenantId, resourceId])
   @@index([tenantId, cveId])
-  @@unique([tenantId, fingerprint])
 }
 
 model BusinessProcess {
@@ -306,7 +310,7 @@ model InfraComponent {
   isSingleAz  Boolean @default(false)
   notes       String?
 
-  services ServiceInfraLink[]
+  services            ServiceInfraLink[]
   discoveredResources DiscoveredResource[] @relation("DiscoveredResourceInfra")
 
   createdAt DateTime @default(now())
@@ -356,17 +360,17 @@ model ScenarioCatalog {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  sourceKey String
-  name      String
-  type      String
+  sourceKey      String
+  name           String
+  type           String
   description    String?
   impactLevel    String?
   rtoTargetHours Int?
 
-  recoveryStrategy     String
-  estimatedCostLevel   String?
-  estimatedCostMin     Float?
-  estimatedCostMax     Float?
+  recoveryStrategy      String
+  estimatedCostLevel    String?
+  estimatedCostMin      Float?
+  estimatedCostMax      Float?
   estimatedCostCurrency String?
 
   scenarios Scenario[]
@@ -438,26 +442,26 @@ model Document {
   protectionStatus        String    @default("NONE")
 
   // Extraction de texte
-  extractionStatus String  @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
-  extractionError  String?
-  textContent      String? // texte brut extrait (legacy, chiffré de préférence)
+  extractionStatus      String    @default("PENDING") // PENDING, SUCCESS, FAILED, UNSUPPORTED
+  extractionError       String?
+  textContent           String? // texte brut extrait (legacy, chiffré de préférence)
   textContentCiphertext String?
   textContentIv         String?
   textContentTag        String?
-  ocrStatus        String? @default("NOT_REQUIRED") // NOT_REQUIRED, SKIPPED, SUCCESS, FAILED, DISABLED
-  ocrProvider      String? // TESSERACT, AWS_TEXTRACT
-  ocrStartedAt     DateTime?
-  ocrCompletedAt   DateTime?
+  ocrStatus             String?   @default("NOT_REQUIRED") // NOT_REQUIRED, SKIPPED, SUCCESS, FAILED, DISABLED
+  ocrProvider           String? // TESSERACT, AWS_TEXTRACT
+  ocrStartedAt          DateTime?
+  ocrCompletedAt        DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  extractedFacts        ExtractedFact[]
-  aiExtractionErrors    AiExtractionError[]
-  extractionSuggestions DocumentExtractionSuggestion[]
-  exerciseEvidence      ExerciseEvidence[]
-  incidentDocuments     IncidentDocument[]
-  sensitivityReport     DocumentSensitivityReport?
+  extractedFacts          ExtractedFact[]
+  aiExtractionErrors      AiExtractionError[]
+  extractionSuggestions   DocumentExtractionSuggestion[]
+  exerciseEvidence        ExerciseEvidence[]
+  incidentDocuments       IncidentDocument[]
+  sensitivityReport       DocumentSensitivityReport?
   classificationFeedbacks DocumentClassificationFeedback[]
 
   @@unique([tenantId, textHash])
@@ -558,12 +562,23 @@ model Runbook {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  scenarioId String?
-  scenario   Scenario? @relation(fields: [scenarioId], references: [id])
+  scenarioId       String?
+  scenario         Scenario?   @relation(fields: [scenarioId], references: [id])
+  simulationId     String?
+  simulation       Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+  recommendationId String?
 
   title                String
-  status               String           @default("DRAFT")
+  description          String?
+  status               String           @default("draft")
   summary              String?
+  steps                Json?
+  responsible          String?
+  accountable          String?
+  consulted            String?
+  informed             String?
+  lastTestedAt         DateTime?
+  testResult           String?
   markdownPath         String?
   pdfPath              String?
   docxPath             String?
@@ -575,6 +590,73 @@ model Runbook {
   updatedAt            DateTime         @updatedAt
 
   exerciseRunbooks ExerciseRunbook[]
+  praExercises     PRAExercise[]
+
+  @@index([tenantId])
+  @@index([simulationId])
+  @@index([tenantId, status])
+}
+
+model RemediationTask {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title            String
+  description      String?
+  recommendationId String
+
+  status      String    @default("todo")
+  priority    String    @default("medium")
+  assignee    String?
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  estimatedCost Float?
+  actualCost    Float?
+  riskReduction Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([tenantId, priority])
+  @@index([recommendationId])
+}
+
+model PRAExercise {
+  id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  title        String
+  description  String?
+  runbookId    String?
+  runbook      Runbook?    @relation(fields: [runbookId], references: [id], onDelete: SetNull)
+  simulationId String?
+  simulation   Simulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+
+  scheduledAt DateTime
+  executedAt  DateTime?
+  duration    Int?
+
+  status    String  @default("planned")
+  outcome   String?
+  actualRTO Int?
+  actualRPO Int?
+  findings  Json?
+
+  predictedRTO Int?
+  predictedRPO Int?
+  deviationRTO Int?
+  deviationRPO Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, status])
+  @@index([runbookId])
+  @@index([simulationId])
 }
 
 model RunbookTemplate {
@@ -709,7 +791,7 @@ model ExerciseSimulation {
 
   simulator     String
   connectorType String?
-  status        String @default("COMPLETED")
+  status        String    @default("COMPLETED")
   configuration Json
   results       Json
   startedAt     DateTime?
@@ -726,8 +808,8 @@ model CyberExercise {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  scenarioId  String
-  date        DateTime
+  scenarioId   String
+  date         DateTime
   participants Json
   results      Json
   runbook      Json?
@@ -950,7 +1032,7 @@ model MlTrainingRun {
 
   status                   String
   trigger                  String
-  startedAt                DateTime @default(now())
+  startedAt                DateTime  @default(now())
   completedAt              DateTime?
   classificationSampleSize Int?
   entitySampleSize         Int?
@@ -1066,27 +1148,27 @@ model ApiKey {
   tenantId String
   tenant   Tenant @relation(fields: [tenantId], references: [id])
 
-  label         String?
-  keyHash       String    @unique
-  keyCiphertext String?
-  keyIv         String?
-  keyTag        String?
-  keyAlgorithm  String?
-  role          ApiRole   @default(OPERATOR)
-  lastUsedAt    DateTime?
+  label          String?
+  keyHash        String    @unique
+  keyCiphertext  String?
+  keyIv          String?
+  keyTag         String?
+  keyAlgorithm   String?
+  role           ApiRole   @default(OPERATOR)
+  lastUsedAt     DateTime?
   lastReviewedAt DateTime?
-  expiresAt     DateTime?
-  revokedAt     DateTime?
-  keyRevealedAt DateTime?
-  rotatedFromId String?
-  rotatedFrom   ApiKey?   @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
-  rotatedTo     ApiKey[]  @relation("ApiKeyRotation")
+  expiresAt      DateTime?
+  revokedAt      DateTime?
+  keyRevealedAt  DateTime?
+  rotatedFromId  String?
+  rotatedFrom    ApiKey?   @relation("ApiKeyRotation", fields: [rotatedFromId], references: [id])
+  rotatedTo      ApiKey[]  @relation("ApiKeyRotation")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  auditLogs AuditLog[]
-  discoveryJobs DiscoveryJob[]
+  auditLogs           AuditLog[]
+  discoveryJobs       DiscoveryJob[]
   discoveryScanAudits DiscoveryScanAudit[]
 }
 
@@ -1117,12 +1199,12 @@ model DiscoveryJob {
 
   status   String
   jobType  String
-  progress Int    @default(0)
+  progress Int     @default(0)
   step     String?
 
-  parameters     String?
-  resultSummary  String?
-  errorMessage   String?
+  parameters    String?
+  resultSummary String?
+  errorMessage  String?
 
   credentialsCiphertext String?
   credentialsIv         String?
@@ -1137,11 +1219,11 @@ model DiscoveryJob {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  auditLogs DiscoveryScanAudit[]
+  auditLogs          DiscoveryScanAudit[]
   discoveryResources DiscoveryResource[]
-  discoveryFlows DiscoveryFlow[]
-  resourceChanges DiscoveryResourceChange[]
-  historyEntries DiscoveryHistory[]
+  discoveryFlows     DiscoveryFlow[]
+  resourceChanges    DiscoveryResourceChange[]
+  historyEntries     DiscoveryHistory[]
 }
 
 model DiscoveryScanAudit {
@@ -1168,15 +1250,15 @@ model DiscoveryResource {
   jobId String?
   job   DiscoveryJob? @relation(fields: [jobId], references: [id])
 
-  source     String
-  externalId String
-  name       String
-  kind       String
-  type       String
-  ip         String?
-  hostname   String?
-  tags       Json?
-  metadata   Json?
+  source      String
+  externalId  String
+  name        String
+  kind        String
+  type        String
+  ip          String?
+  hostname    String?
+  tags        Json?
+  metadata    Json?
   fingerprint String
 
   discoveredAt DateTime @default(now())
@@ -1184,8 +1266,8 @@ model DiscoveryResource {
   updatedAt    DateTime @updatedAt
 
   matches     DiscoveryResourceMatch[]
-  flowSources DiscoveryFlow[] @relation("DiscoveryFlowSource")
-  flowTargets DiscoveryFlow[] @relation("DiscoveryFlowTarget")
+  flowSources DiscoveryFlow[]          @relation("DiscoveryFlowSource")
+  flowTargets DiscoveryFlow[]          @relation("DiscoveryFlowTarget")
 
   @@index([tenantId, externalId])
   @@index([tenantId, ip])
@@ -1247,7 +1329,7 @@ model DiscoverySchedule {
   scheduleConfig Json
   nextRunAt      DateTime
   lastRunAt      DateTime?
-  active         Boolean @default(true)
+  active         Boolean   @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1267,13 +1349,13 @@ model DiscoveryFlow {
   targetResourceId String?
   targetResource   DiscoveryResource? @relation("DiscoveryFlowTarget", fields: [targetResourceId], references: [id])
 
-  sourceIp String?
-  targetIp String?
+  sourceIp   String?
+  targetIp   String?
   sourcePort Int?
   targetPort Int?
-  protocol  String?
-  bytes     Int?
-  packets   Int?
+  protocol   String?
+  bytes      Int?
+  packets    Int?
   observedAt DateTime @default(now())
 
   createdAt DateTime @default(now())
@@ -1297,9 +1379,9 @@ model DiscoveredResource {
   metadata   Json?
 
   serviceId String?
-  service   Service? @relation("DiscoveredResourceService", fields: [serviceId], references: [id], onDelete: SetNull)
-  infraId String?
-  infra   InfraComponent? @relation("DiscoveredResourceInfra", fields: [infraId], references: [id], onDelete: SetNull)
+  service   Service?        @relation("DiscoveredResourceService", fields: [serviceId], references: [id], onDelete: SetNull)
+  infraId   String?
+  infra     InfraComponent? @relation("DiscoveredResourceInfra", fields: [infraId], references: [id], onDelete: SetNull)
 
   firstSeenAt DateTime @default(now())
   lastSeenAt  DateTime @default(now())
@@ -1325,9 +1407,9 @@ model DiscoveryHistory {
   status  String
   jobType String?
 
-  startedAt   DateTime?
-  completedAt DateTime?
-  summary     Json?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  summary      Json?
   errorMessage String?
 
   createdAt DateTime @default(now())
@@ -1355,52 +1437,52 @@ enum LicenseStatus {
 }
 
 model License {
-  id            String        @id @default(cuid())
-  tenantId      String        @unique
-  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   // Plan et statut
-  plan          PlanType      @default(STARTER)
-  status        LicenseStatus @default(ACTIVE)
+  plan   PlanType      @default(STARTER)
+  status LicenseStatus @default(ACTIVE)
 
   // Validité
-  issuedAt      DateTime      @default(now())
-  startsAt      DateTime      @default(now())
+  issuedAt      DateTime  @default(now())
+  startsAt      DateTime  @default(now())
   expiresAt     DateTime?
   lastCheckedAt DateTime?
   metadata      Json?
 
   // Quotas
-  maxUsers      Int           @default(5)
-  maxStorage    BigInt        @default(1073741824)  // 1 GB
-  maxScansMonth Int           @default(100)
-  maxDocuments  Int           @default(500)
+  maxUsers      Int    @default(5)
+  maxStorage    BigInt @default(1073741824) // 1 GB
+  maxScansMonth Int    @default(100)
+  maxDocuments  Int    @default(500)
 
   // Features activées (array de strings)
-  features      String[]      @default(["discovery", "inventory"])
+  features String[] @default(["discovery", "inventory"])
 
   // Timestamps
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  usage         LicenseUsage?
+  usage LicenseUsage?
 }
 
 model LicenseUsage {
-  id              String   @id @default(cuid())
-  licenseId       String   @unique
-  license         License  @relation(fields: [licenseId], references: [id], onDelete: Cascade)
+  id        String  @id @default(cuid())
+  licenseId String  @unique
+  license   License @relation(fields: [licenseId], references: [id], onDelete: Cascade)
 
   // Compteurs actuels
-  currentUsers    Int      @default(0)
-  currentStorage  BigInt   @default(0)
-  scansThisMonth  Int      @default(0)
-  documentsCount  Int      @default(0)
+  currentUsers   Int    @default(0)
+  currentStorage BigInt @default(0)
+  scansThisMonth Int    @default(0)
+  documentsCount Int    @default(0)
 
   // Reset mensuel
-  lastResetAt     DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  lastResetAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ============================================================
@@ -1408,21 +1490,21 @@ model LicenseUsage {
 // ============================================================
 
 model InfraNode {
-  id               String   @id @default(cuid())
+  id               String  @id @default(cuid())
   externalId       String?
   name             String
   type             String
   provider         String
   region           String?
   availabilityZone String?
-  tags             Json     @default("{}")
-  metadata         Json     @default("{}")
+  tags             Json    @default("{}")
+  metadata         Json    @default("{}")
 
   // Computed scores (filled by GraphAnalysisEngine)
   criticalityScore      Float?
   redundancyScore       Float?
   blastRadius           Int?
-  isSPOF                Boolean  @default(false)
+  isSPOF                Boolean @default(false)
   betweennessCentrality Float?
 
   // BIA (filled by BIAEngine)
@@ -1436,16 +1518,17 @@ model InfraNode {
   financialImpactPerHour Float?
 
   // Relations
-  outEdges         InfraEdge[]    @relation("SourceEdges")
-  inEdges          InfraEdge[]    @relation("TargetEdges")
-  riskLinks        RiskNodeLink[]
+  outEdges           InfraEdge[]             @relation("SourceEdges")
+  inEdges            InfraEdge[]             @relation("TargetEdges")
+  riskLinks          RiskNodeLink[]
+  financialOverrides NodeFinancialOverride[]
 
   // Tenant & audit
-  tenantId         String
-  tenant           Tenant         @relation(fields: [tenantId], references: [id])
-  lastSeenAt       DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id])
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([tenantId, externalId])
   @@index([tenantId])
@@ -1453,122 +1536,166 @@ model InfraNode {
   @@index([provider, region])
 }
 
+model OrganizationProfile {
+  id       String @id @default(cuid())
+  tenantId String @unique
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  // Taille et secteur (pour les estimations)
+  sizeCategory     String  @default("midMarket")
+  verticalSector   String?
+  employeeCount    Int?
+  annualRevenueUSD Float?
+
+  // Overrides financiers (l'utilisateur remplace les estimations)
+  customDowntimeCostPerHour Float?
+  customCurrency            String @default("EUR")
+
+  // Abonnement Stronghold (pour le calcul ROI)
+  strongholdPlanId      String?
+  strongholdMonthlyCost Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model NodeFinancialOverride {
+  id       String    @id @default(cuid())
+  nodeId   String
+  tenantId String
+  node     InfraNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  customCostPerHour Float
+  justification     String?
+  validatedBy       String?
+  validatedAt       DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([nodeId, tenantId])
+  @@index([tenantId])
+}
+
 model InfraEdge {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   sourceId        String
   targetId        String
   type            String
-  confidence      Float    @default(1.0)
+  confidence      Float   @default(1.0)
   inferenceMethod String?
-  confirmed       Boolean  @default(false)
-  metadata        Json     @default("{}")
+  confirmed       Boolean @default(false)
+  metadata        Json    @default("{}")
 
-  source          InfraNode @relation("SourceEdges", fields: [sourceId], references: [id], onDelete: Cascade)
-  target          InfraNode @relation("TargetEdges", fields: [targetId], references: [id], onDelete: Cascade)
+  source InfraNode @relation("SourceEdges", fields: [sourceId], references: [id], onDelete: Cascade)
+  target InfraNode @relation("TargetEdges", fields: [targetId], references: [id], onDelete: Cascade)
 
-  tenantId        String
-  createdAt       DateTime @default(now())
+  tenantId  String
+  createdAt DateTime @default(now())
 
   @@unique([sourceId, targetId, type])
   @@index([tenantId])
 }
 
 model GraphAnalysis {
-  id              String   @id @default(cuid())
+  id              String @id @default(cuid())
   resilienceScore Int
   totalNodes      Int
   totalEdges      Int
   spofCount       Int
   report          Json
 
-  tenantId        String
-  tenant          Tenant   @relation(fields: [tenantId], references: [id])
-  createdAt       DateTime @default(now())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
 
   @@index([tenantId])
 }
 
 model BIAReport2 {
-  id              String        @id @default(cuid())
-  generatedAt     DateTime
-  summary         Json
+  id          String   @id @default(cuid())
+  generatedAt DateTime
+  summary     Json
 
-  processes       BIAProcess2[]
+  processes BIAProcess2[]
 
-  tenantId        String
-  tenant          Tenant        @relation(fields: [tenantId], references: [id])
-  createdAt       DateTime      @default(now())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
 
   @@index([tenantId])
 }
 
 model BIAProcess2 {
-  id                String   @id @default(cuid())
-  serviceNodeId     String
-  serviceName       String
-  serviceType       String
+  id            String @id @default(cuid())
+  serviceNodeId String
+  serviceName   String
+  serviceType   String
 
-  suggestedMAO      Int?
-  suggestedMTPD     Int?
-  suggestedRTO      Int?
-  suggestedRPO      Int?
-  suggestedMBCO     Int?
+  suggestedMAO  Int?
+  suggestedMTPD Int?
+  suggestedRTO  Int?
+  suggestedRPO  Int?
+  suggestedMBCO Int?
 
-  validatedRTO      Int?
-  validatedRPO      Int?
-  validatedMTPD     Int?
+  validatedRTO  Int?
+  validatedRPO  Int?
+  validatedMTPD Int?
 
-  impactCategory    String
-  criticalityScore  Float
-  recoveryTier      Int
+  impactCategory   String
+  criticalityScore Float
+  recoveryTier     Int
 
-  dependencyChain   Json
-  weakPoints        Json
-  financialImpact   Json
+  dependencyChain Json
+  weakPoints      Json
+  financialImpact Json
 
-  validationStatus  String   @default("pending")
-  notes             String?
+  validationStatus String  @default("pending")
+  notes            String?
 
-  biaReportId       String
-  biaReport         BIAReport2 @relation(fields: [biaReportId], references: [id], onDelete: Cascade)
+  biaReportId String
+  biaReport   BIAReport2 @relation(fields: [biaReportId], references: [id], onDelete: Cascade)
 
-  tenantId          String
-  tenant            Tenant   @relation(fields: [tenantId], references: [id])
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([tenantId])
   @@index([biaReportId])
 }
 
 model RiskNodeLink {
-  id       String    @id @default(cuid())
-  riskId   String
-  nodeId   String
+  id     String @id @default(cuid())
+  riskId String
+  nodeId String
 
-  risk     Risk      @relation(fields: [riskId], references: [id], onDelete: Cascade)
-  node     InfraNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+  risk Risk      @relation(fields: [riskId], references: [id], onDelete: Cascade)
+  node InfraNode @relation(fields: [nodeId], references: [id], onDelete: Cascade)
 
   @@unique([riskId, nodeId])
 }
 
 model Simulation {
-  id                    String   @id @default(cuid())
-  name                  String?
-  scenarioType          String
-  scenarioParams        Json
+  id             String  @id @default(cuid())
+  name           String?
+  scenarioType   String
+  scenarioParams Json
 
-  result                Json
+  result Json
 
-  totalNodesAffected    Int
-  percentageAffected    Float
-  estimatedDowntime     Int
+  totalNodesAffected     Int
+  percentageAffected     Float
+  estimatedDowntime      Int
   estimatedFinancialLoss Float?
-  postIncidentScore     Int
+  postIncidentScore      Int
 
-  tenantId              String
-  tenant                Tenant   @relation(fields: [tenantId], references: [id])
-  createdAt             DateTime @default(now())
+  tenantId     String
+  tenant       Tenant        @relation(fields: [tenantId], references: [id])
+  runbooks     Runbook[]
+  praExercises PRAExercise[]
+  createdAt    DateTime      @default(now())
 
   @@index([tenantId])
   @@index([scenarioType])
@@ -1577,33 +1704,33 @@ model Simulation {
 // === SCAN JOBS ===
 
 model ScanJob {
-  id              String    @id @default(cuid())
-  status          String    // queued, scanning, inferring, reconciling, completed, failed
-  config          Json      // Scan configuration (providers, encrypted credentials)
-  progress        Json?     // Progress state
-  result          Json?     // IngestReport
-  error           String?
+  id       String  @id @default(cuid())
+  status   String // queued, scanning, inferring, reconciling, completed, failed
+  config   Json // Scan configuration (providers, encrypted credentials)
+  progress Json? // Progress state
+  result   Json? // IngestReport
+  error    String?
 
-  tenantId        String
-  tenant          Tenant    @relation(fields: [tenantId], references: [id])
-  startedAt       DateTime?
-  completedAt     DateTime?
-  createdAt       DateTime  @default(now())
+  tenantId    String
+  tenant      Tenant    @relation(fields: [tenantId], references: [id])
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([tenantId, status])
 }
 
 model ScanSchedule {
-  id              String    @id @default(cuid())
-  cronExpression  String
-  config          Json
-  isActive        Boolean   @default(true)
-  lastRunAt       DateTime?
-  nextRunAt       DateTime?
+  id             String    @id @default(cuid())
+  cronExpression String
+  config         Json
+  isActive       Boolean   @default(true)
+  lastRunAt      DateTime?
+  nextRunAt      DateTime?
 
-  tenantId        String
-  tenant          Tenant    @relation(fields: [tenantId], references: [id])
-  createdAt       DateTime  @default(now())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  createdAt DateTime @default(now())
 
   @@index([tenantId])
 }
@@ -1613,48 +1740,48 @@ model ScanSchedule {
 // ============================================================
 
 model InfraSnapshot {
-  id          String   @id @default(cuid())
-  tenantId    String
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  scanId      String?
-  capturedAt  DateTime @default(now())
-  nodeCount   Int
-  edgeCount   Int
-  nodesHash   String
-  metadata    Json     @default("{}")
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id])
+  scanId     String?
+  capturedAt DateTime @default(now())
+  nodeCount  Int
+  edgeCount  Int
+  nodesHash  String
+  metadata   Json     @default("{}")
 
-  drifts      DriftEvent[]
+  drifts DriftEvent[]
 
   @@index([tenantId, capturedAt])
 }
 
 model DriftEvent {
-  id            String   @id @default(cuid())
-  tenantId      String
-  tenant        Tenant   @relation(fields: [tenantId], references: [id])
-  snapshotId    String
-  snapshot      InfraSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  id         String        @id @default(cuid())
+  tenantId   String
+  tenant     Tenant        @relation(fields: [tenantId], references: [id])
+  snapshotId String
+  snapshot   InfraSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
 
-  type          String   // node_added, node_removed, node_modified, edge_added, edge_removed, config_changed
-  severity      String   // critical, high, medium, low
-  category      String   // security, availability, compliance, capacity
+  type     String // node_added, node_removed, node_modified, edge_added, edge_removed, config_changed
+  severity String // critical, high, medium, low
+  category String // security, availability, compliance, capacity
 
-  nodeId        String?
-  nodeName      String?
-  nodeType      String?
+  nodeId   String?
+  nodeName String?
+  nodeType String?
 
-  description   String
-  details       Json     @default("{}")
+  description String
+  details     Json   @default("{}")
 
-  affectsBIA    Boolean  @default(false)
-  affectsRTO    Boolean  @default(false)
-  affectsSPOF   Boolean  @default(false)
+  affectsBIA  Boolean @default(false)
+  affectsRTO  Boolean @default(false)
+  affectsSPOF Boolean @default(false)
 
-  status        String   @default("open") // open, acknowledged, resolved, ignored
-  resolvedAt    DateTime?
-  resolvedBy    String?
+  status     String    @default("open") // open, acknowledged, resolved, ignored
+  resolvedAt DateTime?
+  resolvedBy String?
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([tenantId, status])
   @@index([tenantId, severity])
@@ -1662,19 +1789,19 @@ model DriftEvent {
 }
 
 model DriftSchedule {
-  id          String   @id @default(cuid())
-  tenantId    String   @unique
-  tenant      Tenant   @relation(fields: [tenantId], references: [id])
-  cronExpr    String   @default("0 6 * * 1")
-  enabled     Boolean  @default(true)
-  lastRunAt   DateTime?
-  nextRunAt   DateTime?
+  id        String    @id @default(cuid())
+  tenantId  String    @unique
+  tenant    Tenant    @relation(fields: [tenantId], references: [id])
+  cronExpr  String    @default("0 6 * * 1")
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime?
+  nextRunAt DateTime?
 
   alertEmail      String?
   alertWebhook    String?
   alertOnCritical Boolean @default(true)
   alertOnHigh     Boolean @default(true)
 
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }

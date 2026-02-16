@@ -16,6 +16,17 @@ export interface DriftEvent {
   status: string;
   createdAt: string;
   snapshot?: { id: string; capturedAt: string; nodeCount: number; edgeCount: number };
+  financialImpact?: {
+    driftId: string;
+    financialImpact: {
+      additionalAnnualRisk: number;
+      rtoDelta: number;
+      rpoDelta: number;
+      explanation: string;
+    };
+    severity: 'critical' | 'high' | 'medium' | 'low';
+    source: string;
+  };
 }
 
 export interface DriftScore {

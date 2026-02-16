@@ -1,89 +1,43 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { ClipboardCheck, Plus, Calendar } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { LoadingState } from '@/components/common/LoadingState';
-import { EmptyState } from '@/components/common/EmptyState';
-import { ExercisePlannerWizard } from '@/components/exercises/ExercisePlannerWizard';
-import { exercisesApi } from '@/api/exercises.api';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { OperationalRunbooksPanel } from '@/components/exercises/OperationalRunbooksPanel';
+import { RemediationKanbanPanel } from '@/components/exercises/RemediationKanbanPanel';
+import { PRAExercisesPanel } from '@/components/exercises/PRAExercisesPanel';
 
-const STATUS_LABELS: Record<string, string> = {
-  planned: 'Planifie',
-  in_progress: 'En cours',
-  completed: 'Termine',
-  cancelled: 'Annule',
-};
+type OperationalTab = 'runbooks' | 'remediation' | 'exercises';
 
 export function ExercisesPage() {
-  const [wizardOpen, setWizardOpen] = useState(false);
-
-  const query = useQuery({
-    queryKey: ['exercises'],
-    queryFn: async () => (await exercisesApi.getAll()).data,
-  });
-
-  if (query.isLoading) return <LoadingState message="Chargement des exercices..." />;
-
-  const exercises = query.data ?? [];
-
-  if (exercises.length === 0) {
-    return (
-      <>
-        <EmptyState
-          icon={ClipboardCheck}
-          title="Aucun exercice"
-          description="Planifiez des exercices PRA/PCA pour tester vos procedures de reprise."
-          actionLabel="Planifier un exercice"
-          onAction={() => setWizardOpen(true)}
-        />
-        <ExercisePlannerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
-      </>
-    );
-  }
+  const [tab, setTab] = useState<OperationalTab>('runbooks');
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">Exercices PRA/PCA</h2>
-        <Button onClick={() => setWizardOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" /> Planifier un exercice
-        </Button>
+      <div>
+        <h1 className="text-2xl font-bold">Plans & Exercices</h1>
+        <p className="text-sm text-muted-foreground">
+          Runbooks operationnels, suivi de remediation et exercices PRA avec boucle d'amelioration.
+        </p>
       </div>
 
-      <ExercisePlannerWizard open={wizardOpen} onOpenChange={setWizardOpen} />
+      <Tabs value={tab} onValueChange={(value) => setTab(value as OperationalTab)}>
+        <TabsList>
+          <TabsTrigger value="runbooks">Runbooks</TabsTrigger>
+          <TabsTrigger value="remediation">Suivi Remediation</TabsTrigger>
+          <TabsTrigger value="exercises">Exercices</TabsTrigger>
+        </TabsList>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {exercises.map((ex) => (
-          <Card key={ex.id}>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between text-base">
-                <span>{ex.name}</span>
-                <Badge variant={ex.status === 'completed' ? 'default' : 'secondary'}>
-                  {STATUS_LABELS[ex.status] || ex.status}
-                </Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-2 text-sm">
-                <div className="flex items-center gap-2 text-muted-foreground">
-                  <Calendar className="h-4 w-4" />
-                  <span>{new Date(ex.scheduledDate).toLocaleDateString('fr-FR')}</span>
-                </div>
-                <p className="text-muted-foreground">Type: {ex.type}</p>
-                <p className="text-muted-foreground">{ex.participants.length} participant(s)</p>
-                {ex.results && (
-                  <div className="mt-2 rounded-md bg-muted p-2">
-                    <p className="text-xs font-semibold">Resultats</p>
-                    <p className="text-xs">Score: {ex.results.score}/100</p>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+        <TabsContent value="runbooks">
+          <OperationalRunbooksPanel />
+        </TabsContent>
+
+        <TabsContent value="remediation">
+          <RemediationKanbanPanel />
+        </TabsContent>
+
+        <TabsContent value="exercises">
+          <PRAExercisesPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
+

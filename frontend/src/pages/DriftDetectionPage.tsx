@@ -27,6 +27,7 @@ import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { driftApi, type DriftEvent } from '@/api/drift.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
+import { formatCurrency } from '@/lib/formatters';
 
 const SEVERITY_CONFIG: Record<string, { color: string; icon: typeof AlertTriangle; label: string }> = {
   critical: { color: 'bg-red-500/10 text-red-700 border-red-500/20', icon: XCircle, label: 'Critique' },
@@ -260,6 +261,7 @@ function DriftPageInner() {
         {events.map((event: DriftEvent) => {
           const sev = SEVERITY_CONFIG[event.severity] ?? SEVERITY_CONFIG.low;
           const SevIcon = sev.icon;
+          const additionalRisk = event.financialImpact?.financialImpact.additionalAnnualRisk ?? 0;
 
           return (
             <Card key={event.id} className={cn(event.status === 'open' && 'border-l-4', event.severity === 'critical' && 'border-l-red-500', event.severity === 'high' && 'border-l-orange-500', event.severity === 'medium' && 'border-l-yellow-500')}>
@@ -275,11 +277,21 @@ function DriftPageInner() {
                       {event.affectsSPOF && <Badge variant="destructive">SPOF</Badge>}
                       {event.affectsBIA && <Badge variant="outline">BIA</Badge>}
                       {event.affectsRTO && <Badge variant="outline">RTO</Badge>}
+                      {additionalRisk > 0 && (
+                        <Badge className="bg-red-500/10 text-red-700 border-red-500/20">
+                          {`\uD83D\uDCB0 +${formatCurrency(additionalRisk)}/an de risque`}
+                        </Badge>
+                      )}
                     </div>
                     <p className="font-medium">{event.description}</p>
                     {event.nodeName && (
                       <p className="text-sm text-muted-foreground mt-1">
                         Service : {event.nodeName} ({event.nodeType})
+                      </p>
+                    )}
+                    {event.financialImpact?.financialImpact.explanation && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {event.financialImpact.financialImpact.explanation}
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground mt-1">

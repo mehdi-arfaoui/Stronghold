@@ -9,6 +9,7 @@ import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
 import { requireValidLicense, requireFeature, requireQuota, incrementQuotaOnSuccess } from "../middleware/licenseMiddleware.js";
 import { generateRunbook } from "../services/runbookGenerator.js";
+import { RunbookGeneratorService } from "../services/runbook-generator.service.js";
 import {
   buildValidationError,
   parseOptionalString,
@@ -75,7 +76,7 @@ const upload = multer({
   limits: { fileSize: MAX_TEMPLATE_SIZE_BYTES },
   fileFilter: (_req, file, cb) => {
     if (!isAllowedMimeType(file.mimetype)) {
-      return cb(new Error("Type de fichier non autorisé"));
+      return cb(new Error("Type de fichier non autorisÃ©"));
     }
     return cb(null, true);
   },
@@ -87,7 +88,7 @@ function runTemplateUpload(req: any, res: any): Promise<void> {
       if (err) {
         const message =
           err instanceof multer.MulterError
-            ? "Fichier invalide (taille ou format non autorisé)"
+            ? "Fichier invalide (taille ou format non autorisÃ©)"
             : err.message || "Fichier invalide";
         res.status(400).json({ error: message });
         return resolve();
@@ -116,11 +117,114 @@ async function withDownloadUrls(runbook: any) {
   return { ...runbook, downloadUrls };
 }
 
+function parseRunbookDate(value: unknown): Date | null {
+  if (!value) return null;
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return null;
+}
+
+function buildRunbookUpdateData(payload: Record<string, unknown>): {
+  data: Record<string, unknown>;
+  error?: string;
+} {
+  const data: Record<string, unknown> = {};
+
+  if (payload.title !== undefined) {
+    if (typeof payload.title !== "string" || payload.title.trim().length === 0) {
+      return { data: {}, error: "title est requis" };
+    }
+    data.title = payload.title.trim();
+  }
+
+  if (payload.summary !== undefined) {
+    data.summary =
+      typeof payload.summary === "string" && payload.summary.trim().length > 0
+        ? payload.summary.trim()
+        : null;
+  }
+
+  if (payload.description !== undefined) {
+    data.description =
+      typeof payload.description === "string" && payload.description.trim().length > 0
+        ? payload.description.trim()
+        : null;
+  }
+
+  if (payload.status !== undefined) {
+    data.status =
+      typeof payload.status === "string" && payload.status.trim().length > 0
+        ? payload.status.trim().toLowerCase()
+        : "draft";
+  }
+
+  if (payload.steps !== undefined) {
+    const isJsonCompatible =
+      Array.isArray(payload.steps) ||
+      (payload.steps !== null && typeof payload.steps === "object");
+    if (!isJsonCompatible) {
+      return { data: {}, error: "steps doit etre un objet ou un tableau JSON" };
+    }
+    data.steps = payload.steps;
+  }
+
+  if (payload.recommendationId !== undefined) {
+    data.recommendationId =
+      typeof payload.recommendationId === "string" && payload.recommendationId.trim().length > 0
+        ? payload.recommendationId.trim()
+        : null;
+  }
+
+  if (payload.responsible !== undefined) {
+    data.responsible =
+      typeof payload.responsible === "string" && payload.responsible.trim().length > 0
+        ? payload.responsible.trim()
+        : null;
+  }
+
+  if (payload.accountable !== undefined) {
+    data.accountable =
+      typeof payload.accountable === "string" && payload.accountable.trim().length > 0
+        ? payload.accountable.trim()
+        : null;
+  }
+
+  if (payload.consulted !== undefined) {
+    data.consulted =
+      typeof payload.consulted === "string" && payload.consulted.trim().length > 0
+        ? payload.consulted.trim()
+        : null;
+  }
+
+  if (payload.informed !== undefined) {
+    data.informed =
+      typeof payload.informed === "string" && payload.informed.trim().length > 0
+        ? payload.informed.trim()
+        : null;
+  }
+
+  if (payload.testResult !== undefined) {
+    data.testResult =
+      typeof payload.testResult === "string" && payload.testResult.trim().length > 0
+        ? payload.testResult.trim()
+        : null;
+  }
+
+  if (payload.lastTestedAt !== undefined) {
+    data.lastTestedAt = parseRunbookDate(payload.lastTestedAt);
+  }
+
+  return { data };
+}
+
 router.post("/templates", async (req: TenantRequest, res) => {
   try {
     if (!directUploadsEnabled) {
       return res.status(409).json({
-        error: "Uploads directs désactivés",
+        error: "Uploads directs dÃ©sactivÃ©s",
         details: [
           {
             field: "upload",
@@ -142,7 +246,7 @@ router.post("/templates", async (req: TenantRequest, res) => {
     if (!format) {
       return res
         .status(415)
-        .json({ error: "Format non supporté. Utilisez DOCX, ODT ou Markdown." });
+        .json({ error: "Format non supportÃ©. Utilisez DOCX, ODT ou Markdown." });
     }
 
     try {
@@ -151,7 +255,7 @@ router.post("/templates", async (req: TenantRequest, res) => {
       if (duplicate) {
         return res
           .status(409)
-          .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+          .json({ error: "Template dÃ©jÃ  importÃ© pour ce tenant", templateId: duplicate.id });
       }
 
       const bucket = getTenantBucketName(tenantId);
@@ -202,18 +306,18 @@ router.post("/templates/presign", requireRole("OPERATOR"), async (req: TenantReq
     const size = parseRequiredNumber(payload.size, "size", issues, { min: 1 });
 
     if (mimeType && !isAllowedMimeType(mimeType)) {
-      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+      issues.push({ field: "mimeType", message: "type de fichier non autorisÃ©" });
     }
 
     if (size && size > MAX_TEMPLATE_SIZE_BYTES) {
-      issues.push({ field: "size", message: "taille maximale dépassée" });
+      issues.push({ field: "size", message: "taille maximale dÃ©passÃ©e" });
     }
 
     const format = detectTemplateFormat(mimeType as string, fileName as string);
     if (!format) {
       issues.push({
         field: "fileName",
-        message: "Format non supporté. Utilisez DOCX, ODT ou Markdown.",
+        message: "Format non supportÃ©. Utilisez DOCX, ODT ou Markdown.",
       });
     }
 
@@ -260,18 +364,18 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
     });
 
     if (mimeType && !isAllowedMimeType(mimeType)) {
-      issues.push({ field: "mimeType", message: "type de fichier non autorisé" });
+      issues.push({ field: "mimeType", message: "type de fichier non autorisÃ©" });
     }
 
     if (size && size > MAX_TEMPLATE_SIZE_BYTES) {
-      issues.push({ field: "size", message: "taille maximale dépassée" });
+      issues.push({ field: "size", message: "taille maximale dÃ©passÃ©e" });
     }
 
     const format = fileName && mimeType ? detectTemplateFormat(mimeType, fileName) : null;
     if (!format) {
       issues.push({
         field: "fileName",
-        message: "Format non supporté. Utilisez DOCX, ODT ou Markdown.",
+        message: "Format non supportÃ©. Utilisez DOCX, ODT ou Markdown.",
       });
     }
 
@@ -294,7 +398,7 @@ router.post("/templates/register", requireRole("OPERATOR"), async (req: TenantRe
     if (duplicate) {
       return res
         .status(409)
-        .json({ error: "Template déjà importé pour ce tenant", templateId: duplicate.id });
+        .json({ error: "Template dÃ©jÃ  importÃ© pour ce tenant", templateId: duplicate.id });
     }
 
     const template = await prisma.runbookTemplate.create({
@@ -479,7 +583,7 @@ router.get("/:id", async (req: TenantRequest, res) => {
   }
 });
 
-router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+async function updateRunbookHandler(req: TenantRequest, res: any) {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
@@ -488,35 +592,89 @@ router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
     if (!runbookId) {
       return res.status(400).json({ error: "id est requis" });
     }
-    const { title, summary, status } = req.body || {};
 
-    const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
+    const payload =
+      req.body && typeof req.body === "object"
+        ? (req.body as Record<string, unknown>)
+        : {};
+
+    const runbook = await prisma.runbook.findFirst({
+      where: { id: runbookId, tenantId },
+    });
     if (!runbook) {
       return res.status(404).json({ error: "Runbook introuvable" });
     }
 
-    const data: any = {};
-    if (title !== undefined) {
-      if (!title || typeof title !== "string") {
-        return res.status(400).json({ error: "title est requis" });
-      }
-      data.title = title.trim();
-    }
-    if (summary !== undefined) {
-      data.summary = summary ? String(summary).trim() : null;
-    }
-    if (status !== undefined) {
-      data.status = status ? String(status).trim() : "DRAFT";
+    const { data, error } = buildRunbookUpdateData(payload);
+    if (error) {
+      return res.status(400).json({ error });
     }
 
-    const updated = await prisma.runbook.update({
-      where: { id: runbookId },
+    await prisma.runbook.updateMany({
+      where: { id: runbookId, tenantId },
       data,
     });
+
+    const updated = await prisma.runbook.findFirst({
+      where: { id: runbookId, tenantId },
+    });
+    if (!updated) {
+      return res.status(404).json({ error: "Runbook introuvable" });
+    }
 
     return res.json(updated);
   } catch (error) {
     appLogger.error("Error updating runbook", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+}
+
+router.put("/:id", requireRole("OPERATOR"), updateRunbookHandler);
+router.patch("/:id", requireRole("OPERATOR"), updateRunbookHandler);
+
+router.put("/:id/validate", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const runbookId = req.params.id;
+    if (!runbookId) {
+      return res.status(400).json({ error: "id est requis" });
+    }
+
+    const runbook = await prisma.runbook.findFirst({
+      where: { id: runbookId, tenantId },
+    });
+    if (!runbook) {
+      return res.status(404).json({ error: "Runbook introuvable" });
+    }
+
+    const testResult =
+      typeof req.body?.testResult === "string" && req.body.testResult.trim().length > 0
+        ? req.body.testResult.trim().toLowerCase()
+        : runbook.testResult || "passed";
+
+    const lastTestedAt = parseRunbookDate(req.body?.lastTestedAt) || new Date();
+
+    await prisma.runbook.updateMany({
+      where: { id: runbookId, tenantId },
+      data: {
+        status: "validated",
+        testResult,
+        lastTestedAt,
+      },
+    });
+
+    const updated = await prisma.runbook.findFirst({
+      where: { id: runbookId, tenantId },
+    });
+    if (!updated) {
+      return res.status(404).json({ error: "Runbook introuvable" });
+    }
+
+    return res.json(updated);
+  } catch (error) {
+    appLogger.error("Error validating runbook", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -548,15 +706,136 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
 
-    const { scenarioId, title, summary, owner, templateId } = req.body || {};
-    if (scenarioId) {
-      const scenario = await prisma.scenario.findFirst({ where: { id: scenarioId, tenantId } });
+    const {
+      scenarioId,
+      simulationId,
+      recommendationId,
+      title,
+      summary,
+      description,
+      owner,
+      templateId,
+      responsible,
+      accountable,
+      consulted,
+      informed,
+    } = req.body || {};
+
+    const hasSimulationId = typeof simulationId === "string" && simulationId.trim().length > 0;
+    const hasScenarioId = typeof scenarioId === "string" && scenarioId.trim().length > 0;
+
+    if (!hasSimulationId && !hasScenarioId) {
+      return res.status(400).json({ error: "simulationId or scenarioId is required" });
+    }
+
+    if (simulationId !== undefined && simulationId !== null && !hasSimulationId) {
+      return res.status(400).json({ error: "simulationId invalide" });
+    }
+
+    if (scenarioId !== undefined && scenarioId !== null && !hasScenarioId) {
+      return res.status(400).json({ error: "scenarioId invalide" });
+    }
+
+    if (hasSimulationId) {
+      const simulationIdValue = simulationId.trim();
+
+      if (typeof simulationId !== "string" || simulationIdValue.length === 0) {
+        return res.status(400).json({ error: "simulationId invalide" });
+      }
+
+      const simulation = await prisma.simulation.findFirst({
+        where: { id: simulationIdValue, tenantId },
+      });
+      if (!simulation) {
+        return res.status(404).json({ error: "Simulation introuvable pour ce tenant" });
+      }
+
+      const impactedNodeIds = RunbookGeneratorService.extractImpactedNodeIds(simulation.result);
+      const impactedNodes = impactedNodeIds.length
+        ? await prisma.infraNode.findMany({
+            where: {
+              tenantId,
+              id: { in: impactedNodeIds },
+            },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              provider: true,
+              region: true,
+            },
+          })
+        : [];
+
+      const generated = RunbookGeneratorService.generateFromSimulation({
+        simulation: {
+          id: simulation.id,
+          name: simulation.name,
+          scenarioType: simulation.scenarioType,
+          result: simulation.result,
+          createdAt: simulation.createdAt,
+        },
+        impactedNodes,
+        title: typeof title === "string" ? title : null,
+        description: typeof description === "string" ? description : null,
+        responsible: typeof responsible === "string" ? responsible : null,
+        accountable: typeof accountable === "string" ? accountable : null,
+        consulted: typeof consulted === "string" ? consulted : null,
+        informed: typeof informed === "string" ? informed : null,
+      });
+
+      const runbook = await prisma.runbook.create({
+        data: {
+          tenantId,
+          simulationId: simulation.id,
+          recommendationId:
+            typeof recommendationId === "string" && recommendationId.trim().length > 0
+              ? recommendationId.trim()
+              : null,
+          title: generated.title,
+          description: generated.description,
+          summary:
+            typeof summary === "string" && summary.trim().length > 0
+              ? summary.trim()
+              : generated.description,
+          status: "draft",
+          steps: generated.steps as unknown as object,
+          responsible: generated.responsible,
+          accountable: generated.accountable,
+          consulted: generated.consulted,
+          informed: generated.informed,
+          templateId:
+            typeof templateId === "string" && templateId.trim().length > 0
+              ? templateId.trim()
+              : null,
+        },
+      });
+
+      const enriched = await withDownloadUrls(runbook);
+      return res.status(201).json({
+        runbook: enriched,
+        predictedRTO: generated.predictedRTO,
+        predictedRPO: generated.predictedRPO,
+        generationMode: "simulation",
+      });
+    }
+
+    const scenarioIdValue = hasScenarioId ? scenarioId.trim() : undefined;
+
+    if (scenarioIdValue) {
+      const scenario = await prisma.scenario.findFirst({ where: { id: scenarioIdValue, tenantId } });
       if (!scenario) {
-        return res.status(404).json({ error: "Scénario introuvable pour ce tenant" });
+        return res.status(404).json({ error: "Scenario introuvable pour ce tenant" });
       }
     }
 
-    const output = await generateRunbook(tenantId, { scenarioId, title, summary, owner, templateId });
+    const output = await generateRunbook(tenantId, {
+      scenarioId: scenarioIdValue ?? null,
+      title,
+      summary,
+      owner,
+      templateId,
+    });
     const enriched = await withDownloadUrls(output.runbook);
     return res.status(201).json({ ...output, runbook: enriched });
   } catch (error: any) {

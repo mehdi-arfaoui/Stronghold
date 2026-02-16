@@ -1,4 +1,4 @@
-import { useLocation } from 'react-router-dom';
+﻿import { useLocation } from 'react-router-dom';
 import { Moon, Sun, User, Menu } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,21 +17,37 @@ const ROUTE_TITLES: Record<string, string> = {
   '/discovery': 'Decouverte',
   '/analysis': 'Analyse & BIA',
   '/simulations': 'Simulations',
+  '/simulations/runbooks': 'Runbooks',
+  '/simulations/pra-exercises': 'Exercices PRA',
   '/recommendations': 'Recommandations',
-  '/exercises': 'Exercices',
+  '/recommendations/remediation': 'Suivi Remediation',
+  '/exercises': 'Runbooks',
   '/incidents': 'Incidents',
   '/documents': 'Documents',
   '/report': 'Rapport PRA/PCA',
   '/settings': 'Parametres',
   '/knowledge-base': 'Base de connaissances',
+  '/drift': 'Drift Detection',
+  '/finance': 'ROI & Finance',
 };
+
+function resolveRouteTitle(pathname: string): string {
+  const exact = ROUTE_TITLES[pathname];
+  if (exact) return exact;
+
+  const match = Object.entries(ROUTE_TITLES)
+    .filter(([route]) => pathname.startsWith(`${route}/`))
+    .sort((a, b) => b[0].length - a[0].length)[0];
+
+  return match?.[1] ?? 'Stronghold';
+}
 
 export function Header() {
   const location = useLocation();
   const { theme, toggleTheme, toggleSidebar } = useUIStore();
   const { logout, user } = useAuthStore();
 
-  const title = ROUTE_TITLES[location.pathname] || 'Stronghold';
+  const title = resolveRouteTitle(location.pathname);
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-6">
@@ -63,9 +79,7 @@ export function Header() {
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem onClick={logout}>
-              Se deconnecter
-            </DropdownMenuItem>
+            <DropdownMenuItem onClick={logout}>Se deconnecter</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

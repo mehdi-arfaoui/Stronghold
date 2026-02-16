@@ -1,9 +1,14 @@
 import { api } from './client';
 import type { BIAEntry, BIASummary } from '@/types/bia.types';
 
+export interface BIAEntriesResponse {
+  entries: BIAEntry[];
+  tiers: Record<string, { count: number; services: string[]; totalImpact: number }>;
+}
+
 export const biaApi = {
   getEntries: () =>
-    api.get('/bia-resilience/entries'),
+    api.get<BIAEntriesResponse>('/bia-resilience/entries'),
 
   getSummary: () =>
     api.get<BIASummary>('/bia-resilience/summary'),

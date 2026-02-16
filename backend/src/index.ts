@@ -57,6 +57,9 @@ import recommendationEngineRoutes from "./routes/recommendationEngineRoutes.js";
 import knowledgeBaseRoutes from "./routes/knowledgeBaseRoutes.js";
 import driftRoutes from "./routes/driftRoutes.js";
 import roiRoutes from "./routes/roiRoutes.js";
+import financialRoutes from "./routes/financialRoutes.js";
+import remediationTaskRoutes from "./routes/remediationTaskRoutes.js";
+import praExerciseRoutes from "./routes/praExerciseRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -614,6 +617,9 @@ const routes = [
   { path: "/knowledge-base", handler: knowledgeBaseRoutes, name: "knowledgeBaseRoutes" },
   { path: "/drift", handler: driftRoutes, name: "driftRoutes" },
   { path: "/roi", handler: roiRoutes, name: "roiRoutes" },
+  { path: "/financial", handler: financialRoutes, name: "financialRoutes" },
+  { path: "/remediation-tasks", handler: remediationTaskRoutes, name: "remediationTaskRoutes" },
+  { path: "/pra-exercises", handler: praExerciseRoutes, name: "praExerciseRoutes" },
 ];
 
 for (const route of routes) {

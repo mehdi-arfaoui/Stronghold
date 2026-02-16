@@ -17,7 +17,9 @@ import { RedundancyGraph } from '@/components/analysis/RedundancyGraph';
 import { biaApi } from '@/api/bia.api';
 import { risksApi } from '@/api/risks.api';
 import { analysisApi } from '@/api/analysis.api';
+import { financialApi } from '@/api/financial.api';
 import type { Risk } from '@/types/risks.types';
+import type { BIAEntry } from '@/types/bia.types';
 
 export function AnalysisPage() {
   const queryClient = useQueryClient();
@@ -31,6 +33,11 @@ export function AnalysisPage() {
   const biaSummaryQuery = useQuery({
     queryKey: ['bia-summary'],
     queryFn: async () => (await biaApi.getSummary()).data,
+  });
+
+  const orgProfileQuery = useQuery({
+    queryKey: ['financial-org-profile'],
+    queryFn: async () => (await financialApi.getOrgProfile()).data,
   });
 
   const risksQuery = useQuery({
@@ -70,12 +77,25 @@ export function AnalysisPage() {
     },
   });
 
+  const upsertFinancialOverrideMutation = useMutation({
+    mutationFn: ({ nodeId, customCostPerHour, justification }: { nodeId: string; customCostPerHour: number; justification?: string }) =>
+      financialApi.upsertNodeOverride(nodeId, { customCostPerHour, justification }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['financial-summary'] });
+      toast.success('Override financier enregistre');
+    },
+    onError: () => toast.error('Impossible d enregistrer l override financier'),
+  });
+
   const biaRaw: unknown = biaQuery.data;
-  const entries = Array.isArray(biaRaw)
+  const entries = (Array.isArray(biaRaw)
     ? biaRaw
     : (biaRaw != null && typeof biaRaw === 'object' && 'entries' in biaRaw && Array.isArray((biaRaw as Record<string, unknown>).entries))
       ? ((biaRaw as Record<string, unknown>).entries as unknown[])
-      : [];
+      : []) as BIAEntry[];
+  const currencyCode = String(orgProfileQuery.data?.customCurrency ?? 'EUR').toUpperCase();
+  const currencySymbol = currencyCode === 'USD' ? '$' : currencyCode === 'GBP' ? '\u00A3' : currencyCode === 'CHF' ? 'CHF ' : '\u20AC';
   const summary = biaSummaryQuery.data;
   const risks: Risk[] = Array.isArray(risksQuery.data) ? risksQuery.data : [];
   const redundancy = redundancyQuery.data ?? [];
@@ -128,8 +148,17 @@ export function AnalysisPage() {
             <CardContent className="p-0">
               <BIATable
                 entries={entries}
+                currencySymbol={currencySymbol}
                 onUpdateEntry={(id, field, value) => updateEntryMutation.mutate({ id, field, value })}
                 onValidateEntry={(id) => validateEntryMutation.mutate(id)}
+                onUpsertFinancialOverride={(nodeId, payload) =>
+                  upsertFinancialOverrideMutation.mutateAsync({
+                    nodeId,
+                    customCostPerHour: payload.customCostPerHour,
+                    justification: payload.justification,
+                  })
+                }
+                savingFinancialNodeId={upsertFinancialOverrideMutation.variables?.nodeId ?? null}
               />
             </CardContent>
           </Card>

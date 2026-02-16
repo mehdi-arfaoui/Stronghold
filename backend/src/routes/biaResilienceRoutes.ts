@@ -11,6 +11,7 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
+import { FinancialEngineService } from '../services/financial-engine.service.js';
 
 const router = Router();
 
@@ -84,7 +85,13 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
 });
 
 // ─── Helper: build tier summary from processes ──────────
-function buildTiers(processes: Array<{ recoveryTier: number; serviceName: string; financialImpact: any }>) {
+function buildTiers(processes: Array<{
+  recoveryTier?: number;
+  tier?: number;
+  serviceName: string;
+  financialImpact?: any;
+  financialImpactPerHour?: number;
+}>) {
   const tiers: Record<string, { count: number; services: string[]; totalImpact: number }> = {
     tier1: { count: 0, services: [], totalImpact: 0 },
     tier2: { count: 0, services: [], totalImpact: 0 },
@@ -92,11 +99,12 @@ function buildTiers(processes: Array<{ recoveryTier: number; serviceName: string
     tier4: { count: 0, services: [], totalImpact: 0 },
   };
   for (const p of processes) {
-    const key = `tier${p.recoveryTier}` as keyof typeof tiers;
+    const tier = p.recoveryTier ?? p.tier ?? 4;
+    const key = `tier${tier}` as keyof typeof tiers;
     if (tiers[key]) {
       tiers[key].count++;
       tiers[key].services.push(p.serviceName);
-      tiers[key].totalImpact += (p.financialImpact as any)?.estimatedCostPerHour || 0;
+      tiers[key].totalImpact += p.financialImpactPerHour ?? ((p.financialImpact as any)?.estimatedCostPerHour || 0);
     }
   }
   return tiers;
@@ -121,7 +129,18 @@ router.get('/entries', async (req: TenantRequest, res) => {
       });
     }
 
-    const graph = await GraphService.getGraph(prisma, tenantId);
+    const nodeIds = report.processes.map((process) => process.serviceNodeId);
+    const [graph, profile, overrides] = await Promise.all([
+      GraphService.getGraph(prisma, tenantId),
+      prisma.organizationProfile.findUnique({ where: { tenantId } }),
+      prisma.nodeFinancialOverride.findMany({
+        where: {
+          tenantId,
+          ...(nodeIds.length > 0 ? { nodeId: { in: nodeIds } } : {}),
+        },
+      }),
+    ]);
+    const overridesByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const entries = report.processes.map((p) => {
       const node = graph.hasNode(p.serviceNodeId)
@@ -143,6 +162,38 @@ router.get('/entries', async (req: TenantRequest, res) => {
         explicitCriticalityScore: p.criticalityScore,
       });
 
+      const financialOverride = overridesByNodeId.get(p.serviceNodeId);
+      const dependentsCount = graph.hasNode(p.serviceNodeId) ? graph.inDegree(p.serviceNodeId) : 0;
+      const financialImpact = FinancialEngineService.calculateNodeFinancialImpact(
+        {
+          id: p.serviceNodeId,
+          name: p.serviceName,
+          type: node?.type ?? p.serviceType,
+          provider: node?.provider ?? 'unknown',
+          region: node?.region ?? null,
+          isSPOF: node?.isSPOF ?? false,
+          criticalityScore: node?.criticalityScore ?? p.criticalityScore,
+          redundancyScore: node?.redundancyScore ?? null,
+          impactCategory: node?.impactCategory ?? p.impactCategory,
+          suggestedRTO: p.suggestedRTO,
+          validatedRTO: p.validatedRTO,
+          suggestedRPO: p.suggestedRPO,
+          validatedRPO: p.validatedRPO,
+          suggestedMTPD: p.suggestedMTPD,
+          validatedMTPD: p.validatedMTPD,
+          dependentsCount,
+        },
+        profile,
+        financialOverride
+          ? {
+              customCostPerHour: financialOverride.customCostPerHour,
+              justification: financialOverride.justification,
+              validatedBy: financialOverride.validatedBy,
+              validatedAt: financialOverride.validatedAt,
+            }
+          : undefined,
+      );
+
       const validated = p.validationStatus === 'validated';
 
       return {
@@ -162,7 +213,18 @@ router.get('/entries', async (req: TenantRequest, res) => {
       effectiveRto: p.validatedRTO ?? suggestion.rto,
       effectiveRpo: p.validatedRPO ?? suggestion.rpo,
       effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
-      financialImpactPerHour: (p.financialImpact as any)?.estimatedCostPerHour || 0,
+      financialImpactPerHour: financialImpact.estimatedCostPerHour,
+      financialConfidence: financialImpact.confidence,
+      financialSources: financialImpact.sources,
+      financialIsOverride: financialImpact.confidence === 'user_defined',
+      financialOverride: financialOverride
+        ? {
+            customCostPerHour: financialOverride.customCostPerHour,
+            justification: financialOverride.justification,
+            validatedBy: financialOverride.validatedBy,
+            validatedAt: financialOverride.validatedAt,
+          }
+        : null,
       dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
       criticalityScore: p.criticalityScore,
       impactCategory: p.impactCategory,
@@ -172,7 +234,7 @@ router.get('/entries', async (req: TenantRequest, res) => {
 
     return res.json({
       entries,
-      tiers: buildTiers(report.processes),
+      tiers: buildTiers(entries),
     });
   } catch (error) {
     appLogger.error('Error fetching BIA entries:', error);
@@ -438,8 +500,17 @@ router.patch('/processes/:processId', async (req: TenantRequest, res) => {
     const processId = req.params.processId as string;
     const { validatedRTO, validatedRPO, validatedMTPD, notes, validationStatus } = req.body;
 
+    const existingProcess = await prisma.bIAProcess2.findFirst({
+      where: { id: processId, tenantId },
+      select: { id: true, serviceNodeId: true },
+    });
+
+    if (!existingProcess) {
+      return res.status(404).json({ error: 'BIA process not found' });
+    }
+
     const process = await prisma.bIAProcess2.update({
-      where: { id: processId },
+      where: { id: existingProcess.id },
       data: {
         validatedRTO: validatedRTO ?? undefined,
         validatedRPO: validatedRPO ?? undefined,
@@ -452,7 +523,7 @@ router.patch('/processes/:processId', async (req: TenantRequest, res) => {
     // Also update the infra node
     if (validatedRTO !== undefined || validatedRPO !== undefined || validatedMTPD !== undefined) {
       await prisma.infraNode.updateMany({
-        where: { id: process.serviceNodeId, tenantId },
+        where: { id: existingProcess.serviceNodeId, tenantId },
         data: {
           validatedRTO: validatedRTO ?? undefined,
           validatedRPO: validatedRPO ?? undefined,

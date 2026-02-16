@@ -1,4 +1,4 @@
-import { NavLink, useLocation } from 'react-router-dom';
+﻿import { NavLink, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard,
   Radar,
@@ -14,6 +14,7 @@ import {
   Shield,
   ChevronLeft,
   Activity,
+  CircleDollarSign,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -26,6 +27,7 @@ interface NavItem {
   label: string;
   icon: LucideIcon;
   path: string;
+  exact?: boolean;
 }
 
 interface NavSection {
@@ -36,12 +38,16 @@ interface NavSection {
 const NAV_SECTIONS: NavSection[] = [
   {
     items: [
-      { label: 'Configuration', icon: Shield, path: '/' },
-      { label: 'Tableau de bord', icon: LayoutDashboard, path: '/dashboard' },
+      { label: 'Configuration', icon: Shield, path: '/', exact: true },
+      { label: 'Tableau de bord', icon: LayoutDashboard, path: '/dashboard', exact: true },
       { label: 'Decouverte', icon: Radar, path: '/discovery' },
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
-      { label: 'Simulations', icon: FlaskConical, path: '/simulations' },
-      { label: 'Recommandations', icon: Lightbulb, path: '/recommendations' },
+      { label: 'Simulations', icon: FlaskConical, path: '/simulations', exact: true },
+      { label: 'Runbooks', icon: ClipboardCheck, path: '/simulations/runbooks' },
+      { label: 'Exercices PRA', icon: ClipboardCheck, path: '/simulations/pra-exercises' },
+      { label: 'Recommandations', icon: Lightbulb, path: '/recommendations', exact: true },
+      { label: 'Suivi Remediation', icon: ClipboardCheck, path: '/recommendations/remediation' },
+      { label: 'ROI & Finance', icon: CircleDollarSign, path: '/finance' },
       { label: 'Drift Detection', icon: Activity, path: '/drift' },
       { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
     ],
@@ -49,7 +55,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     label: 'Operations',
     items: [
-      { label: 'Exercices', icon: ClipboardCheck, path: '/exercises' },
       { label: 'Incidents', icon: AlertTriangle, path: '/incidents' },
       { label: 'Documents', icon: FileText, path: '/documents' },
     ],
@@ -78,7 +83,6 @@ export function Sidebar() {
         sidebarOpen ? 'w-64' : 'w-16'
       )}
     >
-      {/* Logo */}
       <div className="flex h-16 items-center justify-between border-b px-4">
         {sidebarOpen && (
           <div className="flex items-center gap-2">
@@ -91,7 +95,6 @@ export function Sidebar() {
         </Button>
       </div>
 
-      {/* Navigation */}
       <ScrollArea className="flex-1">
         <nav className="space-y-1 p-2">
           {NAV_SECTIONS.map((section, si) => (
@@ -103,7 +106,7 @@ export function Sidebar() {
                 </p>
               )}
               {section.items.map((item) => {
-                const isActive = item.path === '/' || item.path === '/dashboard'
+                const isActive = item.exact
                   ? location.pathname === item.path
                   : location.pathname.startsWith(item.path);
 
@@ -130,7 +133,6 @@ export function Sidebar() {
         </nav>
       </ScrollArea>
 
-      {/* Bottom info */}
       {sidebarOpen && (
         <div className="border-t p-4">
           <p className="text-xs text-muted-foreground">Stronghold v2.0</p>
