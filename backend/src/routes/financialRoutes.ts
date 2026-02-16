@@ -23,6 +23,10 @@ import {
   type BIAResultInput,
   type RecommendationInput,
 } from '../services/financial-engine.service.js';
+import {
+  buildFinancialSummaryPayload,
+  buildFinancialTrendPayload,
+} from '../services/financial-dashboard.service.js';
 
 const router = Router();
 
@@ -126,6 +130,9 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
     profile,
     overrideMax,
     driftMax,
+    runbookMax,
+    praExerciseMax,
+    simulationMax,
   ] = await Promise.all([
     prisma.infraNode.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
     prisma.bIAReport2.findFirst({
@@ -144,6 +151,9 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
     }),
     prisma.nodeFinancialOverride.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
     prisma.driftEvent.aggregate({ where: { tenantId }, _max: { createdAt: true } }),
+    prisma.runbook.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
+    prisma.pRAExercise.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
+    prisma.simulation.aggregate({ where: { tenantId }, _max: { createdAt: true } }),
   ]);
 
   return [
@@ -153,6 +163,9 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
     profile?.updatedAt.toISOString() || '0',
     overrideMax._max.updatedAt?.toISOString() || '0',
     driftMax._max.createdAt?.toISOString() || '0',
+    runbookMax._max.updatedAt?.toISOString() || '0',
+    praExerciseMax._max.updatedAt?.toISOString() || '0',
+    simulationMax._max.createdAt?.toISOString() || '0',
   ].join('|');
 }
 
@@ -540,58 +553,47 @@ router.get('/summary', async (req: TenantRequest, res) => {
       return res.json({ ...cached, cached: true });
     }
 
-    const context = await loadFinancialContext(tenantId);
-    const preferredCurrency = parseCurrency(req.query.currency);
-    const profile = preferredCurrency
-      ? { ...(context.profile || {}), customCurrency: preferredCurrency }
-      : context.profile;
-
-    const recommendations = await buildRecommendations(tenantId);
-
-    const ale = FinancialEngineService.calculateAnnualExpectedLoss(
-      context.analysisResult,
-      context.biaResult,
-      profile,
-      context.overridesByNodeId,
-    );
-    const roi = FinancialEngineService.calculateROI(
-      context.analysisResult,
-      context.biaResult,
-      recommendations,
-      profile,
-      context.overridesByNodeId,
-    );
-
-    const summary = {
-      metrics: {
-        annualRisk: ale.totalALE,
-        potentialSavings: roi.riskReductionAmount,
-        roiPercent: roi.roiPercent,
-        paybackMonths: roi.paybackMonths,
-      },
-      totals: {
-        totalSPOFs: ale.totalSPOFs,
-        avgDowntimeHoursPerIncident: ale.avgDowntimeHoursPerIncident,
-      },
-      topSPOFs: ale.aleBySPOF.slice(0, 5),
-      ale,
-      roi,
-      organizationProfile: profile || {
-        sizeCategory: 'midMarket',
-        customCurrency: 'EUR',
-      },
-      regulatoryExposure: buildRegulatoryExposure(profile?.verticalSector),
-      disclaimer:
-        'Estimated values based on public market data and average outage assumptions. Customize organization profile and node overrides for higher confidence.',
-      sources: Array.from(new Set([...ale.sources, ...roi.sources])),
-      currency: ale.currency,
-      generatedAt: new Date().toISOString(),
-    };
+    const summary = await buildFinancialSummaryPayload(prisma, tenantId, {
+      currency: req.query.currency,
+    });
 
     await writeCache(cacheKey, summary);
     return res.json(summary);
   } catch (error) {
     appLogger.error('Error building financial summary', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/trend', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const monthsRaw = Number(req.query.months);
+    const months =
+      Number.isFinite(monthsRaw) && monthsRaw > 0
+        ? Math.min(24, Math.max(1, Math.floor(monthsRaw)))
+        : 6;
+
+    const stateSignature = await buildTenantStateSignature(tenantId);
+    const payloadHash = buildPayloadHash({ currency: req.query.currency, months });
+    const cacheKey = `financial:${tenantId}:trend:${stateSignature}:${payloadHash}`;
+
+    const cached = await readCache(cacheKey);
+    if (cached) {
+      return res.json({ ...cached, cached: true });
+    }
+
+    const trend = await buildFinancialTrendPayload(prisma, tenantId, {
+      currency: req.query.currency,
+      months,
+    });
+
+    await writeCache(cacheKey, trend);
+    return res.json(trend);
+  } catch (error) {
+    appLogger.error('Error building financial trend', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

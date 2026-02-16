@@ -122,10 +122,49 @@ export interface FinancialSummary {
     verticalSector?: string;
     customCurrency?: string;
   };
+  organization?: {
+    id: string;
+    name: string;
+  };
   regulatoryExposure?: {
-    nis2: { applicable: boolean; benchmark?: unknown };
-    dora: { applicable: boolean; benchmark?: unknown };
+    profileSector?: string | null;
+    coverageScore?: number;
+    moduleSignals?: {
+      discoveryCompleted: boolean;
+      biaCompleted: boolean;
+      simulationExecutedLast30Days: boolean;
+      activeRunbookAvailable: boolean;
+      praExerciseExecutedLast90Days: boolean;
+      completedControls: number;
+      totalControls: number;
+      coverageScore: number;
+    };
+    nis2: {
+      applicable: boolean;
+      entityType?: 'essential_entities' | 'important_entities';
+      maxFine?: string;
+      complianceDeadline?: string;
+      coverageScore?: number;
+      benchmark?: unknown;
+      source?: string;
+    };
+    dora: {
+      applicable: boolean;
+      maxFine?: string;
+      complianceDeadline?: string;
+      coverageScore?: number;
+      benchmark?: unknown;
+      source?: string;
+    };
     gdpr: { applicable: boolean; benchmark?: unknown };
+    applicableRegulations?: Array<{
+      id: 'nis2' | 'dora';
+      label: string;
+      maxFine: string;
+      complianceDeadline: string;
+      coverageScore: number;
+      source: string;
+    }>;
   };
   disclaimer: string;
   sources: string[];
@@ -134,9 +173,41 @@ export interface FinancialSummary {
   cached?: boolean;
 }
 
+export interface FinancialTrendPoint {
+  analysisId: string;
+  scanDate: string;
+  resilienceScore: number;
+  ale: number;
+  spofCount: number;
+  criticalDriftCount: number;
+  criticalDriftAdditionalRisk: number;
+  annotations: Array<{
+    driftId: string;
+    occurredAt: string;
+    label: string;
+    additionalAnnualRisk: number;
+    nodeName: string | null;
+  }>;
+}
+
+export interface FinancialTrendResponse {
+  lookbackMonths: number;
+  currency: string;
+  points: FinancialTrendPoint[];
+  hasEnoughHistory: boolean;
+  message?: string;
+  sources: string[];
+  disclaimer: string;
+  generatedAt: string;
+  cached?: boolean;
+}
+
 export const financialApi = {
   getSummary: (params?: { currency?: string }) =>
     api.get<FinancialSummary>('/financial/summary', { params }),
+
+  getTrend: (params?: { currency?: string; months?: number }) =>
+    api.get<FinancialTrendResponse>('/financial/trend', { params }),
 
   getBenchmarks: () =>
     api.get('/financial/benchmarks'),

@@ -20,6 +20,9 @@ export const reportsApi = {
   generate: (config: ReportConfig) =>
     api.post('/reports/generate', config, { responseType: 'blob' }),
 
+  generateExecutiveFinancialSummary: (payload?: { currency?: string }) =>
+    api.post('/reports/executive-financial', payload ?? {}, { responseType: 'blob' }),
+
   getPreview: () =>
     api.get<{ html: string }>('/reports/preview'),
 };
