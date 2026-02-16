@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, Building2, CircleDollarSign, Coins } from 'lucide-react';
+import { Building2, CircleDollarSign, Coins } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
@@ -16,7 +16,7 @@ import {
 import { Input } from '@/components/ui/input';
 
 type WizardStep = 1 | 2 | 3;
-type DowntimeMode = 'known' | 'estimate' | 'unsure';
+type DowntimeMode = 'estimate_market' | 'known' | 'later';
 
 const SIZE_OPTIONS = [
   { value: 'startup', label: 'Startup' },
@@ -27,6 +27,7 @@ const SIZE_OPTIONS = [
 ] as const;
 
 const VERTICAL_OPTIONS = [
+  { value: '', label: 'Non precise' },
   { value: 'banking_finance', label: 'Banque / Finance' },
   { value: 'healthcare', label: 'Sante' },
   { value: 'manufacturing', label: 'Manufacturing' },
@@ -56,7 +57,7 @@ type BenchmarksResponse = {
       perHourUSD: { p25: number; median: number; p75: number; p95: number };
       source: string;
     };
-    byVertical: Record<string, { perHourUSD: number; source: string; notes?: string }>;
+    byVertical: Record<string, { perHourUSD: number; source: string; notes?: string | null }>;
   };
 };
 
@@ -74,7 +75,16 @@ interface FinancialOnboardingWizardProps {
   onCompleted?: () => void;
 }
 
-function formatMoney(value: number, currency: string): string {
+function formatMoneyCompact(value: number, currency: string): string {
+  const suffix = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : 'CHF';
+  if (!Number.isFinite(value)) return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(0);
+  const absValue = Math.abs(value);
+  if (absValue >= 1_000_000) {
+    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value / 1_000_000)}M${suffix}`;
+  }
+  if (absValue >= 1_000) {
+    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value / 1_000)}K${suffix}`;
+  }
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency,
@@ -93,6 +103,24 @@ function resolveRatesMap(input?: RatesResponse): Record<string, number> {
   return { USD: 1, EUR: 0.92, GBP: 0.79, CHF: 0.88 };
 }
 
+function extractSourceNames(sourceText: string): string[] {
+  if (!sourceText) return [];
+  const known = [
+    'ITIC 2024',
+    'EMA Research 2024',
+    'Gartner 2024',
+    'CloudSecureTech 2025',
+    'New Relic 2025',
+    'Uptime Institute 2025',
+    'IBM 2024',
+    'Siemens 2024',
+  ];
+
+  const hits = known.filter((item) => sourceText.toLowerCase().includes(item.toLowerCase()));
+  if (hits.length > 0) return hits;
+  return [sourceText];
+}
+
 export function FinancialOnboardingWizard({
   open,
   onOpenChange,
@@ -101,11 +129,11 @@ export function FinancialOnboardingWizard({
 }: FinancialOnboardingWizardProps) {
   const [step, setStep] = useState<WizardStep>(1);
   const [sizeCategory, setSizeCategory] = useState('midMarket');
-  const [verticalSector, setVerticalSector] = useState('technology_saas');
+  const [verticalSector, setVerticalSector] = useState('');
   const [employeeCount, setEmployeeCount] = useState('');
   const [annualRevenueDisplay, setAnnualRevenueDisplay] = useState('');
-  const [persistRevenue, setPersistRevenue] = useState(true);
-  const [downtimeMode, setDowntimeMode] = useState<DowntimeMode>('estimate');
+  const [persistRevenue, setPersistRevenue] = useState(false);
+  const [downtimeMode, setDowntimeMode] = useState<DowntimeMode>('estimate_market');
   const [knownDowntimeDisplay, setKnownDowntimeDisplay] = useState('');
   const [currency, setCurrency] = useState<string>('EUR');
 
@@ -136,9 +164,11 @@ export function FinancialOnboardingWizard({
 
     setStep(1);
     setSizeCategory(initialProfile?.sizeCategory || 'midMarket');
-    setVerticalSector(initialProfile?.verticalSector || 'technology_saas');
+    setVerticalSector(initialProfile?.verticalSector || '');
     setEmployeeCount(initialProfile?.employeeCount != null ? String(initialProfile.employeeCount) : '');
-    setAnnualRevenueDisplay(initialProfile?.annualRevenueUSD != null ? String(Math.round(initialProfile.annualRevenueUSD)) : '');
+    setAnnualRevenueDisplay(
+      initialProfile?.annualRevenueUSD != null ? String(Math.round(initialProfile.annualRevenueUSD)) : '',
+    );
     setPersistRevenue(initialProfile?.annualRevenueUSD != null);
     setCurrency(effectiveCurrency);
 
@@ -147,7 +177,7 @@ export function FinancialOnboardingWizard({
       const displayAmount = Math.round(effectiveDowntimeUSD * (ratesMap[effectiveCurrency] ?? 1));
       setKnownDowntimeDisplay(String(displayAmount));
     } else {
-      setDowntimeMode('estimate');
+      setDowntimeMode('estimate_market');
       setKnownDowntimeDisplay('');
     }
   }, [open, initialProfile, ratesMap]);
@@ -156,29 +186,33 @@ export function FinancialOnboardingWizard({
     const downtime = benchmarksQuery.data?.downtime;
     if (!downtime) {
       return {
-        minUSD: 50_000,
-        maxUSD: 300_000,
-        recommendedUSD: 120_000,
-        source: 'Stronghold estimate',
-        verticalSource: null as string | null,
+        minUSD: 100_000,
+        maxUSD: 1_000_000,
+        recommendedUSD: 300_000,
+        sourceNames: ['Stronghold estimate'],
       };
     }
 
     const sizeKey = mapSizeToBenchmarkKey(sizeCategory);
     const sizeData = downtime[sizeKey].perHourUSD;
-    const sizeSource = downtime[sizeKey].source;
+    const sizeSourceNames = extractSourceNames(downtime[sizeKey].source);
 
     const verticalData = verticalSector ? downtime.byVertical[verticalSector] : undefined;
-    const minUSD = sizeData.p25;
-    const maxUSD = verticalData ? Math.max(sizeData.p95, verticalData.perHourUSD) : sizeData.p95;
-    const recommendedUSD = Math.round((minUSD + maxUSD) / 2);
+    const verticalSourceNames = verticalData ? extractSourceNames(verticalData.source) : [];
+
+    const minUSD = sizeData.median;
+    const maxUSD = Math.max(sizeData.p95, verticalData?.perHourUSD ?? 0);
+    const recommendedUSD = verticalData
+      ? Math.round((sizeData.median + verticalData.perHourUSD) / 2)
+      : sizeData.median;
+
+    const sourceNames = Array.from(new Set([...sizeSourceNames, ...verticalSourceNames]));
 
     return {
       minUSD,
       maxUSD,
       recommendedUSD,
-      source: sizeSource,
-      verticalSource: verticalData?.source ?? null,
+      sourceNames: sourceNames.length > 0 ? sourceNames : ['Stronghold estimate'],
     };
   }, [benchmarksQuery.data, sizeCategory, verticalSector]);
 
@@ -191,12 +225,12 @@ export function FinancialOnboardingWizard({
 
       const payload = {
         sizeCategory,
-        verticalSector: verticalSector === 'other' ? null : verticalSector,
+        verticalSector: !verticalSector || verticalSector === 'other' ? null : verticalSector,
         employeeCount: employeeCount ? Number(employeeCount) : null,
         annualRevenueUSD:
           persistRevenue && annualRevenueInput > 0 ? Math.round(toUSD(annualRevenueInput)) : null,
         customDowntimeCostPerHour:
-          downtimeMode === 'known'
+          downtimeMode === 'known' && knownDowntimeUSD && knownDowntimeUSD > 0
             ? knownDowntimeUSD
             : estimatedDowntimeUSD,
         customCurrency: currency,
@@ -214,7 +248,7 @@ export function FinancialOnboardingWizard({
     },
   });
 
-  const canGoNextStep1 = Boolean(sizeCategory && verticalSector);
+  const canGoNextStep1 = Boolean(sizeCategory);
   const canGoNextStep2 = downtimeMode !== 'known' || Number(knownDowntimeDisplay) > 0;
   const canSave = !updateProfileMutation.isPending;
 
@@ -305,47 +339,46 @@ export function FinancialOnboardingWizard({
             <div className="rounded-lg border p-3">
               <p className="text-sm font-medium flex items-center gap-2">
                 <CircleDollarSign className="h-4 w-4 text-primary" />
-                Cout de downtime
+                Couts de downtime
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pour ce profil, benchmark estime entre{' '}
+                Pour votre profil, le cout moyen de downtime est estime entre{' '}
                 <span className="font-medium">
-                  {formatMoney(toDisplayCurrency(benchmarkPreview.minUSD), currency)}
+                  {formatMoneyCompact(toDisplayCurrency(benchmarkPreview.minUSD), currency)}
                 </span>{' '}
                 et{' '}
                 <span className="font-medium">
-                  {formatMoney(toDisplayCurrency(benchmarkPreview.maxUSD), currency)}
-                </span>{' '}
-                par heure.
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Source taille: {benchmarkPreview.source}
-                {benchmarkPreview.verticalSource ? ` - Source secteur: ${benchmarkPreview.verticalSource}` : ''}
+                  {formatMoneyCompact(toDisplayCurrency(benchmarkPreview.maxUSD), currency)}
+                </span>
+                /h (sources : {benchmarkPreview.sourceNames.join(', ')}).
               </p>
             </div>
 
-            <div className="grid gap-2">
-              <button
-                type="button"
-                onClick={() => setDowntimeMode('known')}
-                className={`rounded-md border px-3 py-2 text-left text-sm ${downtimeMode === 'known' ? 'border-primary bg-primary/5' : ''}`}
-              >
-                Oui, je connais mon cout de downtime horaire
-              </button>
-              <button
-                type="button"
-                onClick={() => setDowntimeMode('estimate')}
-                className={`rounded-md border px-3 py-2 text-left text-sm ${downtimeMode === 'estimate' ? 'border-primary bg-primary/5' : ''}`}
-              >
-                Non, utiliser l estimation benchmark
-              </button>
-              <button
-                type="button"
-                onClick={() => setDowntimeMode('unsure')}
-                className={`rounded-md border px-3 py-2 text-left text-sm ${downtimeMode === 'unsure' ? 'border-primary bg-primary/5' : ''}`}
-              >
-                Je ne suis pas sur, utiliser l estimation avec avertissement
-              </button>
+            <div className="space-y-2">
+              <label className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  checked={downtimeMode === 'estimate_market'}
+                  onChange={() => setDowntimeMode('estimate_market')}
+                />
+                <span>J'utilise l'estimation du marché</span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  checked={downtimeMode === 'known'}
+                  onChange={() => setDowntimeMode('known')}
+                />
+                <span>Je connais mon coût</span>
+              </label>
+              <label className="flex items-start gap-2 rounded-md border px-3 py-2 text-sm">
+                <input
+                  type="radio"
+                  checked={downtimeMode === 'later'}
+                  onChange={() => setDowntimeMode('later')}
+                />
+                <span>Je définirai plus tard</span>
+              </label>
             </div>
 
             {downtimeMode === 'known' && (
@@ -362,14 +395,8 @@ export function FinancialOnboardingWizard({
             )}
 
             {downtimeMode !== 'known' && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-700">
-                <div className="flex items-center gap-1">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Estimation basee sur donnees publiques. Ajustez ensuite avec vos chiffres metier.
-                </div>
-                <p className="mt-1">
-                  Valeur appliquee: {formatMoney(toDisplayCurrency(benchmarkPreview.recommendedUSD), currency)} /h
-                </p>
+              <div className="rounded-md border bg-muted/30 p-2 text-xs text-muted-foreground">
+                Valeur appliquee automatiquement: {formatMoneyCompact(toDisplayCurrency(benchmarkPreview.recommendedUSD), currency)}/h
               </div>
             )}
           </div>
@@ -403,8 +430,11 @@ export function FinancialOnboardingWizard({
         )}
 
         <DialogFooter className="flex items-center justify-between gap-2 sm:justify-between">
-          <Button variant="ghost" onClick={() => (step > 1 ? setStep((step - 1) as WizardStep) : onOpenChange(false))}>
-            {step > 1 ? 'Retour' : 'Annuler'}
+          <Button
+            variant="ghost"
+            onClick={() => (step > 1 ? setStep((step - 1) as WizardStep) : onOpenChange(false))}
+          >
+            {step > 1 ? 'Retour' : 'Fermer'}
           </Button>
 
           {step < 3 ? (

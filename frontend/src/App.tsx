@@ -1,4 +1,4 @@
-import { createBrowserRouter, RouterProvider } from 'react-router-dom';
+﻿import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
@@ -8,7 +8,6 @@ import { DiscoveryPage } from '@/pages/DiscoveryPage';
 import { AnalysisPage } from '@/pages/AnalysisPage';
 import { SimulationPage } from '@/pages/SimulationPage';
 import { RecommendationsPage } from '@/pages/RecommendationsPage';
-import { ExercisesPage } from '@/pages/ExercisesPage';
 import { IncidentsPage } from '@/pages/IncidentsPage';
 import { DocumentsPage } from '@/pages/DocumentsPage';
 import { ReportPage } from '@/pages/ReportPage';
@@ -18,6 +17,10 @@ import { LoginPage } from '@/pages/LoginPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { DriftDetectionPage } from '@/pages/DriftDetectionPage';
 import { FinancialDashboardPage } from '@/pages/FinancialDashboardPage';
+import { RunbooksPage } from '@/pages/RunbooksPage';
+import { RunbookDetailPage } from '@/pages/RunbookDetailPage';
+import { RemediationPage } from '@/pages/RemediationPage';
+import { PRAExercisesPage } from '@/pages/PRAExercisesPage';
 import { useUIStore } from '@/stores/ui.store';
 import { useEffect } from 'react';
 
@@ -39,8 +42,12 @@ const router = createBrowserRouter([
       { path: '/discovery', element: <DiscoveryPage /> },
       { path: '/analysis', element: <AnalysisPage /> },
       { path: '/simulations', element: <SimulationPage /> },
+      { path: '/simulations/runbooks', element: <RunbooksPage /> },
+      { path: '/simulations/runbooks/:id', element: <RunbookDetailPage /> },
+      { path: '/simulations/pra-exercises', element: <PRAExercisesPage /> },
       { path: '/recommendations', element: <RecommendationsPage /> },
-      { path: '/exercises', element: <ExercisesPage /> },
+      { path: '/recommendations/remediation', element: <RemediationPage /> },
+      { path: '/exercises', element: <Navigate to="/simulations/runbooks" replace /> },
       { path: '/incidents', element: <IncidentsPage /> },
       { path: '/documents', element: <DocumentsPage /> },
       { path: '/report', element: <ReportPage /> },

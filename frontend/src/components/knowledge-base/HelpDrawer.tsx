@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+﻿import { useMemo } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { BookOpen } from 'lucide-react';
@@ -29,10 +29,25 @@ const HELP_CONTEXTS: Record<string, HelpContext> = {
     slugs: ['exercices-tests-pca', 'exercice-tabletop', 'chaos-engineering', 'strategies-reprise'],
     tags: ['simulation', 'tabletop', 'failover', 'test'],
   },
+  '/simulations/runbooks': {
+    label: 'Runbooks',
+    slugs: ['exercices-tests-pca', 'strategies-reprise', 'failover-switchover'],
+    tags: ['runbook', 'PRA', 'failover'],
+  },
+  '/simulations/pra-exercises': {
+    label: 'PRA Exercises',
+    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'modele-maturite-pca'],
+    tags: ['exercices', 'tabletop', 'maturite'],
+  },
   '/recommendations': {
     label: 'Recommendations',
     slugs: ['strategies-reprise', 'spof-single-point-of-failure', 'resilience-cloud', 'failover-switchover'],
     tags: ['PRA', 'SPOF', 'failover', 'redundance'],
+  },
+  '/recommendations/remediation': {
+    label: 'Remediation',
+    slugs: ['strategies-reprise', 'modele-maturite-pca', 'failover-switchover'],
+    tags: ['remediation', 'actions', 'PRA'],
   },
   '/report': {
     label: 'Reporting',
@@ -142,4 +157,3 @@ export function HelpDrawer() {
     </Sheet>
   );
 }
-

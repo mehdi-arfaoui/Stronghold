@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { AlertTriangle, Check, Pencil, X } from 'lucide-react';
+import { AlertTriangle, Check, CheckCircle2, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { formatDuration } from '@/lib/formatters';
@@ -39,7 +39,7 @@ export function BIATable({
 }: BIATableProps) {
   const [editingCell, setEditingCell] = useState<{ id: string; field: EditableField } | null>(null);
   const [editValue, setEditValue] = useState('');
-  const [overrideDialogEntry, setOverrideDialogEntry] = useState<BIAEntry | null>(null);
+  const [overridePopoverEntry, setOverridePopoverEntry] = useState<BIAEntry | null>(null);
   const [overrideValue, setOverrideValue] = useState('');
   const [overrideJustification, setOverrideJustification] = useState('');
 
@@ -65,28 +65,28 @@ export function BIATable({
 
   const cancelEdit = () => setEditingCell(null);
 
-  const openOverrideDialog = (entry: BIAEntry) => {
-    setOverrideDialogEntry(entry);
+  const openOverridePopover = (entry: BIAEntry) => {
+    setOverridePopoverEntry(entry);
     setOverrideValue(String(Math.max(1, Math.round(entry.financialOverride?.customCostPerHour ?? entry.financialImpactPerHour ?? 1))));
     setOverrideJustification(entry.financialOverride?.justification ?? '');
   };
 
-  const closeOverrideDialog = () => {
-    setOverrideDialogEntry(null);
+  const closeOverridePopover = () => {
+    setOverridePopoverEntry(null);
     setOverrideValue('');
     setOverrideJustification('');
   };
 
   const saveOverride = async () => {
-    if (!overrideDialogEntry || !onUpsertFinancialOverride) return;
+    if (!overridePopoverEntry || !onUpsertFinancialOverride) return;
     const parsed = Number(overrideValue);
     if (!Number.isFinite(parsed) || parsed <= 0) return;
 
-    await onUpsertFinancialOverride(overrideDialogEntry.nodeId, {
+    await onUpsertFinancialOverride(overridePopoverEntry.nodeId, {
       customCostPerHour: parsed,
       justification: overrideJustification.trim() || undefined,
     });
-    closeOverrideDialog();
+    closeOverridePopover();
   };
 
   return (
@@ -172,29 +172,89 @@ export function BIATable({
                   onCancel={cancelEdit}
                 />
                 <TableCell className="text-center">
-                  <div className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1">
-                    <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currencySymbol)}</span>
-                    {entry.financialIsOverride ? (
-                      <Badge variant="outline" className="text-[10px]">override</Badge>
-                    ) : (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                        </TooltipTrigger>
-                        <TooltipContent className="max-w-xs">
-                          <p>Estimation Stronghold basee sur des benchmarks publics. Cliquez sur le crayon pour saisir votre chiffre metier.</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                      onClick={() => openOverrideDialog(entry)}
-                    >
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
+                  <Popover
+                    open={overridePopoverEntry?.nodeId === entry.nodeId}
+                    onOpenChange={(open) => {
+                      if (open) {
+                        openOverridePopover(entry);
+                      } else if (overridePopoverEntry?.nodeId === entry.nodeId) {
+                        closeOverridePopover();
+                      }
+                    }}
+                  >
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
+                        onClick={() => openOverridePopover(entry)}
+                      >
+                        <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currencySymbol)}</span>
+                        {entry.financialIsOverride ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Validé par l'utilisateur</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-xs">
+                              <p>Estimation Stronghold basee sur des benchmarks publics. Cliquez pour saisir votre chiffre metier.</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </button>
+                    </PopoverTrigger>
+
+                    <PopoverContent align="end" className="w-80 space-y-3">
+                      <div>
+                        <p className="text-sm font-semibold">Override cout d indisponibilite</p>
+                        <p className="text-xs text-muted-foreground">
+                          Remplacez l estimation Stronghold par votre cout business reel.
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Montant ({currencySymbol}/h)</label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={overrideValue}
+                          onChange={(event) => setOverrideValue(event.target.value)}
+                          placeholder="Ex: 4500"
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-sm font-medium">Justification (optionnel)</label>
+                        <textarea
+                          value={overrideJustification}
+                          onChange={(event) => setOverrideJustification(event.target.value)}
+                          placeholder="Ex: basé sur notre analyse interne Q4 2025"
+                          className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        />
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <Button variant="ghost" size="sm" onClick={closeOverridePopover}>
+                          Annuler
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={saveOverride}
+                          disabled={
+                            !overridePopoverEntry ||
+                            savingFinancialNodeId === overridePopoverEntry.nodeId ||
+                            Number(overrideValue) <= 0
+                          }
+                        >
+                          {savingFinancialNodeId === overridePopoverEntry?.nodeId ? 'Sauvegarde...' : 'Sauvegarder'}
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </TableCell>
                 <TableCell className="text-center">
                   {entry.validated ? (
@@ -210,50 +270,6 @@ export function BIATable({
           </TableBody>
         </Table>
       </div>
-
-      <Dialog open={Boolean(overrideDialogEntry)} onOpenChange={(open) => !open && closeOverrideDialog()}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Override cout d'indisponibilite</DialogTitle>
-            <DialogDescription>
-              Remplacez l'estimation Stronghold par votre cout business reel pour ce service.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Cout horaire ({currencySymbol}/h)</label>
-              <Input
-                type="number"
-                min={1}
-                value={overrideValue}
-                onChange={(event) => setOverrideValue(event.target.value)}
-                placeholder="Ex: 4500"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-sm font-medium">Justification (optionnel)</label>
-              <Input
-                value={overrideJustification}
-                onChange={(event) => setOverrideJustification(event.target.value)}
-                placeholder="Basee sur le chiffre d'affaires horaire et les penalites SLA"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={closeOverrideDialog}>Annuler</Button>
-            <Button
-              onClick={saveOverride}
-              disabled={
-                !overrideDialogEntry ||
-                savingFinancialNodeId === overrideDialogEntry.nodeId ||
-                Number(overrideValue) <= 0
-              }
-            >
-              {savingFinancialNodeId === overrideDialogEntry?.nodeId ? 'Sauvegarde...' : 'Sauvegarder'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </TooltipProvider>
   );
 }
