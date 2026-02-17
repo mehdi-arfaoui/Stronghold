@@ -87,6 +87,8 @@ model Tenant {
   scanSchedules          ScanSchedule[]
   organizationProfile    OrganizationProfile?
   nodeFinancialOverrides NodeFinancialOverride[]
+  businessFlows          BusinessFlow[]
+  businessFlowNodes      BusinessFlowNode[]
   remediationTasks       RemediationTask[]
   praExercises           PRAExercise[]
 
@@ -1522,6 +1524,7 @@ model InfraNode {
   inEdges            InfraEdge[]             @relation("TargetEdges")
   riskLinks          RiskNodeLink[]
   financialOverrides NodeFinancialOverride[]
+  businessFlowNodes  BusinessFlowNode[]
 
   // Tenant & audit
   tenantId   String
@@ -1576,6 +1579,90 @@ model NodeFinancialOverride {
 
   @@unique([nodeId, tenantId])
   @@index([tenantId])
+}
+
+model BusinessFlow {
+  id          String  @id @default(cuid())
+  name        String
+  description String?
+  category    String?
+
+  // ===== BUSINESS VALUE (user-provided) =====
+  annualRevenue         Float?
+  transactionsPerHour   Float?
+  revenuePerTransaction Float?
+  estimatedCostPerHour  Float?
+
+  // ===== CALCULATED RESULT =====
+  calculatedCostPerHour Float?
+  costCalculationMethod String?
+
+  // ===== TEMPORAL =====
+  peakHoursMultiplier  Float @default(1.5)
+  peakHoursStart       Int?
+  peakHoursEnd         Int?
+  operatingDaysPerWeek Int   @default(5)
+  operatingHoursPerDay Int   @default(10)
+
+  // ===== SLA & PENALTIES =====
+  slaUptimePercent  Float?
+  slaPenaltyPerHour Float?
+  slaPenaltyFlat    Float?
+  contractualRTO    Int?
+
+  // ===== INDIRECT COSTS =====
+  estimatedCustomerChurnPerHour Float?
+  customerLifetimeValue         Float?
+  reputationImpactCategory      String?
+
+  // ===== FLOW NODES =====
+  flowNodes BusinessFlowNode[]
+
+  // ===== PROVENANCE =====
+  source          String   @default("manual")
+  aiConfidence    Float?
+  validatedByUser Boolean  @default(false)
+  validatedAt     DateTime?
+
+  // Optional grouping key to avoid double-counting mutually-exclusive flows
+  mutualExclusionGroup String?
+
+  // ===== TENANT & AUDIT =====
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
+  @@index([tenantId, validatedByUser])
+  @@index([tenantId, source])
+}
+
+model BusinessFlowNode {
+  id             String @id @default(cuid())
+  businessFlowId String
+  infraNodeId    String
+  tenantId       String
+
+  // Position in the flow
+  orderIndex Int
+  role       String?
+  isCritical Boolean @default(true)
+
+  // Fallback metadata
+  hasAlternativePath Boolean @default(false)
+  alternativeNodeId  String?
+
+  businessFlow BusinessFlow @relation(fields: [businessFlowId], references: [id], onDelete: Cascade)
+  infraNode    InfraNode    @relation(fields: [infraNodeId], references: [id], onDelete: Cascade)
+  tenant       Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessFlowId, infraNodeId])
+  @@index([tenantId])
+  @@index([infraNodeId])
 }
 
 model InfraEdge {

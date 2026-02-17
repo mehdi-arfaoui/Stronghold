@@ -11,9 +11,10 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
-import { FinancialEngineService } from '../services/financial-engine.service.js';
+import { BusinessFlowFinancialEngineService } from '../services/business-flow-financial-engine.service.js';
 
 const router = Router();
+const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
 
 // ─── POST /bia-resilience/auto-generate — Generate BIA from graph ──────────
 router.post('/auto-generate', async (req: TenantRequest, res) => {
@@ -142,95 +143,143 @@ router.get('/entries', async (req: TenantRequest, res) => {
     ]);
     const overridesByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
-    const entries = report.processes.map((p) => {
-      const node = graph.hasNode(p.serviceNodeId)
-        ? (graph.getNodeAttributes(p.serviceNodeId) as InfraNodeAttrs)
-        : undefined;
+    const entries = await Promise.all(
+      report.processes.map(async (p) => {
+        const node = graph.hasNode(p.serviceNodeId)
+          ? (graph.getNodeAttributes(p.serviceNodeId) as InfraNodeAttrs)
+          : undefined;
 
-      const fallbackNode: InfraNodeAttrs = {
-        id: p.serviceNodeId,
-        name: p.serviceName,
-        type: p.serviceType,
-        provider: 'unknown',
-        tags: {},
-        metadata: {},
-        criticalityScore: p.criticalityScore,
-      };
-
-      const suggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
-        graph,
-        explicitCriticalityScore: p.criticalityScore,
-      });
-
-      const financialOverride = overridesByNodeId.get(p.serviceNodeId);
-      const dependentsCount = graph.hasNode(p.serviceNodeId) ? graph.inDegree(p.serviceNodeId) : 0;
-      const financialImpact = FinancialEngineService.calculateNodeFinancialImpact(
-        {
+        const fallbackNode: InfraNodeAttrs = {
           id: p.serviceNodeId,
           name: p.serviceName,
-          type: node?.type ?? p.serviceType,
-          provider: node?.provider ?? 'unknown',
-          region: node?.region ?? null,
-          isSPOF: node?.isSPOF ?? false,
-          criticalityScore: node?.criticalityScore ?? p.criticalityScore,
-          redundancyScore: node?.redundancyScore ?? null,
-          impactCategory: node?.impactCategory ?? p.impactCategory,
-          suggestedRTO: p.suggestedRTO,
-          validatedRTO: p.validatedRTO,
-          suggestedRPO: p.suggestedRPO,
-          validatedRPO: p.validatedRPO,
-          suggestedMTPD: p.suggestedMTPD,
-          validatedMTPD: p.validatedMTPD,
-          dependentsCount,
-        },
-        profile,
-        financialOverride
-          ? {
-              customCostPerHour: financialOverride.customCostPerHour,
-              justification: financialOverride.justification,
-              validatedBy: financialOverride.validatedBy,
-              validatedAt: financialOverride.validatedAt,
-            }
-          : undefined,
-      );
+          type: p.serviceType,
+          provider: 'unknown',
+          tags: {},
+          metadata: {},
+          criticalityScore: p.criticalityScore,
+        };
 
-      const validated = p.validationStatus === 'validated';
+        const suggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
+          graph,
+          explicitCriticalityScore: p.criticalityScore,
+        });
 
-      return {
-      id: p.id,
-      nodeId: p.serviceNodeId,
-      serviceName: p.serviceName,
-      serviceType: p.serviceType,
-      tier: p.recoveryTier,
-      rto: p.validatedRTO ?? null,
-      rpo: p.validatedRPO ?? null,
-      mtpd: p.validatedMTPD ?? null,
-      rtoSuggested: suggestion.rto,
-      rpoSuggested: suggestion.rpo,
-      mtpdSuggested: suggestion.mtpd,
-      validated,
-      suggestion,
-      effectiveRto: p.validatedRTO ?? suggestion.rto,
-      effectiveRpo: p.validatedRPO ?? suggestion.rpo,
-      effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
-      financialImpactPerHour: financialImpact.estimatedCostPerHour,
-      financialConfidence: financialImpact.confidence,
-      financialSources: financialImpact.sources,
-      financialIsOverride: financialImpact.confidence === 'user_defined',
-      financialOverride: financialOverride
-        ? {
-            customCostPerHour: financialOverride.customCostPerHour,
-            justification: financialOverride.justification,
-            validatedBy: financialOverride.validatedBy,
-            validatedAt: financialOverride.validatedAt,
-          }
-        : null,
-      dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
-      criticalityScore: p.criticalityScore,
-      impactCategory: p.impactCategory,
-      validationStatus: p.validationStatus,
-      };
-    });
+        const financialOverride = overridesByNodeId.get(p.serviceNodeId);
+        const dependentsCount = graph.hasNode(p.serviceNodeId) ? graph.inDegree(p.serviceNodeId) : 0;
+        const flowFinancialCost = await businessFlowFinancialEngine.calculateNodeCostFromFlows({
+          tenantId,
+          nodeId: p.serviceNodeId,
+          node: {
+            id: p.serviceNodeId,
+            name: p.serviceName,
+            type: node?.type ?? p.serviceType,
+            provider: node?.provider ?? 'unknown',
+            region: node?.region ?? null,
+            isSPOF: node?.isSPOF ?? false,
+            criticalityScore: node?.criticalityScore ?? p.criticalityScore,
+            redundancyScore: node?.redundancyScore ?? null,
+            impactCategory: node?.impactCategory ?? p.impactCategory,
+            suggestedRTO: p.suggestedRTO,
+            validatedRTO: p.validatedRTO,
+            suggestedRPO: p.suggestedRPO,
+            validatedRPO: p.validatedRPO,
+            suggestedMTPD: p.suggestedMTPD,
+            validatedMTPD: p.validatedMTPD,
+            dependentsCount,
+          },
+          orgProfile: profile,
+          ...(financialOverride
+            ? {
+                override: {
+                  customCostPerHour: financialOverride.customCostPerHour,
+                  justification: financialOverride.justification,
+                  validatedBy: financialOverride.validatedBy,
+                  validatedAt: financialOverride.validatedAt,
+                },
+              }
+            : {}),
+          includeUnvalidatedFlows: true,
+          applyCloudCostFactor: true,
+        });
+
+        const metadata = node?.metadata as Record<string, unknown> | undefined;
+        const cloudCost = metadata?.cloudCost as Record<string, unknown> | undefined;
+        const hasCloudCost =
+          cloudCost && Number.isFinite(Number(cloudCost.monthlyTotalUSD))
+            ? Number(cloudCost.monthlyTotalUSD) > 0
+            : false;
+
+        const financialPrecisionBadge =
+          flowFinancialCost.method === 'user_override'
+            ? 'override_user'
+            : flowFinancialCost.method === 'business_flows'
+              ? flowFinancialCost.confidence === 'high'
+                ? 'business_flow_validated'
+                : 'business_flow_not_validated'
+              : hasCloudCost
+                ? 'estimation_enriched'
+                : 'estimation_base';
+
+        const financialConfidence =
+          flowFinancialCost.method === 'user_override'
+            ? 'user_defined'
+            : financialPrecisionBadge === 'estimation_base'
+              ? 'low_confidence'
+              : 'estimated';
+
+        const financialSources =
+          flowFinancialCost.method === 'business_flows'
+            ? [
+                `Calcule a partir de ${flowFinancialCost.impactedFlows.length} flux metier`,
+                ...(flowFinancialCost.confidence === 'high'
+                  ? ['Flux valides par utilisateur']
+                  : ['Flux en attente de validation']),
+              ]
+            : flowFinancialCost.method === 'user_override'
+              ? ['Valeur definie par utilisateur']
+              : hasCloudCost
+                ? ['Estimation enrichie par cout cloud']
+                : ['Estimation de base Stronghold'];
+
+        const validated = p.validationStatus === 'validated';
+
+        return {
+          id: p.id,
+          nodeId: p.serviceNodeId,
+          serviceName: p.serviceName,
+          serviceType: p.serviceType,
+          tier: p.recoveryTier,
+          rto: p.validatedRTO ?? null,
+          rpo: p.validatedRPO ?? null,
+          mtpd: p.validatedMTPD ?? null,
+          rtoSuggested: suggestion.rto,
+          rpoSuggested: suggestion.rpo,
+          mtpdSuggested: suggestion.mtpd,
+          validated,
+          suggestion,
+          effectiveRto: p.validatedRTO ?? suggestion.rto,
+          effectiveRpo: p.validatedRPO ?? suggestion.rpo,
+          effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
+          financialImpactPerHour: flowFinancialCost.totalCostPerHour,
+          financialConfidence,
+          financialSources,
+          financialIsOverride: flowFinancialCost.method === 'user_override',
+          financialPrecisionBadge,
+          financialOverride: financialOverride
+            ? {
+                customCostPerHour: financialOverride.customCostPerHour,
+                justification: financialOverride.justification,
+                validatedBy: financialOverride.validatedBy,
+                validatedAt: financialOverride.validatedAt,
+              }
+            : null,
+          dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
+          criticalityScore: p.criticalityScore,
+          impactCategory: p.impactCategory,
+          validationStatus: p.validationStatus,
+        };
+      }),
+    );
 
     return res.json({
       entries,

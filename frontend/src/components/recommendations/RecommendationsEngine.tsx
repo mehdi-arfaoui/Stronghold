@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 
 const CURRENCIES = [
   { code: 'EUR', symbol: '\u20AC' },
@@ -59,6 +60,7 @@ interface RecommendationsEngineProps {
 
 export function RecommendationsEngine({ className }: RecommendationsEngineProps) {
   const queryClient = useQueryClient();
+  const tenantScope = getCredentialScopeKey();
   const [currency, setCurrency] = useState<string>('EUR');
   const [localStatuses, setLocalStatuses] = useState<Record<string, boolean | null>>({});
 
@@ -86,7 +88,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   );
 
   const roiQuery = useQuery({
-    queryKey: ['financial-recommendations-roi', currency, roiPayloadDigest],
+    queryKey: ['financial-recommendations-roi', tenantScope, currency, roiPayloadDigest],
     enabled: recommendations.length > 0,
     staleTime: 5 * 60 * 1000,
     queryFn: async () =>

@@ -14,7 +14,9 @@ import {
   type FinancialOrganizationProfileInput,
   type NodeFinancialOverrideInput,
   type RecommendationInput,
+  type ResolvedNodeFinancialCostInput,
 } from './financial-engine.service.js';
+import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 
 type InfraNodeWithEdges = Prisma.InfraNodeGetPayload<{
   include: {
@@ -72,6 +74,23 @@ export type RegulatoryExposureSummary = {
   }>;
 };
 
+export type FinancialPrecisionBreakdownItem = {
+  nodes: number;
+  aleAmount: number;
+  costSharePercent: number;
+};
+
+export type FinancialPrecisionSummary = {
+  scorePercent: number;
+  highConfidenceCostSharePercent: number;
+  breakdown: {
+    businessFlowValidated: FinancialPrecisionBreakdownItem;
+    userOverride: FinancialPrecisionBreakdownItem;
+    estimationEnriched: FinancialPrecisionBreakdownItem;
+    estimationBase: FinancialPrecisionBreakdownItem;
+  };
+};
+
 export type FinancialSummaryPayload = {
   metrics: {
     annualRisk: number;
@@ -100,6 +119,7 @@ export type FinancialSummaryPayload = {
     id: string;
     name: string;
   };
+  financialPrecision: FinancialPrecisionSummary;
   regulatoryExposure: RegulatoryExposureSummary;
   disclaimer: string;
   sources: string[];
@@ -419,12 +439,16 @@ export async function loadFinancialContext(prismaClient: PrismaClient, tenantId:
   const overridesByNodeId = Object.fromEntries(
     overrides.map((entry) => [entry.nodeId, { customCostPerHour: entry.customCostPerHour }]),
   ) as Record<string, NodeFinancialOverrideInput | undefined>;
+  const nodeMetadataById = new Map<string, unknown>(
+    nodes.map((node) => [node.id, node.metadata]),
+  );
 
   return {
     analysisResult,
     biaResult,
     profile,
     overridesByNodeId,
+    nodeMetadataById,
   };
 }
 
@@ -589,6 +613,148 @@ export async function buildRegulatoryExposureSummary(
   };
 }
 
+type NodeCostMethodMeta = {
+  method: string;
+  confidence: string;
+};
+
+async function resolveNodeCostsFromBusinessFlows(
+  prismaClient: PrismaClient,
+  tenantId: string,
+  analysisResult: AnalysisResultInput,
+  profile: FinancialOrganizationProfileInput,
+  overridesByNodeId: Record<string, NodeFinancialOverrideInput | undefined>,
+): Promise<{
+  hasBusinessFlows: boolean;
+  resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput>;
+  nodeMethodById: Record<string, NodeCostMethodMeta>;
+}> {
+  const businessFlowCount = await prismaClient.businessFlow.count({ where: { tenantId } });
+  if (businessFlowCount === 0) {
+    return {
+      hasBusinessFlows: false,
+      resolvedNodeCostsByNodeId: {},
+      nodeMethodById: {},
+    };
+  }
+
+  const flowEngine = new BusinessFlowFinancialEngineService(prismaClient);
+  const pairs = await Promise.all(
+    analysisResult.nodes.map(async (node) => {
+      const override = overridesByNodeId[node.id] ?? null;
+      const flowCost = await flowEngine.calculateNodeCostFromFlows({
+        tenantId,
+        nodeId: node.id,
+        node,
+        orgProfile: profile,
+        ...(override ? { override } : {}),
+        includeUnvalidatedFlows: true,
+        applyCloudCostFactor: true,
+      });
+
+      const resolved = {
+        costPerHour: flowCost.totalCostPerHour,
+        method: flowCost.method,
+        confidence: flowCost.confidence,
+        fallbackEstimate: flowCost.fallbackEstimate,
+        sources:
+          flowCost.method === 'business_flows'
+            ? ['Business flow financial model']
+            : flowCost.method === 'user_override'
+              ? ['User financial override']
+              : ['Legacy financial fallback estimate'],
+      } satisfies ResolvedNodeFinancialCostInput;
+
+      return [
+        node.id,
+        resolved,
+        {
+          method: flowCost.method,
+          confidence: flowCost.confidence,
+        } satisfies NodeCostMethodMeta,
+      ] as const;
+    }),
+  );
+
+  return {
+    hasBusinessFlows: true,
+    resolvedNodeCostsByNodeId: Object.fromEntries(pairs.map((entry) => [entry[0], entry[1]])),
+    nodeMethodById: Object.fromEntries(pairs.map((entry) => [entry[0], entry[2]])),
+  };
+}
+
+function hasCloudCostMetadata(rawMetadata: unknown): boolean {
+  if (!isPlainObject(rawMetadata)) return false;
+  const cloudCost = rawMetadata.cloudCost;
+  if (!isPlainObject(cloudCost)) return false;
+  const monthly = Number(cloudCost.monthlyTotalUSD);
+  return Number.isFinite(monthly) && monthly > 0;
+}
+
+function buildFinancialPrecisionSummary(input: {
+  ale: ReturnType<typeof FinancialEngineService.calculateAnnualExpectedLoss>;
+  nodeMetadataById: Map<string, unknown>;
+}): FinancialPrecisionSummary {
+  const breakdownRaw = {
+    businessFlowValidated: { nodes: 0, aleAmount: 0 },
+    userOverride: { nodes: 0, aleAmount: 0 },
+    estimationEnriched: { nodes: 0, aleAmount: 0 },
+    estimationBase: { nodes: 0, aleAmount: 0 },
+  };
+
+  for (const spof of input.ale.aleBySPOF) {
+    const method = String(spof.costMethod || 'legacy_estimate');
+    const confidence = String(spof.costConfidence || 'low');
+    const hasCloudCost = hasCloudCostMetadata(input.nodeMetadataById.get(spof.nodeId));
+    const aleAmount = Number(spof.ale) || 0;
+
+    if (method === 'business_flows' && confidence === 'high') {
+      breakdownRaw.businessFlowValidated.nodes += 1;
+      breakdownRaw.businessFlowValidated.aleAmount += aleAmount;
+      continue;
+    }
+    if (method === 'user_override') {
+      breakdownRaw.userOverride.nodes += 1;
+      breakdownRaw.userOverride.aleAmount += aleAmount;
+      continue;
+    }
+    if (method === 'business_flows' || (method === 'fallback_estimate' && hasCloudCost)) {
+      breakdownRaw.estimationEnriched.nodes += 1;
+      breakdownRaw.estimationEnriched.aleAmount += aleAmount;
+      continue;
+    }
+    breakdownRaw.estimationBase.nodes += 1;
+    breakdownRaw.estimationBase.aleAmount += aleAmount;
+  }
+
+  const totalAle =
+    input.ale.totalALE > 0
+      ? input.ale.totalALE
+      : Object.values(breakdownRaw).reduce((sum, bucket) => sum + bucket.aleAmount, 0);
+
+  const toBreakdownItem = (bucket: { nodes: number; aleAmount: number }): FinancialPrecisionBreakdownItem => ({
+    nodes: bucket.nodes,
+    aleAmount: roundAmount(bucket.aleAmount),
+    costSharePercent: totalAle > 0 ? roundAmount((bucket.aleAmount / totalAle) * 100) : 0,
+  });
+
+  const breakdown = {
+    businessFlowValidated: toBreakdownItem(breakdownRaw.businessFlowValidated),
+    userOverride: toBreakdownItem(breakdownRaw.userOverride),
+    estimationEnriched: toBreakdownItem(breakdownRaw.estimationEnriched),
+    estimationBase: toBreakdownItem(breakdownRaw.estimationBase),
+  };
+
+  const highConfidenceSharePercent =
+    breakdown.businessFlowValidated.costSharePercent + breakdown.userOverride.costSharePercent;
+
+  return {
+    scorePercent: highConfidenceSharePercent,
+    highConfidenceCostSharePercent: highConfidenceSharePercent,
+    breakdown,
+  };
+}
+
 export async function buildFinancialSummaryPayload(
   prismaClient: PrismaClient,
   tenantId: string,
@@ -600,6 +766,13 @@ export async function buildFinancialSummaryPayload(
   const recommendations = await buildFinancialRecommendations(prismaClient, tenantId);
   const preferredCurrency = parseCurrency(options?.currency);
   const profile = resolveProfile(context.profile, preferredCurrency);
+  const resolvedNodeCosts = await resolveNodeCostsFromBusinessFlows(
+    prismaClient,
+    tenantId,
+    context.analysisResult,
+    profile,
+    context.overridesByNodeId,
+  );
 
   const [ale, roi, regulatoryExposure, tenant] = await Promise.all([
     Promise.resolve(
@@ -608,6 +781,7 @@ export async function buildFinancialSummaryPayload(
         context.biaResult,
         profile,
         context.overridesByNodeId,
+        resolvedNodeCosts.resolvedNodeCostsByNodeId,
       ),
     ),
     Promise.resolve(
@@ -617,6 +791,7 @@ export async function buildFinancialSummaryPayload(
         recommendations,
         profile,
         context.overridesByNodeId,
+        resolvedNodeCosts.resolvedNodeCostsByNodeId,
       ),
     ),
     buildRegulatoryExposureSummary(prismaClient, tenantId, profile.verticalSector),
@@ -625,6 +800,11 @@ export async function buildFinancialSummaryPayload(
       select: { id: true, name: true },
     }),
   ]);
+
+  const financialPrecision = buildFinancialPrecisionSummary({
+    ale,
+    nodeMetadataById: context.nodeMetadataById,
+  });
 
   return {
     metrics: {
@@ -645,6 +825,7 @@ export async function buildFinancialSummaryPayload(
       id: tenant?.id || tenantId,
       name: tenant?.name || 'Organization',
     },
+    financialPrecision,
     regulatoryExposure,
     disclaimer: DEFAULT_DASHBOARD_DISCLAIMER,
     sources: dedupeSources(ale.sources, roi.sources),

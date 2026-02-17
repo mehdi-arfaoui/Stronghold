@@ -14,14 +14,40 @@ export interface InfraNodeData {
   isSPOF?: boolean;
   status?: NodeStatus;
   criticality?: number;
+  customBorderColor?: string;
+  dimmed?: boolean;
+  flowStripeColors?: string[];
+  flowRole?: string | null;
+  flowTooltip?: string;
+  showUnknownCostIndicator?: boolean;
   [key: string]: unknown;
 }
 
 type InfraNodeProps = NodeProps & { data: InfraNodeData };
 
 export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProps) {
-  const { label, nodeType, provider, region, isSPOF, status } = data;
-  const borderColor = NODE_COLOR_MAP[nodeType] || '#6b7280';
+  const {
+    label,
+    nodeType,
+    provider,
+    region,
+    isSPOF,
+    status,
+    customBorderColor,
+    dimmed,
+    flowStripeColors,
+    flowRole,
+    flowTooltip,
+    showUnknownCostIndicator,
+  } = data;
+  const borderColor = customBorderColor || NODE_COLOR_MAP[nodeType] || '#6b7280';
+  const stripeColors = Array.isArray(flowStripeColors)
+    ? flowStripeColors.filter((color) => typeof color === 'string' && color.trim().length > 0)
+    : [];
+  const flowStripeBackground =
+    stripeColors.length <= 1
+      ? stripeColors[0]
+      : `linear-gradient(90deg, ${stripeColors.join(', ')})`;
 
   return (
     <div
@@ -29,14 +55,23 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
         'rounded-lg border-2 bg-card px-3 py-2 shadow-sm transition-shadow hover:shadow-md',
         selected && 'ring-2 ring-primary ring-offset-2',
         status === 'down' && 'node-pulse border-severity-critical bg-severity-critical/5',
-        status === 'degraded' && 'border-severity-medium bg-severity-medium/5'
+        status === 'degraded' && 'border-severity-medium bg-severity-medium/5',
+        dimmed && 'opacity-50 saturate-50'
       )}
       style={{
         borderColor: status === 'down' ? undefined : status === 'degraded' ? undefined : borderColor,
         minWidth: 160,
       }}
+      title={typeof flowTooltip === 'string' ? flowTooltip : undefined}
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-muted-foreground/50" />
+
+      {flowStripeBackground && (
+        <div
+          className="mb-2 h-1 rounded-sm"
+          style={{ background: flowStripeBackground }}
+        />
+      )}
 
       <div className="flex items-center gap-2">
         <NodeIcon type={nodeType} className="h-4 w-4 shrink-0" style={{ color: borderColor }} />
@@ -69,6 +104,15 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
 
       {provider && (
         <div className="mt-1 text-xs text-muted-foreground/60">{provider}</div>
+      )}
+
+      {(flowRole || showUnknownCostIndicator) && (
+        <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wide text-muted-foreground">
+          {flowRole && <span>{flowRole}</span>}
+          {showUnknownCostIndicator && (
+            <span className="rounded-sm border border-dashed px-1">💰 ?</span>
+          )}
+        </div>
       )}
 
       <Handle type="source" position={Position.Bottom} className="!h-2 !w-2 !bg-muted-foreground/50" />

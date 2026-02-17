@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+﻿import { useMemo, useState } from 'react';
 import { AlertTriangle, Check, CheckCircle2, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -27,6 +27,45 @@ function formatHourlyCost(amount: number, currencySymbol: string): string {
   if (amount >= 1_000_000) return `${currencySymbol}${(amount / 1_000_000).toFixed(1)}M/h`;
   if (amount >= 1_000) return `${currencySymbol}${Math.round(amount / 1_000)}K/h`;
   return `${currencySymbol}${Math.round(amount)}/h`;
+}
+
+function precisionBadgeModel(entry: BIAEntry): {
+  label: string;
+  className: string;
+  tooltip: string;
+} {
+  switch (entry.financialPrecisionBadge) {
+    case 'business_flow_validated':
+      return {
+        label: 'ðŸ“Šâœ… Flow valide',
+        className: 'border-green-300 bg-green-50 text-green-800',
+        tooltip: 'Calcule depuis un flux metier valide.',
+      };
+    case 'estimation_enriched':
+      return {
+        label: 'â˜ï¸ Estimation enrichie',
+        className: 'border-amber-300 bg-amber-50 text-amber-800',
+        tooltip: 'Estimation enrichie par les donnees cloud.',
+      };
+    case 'override_user':
+      return {
+        label: 'âœï¸âœ… Override',
+        className: 'border-green-300 bg-green-50 text-green-800',
+        tooltip: 'Valeur saisie manuellement par utilisateur.',
+      };
+    case 'business_flow_not_validated':
+      return {
+        label: 'ðŸ“Šâš ï¸ Flow non valide',
+        className: 'border-sky-300 bg-sky-50 text-sky-800',
+        tooltip: 'Flux metier detecte mais non valide.',
+      };
+    default:
+      return {
+        label: 'âš ï¸ Estimation',
+        className: 'border-red-300 bg-red-50 text-red-800',
+        tooltip: 'Estimation de base generique.',
+      };
+  }
 }
 
 export function BIATable({
@@ -183,32 +222,49 @@ export function BIATable({
                     }}
                   >
                     <PopoverTrigger asChild>
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
-                        onClick={() => openOverridePopover(entry)}
-                      >
-                        <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currencySymbol)}</span>
-                        {entry.financialIsOverride ? (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                            </TooltipTrigger>
-                            <TooltipContent>
-                              <p>Validé par l'utilisateur</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        ) : (
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                            </TooltipTrigger>
-                            <TooltipContent className="max-w-xs">
-                              <p>Estimation Stronghold basee sur des benchmarks publics. Cliquez pour saisir votre chiffre metier.</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        )}
-                      </button>
+                      <div className="inline-flex flex-col items-end gap-1">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
+                          onClick={() => openOverridePopover(entry)}
+                        >
+                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currencySymbol)}</span>
+                          {entry.financialIsOverride ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Valide par l'utilisateur</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                <p>Cliquez pour saisir votre chiffre metier.</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                        </button>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span
+                              className={cn(
+                                'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
+                                precisionBadgeModel(entry).className,
+                              )}
+                            >
+                              {precisionBadgeModel(entry).label}
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{precisionBadgeModel(entry).tooltip}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
                     </PopoverTrigger>
 
                     <PopoverContent align="end" className="w-80 space-y-3">
@@ -233,7 +289,7 @@ export function BIATable({
                         <textarea
                           value={overrideJustification}
                           onChange={(event) => setOverrideJustification(event.target.value)}
-                          placeholder="Ex: basé sur notre analyse interne Q4 2025"
+                          placeholder="Ex: basÃ© sur notre analyse interne Q4 2025"
                           className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                       </div>
@@ -366,3 +422,4 @@ function EditableCell({
     </TableCell>
   );
 }
+

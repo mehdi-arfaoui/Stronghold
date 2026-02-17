@@ -10,6 +10,7 @@ import { decryptDiscoveryCredentials } from "../services/discoveryService.js";
 import { runDiscoveryEngine } from "../services/discoveryEngine.js";
 import { resolveVaultCredentials } from "../services/discoveryVaultService.js";
 import { emitDiscoveryProgress } from "../services/discoveryProgressService.js";
+import { CloudEnrichmentService } from "../services/cloud-enrichment.service.js";
 import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type DiscoveryQueuePayload = {
@@ -28,6 +29,8 @@ const discoverySteps = [
   { step: "CORRELATE_RESOURCES", progress: 80 },
   { step: "MAP_TO_DB", progress: 95 },
 ];
+
+const cloudEnrichmentService = new CloudEnrichmentService(prisma);
 
 async function updateDiscoveryJob(tenantId: string, jobId: string, data: Record<string, unknown>) {
   const result = await prisma.discoveryJob.updateMany({
@@ -234,6 +237,16 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
             },
           });
         }
+        // Trigger cloud enrichment suggestions asynchronously after each completed scan.
+        void cloudEnrichmentService
+          .enrichFromCloudData(tenantId)
+          .catch((enrichmentError) => {
+            const message =
+              enrichmentError instanceof Error
+                ? enrichmentError.message
+                : "cloud enrichment failed";
+            appLogger.warn("Cloud enrichment post-scan failed", { tenantId, jobId, message });
+          });
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         recordDiscoveryJobResult(false, tenantId);

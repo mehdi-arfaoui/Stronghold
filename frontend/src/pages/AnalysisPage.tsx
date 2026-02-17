@@ -18,25 +18,27 @@ import { biaApi } from '@/api/bia.api';
 import { risksApi } from '@/api/risks.api';
 import { analysisApi } from '@/api/analysis.api';
 import { financialApi } from '@/api/financial.api';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import type { Risk } from '@/types/risks.types';
 import type { BIAEntry } from '@/types/bia.types';
 
 export function AnalysisPage() {
   const queryClient = useQueryClient();
+  const tenantScope = getCredentialScopeKey();
   const [exportOpen, setExportOpen] = useState(false);
 
   const biaQuery = useQuery({
-    queryKey: ['bia-entries'],
+    queryKey: ['bia-entries', tenantScope],
     queryFn: async () => (await biaApi.getEntries()).data,
   });
 
   const biaSummaryQuery = useQuery({
-    queryKey: ['bia-summary'],
+    queryKey: ['bia-summary', tenantScope],
     queryFn: async () => (await biaApi.getSummary()).data,
   });
 
   const orgProfileQuery = useQuery({
-    queryKey: ['financial-org-profile'],
+    queryKey: ['financial-org-profile', tenantScope],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
   });
 
@@ -58,21 +60,21 @@ export function AnalysisPage() {
   const updateEntryMutation = useMutation({
     mutationFn: ({ id, field, value }: { id: string; field: string; value: number }) =>
       biaApi.updateEntry(id, { [field]: value }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bia-entries'] }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] }),
   });
 
   const validateEntryMutation = useMutation({
     mutationFn: (id: string) => biaApi.validateEntry(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['bia-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['bia-summary', tenantScope] });
     },
   });
 
   const regenerateMutation = useMutation({
     mutationFn: () => biaApi.regenerate(),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
+      queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
       toast.success('BIA regenere');
     },
   });
@@ -81,8 +83,8 @@ export function AnalysisPage() {
     mutationFn: ({ nodeId, customCostPerHour, justification }: { nodeId: string; customCostPerHour: number; justification?: string }) =>
       financialApi.upsertNodeOverride(nodeId, { customCostPerHour, justification }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
-      queryClient.invalidateQueries({ queryKey: ['financial-summary'] });
+      queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['financial-summary', tenantScope] });
       toast.success('Override financier enregistre');
     },
     onError: () => toast.error('Impossible d enregistrer l override financier'),

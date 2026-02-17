@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { clearStoredToken, getStoredToken, setStoredToken } from '@/lib/credentialStorage';
 
 interface User {
   id: string;
@@ -18,16 +19,16 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>((set) => ({
   user: null,
-  token: localStorage.getItem('stronghold_token'),
-  isAuthenticated: !!localStorage.getItem('stronghold_token'),
+  token: getStoredToken(),
+  isAuthenticated: !!getStoredToken(),
 
   login: (token, user) => {
-    localStorage.setItem('stronghold_token', token);
+    setStoredToken(token);
     set({ token, user, isAuthenticated: true });
   },
 
   logout: () => {
-    localStorage.removeItem('stronghold_token');
+    clearStoredToken();
     set({ token: null, user: null, isAuthenticated: false });
   },
 

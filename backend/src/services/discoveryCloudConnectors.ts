@@ -13,6 +13,8 @@ import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/cl
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { LambdaClient, ListFunctionsCommand } from "@aws-sdk/client-lambda";
+import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
+import { CostExplorerClient, GetCostAndUsageCommand } from "@aws-sdk/client-cost-explorer";
 import {
   EKSClient,
   ListClustersCommand,
@@ -37,8 +39,332 @@ function emptyResult(): DiscoveryConnectorResult {
   return { resources: [], flows: [], warnings: [] };
 }
 
+const BUSINESS_TAG_KEYS = new Set(
+  [
+    'Business',
+    'BusinessUnit',
+    'business-unit',
+    'CostCenter',
+    'cost-center',
+    'cost_center',
+    'Application',
+    'app',
+    'application',
+    'Service',
+    'service-name',
+    'Environment',
+    'env',
+    'Owner',
+    'team',
+    'Team',
+    'Revenue',
+    'revenue-stream',
+    'Criticality',
+    'criticality-level',
+  ].map((key) => key.toLowerCase())
+);
+
+function toBusinessTagMap(rawTags: unknown): Record<string, string> {
+  const businessTags: Record<string, string> = {};
+
+  if (Array.isArray(rawTags)) {
+    for (const rawTag of rawTags) {
+      if (typeof rawTag !== "string") continue;
+      const [rawKey, ...rest] = rawTag.split(":");
+      const key = String(rawKey || "").trim();
+      const value = rest.join(":").trim();
+      if (!key || !value) continue;
+      if (!BUSINESS_TAG_KEYS.has(key.toLowerCase())) continue;
+      businessTags[key] = value;
+    }
+    return businessTags;
+  }
+
+  if (rawTags && typeof rawTags === "object" && !Array.isArray(rawTags)) {
+    for (const [key, value] of Object.entries(rawTags as Record<string, unknown>)) {
+      if (!BUSINESS_TAG_KEYS.has(key.toLowerCase())) continue;
+      if (value == null) continue;
+      const normalized = String(value).trim();
+      if (!normalized) continue;
+      businessTags[key] = normalized;
+    }
+  }
+
+  return businessTags;
+}
+
 // Rate limiting: max concurrent region scans
 const AWS_MAX_CONCURRENT_REGIONS = 5;
+const AWS_CLOUDWATCH_MAX_CALLS_PER_SCAN = 20;
+
+type AwsMetricTarget = {
+  resourceExternalId: string;
+  kind: "load_balancer" | "rds" | "lambda";
+  namespace: string;
+  metricName: string;
+  dimensions: Array<{ Name: string; Value: string }>;
+  unit?: string;
+};
+
+function average(values: number[]): number {
+  if (!Array.isArray(values) || values.length === 0) return 0;
+  const sum = values.reduce((acc, value) => acc + (Number.isFinite(value) ? value : 0), 0);
+  return values.length > 0 ? sum / values.length : 0;
+}
+
+function roundMetric(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Number(value.toFixed(2));
+}
+
+function extractLoadBalancerDimensionFromArn(arn: string | undefined): string | null {
+  if (!arn) return null;
+  const marker = "loadbalancer/";
+  const index = arn.indexOf(marker);
+  if (index < 0) return null;
+  const dimensionValue = arn.slice(index + marker.length).trim();
+  return dimensionValue.length > 0 ? dimensionValue : null;
+}
+
+async function enrichAwsResourcesWithCloudWatchMetrics(input: {
+  resources: DiscoveredResource[];
+  metricTargets: AwsMetricTarget[];
+  region: string;
+  credentialProvider: unknown;
+}): Promise<void> {
+  if (input.metricTargets.length === 0) return;
+
+  const cloudWatch = new CloudWatchClient({
+    region: input.region,
+    credentials: input.credentialProvider as any,
+  });
+
+  const endTime = new Date();
+  const startTime = new Date(endTime.getTime() - 24 * 60 * 60 * 1000);
+  const measuredAt = new Date().toISOString();
+  const metricDataQueries: Array<Record<string, unknown>> = [];
+  const metricTargetByQueryId = new Map<
+    string,
+    { target: AwsMetricTarget; stat: "avg" | "peak" }
+  >();
+
+  input.metricTargets.forEach((target, index) => {
+    const avgQueryId = `m${index}a`;
+    const peakQueryId = `m${index}p`;
+
+    metricDataQueries.push({
+      Id: avgQueryId,
+      MetricStat: {
+        Metric: {
+          Namespace: target.namespace,
+          MetricName: target.metricName,
+          Dimensions: target.dimensions,
+        },
+        Period: 3600,
+        Stat: target.kind === "rds" ? "Average" : "Sum",
+        ...(target.unit ? { Unit: target.unit } : {}),
+      },
+      ReturnData: true,
+    });
+    metricTargetByQueryId.set(avgQueryId, { target, stat: "avg" });
+
+    if (target.kind !== "rds") {
+      metricDataQueries.push({
+        Id: peakQueryId,
+        MetricStat: {
+          Metric: {
+            Namespace: target.namespace,
+            MetricName: target.metricName,
+            Dimensions: target.dimensions,
+          },
+          Period: 3600,
+          Stat: "Maximum",
+          ...(target.unit ? { Unit: target.unit } : {}),
+        },
+        ReturnData: true,
+      });
+      metricTargetByQueryId.set(peakQueryId, { target, stat: "peak" });
+    }
+  });
+
+  if (metricDataQueries.length === 0) return;
+
+  const response = await cloudWatch.send(
+    new GetMetricDataCommand({
+      StartTime: startTime,
+      EndTime: endTime,
+      MetricDataQueries: metricDataQueries as any,
+      ScanBy: "TimestampAscending",
+    }),
+  );
+
+  const metricsByResourceId = new Map<
+    string,
+    {
+      requestsPerHour?: number;
+      peakRequestsPerHour?: number;
+      connectionsAvg?: number;
+    }
+  >();
+
+  for (const result of response.MetricDataResults || []) {
+    if (!result.Id) continue;
+    const descriptor = metricTargetByQueryId.get(result.Id);
+    if (!descriptor) continue;
+    const values = (result.Values || [])
+      .map((value: unknown) => Number(value))
+      .filter((value): value is number => Number.isFinite(value));
+    if (values.length === 0) continue;
+
+    const current = metricsByResourceId.get(descriptor.target.resourceExternalId) || {};
+    if (descriptor.target.kind === "rds") {
+      current.connectionsAvg = roundMetric(average(values));
+    } else if (descriptor.stat === "peak") {
+      current.peakRequestsPerHour = roundMetric(Math.max(...values));
+    } else {
+      current.requestsPerHour = roundMetric(average(values));
+    }
+    metricsByResourceId.set(descriptor.target.resourceExternalId, current);
+  }
+
+  for (const resource of input.resources) {
+    const metrics = metricsByResourceId.get(resource.externalId);
+    if (!metrics) continue;
+    resource.metadata = {
+      ...(resource.metadata || {}),
+      metrics: {
+        ...(resource.metadata?.metrics && typeof resource.metadata.metrics === "object"
+          ? (resource.metadata.metrics as Record<string, unknown>)
+          : {}),
+        ...metrics,
+        source: "cloudwatch",
+        measuredAt,
+      },
+    };
+  }
+}
+
+function startOfMonth(input: Date): Date {
+  return new Date(Date.UTC(input.getUTCFullYear(), input.getUTCMonth(), 1, 0, 0, 0));
+}
+
+function toIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function normalizeAwsResourceId(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function matchResourceToCostId(resource: DiscoveredResource, costResourceId: string): boolean {
+  const normalizedCostId = normalizeAwsResourceId(costResourceId);
+  const candidates = [
+    resource.externalId,
+    resource.name,
+    resource.ip || "",
+  ]
+    .filter(Boolean)
+    .map((candidate) => normalizeAwsResourceId(String(candidate)));
+
+  return candidates.some(
+    (candidate) =>
+      normalizedCostId === candidate ||
+      normalizedCostId.includes(candidate) ||
+      candidate.includes(normalizedCostId),
+  );
+}
+
+async function enrichAwsResourcesWithCostExplorer(input: {
+  resources: DiscoveredResource[];
+  credentials: DiscoveryCredentials;
+}): Promise<void> {
+  if (!input.credentials.aws?.accessKeyId && !input.credentials.aws?.roleArn) return;
+  if (input.resources.length === 0) return;
+
+  const credentialProvider = input.credentials.aws.roleArn
+    ? fromTemporaryCredentials({
+        params: {
+          RoleArn: input.credentials.aws.roleArn,
+          RoleSessionName: "stronghold-discovery-cost-explorer",
+          ExternalId: input.credentials.aws.externalId,
+        },
+        clientConfig: { region: "us-east-1" },
+      })
+    : {
+        accessKeyId: input.credentials.aws.accessKeyId,
+        secretAccessKey: input.credentials.aws.secretAccessKey,
+        sessionToken: input.credentials.aws.sessionToken,
+      };
+
+  const now = new Date();
+  const currentMonthStart = startOfMonth(now);
+  const previousMonthStart = startOfMonth(
+    new Date(Date.UTC(currentMonthStart.getUTCFullYear(), currentMonthStart.getUTCMonth() - 1, 1)),
+  );
+
+  const costExplorer = new CostExplorerClient({
+    region: "us-east-1",
+    credentials: credentialProvider as any,
+  });
+
+  const response = await costExplorer.send(
+    new GetCostAndUsageCommand({
+      TimePeriod: {
+        Start: toIsoDate(previousMonthStart),
+        End: toIsoDate(currentMonthStart),
+      },
+      Granularity: "MONTHLY",
+      Metrics: ["UnblendedCost"],
+      GroupBy: [{ Type: "DIMENSION", Key: "RESOURCE_ID" }],
+      Filter: {
+        Dimensions: {
+          Key: "SERVICE",
+          Values: [
+            "Amazon Relational Database Service",
+            "Amazon Elastic Compute Cloud - Compute",
+            "AWS Lambda",
+            "Amazon ElastiCache",
+            "Amazon Elastic Load Balancing",
+          ],
+        },
+      },
+    }),
+  );
+
+  const monthLabel = previousMonthStart.toISOString().slice(0, 7);
+  const costByResourceId = new Map<string, number>();
+  for (const bucket of response.ResultsByTime || []) {
+    for (const group of bucket.Groups || []) {
+      const resourceId = group.Keys?.[0];
+      const amount = Number(group.Metrics?.UnblendedCost?.Amount || 0);
+      if (!resourceId || !Number.isFinite(amount) || amount <= 0) continue;
+      costByResourceId.set(resourceId, amount);
+    }
+  }
+
+  if (costByResourceId.size === 0) return;
+
+  for (const resource of input.resources) {
+    let monthlyTotal = 0;
+    for (const [resourceId, amount] of costByResourceId.entries()) {
+      if (!matchResourceToCostId(resource, resourceId)) continue;
+      monthlyTotal = amount;
+      break;
+    }
+    if (monthlyTotal <= 0) continue;
+
+    const dailyAvg = monthlyTotal / 30;
+    resource.metadata = {
+      ...(resource.metadata || {}),
+      cloudCost: {
+        dailyAvgUSD: roundMetric(dailyAvg),
+        monthlyTotalUSD: roundMetric(monthlyTotal),
+        source: "aws_cost_explorer",
+        period: monthLabel,
+      },
+    };
+  }
+}
 
 /**
  * Fetch all available AWS regions using EC2 DescribeRegions API.
@@ -105,7 +431,10 @@ function buildResource(input: Partial<DiscoveredResource> & { source: string; ex
  */
 async function scanAwsRegion(
   region: string,
-  credentials: DiscoveryCredentials
+  credentials: DiscoveryCredentials,
+  options?: {
+    collectCloudWatchMetrics?: boolean;
+  },
 ): Promise<DiscoveredResource[]> {
   const credentialProvider = credentials.aws?.roleArn
     ? fromTemporaryCredentials({
@@ -130,6 +459,7 @@ async function scanAwsRegion(
   const eks = new EKSClient({ region, credentials: credentialProvider as any });
 
   const resources: DiscoveredResource[] = [];
+  const metricTargets: AwsMetricTarget[] = [];
 
   // EC2 Instances
   const instances = await ec2.send(new DescribeInstancesCommand({}));
@@ -163,35 +493,67 @@ async function scanAwsRegion(
     });
   }
 
+  // Persist structured business tags in metadata for downstream enrichment.
+  for (const resource of resources) {
+    const businessTags = toBusinessTagMap(resource.tags || []);
+    if (Object.keys(businessTags).length === 0) continue;
+    resource.metadata = {
+      ...(resource.metadata || {}),
+      businessTags,
+    };
+  }
+
   // RDS Instances
   const dbInstances = await rds.send(new DescribeDBInstancesCommand({}));
   dbInstances.DBInstances?.forEach((db) => {
+    const dbIdentifier = db.DBInstanceIdentifier || "rds";
     resources.push(
       buildResource({
         source: "aws",
-        externalId: db.DBInstanceIdentifier || "rds",
-        name: db.DBInstanceIdentifier || "rds",
+        externalId: dbIdentifier,
+        name: dbIdentifier,
         kind: "infra",
         type: "RDS",
         ip: db.Endpoint?.Address || null,
         metadata: { engine: db.Engine, status: db.DBInstanceStatus, region },
       })
     );
+
+    if (db.DBInstanceIdentifier) {
+      metricTargets.push({
+        resourceExternalId: dbIdentifier,
+        kind: "rds",
+        namespace: "AWS/RDS",
+        metricName: "DatabaseConnections",
+        dimensions: [{ Name: "DBInstanceIdentifier", Value: db.DBInstanceIdentifier }],
+      });
+    }
   });
 
   // Lambda Functions
   const lambdas = await lambda.send(new ListFunctionsCommand({}));
   lambdas.Functions?.forEach((fn) => {
+    const functionExternalId = fn.FunctionArn || fn.FunctionName || "lambda";
     resources.push(
       buildResource({
         source: "aws",
-        externalId: fn.FunctionArn || fn.FunctionName || "lambda",
+        externalId: functionExternalId,
         name: fn.FunctionName || "lambda",
         kind: "service",
         type: "LAMBDA",
         metadata: { runtime: fn.Runtime, handler: fn.Handler, region },
       })
     );
+
+    if (fn.FunctionName) {
+      metricTargets.push({
+        resourceExternalId: functionExternalId,
+        kind: "lambda",
+        namespace: "AWS/Lambda",
+        metricName: "Invocations",
+        dimensions: [{ Name: "FunctionName", Value: fn.FunctionName }],
+      });
+    }
   });
 
   // Auto Scaling Groups
@@ -212,10 +574,11 @@ async function scanAwsRegion(
   // Load Balancers
   const loadBalancers = await elb.send(new DescribeLoadBalancersCommand({}));
   loadBalancers.LoadBalancers?.forEach((lb) => {
+    const lbExternalId = lb.LoadBalancerArn || lb.LoadBalancerName || "elb";
     resources.push(
       buildResource({
         source: "aws",
-        externalId: lb.LoadBalancerArn || lb.LoadBalancerName || "elb",
+        externalId: lbExternalId,
         name: lb.LoadBalancerName || "elb",
         kind: "infra",
         type: "ELB",
@@ -223,6 +586,25 @@ async function scanAwsRegion(
         metadata: { scheme: lb.Scheme, type: lb.Type, region },
       })
     );
+
+    const lbDimension = extractLoadBalancerDimensionFromArn(lb.LoadBalancerArn);
+    const lbType = String(lb.Type || "").toLowerCase();
+    const namespace =
+      lbType === "application"
+        ? "AWS/ApplicationELB"
+        : lbType === "network"
+          ? "AWS/NetworkELB"
+          : null;
+
+    if (lbDimension && namespace) {
+      metricTargets.push({
+        resourceExternalId: lbExternalId,
+        kind: "load_balancer",
+        namespace,
+        metricName: "RequestCount",
+        dimensions: [{ Name: "LoadBalancer", Value: lbDimension }],
+      });
+    }
   });
 
   // EKS Clusters
@@ -358,6 +740,21 @@ async function scanAwsRegion(
     );
   });
 
+  if (options?.collectCloudWatchMetrics && metricTargets.length > 0) {
+    try {
+      // Keep scan latency bounded: sample up to 20 resources for metrics enrichment per region.
+      const sampledTargets = metricTargets.slice(0, 20);
+      await enrichAwsResourcesWithCloudWatchMetrics({
+        resources,
+        metricTargets: sampledTargets,
+        region,
+        credentialProvider,
+      });
+    } catch {
+      // Metrics enrichment is optional. Continue scan without blocking.
+    }
+  }
+
   return resources;
 }
 
@@ -408,10 +805,17 @@ export async function scanAws(
   const allResources: DiscoveredResource[] = [];
   const warnings: string[] = [];
   let completed = 0;
+  let remainingCloudWatchCalls = AWS_CLOUDWATCH_MAX_CALLS_PER_SCAN;
 
   // Scan regions with rate limiting (max concurrent)
   const results = await processInBatches(regionsToScan, AWS_MAX_CONCURRENT_REGIONS, async (region) => {
-    const resources = await scanAwsRegion(region, credentials);
+    const collectCloudWatchMetrics = remainingCloudWatchCalls > 0;
+    if (collectCloudWatchMetrics) {
+      remainingCloudWatchCalls -= 1;
+    }
+    const resources = await scanAwsRegion(region, credentials, {
+      collectCloudWatchMetrics,
+    });
     completed++;
     options.onProgress?.(completed, regionsToScan.length, region);
     return { region, resources };
@@ -426,6 +830,15 @@ export async function scanAws(
       const errorMsg = result.reason?.message || String(result.reason);
       warnings.push(`AWS scan failed for region: ${errorMsg}`);
     }
+  }
+
+  try {
+    await enrichAwsResourcesWithCostExplorer({
+      resources: allResources,
+      credentials,
+    });
+  } catch {
+    warnings.push("AWS Cost Explorer enrichment skipped (insufficient permissions or unavailable API).");
   }
 
   return { resources: allResources, flows: [], warnings };
@@ -461,7 +874,11 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
         name: resource.name || resource.id || "resource",
         kind: "infra",
         type: resource.type || "RESOURCE",
-        metadata: { location: resource.location, tags: resource.tags },
+        metadata: {
+          location: resource.location,
+          tags: resource.tags,
+          businessTags: toBusinessTagMap(resource.tags || {}),
+        },
       })
     );
   }
@@ -595,7 +1012,12 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
           type: "GCE",
           ip: instance.networkInterfaces?.[0]?.networkIP || null,
           hostname: instance.hostname || null,
-          metadata: { zone, status: instance.status },
+          metadata: {
+            zone,
+            status: instance.status,
+            labels: instance.labels || null,
+            businessTags: toBusinessTagMap(instance.labels || {}),
+          },
         })
       );
     });
@@ -613,7 +1035,12 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
         name: cluster.name || "gke",
         kind: "infra",
         type: "GKE",
-        metadata: { endpoint: cluster.endpoint, version: cluster.currentMasterVersion },
+        metadata: {
+          endpoint: cluster.endpoint,
+          version: cluster.currentMasterVersion,
+          labels: cluster.resourceLabels || null,
+          businessTags: toBusinessTagMap(cluster.resourceLabels || {}),
+        },
       })
     );
   });
@@ -630,7 +1057,12 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
         name: instance.name || "sql",
         kind: "infra",
         type: "CLOUD_SQL",
-        metadata: { region: instance.region, databaseVersion: instance.databaseVersion },
+        metadata: {
+          region: instance.region,
+          databaseVersion: instance.databaseVersion,
+          labels: instance.settings?.userLabels || null,
+          businessTags: toBusinessTagMap(instance.settings?.userLabels || {}),
+        },
       })
     );
   });

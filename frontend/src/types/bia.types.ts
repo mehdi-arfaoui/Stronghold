@@ -33,6 +33,12 @@ export interface BIAEntry {
   financialConfidence?: 'user_defined' | 'estimated' | 'low_confidence';
   financialSources?: string[];
   financialIsOverride?: boolean;
+  financialPrecisionBadge?:
+    | 'business_flow_validated'
+    | 'business_flow_not_validated'
+    | 'override_user'
+    | 'estimation_enriched'
+    | 'estimation_base';
   financialOverride?: {
     customCostPerHour: number;
     justification?: string | null;

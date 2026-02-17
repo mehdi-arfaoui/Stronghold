@@ -73,6 +73,14 @@ export type NodeFinancialOverrideInput = {
   validatedAt?: Date | null;
 };
 
+export type ResolvedNodeFinancialCostInput = {
+  costPerHour: number;
+  method?: string;
+  confidence?: string;
+  sources?: string[];
+  fallbackEstimate?: number | null;
+};
+
 export type FinancialOrganizationProfileInput = {
   sizeCategory?: string | null;
   verticalSector?: string | null;
@@ -116,6 +124,9 @@ export type AnnualExpectedLossResult = {
     estimatedDowntimeHours: number;
     costPerHour: number;
     dependentsCount: number;
+    costMethod?: string;
+    costConfidence?: string;
+    fallbackEstimate?: number | null;
   }>;
   totalSPOFs: number;
   avgDowntimeHoursPerIncident: number;
@@ -174,6 +185,9 @@ type InternalNodeLoss = {
   costPerHour: number;
   dependentsCount: number;
   ale: number;
+  costMethod: string;
+  costConfidence: string;
+  fallbackEstimate: number | null;
 };
 
 const FX_USD_TO_TARGET: Record<SupportedCurrency, number> = {
@@ -416,6 +430,7 @@ function buildNodeLossContributions(
   biaResult: BIAResultInput,
   orgProfile: FinancialOrganizationProfileInput,
   overridesByNodeId: Record<string, NodeFinancialOverrideInput | undefined>,
+  resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput | undefined> = {},
 ): { losses: InternalNodeLoss[]; sources: string[] } {
   const processMap = new Map(
     (biaResult.processes || []).map((process) => [process.serviceNodeId, process]),
@@ -428,14 +443,29 @@ function buildNodeLossContributions(
     const probabilityRule = resolveProbability(node);
     if (probabilityRule.probability <= 0) continue;
 
-    const impact = FinancialEngineService.calculateNodeFinancialImpact(
-      node,
-      orgProfile,
-      overridesByNodeId[node.id],
-    );
+    const resolvedCost = resolvedNodeCostsByNodeId[node.id];
+    const impact =
+      resolvedCost && resolvedCost.costPerHour > 0
+        ? null
+        : FinancialEngineService.calculateNodeFinancialImpact(
+            node,
+            orgProfile,
+            overridesByNodeId[node.id],
+          );
+
+    const resolvedCostPerHour =
+      resolvedCost && Number.isFinite(resolvedCost.costPerHour) && resolvedCost.costPerHour > 0
+        ? roundAmount(resolvedCost.costPerHour)
+        : null;
+    const costPerHour = resolvedCostPerHour ?? (impact ? impact.estimatedCostPerHour : 0);
+    const costMethod =
+      resolvedCost?.method ??
+      (impact?.confidence === 'user_defined' ? 'user_override' : 'legacy_estimate');
+    const costConfidence = String(resolvedCost?.confidence ?? impact?.confidence ?? 'low_confidence');
+    const fallbackEstimate = resolvedCost?.fallbackEstimate ?? null;
 
     const downtimeHours = getRtoHours(node, processMap);
-    const ale = probabilityRule.probability * downtimeHours * impact.estimatedCostPerHour;
+    const ale = probabilityRule.probability * downtimeHours * costPerHour;
 
     losses.push({
       nodeId: node.id,
@@ -445,12 +475,19 @@ function buildNodeLossContributions(
       recoveryTier: getTierFromNode(node, processMap),
       probability: probabilityRule.probability,
       estimatedDowntimeHours: downtimeHours,
-      costPerHour: impact.estimatedCostPerHour,
+      costPerHour,
       dependentsCount: countDependents(node),
       ale,
+      costMethod,
+      costConfidence,
+      fallbackEstimate,
     });
 
-    sources.push(probabilityRule.source, ...impact.sources);
+    sources.push(
+      probabilityRule.source,
+      ...(impact?.sources || []),
+      ...(resolvedCost?.sources || []),
+    );
   }
 
   return {
@@ -549,6 +586,7 @@ export class FinancialEngineService {
     biaResult: BIAResultInput,
     orgProfile?: FinancialOrganizationProfileInput | OrganizationProfile | null,
     overridesByNodeId: Record<string, NodeFinancialOverrideInput | undefined> = {},
+    resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput | undefined> = {},
   ): AnnualExpectedLossResult {
     const profile = ensureProfileDefaults(orgProfile);
     const currency = normalizeCurrency(profile.customCurrency);
@@ -558,6 +596,7 @@ export class FinancialEngineService {
       biaResult,
       profile,
       overridesByNodeId,
+      resolvedNodeCostsByNodeId,
     );
 
     const aleByTier = {
@@ -598,6 +637,9 @@ export class FinancialEngineService {
           estimatedDowntimeHours: Number(loss.estimatedDowntimeHours.toFixed(2)),
           costPerHour: roundAmount(loss.costPerHour),
           dependentsCount: loss.dependentsCount,
+          costMethod: loss.costMethod,
+          costConfidence: loss.costConfidence,
+          fallbackEstimate: loss.fallbackEstimate,
         });
       }
     }
@@ -636,6 +678,7 @@ export class FinancialEngineService {
     recommendations: RecommendationInput[],
     orgProfile?: FinancialOrganizationProfileInput | OrganizationProfile | null,
     overridesByNodeId: Record<string, NodeFinancialOverrideInput | undefined> = {},
+    resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput | undefined> = {},
   ): ROIResult {
     const profile = ensureProfileDefaults(orgProfile);
     const currency = normalizeCurrency(profile.customCurrency);
@@ -646,6 +689,7 @@ export class FinancialEngineService {
       biaResult,
       profile,
       overridesByNodeId,
+      resolvedNodeCostsByNodeId,
     );
 
     const nodeLookup = new Map((analysisResult.nodes || []).map((node) => [node.id, node]));

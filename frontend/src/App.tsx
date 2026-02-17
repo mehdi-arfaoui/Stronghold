@@ -17,12 +17,14 @@ import { LoginPage } from '@/pages/LoginPage';
 import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
 import { DriftDetectionPage } from '@/pages/DriftDetectionPage';
 import { FinancialDashboardPage } from '@/pages/FinancialDashboardPage';
+import { BusinessFlowsPage } from '@/pages/BusinessFlowsPage';
 import { RunbooksPage } from '@/pages/RunbooksPage';
 import { RunbookDetailPage } from '@/pages/RunbookDetailPage';
 import { RemediationPage } from '@/pages/RemediationPage';
 import { PRAExercisesPage } from '@/pages/PRAExercisesPage';
 import { useUIStore } from '@/stores/ui.store';
 import { useEffect } from 'react';
+import { getCredentialScopeKey, isCredentialStorageKey } from '@/lib/credentialStorage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,6 +43,7 @@ const router = createBrowserRouter([
       { path: '/dashboard', element: <DashboardPage /> },
       { path: '/discovery', element: <DiscoveryPage /> },
       { path: '/analysis', element: <AnalysisPage /> },
+      { path: '/business-flows', element: <BusinessFlowsPage /> },
       { path: '/simulations', element: <SimulationPage /> },
       { path: '/simulations/runbooks', element: <RunbooksPage /> },
       { path: '/simulations/runbooks/:id', element: <RunbookDetailPage /> },
@@ -68,12 +71,41 @@ function ThemeInitializer() {
   return null;
 }
 
+function TenantCacheIsolationGuard() {
+  useEffect(() => {
+    let currentScope = getCredentialScopeKey();
+
+    const syncScope = () => {
+      const nextScope = getCredentialScopeKey();
+      if (nextScope === currentScope) return;
+      currentScope = nextScope;
+      queryClient.clear();
+    };
+
+    const onStorage = (event: StorageEvent) => {
+      if (!isCredentialStorageKey(event.key)) return;
+      syncScope();
+    };
+
+    window.addEventListener('storage', onStorage);
+    const interval = window.setInterval(syncScope, 1500);
+
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  return null;
+}
+
 export default function App() {
   return (
     <GlobalErrorBoundary>
       <QueryClientProvider client={queryClient}>
         <TooltipProvider>
           <ThemeInitializer />
+          <TenantCacheIsolationGuard />
           <RouterProvider router={router} />
         </TooltipProvider>
       </QueryClientProvider>

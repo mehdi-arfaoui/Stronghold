@@ -1,4 +1,10 @@
 import axios from 'axios';
+import {
+  clearStoredApiKey,
+  clearStoredToken,
+  getStoredApiKey,
+  getStoredToken,
+} from '@/lib/credentialStorage';
 
 function resolveApiBaseUrl(): string {
   const configuredBaseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -28,11 +34,11 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const apiKey = localStorage.getItem('stronghold_api_key')?.trim();
+  const apiKey = getStoredApiKey();
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }
-  const token = localStorage.getItem('stronghold_token');
+  const token = getStoredToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
@@ -45,15 +51,15 @@ api.interceptors.response.use(
     if (err.response?.status === 401) {
       // Only redirect to login if a JWT session expired (token was present).
       // Don't redirect for missing/invalid API key — let the caller handle the error.
-      const hadToken = localStorage.getItem('stronghold_token');
+      const hadToken = getStoredToken();
       if (hadToken) {
-        localStorage.removeItem('stronghold_token');
+        clearStoredToken();
         window.location.href = '/login';
       }
     }
 
     if (err.response?.status === 403 && err.response?.data?.error === 'Invalid API key') {
-      localStorage.removeItem('stronghold_api_key');
+      clearStoredApiKey();
     }
 
     return Promise.reject(err);

@@ -21,8 +21,11 @@ import {
   FinancialEngineService,
   type AnalysisResultInput,
   type BIAResultInput,
+  type FinancialOrganizationProfileInput,
   type RecommendationInput,
+  type ResolvedNodeFinancialCostInput,
 } from '../services/financial-engine.service.js';
+import { BusinessFlowFinancialEngineService } from '../services/business-flow-financial-engine.service.js';
 import {
   buildFinancialSummaryPayload,
   buildFinancialTrendPayload,
@@ -34,6 +37,7 @@ const FINANCIAL_CALC_MAX = 10;
 const FINANCIAL_CALC_WINDOW_MS = 60 * 1000;
 const CACHE_TTL_SECONDS = 60 * 60;
 const cacheBuckets = new Map<string, { count: number; resetAt: number }>();
+const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
 
 function checkCalcRateLimit(tenantId: string): boolean {
   const now = Date.now();
@@ -117,8 +121,11 @@ async function invalidateTenantFinancialCache(tenantId: string): Promise<void> {
         await redis.del(...keys);
       }
     } while (cursor !== '0');
-  } catch {
-    // Best-effort invalidation only.
+  } catch (error) {
+    appLogger.warn('financial.cache.invalidate_failed', {
+      tenantId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
   }
 }
 
@@ -129,6 +136,8 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
     graphAnalysis,
     profile,
     overrideMax,
+    businessFlowMax,
+    businessFlowNodeMax,
     driftMax,
     runbookMax,
     praExerciseMax,
@@ -150,6 +159,8 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
       select: { updatedAt: true },
     }),
     prisma.nodeFinancialOverride.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
+    prisma.businessFlow.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
+    prisma.businessFlowNode.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
     prisma.driftEvent.aggregate({ where: { tenantId }, _max: { createdAt: true } }),
     prisma.runbook.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
     prisma.pRAExercise.aggregate({ where: { tenantId }, _max: { updatedAt: true } }),
@@ -162,6 +173,8 @@ async function buildTenantStateSignature(tenantId: string): Promise<string> {
     graphAnalysis?.createdAt.toISOString() || '0',
     profile?.updatedAt.toISOString() || '0',
     overrideMax._max.updatedAt?.toISOString() || '0',
+    businessFlowMax._max.updatedAt?.toISOString() || '0',
+    businessFlowNodeMax._max.updatedAt?.toISOString() || '0',
     driftMax._max.createdAt?.toISOString() || '0',
     runbookMax._max.updatedAt?.toISOString() || '0',
     praExerciseMax._max.updatedAt?.toISOString() || '0',
@@ -252,6 +265,56 @@ async function buildRecommendations(tenantId: string): Promise<RecommendationInp
   }));
 }
 
+async function buildResolvedNodeCostsFromFlows(
+  tenantId: string,
+  analysisResult: AnalysisResultInput,
+  profile: FinancialOrganizationProfileInput | null | undefined,
+  overridesByNodeId: Awaited<ReturnType<typeof loadFinancialContext>>['overridesByNodeId'],
+): Promise<{
+  hasBusinessFlows: boolean;
+  resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput>;
+}> {
+  const businessFlowCount = await prisma.businessFlow.count({ where: { tenantId } });
+  if (businessFlowCount === 0) {
+    return {
+      hasBusinessFlows: false,
+      resolvedNodeCostsByNodeId: {},
+    };
+  }
+
+  const entries = await Promise.all(
+    analysisResult.nodes.map(async (node) => {
+      const flowCost = await businessFlowFinancialEngine.calculateNodeCostFromFlows({
+        tenantId,
+        nodeId: node.id,
+        node,
+        ...(profile !== undefined ? { orgProfile: profile } : {}),
+        ...(overridesByNodeId[node.id] ? { override: overridesByNodeId[node.id] } : {}),
+        includeUnvalidatedFlows: true,
+      });
+
+      return [
+        node.id,
+        {
+          costPerHour: flowCost.totalCostPerHour,
+          method: flowCost.method,
+          confidence: flowCost.confidence,
+          fallbackEstimate: flowCost.fallbackEstimate,
+          sources:
+            flowCost.method === 'business_flows'
+              ? ['Business flow financial model']
+              : ['Legacy financial fallback estimate'],
+        } satisfies ResolvedNodeFinancialCostInput,
+      ] as const;
+    }),
+  );
+
+  return {
+    hasBusinessFlows: true,
+    resolvedNodeCostsByNodeId: Object.fromEntries(entries),
+  };
+}
+
 function buildRegulatoryExposure(verticalSector: string | null | undefined) {
   const normalized = String(verticalSector || '').toLowerCase();
   const isFinance = normalized === 'banking_finance';
@@ -303,24 +366,57 @@ router.post('/calculate-ale', requireCalcRateLimit, async (req: TenantRequest, r
       ? { ...(context.profile || {}), customCurrency: preferredCurrency }
       : context.profile;
 
+    const resolved = await buildResolvedNodeCostsFromFlows(
+      tenantId,
+      context.analysisResult,
+      profile,
+      context.overridesByNodeId,
+    );
+
     const ale = FinancialEngineService.calculateAnnualExpectedLoss(
       context.analysisResult,
       context.biaResult,
       profile,
       context.overridesByNodeId,
+      resolved.resolvedNodeCostsByNodeId,
     );
 
-    await writeCache(cacheKey, ale);
+    const alePayload = {
+      ...ale,
+      orgProfile: {
+        sizeCategory: profile?.sizeCategory ?? 'midMarket',
+        verticalSector: profile?.verticalSector ?? null,
+        customCurrency: profile?.customCurrency ?? ale.currency,
+        customDowntimeCostPerHour: profile?.customDowntimeCostPerHour ?? null,
+        strongholdPlanId: profile?.strongholdPlanId ?? null,
+        strongholdMonthlyCost: profile?.strongholdMonthlyCost ?? null,
+      },
+      financialPrecision: {
+        businessFlowsEnabled: resolved.hasBusinessFlows,
+        spofsUsingBusinessFlows: ale.aleBySPOF.filter((spof) => spof.costMethod === 'business_flows')
+          .length,
+        spofsUsingFallback: ale.aleBySPOF.filter(
+          (spof) =>
+            spof.costMethod === 'fallback_estimate' || spof.costMethod === 'legacy_estimate',
+        ).length,
+        spofsUsingOverrides: ale.aleBySPOF.filter((spof) => spof.costMethod === 'user_override')
+          .length,
+      },
+    };
+
+    await writeCache(cacheKey, alePayload);
 
     appLogger.info('financial.ale.calculated', {
       tenantId,
       totalALE: ale.totalALE,
       totalSPOFs: ale.totalSPOFs,
       currency: ale.currency,
-      methodology: 'benchmark_itic_2024_uptime_2025',
+      methodology: resolved.hasBusinessFlows
+        ? 'business_flows_plus_benchmark_fallback'
+        : 'benchmark_itic_2024_uptime_2025',
     });
 
-    return res.json(ale);
+    return res.json(alePayload);
   } catch (error) {
     appLogger.error('Error calculating ALE', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -351,12 +447,20 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
       ? (req.body.recommendations as RecommendationInput[])
       : await buildRecommendations(tenantId);
 
+    const resolved = await buildResolvedNodeCostsFromFlows(
+      tenantId,
+      context.analysisResult,
+      profile,
+      context.overridesByNodeId,
+    );
+
     const roi = FinancialEngineService.calculateROI(
       context.analysisResult,
       context.biaResult,
       recommendations,
       profile,
       context.overridesByNodeId,
+      resolved.resolvedNodeCostsByNodeId,
     );
 
     await writeCache(cacheKey, roi);
@@ -373,6 +477,111 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
     return res.json(roi);
   } catch (error) {
     appLogger.error('Error calculating ROI', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/node/:nodeId/flow-impact', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const nodeId = req.params.nodeId;
+    if (!nodeId) return res.status(400).json({ error: 'nodeId is required' });
+
+    const [node, profile, override] = await Promise.all([
+      prisma.infraNode.findFirst({
+        where: { id: nodeId, tenantId },
+        include: { inEdges: true, outEdges: true },
+      }),
+      prisma.organizationProfile.findUnique({ where: { tenantId } }),
+      prisma.nodeFinancialOverride.findUnique({
+        where: {
+          nodeId_tenantId: {
+            nodeId,
+            tenantId,
+          },
+        },
+      }),
+    ]);
+
+    if (!node) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    const flowImpact = await businessFlowFinancialEngine.calculateNodeCostFromFlows({
+      tenantId,
+      nodeId: node.id,
+      node: {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        provider: node.provider,
+        region: node.region,
+        isSPOF: node.isSPOF,
+        criticalityScore: node.criticalityScore,
+        redundancyScore: node.redundancyScore,
+        impactCategory: node.impactCategory,
+        suggestedRTO: node.suggestedRTO,
+        validatedRTO: node.validatedRTO,
+        suggestedRPO: node.suggestedRPO,
+        validatedRPO: node.validatedRPO,
+        suggestedMTPD: node.suggestedMTPD,
+        validatedMTPD: node.validatedMTPD,
+        dependentsCount: node.inEdges.length,
+        inEdges: node.inEdges,
+        outEdges: node.outEdges,
+      },
+      orgProfile: profile,
+      ...(override ? { override: { customCostPerHour: override.customCostPerHour } } : {}),
+      includeUnvalidatedFlows: true,
+      applyCloudCostFactor: true,
+    });
+
+    return res.json({
+      node: {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        provider: node.provider,
+      },
+      flowImpact,
+      precisionBadge:
+        flowImpact.method === 'user_override'
+          ? 'override_user'
+          : flowImpact.method === 'business_flows'
+            ? flowImpact.confidence === 'high'
+              ? 'business_flow_validated'
+              : 'business_flow_not_validated'
+            : flowImpact.fallbackEstimate != null
+              ? 'estimation_enriched_or_base'
+              : 'estimation_base',
+    });
+  } catch (error) {
+    appLogger.error('Error calculating flow-based node impact', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/flows-coverage', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const [coverage, totalFlows, validatedFlows] = await Promise.all([
+      businessFlowFinancialEngine.calculateFlowsCoverage(tenantId),
+      prisma.businessFlow.count({ where: { tenantId } }),
+      prisma.businessFlow.count({ where: { tenantId, validatedByUser: true } }),
+    ]);
+
+    return res.json({
+      ...coverage,
+      totalFlows,
+      validatedFlows,
+      unvalidatedFlows: Math.max(0, totalFlows - validatedFlows),
+    });
+  } catch (error) {
+    appLogger.error('Error calculating business flow coverage', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -703,6 +912,12 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
     });
 
     await invalidateTenantFinancialCache(tenantId);
+    appLogger.info('financial.org_profile.updated', {
+      tenantId,
+      sizeCategory: profile.sizeCategory,
+      customCurrency: profile.customCurrency,
+      cacheInvalidated: true,
+    });
 
     return res.json(profile);
   } catch (error) {

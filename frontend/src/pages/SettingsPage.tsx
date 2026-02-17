@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Building2, Settings } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -13,6 +13,8 @@ import { IntegrationsHub } from '@/components/integrations/IntegrationsHub';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { useUIStore } from '@/stores/ui.store';
 import { financialApi } from '@/api/financial.api';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 
 const SIZE_OPTIONS = [
   { value: 'startup', label: 'Startup' },
@@ -33,11 +35,13 @@ const VERTICAL_OPTIONS = [
 ];
 
 export function SettingsPage() {
+  const queryClient = useQueryClient();
+  const tenantScope = getCredentialScopeKey();
   const { theme, toggleTheme } = useUIStore();
   const [wizardOpen, setWizardOpen] = useState(false);
 
   const profileQuery = useQuery({
-    queryKey: ['financial-org-profile'],
+    queryKey: ['financial-org-profile', tenantScope],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
   });
 
@@ -73,9 +77,9 @@ export function SettingsPage() {
           : null,
         customCurrency,
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       toast.success('Profil financier mis a jour');
-      profileQuery.refetch();
+      await invalidateFinancialProfileDependentQueries(queryClient);
     },
     onError: () => {
       toast.error('Echec de la mise a jour du profil financier');
@@ -258,7 +262,7 @@ export function SettingsPage() {
         onOpenChange={setWizardOpen}
         initialProfile={profileQuery.data}
         onCompleted={() => {
-          profileQuery.refetch();
+          void invalidateFinancialProfileDependentQueries(queryClient);
         }}
       />
     </div>

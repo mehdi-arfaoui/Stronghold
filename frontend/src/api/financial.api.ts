@@ -57,6 +57,41 @@ export interface DriftFinancialImpactResponse {
   source: string;
 }
 
+export interface NodeFlowImpactResponse {
+  node: {
+    id: string;
+    name: string;
+    type: string;
+    provider: string;
+  };
+  flowImpact: {
+    nodeId: string;
+    totalCostPerHour: number;
+    totalPeakCostPerHour: number;
+    impactedFlows: Array<{
+      flowId: string;
+      flowName: string;
+      impact: 'blocked' | 'degraded' | 'minor';
+      costContribution: number;
+    }>;
+    fallbackEstimate: number | null;
+    method: 'business_flows' | 'fallback_estimate' | 'user_override';
+    confidence: 'high' | 'medium' | 'low';
+  };
+  precisionBadge: string;
+}
+
+export interface FinancialFlowCoverageResponse {
+  totalCriticalNodes: number;
+  coveredCriticalNodes: number;
+  uncoveredCriticalNodes: number;
+  coveragePercent: number;
+  uncoveredNodeIds: string[];
+  totalFlows: number;
+  validatedFlows: number;
+  unvalidatedFlows: number;
+}
+
 export interface OrganizationFinancialProfile {
   tenantId?: string;
   sizeCategory?: string;
@@ -125,6 +160,16 @@ export interface FinancialSummary {
   organization?: {
     id: string;
     name: string;
+  };
+  financialPrecision?: {
+    scorePercent: number;
+    highConfidenceCostSharePercent: number;
+    breakdown: {
+      businessFlowValidated: { nodes: number; aleAmount: number; costSharePercent: number };
+      userOverride: { nodes: number; aleAmount: number; costSharePercent: number };
+      estimationEnriched: { nodes: number; aleAmount: number; costSharePercent: number };
+      estimationBase: { nodes: number; aleAmount: number; costSharePercent: number };
+    };
   };
   regulatoryExposure?: {
     profileSector?: string | null;
@@ -226,6 +271,12 @@ export const financialApi = {
 
   getNodeImpact: (nodeId: string) =>
     api.get<NodeFinancialImpactResponse>(`/financial/node/${nodeId}/impact`),
+
+  getNodeFlowImpact: (nodeId: string) =>
+    api.get<NodeFlowImpactResponse>(`/financial/node/${nodeId}/flow-impact`),
+
+  getFlowCoverage: () =>
+    api.get<FinancialFlowCoverageResponse>('/financial/flows-coverage'),
 
   upsertNodeOverride: (
     nodeId: string,

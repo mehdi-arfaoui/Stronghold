@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react';
@@ -19,17 +19,39 @@ import { useDiscovery } from '@/hooks/useDiscovery';
 import { useGraphStore } from '@/stores/graph.store';
 import { useDiscoveryStore } from '@/stores/discovery.store';
 import { discoveryApi } from '@/api/discovery.api';
+import { businessFlowsApi } from '@/api/businessFlows.api';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
 import type { ScanHealthProvider, ScanHealthIssue } from '@/types/discovery.types';
 
+const FLOW_COLORS = [
+  '#0ea5e9',
+  '#f59e0b',
+  '#10b981',
+  '#ef4444',
+  '#8b5cf6',
+  '#ec4899',
+  '#14b8a6',
+  '#f97316',
+];
+
+function formatMoneyCompact(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0';
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `${Math.round(value / 1_000)}K`;
+  return String(Math.round(value));
+}
+
 export function DiscoveryPage() {
   const queryClient = useQueryClient();
+  const tenantScope = getCredentialScopeKey();
   const [searchParams] = useSearchParams();
   const { nodes, edges, allNodes, allEdges, isLoading: graphLoading, availableTypes, availableProviders, availableRegions } = useGraph();
   const { layout, selectedNodeId, setSelectedNode } = useGraphStore();
   const { isScanning, currentJob } = useDiscoveryStore();
   const [scanJobId, setScanJobId] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [colorByBusinessFlow, setColorByBusinessFlow] = useState(false);
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   useDiscovery(scanJobId ?? undefined);
@@ -40,7 +62,126 @@ export function DiscoveryPage() {
     refetchInterval: 15000,
   });
 
+  const flowsQuery = useQuery({
+    queryKey: ['business-flows', tenantScope],
+    queryFn: async () => (await businessFlowsApi.list()).data,
+    staleTime: 60_000,
+  });
+
   const selectedNode = allNodes.find((n) => n.id === selectedNodeId);
+  const flows = flowsQuery.data || [];
+
+  const flowColorById = useMemo(() => {
+    const entries: Array<[string, string]> = flows.map((flow, index) => [
+      flow.id,
+      FLOW_COLORS[index % FLOW_COLORS.length] || FLOW_COLORS[0],
+    ]);
+    return new Map<string, string>(entries);
+  }, [flows]);
+
+  const nodeFlowMeta = useMemo(() => {
+    const map = new Map<
+      string,
+      Array<{
+        flowId: string;
+        flowName: string;
+        color: string;
+        contribution: number;
+      }>
+    >();
+
+    for (const flow of flows) {
+      const color = flowColorById.get(flow.id) || FLOW_COLORS[0];
+      const flowCost = flow.computedCost?.totalCostPerHour || flow.calculatedCostPerHour || 0;
+      for (const node of flow.flowNodes || []) {
+        const multiplier = node.isCritical ? (node.hasAlternativePath ? 0.2 : 1) : 0.05;
+        const contribution = flowCost * multiplier;
+        const existing = map.get(node.infraNodeId) || [];
+        existing.push({
+          flowId: flow.id,
+          flowName: flow.name,
+          color,
+          contribution,
+        });
+        map.set(node.infraNodeId, existing);
+      }
+    }
+
+    return map;
+  }, [flowColorById, flows]);
+
+  const edgeColorById = useMemo(() => {
+    const map = new Map<string, string>();
+    const edgeLookup = new Map<string, string>(
+      allEdges.map((edge): [string, string] => [`${edge.source}->${edge.target}`, edge.id]),
+    );
+
+    for (const flow of flows) {
+      const color = flowColorById.get(flow.id) || FLOW_COLORS[0];
+      const ordered = [...(flow.flowNodes || [])].sort((a, b) => a.orderIndex - b.orderIndex);
+      for (let index = 0; index < ordered.length - 1; index += 1) {
+        const current = ordered[index];
+        const next = ordered[index + 1];
+        if (!current || !next) continue;
+        const direct = edgeLookup.get(`${current.infraNodeId}->${next.infraNodeId}`);
+        const reverse = edgeLookup.get(`${next.infraNodeId}->${current.infraNodeId}`);
+        const edgeId = direct || reverse;
+        if (edgeId && !map.has(edgeId)) {
+          map.set(edgeId, color);
+        }
+      }
+    }
+
+    return map;
+  }, [allEdges, flowColorById, flows]);
+
+  const getNodeDataOverrides = useCallback(
+    (node: InfraNode) => {
+      if (!colorByBusinessFlow) return {};
+      const linked = nodeFlowMeta.get(node.id) || [];
+      if (linked.length === 0) {
+        return {
+          customBorderColor: '#9ca3af',
+          showUnknownCostIndicator: true,
+          flowTooltip: 'Aucun flux metier detecte sur ce noeud',
+        };
+      }
+
+      const colors = Array.from(new Set(linked.map((item) => item.color)));
+      const flowNames = linked.map((item) => item.flowName);
+      const totalContribution = linked.reduce((sum, item) => sum + item.contribution, 0);
+
+      return {
+        customBorderColor: colors[0],
+        flowStripeColors: colors,
+        flowTooltip: `${flowNames.join(', ')} | cout/h ~ ${formatMoneyCompact(totalContribution)}`,
+      };
+    },
+    [colorByBusinessFlow, nodeFlowMeta],
+  );
+
+  const getEdgeStyleOverrides = useCallback(
+    (edge: InfraEdge) => {
+      if (!colorByBusinessFlow) return {};
+      const color = edgeColorById.get(edge.id);
+      if (color) {
+        return {
+          animated: true,
+          style: {
+            stroke: color,
+            strokeWidth: 2.5,
+            opacity: 1,
+          },
+        };
+      }
+      return {
+        style: {
+          opacity: 0.18,
+        },
+      };
+    },
+    [colorByBusinessFlow, edgeColorById],
+  );
 
 
   useEffect(() => {
@@ -219,11 +360,21 @@ export function DiscoveryPage() {
       </Card>
 
       {/* Toolbar */}
-      <GraphControls
-        availableTypes={availableTypes}
-        availableProviders={availableProviders}
-        availableRegions={availableRegions}
-      />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="min-w-[320px] flex-1">
+          <GraphControls
+            availableTypes={availableTypes}
+            availableProviders={availableProviders}
+            availableRegions={availableRegions}
+          />
+        </div>
+        <Button
+          variant={colorByBusinessFlow ? 'default' : 'outline'}
+          onClick={() => setColorByBusinessFlow((value) => !value)}
+        >
+          Colorer par flux metier
+        </Button>
+      </div>
 
       {/* Main content */}
       <div
@@ -254,6 +405,8 @@ export function DiscoveryPage() {
             onNodeClick={handleNodeClick}
             onEdgeClick={handleEdgeClick}
             layout={layout}
+            getNodeDataOverrides={getNodeDataOverrides}
+            getEdgeStyleOverrides={getEdgeStyleOverrides}
           />
 
           {/* Legend overlay */}

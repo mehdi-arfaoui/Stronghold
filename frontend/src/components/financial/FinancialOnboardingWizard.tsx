@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Building2, CircleDollarSign, Coins } from 'lucide-react';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
 import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
+import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -127,6 +128,7 @@ export function FinancialOnboardingWizard({
   initialProfile,
   onCompleted,
 }: FinancialOnboardingWizardProps) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<WizardStep>(1);
   const [sizeCategory, setSizeCategory] = useState('midMarket');
   const [verticalSector, setVerticalSector] = useState('');
@@ -238,7 +240,8 @@ export function FinancialOnboardingWizard({
 
       return financialApi.updateOrgProfile(payload);
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      await invalidateFinancialProfileDependentQueries(queryClient);
       toast.success('Profil financier configure');
       onOpenChange(false);
       onCompleted?.();

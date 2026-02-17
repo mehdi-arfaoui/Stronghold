@@ -10,8 +10,9 @@ import {
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
+import type { CSSProperties } from 'react';
 
-import { NodeCard } from './NodeCard';
+import { NodeCard, type InfraNodeData } from './NodeCard';
 import { InferredEdge, ConfirmedEdge } from './EdgeLabel';
 import { GraphMinimap } from './GraphMinimap';
 import { applyLayout, type LayoutType } from '@/lib/graph-layout';
@@ -27,10 +28,21 @@ interface InfraGraphProps {
   onEdgeClick?: (edge: InfraEdge) => void;
   nodeStatuses?: Map<string, NodeStatus>;
   layout?: LayoutType;
+  getNodeDataOverrides?: (node: InfraNode) => Partial<InfraNodeData>;
+  getEdgeStyleOverrides?: (edge: InfraEdge) => {
+    style?: CSSProperties;
+    animated?: boolean;
+    type?: Edge['type'];
+  };
 }
 
-function toFlowNodes(infraNodes: InfraNode[], statuses?: Map<string, NodeStatus>): Node[] {
+function toFlowNodes(
+  infraNodes: InfraNode[],
+  statuses?: Map<string, NodeStatus>,
+  getNodeDataOverrides?: (node: InfraNode) => Partial<InfraNodeData>,
+): Node[] {
   return infraNodes.map((n) => ({
+    ...(getNodeDataOverrides?.(n)?.dimmed ? { draggable: false } : {}),
     id: n.id,
     type: 'infraNode',
     position: { x: 0, y: 0 },
@@ -42,22 +54,35 @@ function toFlowNodes(infraNodes: InfraNode[], statuses?: Map<string, NodeStatus>
       isSPOF: n.isSPOF,
       status: statuses?.get(n.id) || 'healthy',
       criticality: n.criticality,
+      ...(getNodeDataOverrides?.(n) || {}),
     },
   }));
 }
 
-function toFlowEdges(infraEdges: InfraEdge[]): Edge[] {
-  return infraEdges.map((e) => ({
-    id: e.id,
-    source: e.source,
-    target: e.target,
-    type: e.inferred ? 'inferred' : 'confirmed',
-    data: {
-      edgeType: e.type,
-      inferred: e.inferred,
-      confidence: e.confidence,
-    },
-  }));
+function toFlowEdges(
+  infraEdges: InfraEdge[],
+  getEdgeStyleOverrides?: (edge: InfraEdge) => {
+    style?: CSSProperties;
+    animated?: boolean;
+    type?: Edge['type'];
+  },
+): Edge[] {
+  return infraEdges.map((e) => {
+    const override = getEdgeStyleOverrides?.(e);
+    return {
+      ...(override?.animated !== undefined ? { animated: override.animated } : {}),
+      id: e.id,
+      source: e.source,
+      target: e.target,
+      type: override?.type || (e.inferred ? 'inferred' : 'confirmed'),
+      data: {
+        edgeType: e.type,
+        inferred: e.inferred,
+        confidence: e.confidence,
+      },
+      ...(override?.style ? { style: override.style } : {}),
+    };
+  });
 }
 
 export function InfraGraph({
@@ -67,6 +92,8 @@ export function InfraGraph({
   onEdgeClick,
   nodeStatuses,
   layout: layoutType = 'hierarchical',
+  getNodeDataOverrides,
+  getEdgeStyleOverrides,
 }: InfraGraphProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState([] as Node[]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([] as Edge[]);
@@ -81,12 +108,21 @@ export function InfraGraph({
   );
 
   useEffect(() => {
-    const flowNodes = toFlowNodes(infraNodes, nodeStatuses);
-    const flowEdges = toFlowEdges(infraEdges);
+    const flowNodes = toFlowNodes(infraNodes, nodeStatuses, getNodeDataOverrides);
+    const flowEdges = toFlowEdges(infraEdges, getEdgeStyleOverrides);
     const { nodes: layouted, edges: layoutedEdges } = applyLayout(flowNodes, flowEdges, layoutType);
     setNodes(layouted);
     setEdges(layoutedEdges);
-  }, [infraNodes, infraEdges, layoutType, nodeStatuses, setNodes, setEdges]);
+  }, [
+    infraNodes,
+    infraEdges,
+    layoutType,
+    nodeStatuses,
+    getNodeDataOverrides,
+    getEdgeStyleOverrides,
+    setNodes,
+    setEdges,
+  ]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {

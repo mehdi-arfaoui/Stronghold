@@ -21,6 +21,7 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { detectRisks } from '../graph/riskDetectionEngine.js';
 import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
+import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 import { appLogger } from "../utils/logger.js";
 
 interface NodeDef {
@@ -42,6 +43,41 @@ interface EdgeDef {
   confidence?: number;
   inferenceMethod?: string;
   confirmed?: boolean;
+}
+
+interface DemoFlowNodeDef {
+  infraNodeId: string;
+  role: string;
+  isCritical?: boolean;
+  hasAlternativePath?: boolean;
+  alternativeNodeId?: string | null;
+}
+
+interface DemoBusinessFlowDef {
+  name: string;
+  description: string;
+  category: string;
+  annualRevenue?: number | null;
+  transactionsPerHour?: number | null;
+  revenuePerTransaction?: number | null;
+  estimatedCostPerHour?: number | null;
+  peakHoursMultiplier?: number;
+  peakHoursStart?: number | null;
+  peakHoursEnd?: number | null;
+  operatingDaysPerWeek?: number;
+  operatingHoursPerDay?: number;
+  slaUptimePercent?: number | null;
+  slaPenaltyPerHour?: number | null;
+  slaPenaltyFlat?: number | null;
+  contractualRTO?: number | null;
+  estimatedCustomerChurnPerHour?: number | null;
+  customerLifetimeValue?: number | null;
+  reputationImpactCategory?: string | null;
+  source: 'manual' | 'ai_suggested' | 'cloud_tags' | 'imported';
+  aiConfidence?: number | null;
+  validatedByUser?: boolean;
+  mutualExclusionGroup?: string | null;
+  nodes: DemoFlowNodeDef[];
 }
 
 const nodes: NodeDef[] = [
@@ -598,6 +634,264 @@ const inferredEdges: EdgeDef[] = [
   },
 ];
 
+const demoBusinessFlows: DemoBusinessFlowDef[] = [
+  {
+    name: 'Paiement Client - Carte',
+    description: 'Flux principal de paiement par carte bancaire',
+    category: 'revenue',
+    annualRevenue: 2_400_000,
+    peakHoursMultiplier: 1.5,
+    peakHoursStart: 9,
+    peakHoursEnd: 18,
+    operatingDaysPerWeek: 5,
+    operatingHoursPerDay: 10,
+    slaUptimePercent: 99.95,
+    slaPenaltyPerHour: 500,
+    contractualRTO: 60,
+    estimatedCustomerChurnPerHour: 2,
+    customerLifetimeValue: 2400,
+    reputationImpactCategory: 'high',
+    source: 'manual',
+    validatedByUser: true,
+    mutualExclusionGroup: 'checkout-payment',
+    nodes: [
+      { infraNodeId: 'cloudflare-cdn', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'route53-shopmax', role: 'entry_point', isCritical: true },
+      {
+        infraNodeId: 'alb-prod',
+        role: 'entry_point',
+        isCritical: true,
+        hasAlternativePath: true,
+        alternativeNodeId: 'alb-dr',
+      },
+      { infraNodeId: 'svc-api-gateway', role: 'processing', isCritical: true },
+      { infraNodeId: 'svc-payment', role: 'processing', isCritical: true },
+      { infraNodeId: 'db-payment', role: 'data_store', isCritical: true },
+      { infraNodeId: 'stripe-api', role: 'external_dependency', isCritical: true },
+    ],
+  },
+  {
+    name: 'Paiement Client - Virement',
+    description: 'Flux alternatif de paiement virement/SEPA',
+    category: 'revenue',
+    estimatedCostPerHour: 650,
+    peakHoursMultiplier: 1.4,
+    operatingDaysPerWeek: 5,
+    operatingHoursPerDay: 10,
+    source: 'manual',
+    validatedByUser: true,
+    mutualExclusionGroup: 'checkout-payment',
+    nodes: [
+      { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'svc-order', role: 'processing', isCritical: true },
+      { infraNodeId: 'erp-server', role: 'external_dependency', isCritical: true },
+      { infraNodeId: 'erp-db', role: 'data_store', isCritical: true },
+    ],
+  },
+  {
+    name: 'Onboarding Utilisateur',
+    description: 'Inscription et activation compte client',
+    category: 'revenue',
+    transactionsPerHour: 450,
+    revenuePerTransaction: 35,
+    peakHoursMultiplier: 1.5,
+    peakHoursStart: 8,
+    peakHoursEnd: 20,
+    operatingDaysPerWeek: 7,
+    operatingHoursPerDay: 16,
+    source: 'manual',
+    validatedByUser: true,
+    nodes: [
+      { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'svc-user', role: 'processing', isCritical: true },
+      {
+        infraNodeId: 'db-user',
+        role: 'data_store',
+        isCritical: true,
+        hasAlternativePath: true,
+        alternativeNodeId: 'db-user-replica',
+      },
+      { infraNodeId: 'db-user-replica', role: 'data_store', isCritical: false },
+    ],
+  },
+  {
+    name: 'Fulfillment Commande',
+    description: 'Traitement de commande et notifications clients',
+    category: 'operations',
+    estimatedCostPerHour: 1800,
+    peakHoursMultiplier: 1.4,
+    operatingDaysPerWeek: 7,
+    operatingHoursPerDay: 24,
+    source: 'cloud_tags',
+    validatedByUser: false,
+    nodes: [
+      { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'svc-order', role: 'processing', isCritical: true },
+      { infraNodeId: 'db-order', role: 'data_store', isCritical: true },
+      { infraNodeId: 'sqs-notifications', role: 'notification', isCritical: false },
+      { infraNodeId: 'svc-notification', role: 'processing', isCritical: false },
+      { infraNodeId: 'sendgrid-api', role: 'external_dependency', isCritical: false },
+    ],
+  },
+  {
+    name: 'Reporting BI',
+    description: 'Flux de reporting interne et dashboards management',
+    category: 'internal',
+    estimatedCostPerHour: 220,
+    peakHoursMultiplier: 1.2,
+    operatingDaysPerWeek: 5,
+    operatingHoursPerDay: 10,
+    source: 'ai_suggested',
+    aiConfidence: 0.72,
+    validatedByUser: false,
+    nodes: [
+      { infraNodeId: 'svc-admin', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'db-admin', role: 'data_store', isCritical: true },
+      { infraNodeId: 'datadog', role: 'notification', isCritical: false },
+    ],
+  },
+];
+
+async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) {
+  await prisma.organizationProfile.upsert({
+    where: { tenantId },
+    create: {
+      tenantId,
+      sizeCategory: 'midMarket',
+      verticalSector: 'retail_ecommerce',
+      customCurrency: 'EUR',
+      strongholdPlanId: 'PRO',
+      strongholdMonthlyCost: 800,
+    },
+    update: {
+      sizeCategory: 'midMarket',
+      verticalSector: 'retail_ecommerce',
+      customCurrency: 'EUR',
+      strongholdPlanId: 'PRO',
+      strongholdMonthlyCost: 800,
+    },
+  });
+}
+
+async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
+  const requiredNodeIds = Array.from(
+    new Set(demoBusinessFlows.flatMap((flow) => flow.nodes.map((node) => node.infraNodeId))),
+  );
+  const existingNodes = await prisma.infraNode.findMany({
+    where: {
+      tenantId,
+      id: { in: requiredNodeIds },
+    },
+    select: { id: true },
+  });
+
+  const existingNodeIds = new Set(existingNodes.map((node) => node.id));
+  const missingNodeIds = requiredNodeIds.filter((nodeId) => !existingNodeIds.has(nodeId));
+  if (missingNodeIds.length > 0) {
+    throw new Error(`Missing infra nodes for business flows: ${missingNodeIds.join(', ')}`);
+  }
+
+  await prisma.businessFlowNode.deleteMany({ where: { tenantId } });
+  await prisma.businessFlow.deleteMany({ where: { tenantId } });
+
+  const flowIds: string[] = [];
+  let validatedFlows = 0;
+
+  for (const flowDef of demoBusinessFlows) {
+    const validatedByUser = flowDef.validatedByUser === true;
+    const flow = await prisma.businessFlow.create({
+      data: {
+        tenantId,
+        name: flowDef.name,
+        description: flowDef.description,
+        category: flowDef.category,
+        annualRevenue: flowDef.annualRevenue ?? null,
+        transactionsPerHour: flowDef.transactionsPerHour ?? null,
+        revenuePerTransaction: flowDef.revenuePerTransaction ?? null,
+        estimatedCostPerHour: flowDef.estimatedCostPerHour ?? null,
+        peakHoursMultiplier: flowDef.peakHoursMultiplier ?? 1.5,
+        peakHoursStart: flowDef.peakHoursStart ?? null,
+        peakHoursEnd: flowDef.peakHoursEnd ?? null,
+        operatingDaysPerWeek: flowDef.operatingDaysPerWeek ?? 5,
+        operatingHoursPerDay: flowDef.operatingHoursPerDay ?? 10,
+        slaUptimePercent: flowDef.slaUptimePercent ?? null,
+        slaPenaltyPerHour: flowDef.slaPenaltyPerHour ?? null,
+        slaPenaltyFlat: flowDef.slaPenaltyFlat ?? null,
+        contractualRTO: flowDef.contractualRTO ?? null,
+        estimatedCustomerChurnPerHour: flowDef.estimatedCustomerChurnPerHour ?? null,
+        customerLifetimeValue: flowDef.customerLifetimeValue ?? null,
+        reputationImpactCategory: flowDef.reputationImpactCategory ?? null,
+        source: flowDef.source,
+        aiConfidence: flowDef.aiConfidence ?? null,
+        validatedByUser,
+        validatedAt: validatedByUser ? new Date() : null,
+        mutualExclusionGroup: flowDef.mutualExclusionGroup ?? null,
+      },
+    });
+
+    const computed = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow);
+    await prisma.businessFlow.update({
+      where: { id: flow.id },
+      data: {
+        calculatedCostPerHour: computed ? computed.totalCostPerHour : null,
+        costCalculationMethod: computed ? computed.method : null,
+      },
+    });
+
+    await prisma.businessFlowNode.createMany({
+      data: flowDef.nodes.map((flowNode, orderIndex) => ({
+        businessFlowId: flow.id,
+        infraNodeId: flowNode.infraNodeId,
+        tenantId,
+        orderIndex,
+        role: flowNode.role,
+        isCritical: flowNode.isCritical !== false,
+        hasAlternativePath: flowNode.hasAlternativePath === true,
+        alternativeNodeId: flowNode.alternativeNodeId ?? null,
+      })),
+    });
+
+    flowIds.push(flow.id);
+    if (validatedByUser) validatedFlows += 1;
+  }
+
+  await prisma.nodeFinancialOverride.upsert({
+    where: {
+      nodeId_tenantId: {
+        nodeId: 'erp-server',
+        tenantId,
+      },
+    },
+    create: {
+      tenantId,
+      nodeId: 'erp-server',
+      customCostPerHour: 12000,
+      justification: 'ERP legacy contractual penalties and manual processing fallback',
+      validatedBy: 'demo.seed',
+      validatedAt: new Date(),
+    },
+    update: {
+      customCostPerHour: 12000,
+      justification: 'ERP legacy contractual penalties and manual processing fallback',
+      validatedBy: 'demo.seed',
+      validatedAt: new Date(),
+    },
+  });
+
+  const flowEngine = new BusinessFlowFinancialEngineService(prisma);
+  const coverage = await flowEngine.calculateFlowsCoverage(tenantId);
+
+  return {
+    flowsCreated: flowIds.length,
+    validatedFlows,
+    unvalidatedFlows: flowIds.length - validatedFlows,
+    coveragePercent: coverage.coveragePercent,
+    coveredCriticalNodes: coverage.coveredCriticalNodes,
+    totalCriticalNodes: coverage.totalCriticalNodes,
+    userOverrides: 1,
+  };
+}
+
 export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   appLogger.info('Seeding demo environment "ShopMax E-commerce"...');
 
@@ -609,6 +903,9 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   await prisma.bIAProcess2.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.bIAReport2.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.graphAnalysis.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.businessFlowNode.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.businessFlow.deleteMany({ where: { tenantId } }).catch(() => {});
+  await prisma.nodeFinancialOverride.deleteMany({ where: { tenantId } }).catch(() => {});
   await prisma.infraEdge.deleteMany({ where: { tenantId } });
   await prisma.infraNode.deleteMany({ where: { tenantId } });
   await prisma.simulation.deleteMany({ where: { tenantId } });
@@ -689,6 +986,16 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   let spofCount = 0;
   let biaProcessCount = 0;
   let risksDetected = 0;
+  let profileConfigured = false;
+  let businessFlowSummary = {
+    flowsCreated: 0,
+    validatedFlows: 0,
+    unvalidatedFlows: 0,
+    coveragePercent: 0,
+    coveredCriticalNodes: 0,
+    totalCriticalNodes: 0,
+    userOverrides: 0,
+  };
 
   try {
     appLogger.info('Running post-seed graph analysis...');
@@ -829,6 +1136,22 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     appLogger.error('Post-seed analysis failed (non-blocking):', error);
   }
 
+  try {
+    appLogger.info('Configuring demo financial profile...');
+    await seedDemoFinancialProfile(prisma, tenantId);
+    profileConfigured = true;
+
+    appLogger.info('Seeding business flows...');
+    businessFlowSummary = await seedDemoBusinessFlows(prisma, tenantId);
+    appLogger.info(
+      `Business flows seeded: ${businessFlowSummary.flowsCreated} ` +
+        `(validated=${businessFlowSummary.validatedFlows}, ` +
+        `coverage=${businessFlowSummary.coveragePercent}%)`,
+    );
+  } catch (error) {
+    appLogger.error('Business flow seed failed (non-blocking):', error);
+  }
+
   void ensureBaselineSnapshot(prisma, tenantId, 'demo-seed').catch((error) => {
     appLogger.warn('Unable to ensure baseline snapshot after demo seed', {
       tenantId,
@@ -845,6 +1168,12 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     spofCount,
     biaProcesses: biaProcessCount,
     risksDetected,
+    organizationProfileConfigured: profileConfigured,
+    businessFlows: businessFlowSummary.flowsCreated,
+    validatedBusinessFlows: businessFlowSummary.validatedFlows,
+    unvalidatedBusinessFlows: businessFlowSummary.unvalidatedFlows,
+    flowCoveragePercent: businessFlowSummary.coveragePercent,
+    userOverrides: businessFlowSummary.userOverrides,
     spofs: [
       'payment-db (no replica, no multi-AZ)',
       'redis-main (single instance)',
@@ -860,6 +1189,10 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   appLogger.info(`Resilience score: ${resilienceScore}`);
   appLogger.info(`BIA processes: ${biaProcessCount}`);
   appLogger.info(`Auto-detected risks: ${risksDetected}`);
+  appLogger.info(
+    `Business flows: ${summary.businessFlows} (validated=${summary.validatedBusinessFlows}, ` +
+      `coverage=${summary.flowCoveragePercent}%)`,
+  );
 
   return summary;
 }

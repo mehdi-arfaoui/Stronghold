@@ -31,6 +31,8 @@ import { financialApi } from '@/api/financial.api';
 import { reportsApi } from '@/api/reports.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -100,25 +102,32 @@ function KpiCard(props: {
 
 function FinancialDashboardInner() {
   const queryClient = useQueryClient();
+  const tenantScope = getCredentialScopeKey();
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardAutoOpened, setWizardAutoOpened] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const orgProfileQuery = useQuery({
-    queryKey: ['financial-org-profile'],
+    queryKey: ['financial-org-profile', tenantScope],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
     staleTime: 60_000,
   });
 
   const summaryQuery = useQuery({
-    queryKey: ['financial-summary'],
+    queryKey: ['financial-summary', tenantScope],
     queryFn: async () => (await financialApi.getSummary()).data,
     staleTime: 60_000,
   });
 
   const trendQuery = useQuery({
-    queryKey: ['financial-trend'],
+    queryKey: ['financial-trend', tenantScope],
     queryFn: async () => (await financialApi.getTrend({ months: 6 })).data,
+    staleTime: 60_000,
+  });
+
+  const flowCoverageQuery = useQuery({
+    queryKey: ['flows-coverage', tenantScope],
+    queryFn: async () => (await financialApi.getFlowCoverage()).data,
     staleTime: 60_000,
   });
 
@@ -131,19 +140,15 @@ function FinancialDashboardInner() {
   }, [orgProfileQuery.data?.isConfigured, orgProfileQuery.isSuccess, wizardAutoOpened]);
 
   const refreshFinancialData = async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['financial-org-profile'] }),
-      queryClient.invalidateQueries({ queryKey: ['financial-summary'] }),
-      queryClient.invalidateQueries({ queryKey: ['financial-trend'] }),
-      queryClient.invalidateQueries({ queryKey: ['bia-entries'] }),
-      queryClient.invalidateQueries({ queryKey: ['bia-summary'] }),
-      queryClient.invalidateQueries({ queryKey: ['financial-recommendations-roi'] }),
-    ]);
+    await invalidateFinancialProfileDependentQueries(queryClient);
   };
 
   const summary = summaryQuery.data;
+  const flowCoverage = flowCoverageQuery.data;
+  const lowFlowCoverage = (flowCoverage?.coveragePercent ?? 0) < 50;
   const profileConfigured = orgProfileQuery.data?.isConfigured !== false;
   const currency = summary?.currency || 'EUR';
+  const financialPrecision = summary?.financialPrecision;
 
   const chartData = useMemo(() => {
     if (!summary) return [];
@@ -317,7 +322,9 @@ function FinancialDashboardInner() {
           </div>
         </div>
         <p className="text-sm text-muted-foreground">
-          Pilotage financier de la resilience base sur vos SPOFs, BIA et recommandations.
+          {flowCoverage
+            ? `Base sur ${flowCoverage.validatedFlows} flux metier valides couvrant ${flowCoverage.coveragePercent}% de l infrastructure critique.`
+            : 'Pilotage financier de la resilience base sur vos SPOFs, BIA et recommandations.'}
         </p>
       </div>
 
@@ -337,6 +344,50 @@ function FinancialDashboardInner() {
             </Button>
           </div>
         </div>
+      )}
+
+      {flowCoverage && lowFlowCoverage && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <p className="text-sm font-medium">
+            Completez vos flux metier pour des estimations plus precises.
+          </p>
+        </div>
+      )}
+
+      {financialPrecision && (
+        <Card className="border-muted/60">
+          <CardHeader>
+            <CardTitle className="text-base">
+              Precision financiere: {financialPrecision.scorePercent}%
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all"
+                style={{ width: `${Math.max(0, Math.min(100, financialPrecision.scorePercent))}%` }}
+              />
+            </div>
+            <div className="space-y-1 text-sm">
+              <p>
+                {financialPrecision.breakdown.businessFlowValidated.nodes} noeuds via Business Flows valides (
+                {financialPrecision.breakdown.businessFlowValidated.costSharePercent}% du cout total)
+              </p>
+              <p>
+                {financialPrecision.breakdown.userOverride.nodes} noeuds via overrides utilisateur (
+                {financialPrecision.breakdown.userOverride.costSharePercent}% du cout total)
+              </p>
+              <p>
+                {financialPrecision.breakdown.estimationEnriched.nodes} noeuds via estimation enrichie (
+                {financialPrecision.breakdown.estimationEnriched.costSharePercent}% du cout total)
+              </p>
+              <p>
+                {financialPrecision.breakdown.estimationBase.nodes} noeuds via estimation de base (
+                {financialPrecision.breakdown.estimationBase.costSharePercent}% du cout total)
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
