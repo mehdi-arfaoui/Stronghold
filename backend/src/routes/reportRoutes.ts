@@ -754,6 +754,7 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
 // ─── POST /reports/pra-pca — Generate PRA/PCA report ──────────
 router.post('/pra-pca', reportRateLimit, async (req: TenantRequest, res) => {
   try {
+    if (!req.tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
     return await handleReportGeneration(req, res);
   } catch (error) {
     appLogger.error('Error generating PRA/PCA report:', error);
@@ -764,6 +765,7 @@ router.post('/pra-pca', reportRateLimit, async (req: TenantRequest, res) => {
 // Compatibility route for frontend report generator
 router.post('/generate', reportRateLimit, async (req: TenantRequest, res) => {
   try {
+    if (!req.tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
     req.body = { ...req.body, format: req.body?.format ?? 'pdf' };
     return await handleReportGeneration(req, res);
   } catch (error) {

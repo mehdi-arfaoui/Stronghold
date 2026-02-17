@@ -629,8 +629,19 @@ async function updateRunbookHandler(req: TenantRequest, res: any) {
   }
 }
 
-router.put("/:id", requireRole("OPERATOR"), updateRunbookHandler);
-router.patch("/:id", requireRole("OPERATOR"), updateRunbookHandler);
+router.put("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  if (!req.tenantId) {
+    return res.status(500).json({ error: "Tenant not resolved" });
+  }
+  return updateRunbookHandler(req, res);
+});
+
+router.patch("/:id", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
+  if (!req.tenantId) {
+    return res.status(500).json({ error: "Tenant not resolved" });
+  }
+  return updateRunbookHandler(req, res);
+});
 
 router.put("/:id/validate", requireRole("OPERATOR"), async (req: TenantRequest, res) => {
   try {
