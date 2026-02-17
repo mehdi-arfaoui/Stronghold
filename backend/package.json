@@ -71,6 +71,7 @@
     "graphology-types": "^0.24.8",
     "helmet": "8.1.0",
     "ioredis": "^5.9.0",
+    "isomorphic-dompurify": "2.36.0",
     "mammoth": "^1.7.2",
     "multer": "^2.0.2",
     "net-snmp": "^3.9.2",

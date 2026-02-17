@@ -10,6 +10,7 @@ import { generatePraPcaReport } from '../graph/reportGenerator.js';
 import { appLogger } from "../utils/logger.js";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildFinancialSummaryPayload } from '../services/financial-dashboard.service.js';
+import DOMPurify from 'isomorphic-dompurify';
 
 type DocxModule = typeof import('docx');
 
@@ -76,6 +77,26 @@ function formatReportAsText(report: Awaited<ReturnType<typeof generatePraPcaRepo
     '## Plan d\'action prioritaire',
     actionPlan,
   ].join('\n');
+}
+
+function sanitizePreviewText(input: string): string {
+  return DOMPurify.sanitize(input, {
+    ALLOWED_TAGS: [],
+    ALLOWED_ATTR: [],
+  });
+}
+
+function renderPreviewHtml(textReport: string): string {
+  return textReport
+    .split('\n')
+    .map((line) => {
+      if (line.startsWith('# ')) return `<h1>${sanitizePreviewText(line.slice(2))}</h1>`;
+      if (line.startsWith('## ')) return `<h2>${sanitizePreviewText(line.slice(3))}</h2>`;
+      if (line.startsWith('- ')) return `<li>${sanitizePreviewText(line.slice(2))}</li>`;
+      if (line.trim() === '') return '<br/>';
+      return `<p>${sanitizePreviewText(line)}</p>`;
+    })
+    .join('\n');
 }
 
 function wrapPdfLine(text: string, maxWidth: number, font: any, fontSize: number): string[] {
@@ -789,8 +810,7 @@ router.get('/pra-pca/latest', async (req: TenantRequest, res) => {
   }
 });
 
-// HTML preview of the report (used by frontend ReportGenerator)
-router.get('/preview', async (req: TenantRequest, res) => {
+async function handleReportPreview(req: TenantRequest, res: Response) {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -802,24 +822,22 @@ router.get('/preview', async (req: TenantRequest, res) => {
 
     const report = await generatePraPcaReport(prisma, tenantId, { format: 'json' });
     const textReport = formatReportAsText(report);
-
-    // Convert markdown-like text to basic HTML
-    const html = textReport
-      .split('\n')
-      .map((line) => {
-        if (line.startsWith('# ')) return `<h1>${line.slice(2)}</h1>`;
-        if (line.startsWith('## ')) return `<h2>${line.slice(3)}</h2>`;
-        if (line.startsWith('- ')) return `<li>${line.slice(2)}</li>`;
-        if (line.trim() === '') return '<br/>';
-        return `<p>${line}</p>`;
-      })
-      .join('\n');
+    const html = renderPreviewHtml(textReport);
 
     return res.json({ html });
   } catch (error) {
     appLogger.error('Error generating report preview:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
+}
+
+// HTML preview of the report (used by frontend ReportGenerator)
+router.get('/preview', async (req: TenantRequest, res) => {
+  return await handleReportPreview(req, res);
+});
+
+router.post('/preview', reportRateLimit, async (req: TenantRequest, res) => {
+  return await handleReportPreview(req, res);
 });
 
 // Frontend prerequisites list used to unlock PRA/PCA generation button
