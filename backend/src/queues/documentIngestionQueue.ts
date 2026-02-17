@@ -1,7 +1,7 @@
-import { Queue } from "bullmq";
+import { Queue, type ConnectionOptions } from "bullmq";
 import { buildRedisConnectionOptions } from "../utils/redisConnection.js";
 
-export function createDocumentIngestionConnection() {
+export function createDocumentIngestionConnection(): ConnectionOptions {
   return {
     ...buildRedisConnectionOptions(),
     maxRetriesPerRequest: null,

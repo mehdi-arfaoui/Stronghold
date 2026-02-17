@@ -23,7 +23,10 @@ function parseRouteImports(indexContent: string): Map<string, string> {
   const importRegex = /import\s+([A-Za-z0-9_]+)\s+from\s+["']\.\/routes\/([^"']+)\.js["'];/g;
   let match: RegExpExecArray | null = null;
   while ((match = importRegex.exec(indexContent)) !== null) {
-    importMap.set(match[1], path.join(SRC_DIR, "routes", `${match[2]}.ts`));
+    const handlerName = match[1];
+    const routeModule = match[2];
+    if (!handlerName || !routeModule) continue;
+    importMap.set(handlerName, path.join(SRC_DIR, "routes", `${routeModule}.ts`));
   }
   return importMap;
 }
@@ -33,7 +36,10 @@ function parseRouteMounts(indexContent: string): RouteMount[] {
   const mountRegex = /\{\s*path:\s*"([^"]+)"\s*,\s*handler:\s*([A-Za-z0-9_]+)\s*,\s*name:\s*"[^"]+"\s*\}/g;
   let match: RegExpExecArray | null = null;
   while ((match = mountRegex.exec(indexContent)) !== null) {
-    mounts.push({ path: match[1], handler: match[2] });
+    const routePath = match[1];
+    const handler = match[2];
+    if (!routePath || !handler) continue;
+    mounts.push({ path: routePath, handler });
   }
   return mounts;
 }
@@ -97,7 +103,9 @@ function collectEndpoints(): EndpointRecord[] {
 
     let match: RegExpExecArray | null = null;
     while ((match = routeCallRegex.exec(routeContent)) !== null) {
-      const method = match[1].toUpperCase();
+      const methodCapture = match[1];
+      if (!methodCapture) continue;
+      const method = methodCapture.toUpperCase();
       const openParenIndex = routeContent.indexOf("(", match.index);
       if (openParenIndex < 0) continue;
       const closeParenIndex = findMatchingParen(routeContent, openParenIndex);
@@ -106,10 +114,12 @@ function collectEndpoints(): EndpointRecord[] {
       const callBody = routeContent.slice(openParenIndex + 1, closeParenIndex);
       const routePathMatch = callBody.match(/^\s*(['"`])([^'"`]+)\1/);
       if (!routePathMatch) continue;
+      const routePath = routePathMatch[2];
+      if (!routePath) continue;
 
       endpoints.push({
         method,
-        endpoint: normalizeEndpoint(mount.path, routePathMatch[2]),
+        endpoint: normalizeEndpoint(mount.path, routePath),
         hasTenantMarker: /(tenantId|organizationId)/.test(callBody),
         hasPrismaCall: /prisma\./.test(callBody),
       });
