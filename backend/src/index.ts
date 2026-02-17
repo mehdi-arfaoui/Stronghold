@@ -23,6 +23,7 @@ import {
   globalRateLimitShort,
 } from "./middleware/rateLimitMiddleware.js";
 import { requestValidationGuard } from "./middleware/requestValidationMiddleware.js";
+import { buildRedisConnectionOptions } from "./utils/redisConnection.js";
 import scenarioRoutes from "./routes/scenarioRoutes.js";
 import scenarioCatalogRoutes from "./routes/scenarioCatalogRoutes.js";
 import cyberScenarioRoutes from "./routes/cyberScenarioRoutes.js";
@@ -250,11 +251,8 @@ const checkDatabase = async () => {
 };
 
 const checkRedis = async () => {
-  const redisUrl = process.env.REDIS_URL;
-  if (!redisUrl) {
-    throw new Error("REDIS_URL not set");
-  }
-  const redis = new Redis(redisUrl, {
+  const redis = new Redis({
+    ...buildRedisConnectionOptions(),
     lazyConnect: true,
     connectTimeout: HEALTHCHECK_TIMEOUT_MS,
     maxRetriesPerRequest: 1,

@@ -1,11 +1,11 @@
 import { Redis } from "ioredis";
+import { buildRedisConnectionOptions } from "../utils/redisConnection.js";
 
 export type CircuitBreakerState = {
   failures: number;
   openedAt: number | null;
 };
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 let redisClient: Redis | null = null;
 const memoryStore = new Map<string, CircuitBreakerState>();
 
@@ -18,7 +18,10 @@ function getRedisClient() {
     return null;
   }
   if (!redisClient) {
-    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
+    redisClient = new Redis({
+      ...buildRedisConnectionOptions(),
+      maxRetriesPerRequest: null,
+    });
   }
   return redisClient;
 }

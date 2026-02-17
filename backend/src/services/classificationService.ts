@@ -4,6 +4,7 @@ import { analyzeExtractedFacts } from "../ai/extractedFactsAnalyzer.js";
 import type { AiExtractedFact } from "../ai/extractedFactsAnalyzer.js";
 import { EXTRACTED_FACT_CATEGORIES } from "../ai/extractedFactSchema.js";
 import type { ExtractedFactCategory } from "../ai/extractedFactSchema.js";
+import { buildRedisConnectionOptions } from "../utils/redisConnection.js";
 
 type CacheClient = Pick<Redis, "get" | "set">;
 
@@ -11,7 +12,6 @@ const CACHE_PREFIX = "classification";
 const CACHE_SCHEMA_VERSION = 1;
 const DEFAULT_CACHE_TTL_SECONDS = 7 * 24 * 60 * 60;
 
-const redisUrl = process.env.REDIS_URL || "redis://localhost:6379";
 let redisClient: CacheClient | null = null;
 
 function resolveCacheTtlSeconds() {
@@ -34,7 +34,10 @@ function getRedisClient(): CacheClient | null {
     return null;
   }
   if (!redisClient) {
-    redisClient = new Redis(redisUrl, { maxRetriesPerRequest: null });
+    redisClient = new Redis({
+      ...buildRedisConnectionOptions(),
+      maxRetriesPerRequest: null,
+    });
   }
   return redisClient;
 }
