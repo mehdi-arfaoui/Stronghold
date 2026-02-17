@@ -18,6 +18,7 @@ import {
 import { discoveryQueue } from '../queues/discoveryQueue.js';
 import { runDemoSeed } from '../services/demoSeedService.js';
 import { buildScanHealthReport } from '../services/discoveryHealthService.js';
+import { scanConfigHasPlaintextCredentials } from '../services/scanConfigSecurityService.js';
 
 const router = Router();
 
@@ -33,24 +34,25 @@ router.post('/auto-scan', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'At least one provider configuration is required' });
     }
 
+    const scanConfig = { providers, kubernetes, onPremise, options };
+    if (
+      scanConfigHasPlaintextCredentials(scanConfig) &&
+      !process.env.CREDENTIAL_ENCRYPTION_KEY
+    ) {
+      return res.status(400).json({
+        error: 'Configuration manquante',
+        details: [{ field: 'credentials', message: 'CREDENTIAL_ENCRYPTION_KEY requis' }],
+      });
+    }
+
     // Create scan job record
-    const jobId = await createScanJob(prisma, tenantId, {
-      providers,
-      kubernetes,
-      onPremise,
-      options,
-    });
+    const jobId = await createScanJob(prisma, tenantId, scanConfig);
 
     // Extract cloud providers and IP ranges for the existing worker
     const cloudProviders: string[] = [];
-    const credentials: Record<string, unknown> = {};
 
     for (const provider of providers) {
       cloudProviders.push(provider.type);
-      credentials[provider.type] = provider.credentials;
-      if (provider.regions) {
-        credentials[`${provider.type}_regions`] = provider.regions;
-      }
     }
 
     const ipRanges = onPremise?.ipRanges || [];
@@ -61,7 +63,6 @@ router.post('/auto-scan', async (req: TenantRequest, res) => {
       tenantId,
       ipRanges,
       cloudProviders,
-      credentials,
       requestedBy: null,
       autoCreate: false,
       // Signal that results should also be ingested into resilience graph
@@ -127,12 +128,18 @@ router.post('/schedules', async (req: TenantRequest, res) => {
       return res.status(400).json({ error: 'At least one provider configuration is required' });
     }
 
-    const scheduleId = await createScanSchedule(prisma, tenantId, cronExpression, {
-      providers,
-      kubernetes,
-      onPremise,
-      options,
-    });
+    const scanConfig = { providers, kubernetes, onPremise, options };
+    if (
+      scanConfigHasPlaintextCredentials(scanConfig) &&
+      !process.env.CREDENTIAL_ENCRYPTION_KEY
+    ) {
+      return res.status(400).json({
+        error: 'Configuration manquante',
+        details: [{ field: 'credentials', message: 'CREDENTIAL_ENCRYPTION_KEY requis' }],
+      });
+    }
+
+    const scheduleId = await createScanSchedule(prisma, tenantId, cronExpression, scanConfig);
 
     return res.status(201).json({ id: scheduleId, cronExpression, status: 'active' });
   } catch (error) {

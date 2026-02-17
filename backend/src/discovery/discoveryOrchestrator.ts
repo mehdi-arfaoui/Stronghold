@@ -11,6 +11,10 @@ import { inferDependencies } from '../graph/dependencyInferenceEngine.js';
 import { transformToScanResult } from './graphBridge.js';
 import { validateScanConsistency } from '../services/discoveryHealthService.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
+import {
+  encryptScanConfigCredentials,
+  sanitizeScanConfig,
+} from "../services/scanConfigSecurityService.js";
 
 export interface DiscoveryScanConfig {
   providers: Array<{
@@ -54,10 +58,11 @@ export async function createScanJob(
   tenantId: string,
   config: DiscoveryScanConfig
 ): Promise<string> {
+  const encryptedConfig = encryptScanConfigCredentials(config);
   const job = await prisma.scanJob.create({
     data: {
       status: 'queued',
-      config: JSON.parse(JSON.stringify(config)),
+      config: JSON.parse(JSON.stringify(encryptedConfig)),
       tenantId,
     },
   });
@@ -160,10 +165,11 @@ export async function createScanSchedule(
   cronExpression: string,
   config: DiscoveryScanConfig
 ): Promise<string> {
+  const encryptedConfig = encryptScanConfigCredentials(config);
   const schedule = await prisma.scanSchedule.create({
     data: {
       cronExpression,
-      config: JSON.parse(JSON.stringify(config)),
+      config: JSON.parse(JSON.stringify(encryptedConfig)),
       isActive: true,
       tenantId,
     },
@@ -178,10 +184,14 @@ export async function listScanSchedules(
   prisma: PrismaClient,
   tenantId: string
 ) {
-  return prisma.scanSchedule.findMany({
+  const schedules = await prisma.scanSchedule.findMany({
     where: { tenantId },
     orderBy: { createdAt: 'desc' },
   });
+  return schedules.map((schedule) => ({
+    ...schedule,
+    config: sanitizeScanConfig(schedule.config),
+  }));
 }
 
 /**

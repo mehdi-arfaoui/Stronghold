@@ -9,6 +9,10 @@ const EnvironmentVariablesSchema = z
     LICENSE_SIGNING_SECRET: z
       .string()
       .min(64, "LICENSE_SIGNING_SECRET must be at least 64 characters"),
+    CREDENTIAL_ENCRYPTION_KEY: z
+      .string()
+      .regex(/^[a-f0-9]{64}$/i, "CREDENTIAL_ENCRYPTION_KEY must be a 64-char hex string")
+      .optional(),
     NODE_ENV: z.enum(["development", "staging", "production", "test"]),
     PORT: z.coerce.number().int().positive(),
     FRONTEND_URL: z.string().min(1, "FRONTEND_URL is required"),
@@ -66,6 +70,12 @@ export function validateEnv(
       if (isPlaceholderSecret(value)) {
         throw new Error(`Config validation error:\n${String(key)} cannot be a placeholder in production`);
       }
+    }
+
+    if (!validated.CREDENTIAL_ENCRYPTION_KEY) {
+      throw new Error(
+        "Config validation error:\nCREDENTIAL_ENCRYPTION_KEY must be configured in production"
+      );
     }
   }
 
