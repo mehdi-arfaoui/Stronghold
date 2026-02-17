@@ -4,7 +4,7 @@ import * as path from "path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { PDFParse } from "pdf-parse";
-import * as xlsx from "xlsx";
+import * as ExcelJS from "exceljs";
 import prisma from "../prismaClient.js";
 import * as crypto from "crypto";
 import type { Prisma, Service, InfraComponent } from "@prisma/client";
@@ -100,25 +100,38 @@ function isScannedPdf(text: string): boolean {
   return stripped.length < 50;
 }
 
+function normalizeSpreadsheetCellValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "object") {
+    if ("text" in (value as Record<string, unknown>) && typeof (value as any).text === "string") {
+      return (value as any).text;
+    }
+    if ("result" in (value as Record<string, unknown>) && (value as any).result != null) {
+      return String((value as any).result);
+    }
+    if ("formula" in (value as Record<string, unknown>) && typeof (value as any).formula === "string") {
+      return (value as any).formula;
+    }
+  }
+  return String(value);
+}
+
 async function extractTextFromXlsx(filePath: string): Promise<string> {
-  const workbook = xlsx.readFile(filePath);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(filePath);
   const parts: string[] = [];
 
-  workbook.SheetNames.forEach((sheetName) => {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) return;
-    const sheetJson = xlsx.utils.sheet_to_json<any>(sheet, { header: 1 });
-    parts.push(`# Feuille: ${sheetName}`);
-    for (const row of sheetJson) {
-      if (Array.isArray(row)) {
-        const line = row
-          .map((cell) => (cell != null ? String(cell) : ""))
-          .join(" | ");
-        if (line.trim().length > 0) {
-          parts.push(line);
-        }
+  workbook.eachSheet((sheet) => {
+    parts.push(`# Feuille: ${sheet.name}`);
+    sheet.eachRow((row) => {
+      const rowValues = Array.isArray(row.values)
+        ? row.values.slice(1)
+        : Object.values((row.values || {}) as Record<string, unknown>);
+      const line = rowValues.map((cell) => normalizeSpreadsheetCellValue(cell)).join(" | ");
+      if (line.trim().length > 0) {
+        parts.push(line);
       }
-    }
+    });
   });
 
   return parts.join("\n");

@@ -44,7 +44,7 @@ const path = __importStar(require("path"));
 const node_child_process_1 = require("node:child_process");
 const node_util_1 = require("node:util");
 const pdf_parse_1 = require("pdf-parse");
-const xlsx = __importStar(require("xlsx"));
+const ExcelJS = __importStar(require("exceljs"));
 const prismaClient_1 = __importDefault(require("../prismaClient"));
 const crypto = __importStar(require("crypto"));
 const documentIntelligenceService_1 = require("./documentIntelligenceService");
@@ -111,6 +111,22 @@ async function extractTextFromPdf(filePath) {
         await parser.destroy().catch(() => undefined);
     }
 }
+function normalizeSpreadsheetCellValue(value) {
+    if (value === null || value === undefined)
+        return "";
+    if (typeof value === "object") {
+        if ("text" in value && typeof value.text === "string") {
+            return value.text;
+        }
+        if ("result" in value && value.result != null) {
+            return String(value.result);
+        }
+        if ("formula" in value && typeof value.formula === "string") {
+            return value.formula;
+        }
+    }
+    return String(value);
+}
 async function extractTextWithOcr(filePath) {
     const enableOcr = String(process.env.ENABLE_OCR || "true").toLowerCase() === "true";
     if (!enableOcr) {
@@ -131,24 +147,20 @@ async function extractTextWithOcr(filePath) {
     }
 }
 async function extractTextFromXlsx(filePath) {
-    const workbook = xlsx.readFile(filePath);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.readFile(filePath);
     const parts = [];
-    workbook.SheetNames.forEach((sheetName) => {
-        const sheet = workbook.Sheets[sheetName];
-        if (!sheet)
-            return;
-        const sheetJson = xlsx.utils.sheet_to_json(sheet, { header: 1 });
-        parts.push(`# Feuille: ${sheetName}`);
-        for (const row of sheetJson) {
-            if (Array.isArray(row)) {
-                const line = row
-                    .map((cell) => (cell != null ? String(cell) : ""))
-                    .join(" | ");
-                if (line.trim().length > 0) {
-                    parts.push(line);
-                }
+    workbook.eachSheet((sheet) => {
+        parts.push(`# Feuille: ${sheet.name}`);
+        sheet.eachRow((row) => {
+            const rowValues = Array.isArray(row.values)
+                ? row.values.slice(1)
+                : Object.values(row.values || {});
+            const line = rowValues.map((cell) => normalizeSpreadsheetCellValue(cell)).join(" | ");
+            if (line.trim().length > 0) {
+                parts.push(line);
             }
-        }
+        });
     });
     return parts.join("\n");
 }

@@ -78,7 +78,7 @@ export function initDiscoveryWebSocket(server: Server) {
           return;
         }
 
-        wss.handleUpgrade(req, socket, head, (ws) => {
+        wss.handleUpgrade(req, socket, head, (ws: WebSocket) => {
           registerSocket(registry, tenantId, ws);
           ws.send(
             JSON.stringify({
