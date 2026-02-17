@@ -107,6 +107,12 @@ function decodeXmlEntities(text: string): string {
     .replace(/&apos;/g, "'");
 }
 
+function assertSafeZipEntryPath(entryPath: string): void {
+  if (!entryPath || entryPath.includes("..") || entryPath.includes("\0") || entryPath.startsWith("-")) {
+    throw new Error("Invalid zip entry path");
+  }
+}
+
 function normalizeSpreadsheetCellValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (typeof value === "object") {
@@ -146,14 +152,15 @@ async function extractTextFromPdfBuffer(buffer: Buffer): Promise<string> {
 }
 
 async function unzipEntry(filePath: string, entryPath: string): Promise<string> {
-  const { stdout } = await execFileAsync("unzip", ["-p", filePath, entryPath], {
+  assertSafeZipEntryPath(entryPath);
+  const { stdout } = await execFileAsync("unzip", ["-p", "--", filePath, entryPath], {
     maxBuffer: 10 * 1024 * 1024,
   });
   return stdout.toString();
 }
 
 async function listZipEntries(filePath: string): Promise<string[]> {
-  const { stdout } = await execFileAsync("unzip", ["-Z1", filePath], {
+  const { stdout } = await execFileAsync("unzip", ["-Z1", "--", filePath], {
     maxBuffer: 10 * 1024 * 1024,
   });
   return stdout
