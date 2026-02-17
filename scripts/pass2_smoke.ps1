@@ -1,6 +1,10 @@
 ﻿$ErrorActionPreference = "Stop"
 $base = "http://localhost:4000"
-$apiKey = "dev_seed_api_key_for_local_runs"
+$apiKey = $env:SMOKE_TEST_API_KEY
+if ([string]::IsNullOrWhiteSpace($apiKey)) {
+  Write-Error "SMOKE_TEST_API_KEY is not set. Define it before running this script, for example: `$env:SMOKE_TEST_API_KEY='your-api-key'"
+  exit 1
+}
 
 function Invoke-Api {
   param(
