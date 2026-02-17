@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { z, ZodError } from "zod";
 import prisma from "../prismaClient.js";
 import { decryptJsonSecret, encryptJsonSecret, isSecretVaultEnabled } from "./secretVaultService.js";
+import { sanitizeSensitiveObject } from "../utils/credential-mask.js";
 
 type DiscoveryNodeKind = "service" | "infra";
 
@@ -1251,8 +1252,8 @@ export function buildJobResponse(job: any) {
     jobType: job.jobType,
     progress: job.progress,
     step: job.step,
-    parameters: parse(job.parameters),
-    resultSummary: parse(job.resultSummary),
+    parameters: sanitizeSensitiveObject(parse(job.parameters)),
+    resultSummary: sanitizeSensitiveObject(parse(job.resultSummary)),
     errorMessage: job.errorMessage,
     requestedByApiKeyId: job.requestedByApiKeyId,
     startedAt: job.startedAt,

@@ -16,6 +16,10 @@ function maskCredentialField(key: string, value: unknown): unknown {
   return maskCredential(value);
 }
 
+function isSensitiveKey(key: string): boolean {
+  return SENSITIVE_KEY_PATTERN.test(key);
+}
+
 export function sanitizeCredentialRecord(
   input: Record<string, unknown> | null | undefined
 ): Record<string, unknown> | null {
@@ -25,4 +29,28 @@ export function sanitizeCredentialRecord(
     sanitized[key] = maskCredentialField(key, value);
   }
   return sanitized;
+}
+
+export function sanitizeSensitiveObject(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") {
+    if (isEncryptedCredential(value)) return "********";
+    return value;
+  }
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  if (Array.isArray(value)) {
+    return value.map((entry) => sanitizeSensitiveObject(entry));
+  }
+  if (typeof value === "object") {
+    const sanitized: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+      if (isSensitiveKey(key)) {
+        sanitized[key] = maskCredentialField(key, nested);
+      } else {
+        sanitized[key] = sanitizeSensitiveObject(nested);
+      }
+    }
+    return sanitized;
+  }
+  return String(value);
 }
