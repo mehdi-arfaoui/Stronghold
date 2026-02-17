@@ -1,12 +1,16 @@
 type LogLevel = "info" | "warn" | "error";
 
 const SENSITIVE_KEY_PATTERN = /(password|secret|token|api[_-]?key|authorization|keyCiphertext|keyIv|keyTag)/i;
+const SENSITIVE_STRING_PATTERN =
+  /(AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(?:password|secret|token|api[_-]?key)\s*[:=]\s*[^,\s]+)/i;
 const REDACTED_VALUE = "[REDACTED]";
 
 function sanitizeValue(value: unknown, depth = 0): unknown {
   if (depth > 6) return "[MAX_DEPTH]";
   if (value === null || value === undefined) return value;
-  if (typeof value === "string") return value;
+  if (typeof value === "string") {
+    return SENSITIVE_STRING_PATTERN.test(value) ? REDACTED_VALUE : value;
+  }
   if (typeof value === "number" || typeof value === "boolean") return value;
   if (Array.isArray(value)) {
     return value.map((item) => sanitizeValue(item, depth + 1));
