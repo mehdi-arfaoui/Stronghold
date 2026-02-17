@@ -82,6 +82,11 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 - `POST /discovery/run` ou `/discovery/scan` : lance un scan réseau/cloud asynchrone (SNMP/SSH/WMI à brancher côté worker).
 - `POST /discovery/github-import` : importe un export JSON depuis un dépôt GitHub public (repo + chemin de fichier ou URL raw).
 
+Note securite dependances discovery:
+- `node-nmap` et `node-wmi` trainent une dependance transitive `xml2js` avec un risque modere connu.
+- Statut actuel: risque accepte temporairement (surface limitee aux workers de discovery).
+- Plan: remplacement de `node-nmap` et `node-wmi` par des adaptateurs maintenus sans `xml2js`.
+
 Payload JSON attendu pour `/discovery/scan` :
 ```json
 {
