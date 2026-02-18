@@ -1,12 +1,26 @@
 export interface ScanConfig {
   providers: ProviderConfig[];
+  kubernetes?: KubernetesProviderConfig[];
+  onPremise?: {
+    ipRanges: string[];
+  };
+  options?: {
+    inferDependencies?: boolean;
+    scanIntervalMinutes?: number;
+  };
 }
 
 export interface ProviderConfig {
-  provider: string;
+  type: string;
   credentials: Record<string, string>;
   regions?: string[];
   options?: Record<string, unknown>;
+  provider?: string;
+}
+
+export interface KubernetesProviderConfig {
+  name: string;
+  kubeconfig: string;
 }
 
 export type ScanJobStatus = 'pending' | 'running' | 'completed' | 'failed';

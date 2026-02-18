@@ -81,6 +81,8 @@ Authentification par `x-api-key` (tenant + rôle) via `backend/src/middleware/te
 - `POST /discovery/suggestions` : prévisualise les correspondances entre éléments découverts et services existants.
 - `POST /discovery/run` ou `/discovery/scan` : lance un scan réseau/cloud asynchrone (SNMP/SSH/WMI à brancher côté worker).
 - `POST /discovery/github-import` : importe un export JSON depuis un dépôt GitHub public (repo + chemin de fichier ou URL raw).
+- `POST /discovery-resilience/seed-demo` : exécute l'onboarding démo complet (seed + analyses + artefacts simulés).
+  Disponible uniquement en `development` / `test`, ou en environnement explicitement démo (`ALLOW_DEMO_SEED=true` ou `APP_ENV=demo`).
 
 Note securite dependances discovery:
 - `node-nmap` et `node-wmi` trainent une dependance transitive `xml2js` avec un risque modere connu.

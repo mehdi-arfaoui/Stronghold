@@ -7,11 +7,17 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import { runDemoSeed } from "../src/services/demoSeedService.js";
+import { getDemoSeedGuard, runDemoOnboarding } from "../src/services/demoOnboardingService.js";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  const guard = getDemoSeedGuard();
+  if (!guard.allowed) {
+    console.error(`Demo onboarding blocked: ${guard.reason}`);
+    process.exit(1);
+  }
+
   const seedApiKey = process.env.SEED_API_KEY;
   if (!seedApiKey) {
     console.error("SEED_API_KEY is required");
@@ -30,14 +36,19 @@ async function main() {
   }
 
   console.log(`Using tenant: ${tenant.name} (${tenant.id})`);
-  await runDemoSeed(prisma, tenant.id);
+  const summary = await runDemoOnboarding(prisma, tenant.id);
 
   console.log("");
-  console.log("Next steps:");
-  console.log("  1. Run graph analysis:  POST /analysis/resilience/graph");
-  console.log("  2. Generate BIA:        POST /bia-resilience/auto-generate");
-  console.log("  3. Detect risks:        POST /risks-resilience/auto-detect");
-  console.log("  4. Try a simulation:    POST /simulations");
+  console.log("Demo onboarding summary:");
+  console.log(`  Nodes:          ${summary.nodes}`);
+  console.log(`  Total edges:    ${summary.totalEdges}`);
+  console.log(`  BIA processes:  ${summary.biaProcesses}`);
+  console.log(`  Risks detected: ${summary.risksDetected}`);
+  console.log(`  Simulations:    ${summary.simulationsSeeded}`);
+  console.log(`  Runbooks:       ${summary.runbooksSeeded}`);
+  console.log(`  PRA exercises:  ${summary.praExercisesSeeded}`);
+  console.log(`  Duration:       ${summary.durationMs} ms`);
+  console.log(`  Budget (10s):   ${summary.withinPerformanceBudget ? "OK" : "EXCEEDED"}`);
 }
 
 main()

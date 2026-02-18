@@ -16,7 +16,10 @@ import {
   ingestDiscoveredResources,
 } from '../discovery/discoveryOrchestrator.js';
 import { discoveryQueue } from '../queues/discoveryQueue.js';
-import { runDemoSeed } from '../services/demoSeedService.js';
+import {
+  getDemoSeedGuard,
+  runDemoOnboarding,
+} from '../services/demoOnboardingService.js';
 import { buildScanHealthReport } from '../services/discoveryHealthService.js';
 import { scanConfigHasPlaintextCredentials } from '../services/scanConfigSecurityService.js';
 
@@ -29,12 +32,21 @@ router.post('/auto-scan', async (req: TenantRequest, res) => {
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
     const { providers, kubernetes, onPremise, options } = req.body;
+    const normalizedProviders = Array.isArray(providers) ? providers : [];
+    const hasCloudProviders = normalizedProviders.length > 0;
+    const hasKubernetes = Array.isArray(kubernetes) && kubernetes.length > 0;
+    const hasOnPremise =
+      Boolean(onPremise) &&
+      Array.isArray(onPremise.ipRanges) &&
+      onPremise.ipRanges.length > 0;
 
-    if (!providers || !Array.isArray(providers) || providers.length === 0) {
-      return res.status(400).json({ error: 'At least one provider configuration is required' });
+    if (!hasCloudProviders && !hasKubernetes && !hasOnPremise) {
+      return res.status(400).json({
+        error: 'At least one discovery source is required (cloud, kubernetes, or on-premise)',
+      });
     }
 
-    const scanConfig = { providers, kubernetes, onPremise, options };
+    const scanConfig = { providers: normalizedProviders, kubernetes, onPremise, options };
     if (
       scanConfigHasPlaintextCredentials(scanConfig) &&
       !process.env.CREDENTIAL_ENCRYPTION_KEY
@@ -51,8 +63,10 @@ router.post('/auto-scan', async (req: TenantRequest, res) => {
     // Extract cloud providers and IP ranges for the existing worker
     const cloudProviders: string[] = [];
 
-    for (const provider of providers) {
-      cloudProviders.push(provider.type);
+    for (const provider of normalizedProviders) {
+      if (provider?.type) {
+        cloudProviders.push(provider.type);
+      }
     }
 
     const ipRanges = onPremise?.ipRanges || [];
@@ -120,15 +134,24 @@ router.post('/schedules', async (req: TenantRequest, res) => {
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
     const { cronExpression, providers, kubernetes, onPremise, options } = req.body;
+    const normalizedProviders = Array.isArray(providers) ? providers : [];
+    const hasCloudProviders = normalizedProviders.length > 0;
+    const hasKubernetes = Array.isArray(kubernetes) && kubernetes.length > 0;
+    const hasOnPremise =
+      Boolean(onPremise) &&
+      Array.isArray(onPremise.ipRanges) &&
+      onPremise.ipRanges.length > 0;
 
     if (!cronExpression) {
       return res.status(400).json({ error: 'cronExpression is required' });
     }
-    if (!providers || !Array.isArray(providers) || providers.length === 0) {
-      return res.status(400).json({ error: 'At least one provider configuration is required' });
+    if (!hasCloudProviders && !hasKubernetes && !hasOnPremise) {
+      return res.status(400).json({
+        error: 'At least one discovery source is required (cloud, kubernetes, or on-premise)',
+      });
     }
 
-    const scanConfig = { providers, kubernetes, onPremise, options };
+    const scanConfig = { providers: normalizedProviders, kubernetes, onPremise, options };
     if (
       scanConfigHasPlaintextCredentials(scanConfig) &&
       !process.env.CREDENTIAL_ENCRYPTION_KEY
@@ -235,18 +258,25 @@ router.get('/health', async (req: TenantRequest, res) => {
 // ─── POST /discovery/seed-demo — Load demo environment (dev only) ──────────
 router.post('/seed-demo', async (req: TenantRequest, res) => {
   try {
-    if (process.env.NODE_ENV === 'production' && process.env.ALLOW_DEMO_SEED !== 'true') {
-      return res.status(403).json({ error: 'Demo seeding is disabled in production' });
+    const guard = getDemoSeedGuard();
+    if (!guard.allowed) {
+      return res.status(403).json({
+        error: guard.reason,
+        environment: guard.nodeEnv,
+        mode: guard.mode,
+      });
     }
 
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const summary = await runDemoSeed(prisma, tenantId);
+    const summary = await runDemoOnboarding(prisma, tenantId);
 
     return res.json({
       success: true,
-      message: 'Demo environment "ShopMax E-commerce" loaded',
+      message: 'Demo onboarding completed for "ShopMax E-commerce"',
+      environment: guard.nodeEnv,
+      mode: guard.mode,
       ...summary,
     });
   } catch (error) {

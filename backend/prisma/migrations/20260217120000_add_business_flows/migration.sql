@@ -67,8 +67,5 @@ ALTER TABLE "BusinessFlow" ADD CONSTRAINT "BusinessFlow_tenantId_fkey" FOREIGN K
 -- AddForeignKey: BusinessFlowNode -> BusinessFlow
 ALTER TABLE "BusinessFlowNode" ADD CONSTRAINT "BusinessFlowNode_businessFlowId_fkey" FOREIGN KEY ("businessFlowId") REFERENCES "BusinessFlow"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
--- AddForeignKey: BusinessFlowNode -> InfraNode
-ALTER TABLE "BusinessFlowNode" ADD CONSTRAINT "BusinessFlowNode_infraNodeId_fkey" FOREIGN KEY ("infraNodeId") REFERENCES "InfraNode"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
 -- AddForeignKey: BusinessFlowNode -> Tenant
 ALTER TABLE "BusinessFlowNode" ADD CONSTRAINT "BusinessFlowNode_tenantId_fkey" FOREIGN KEY ("tenantId") REFERENCES "Tenant"("id") ON DELETE CASCADE ON UPDATE CASCADE;

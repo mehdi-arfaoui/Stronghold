@@ -1,0 +1,2892 @@
+[
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/compliance/checklists",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 835,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/compliance/templates",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 831,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/financial-report",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1499,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/currency/rates",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/currencyRoutes.ts",
+    "line": 48,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/cyber-scenarios",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/cyberScenarioRoutes.ts",
+    "line": 8,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/cyber-scenarios/:id",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/cyberScenarioRoutes.ts",
+    "line": 13,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/run",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 265,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/scan",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 275,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/benchmarks",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 987,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/benchmarks/vertical/:sector",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 1000,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/knowledge-base",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/knowledgeBaseRoutes.ts",
+    "line": 6,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/knowledge-base/article/:slug",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/knowledgeBaseRoutes.ts",
+    "line": 32,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/knowledge-base/categories",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/knowledgeBaseRoutes.ts",
+    "line": 24,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/knowledge-base/term/:term",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/knowledgeBaseRoutes.ts",
+    "line": 47,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/license/features",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 162,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/license/plans",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 146,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/aws/products",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 81,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/azure/retail",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 133,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/estimate",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 58,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/gcp/skus",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 173,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/normalize",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 42,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/pricing/providers",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 38,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pricing/scenario-estimates",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/pricingRoutes.ts",
+    "line": 211,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/resilience/graph/enums",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 248,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi/compliance",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 56,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi/compliance/coverage",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 68,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi/compliance/tags",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 61,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi/market-data",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 42,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi/recovery-strategies",
+    "tenantFilter": "no",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 51,
+    "risk": "MEDIUM",
+    "note": "no explicit tenant marker in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/basic",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1408,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/compliance-report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 816,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/compliance/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 839,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/compliance/statement-of-applicability",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 859,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/documents/:id/classification-feedback",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 2080,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/documents/:id/extracted-facts",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 2048,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/feedback/entities",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1195,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/feedback/rag-experiments",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1332,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/feedback/recommendations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1235,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/feedback/user",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1288,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/full-report-json",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1688,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/infra-basic",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1440,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/maturity-score",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 879,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/ml-training/run",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1385,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/next-actions",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 942,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/pra-dashboard",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 686,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/pra-options",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1612,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/pra-rag-report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1095,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/rag-query",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1035,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1468,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/report/pdf",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1482,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/resilience",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 15,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/resilience/nodes/:nodeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 79,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/resilience/redundancy-issues",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 246,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/resilience/regional-risks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 279,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/resilience/score",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 133,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/resilience/spofs",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisResilienceRoutes.ts",
+    "line": 207,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/analysis/risk-heatmap",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 961,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/analysis/runbook-draft",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/analysisRoutes.ts",
+    "line": 1145,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/audit-logs",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/auditRoutes.ts",
+    "line": 22,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/auth/api-keys",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/authRoutes.ts",
+    "line": 28,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/auth/api-keys",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/authRoutes.ts",
+    "line": 70,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/auth/api-keys/:id/reveal",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/authRoutes.ts",
+    "line": 158,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/auth/api-keys/:id/review",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/authRoutes.ts",
+    "line": 117,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/auth/api-keys/rotate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/authRoutes.ts",
+    "line": 219,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia-resilience/auto-generate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 20,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/entries",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 115,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/export/csv",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 354,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/export/json",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 394,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/export/pdf",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 469,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/export/xlsx",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 429,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/matrix",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 637,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/bia-resilience/processes/:processId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 544,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 521,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia-resilience/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 295,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia-resilience/validate-all",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaResilienceRoutes.ts",
+    "line": 592,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/dashboard",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 92,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/integration/process/:processId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 273,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/integration/process/:processId/create-risk",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 331,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/integration/process/:processId/link-risk",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 297,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/integration/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 258,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/processes",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 197,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/processes",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 107,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/reports/generate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 221,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/settings",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 382,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/bia/settings/alerts",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 508,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/bia/settings/display",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 528,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/settings/reset",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 544,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/bia/settings/templates",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 397,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/bia/settings/templates/:templateId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 434,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/bia/settings/templates/:templateId/toggle",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 458,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/bia/settings/thresholds",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 488,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/bia/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/biaRoutes.ts",
+    "line": 77,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/branding",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/brandingRoutes.ts",
+    "line": 19,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/branding",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/brandingRoutes.ts",
+    "line": 42,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/business-flows",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 436,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/business-flows",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 365,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/business-flows/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 546,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/business-flows/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 459,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/business-flows/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 496,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/business-flows/:id/nodes",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 595,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/business-flows/:id/nodes/:nodeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 735,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/business-flows/:id/validate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 564,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/business-flows/ai/suggest",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 314,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/business-flows/cloud/enrich",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/businessFlowRoutes.ts",
+    "line": 353,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/continuity/backup-strategies",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 84,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/continuity/backup-strategies",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/continuity/dependency-cycles",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 243,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/continuity/dependency-cycles",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 187,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/continuity/security-policies",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 163,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/continuity/security-policies",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/continuityRoutes.ts",
+    "line": 110,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery-resilience/auto-scan",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 26,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery-resilience/health",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 222,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery-resilience/ingest",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 168,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery-resilience/scan-jobs",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 101,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery-resilience/scan-jobs/:jobId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 81,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery-resilience/schedules",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 152,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery-resilience/schedules",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 117,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery-resilience/seed-demo",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 236,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery-resilience/test-credentials",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryResilienceRoutes.ts",
+    "line": 196,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/flows/import",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 385,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/github-import",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 680,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery/health",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 292,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery/history",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 487,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/import",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 566,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery/resources",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 423,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery/schedules",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 362,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/schedules",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 311,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/discovery/status/:jobId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 457,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/discovery/suggestions",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/discoveryRoutes.ts",
+    "line": 524,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/documents",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 398,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 159,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/documents/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 578,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/documents/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 483,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/:id/classification-feedback",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 535,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/:id/extract",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 773,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/documents/:id/extraction-suggestions",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 608,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/:id/extraction-suggestions/approve",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 645,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/:id/extraction-suggestions/reject",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 688,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/documents/:id/sensitivity-report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 735,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/extract-all-pending",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 800,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/presign",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 274,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/documents/register",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/documentRoutes.ts",
+    "line": 320,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/drift/check",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 135,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/events",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 159,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/events/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 289,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/drift/events/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 311,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/schedule",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 439,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/drift/schedule",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 464,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/score",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 373,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/score/history",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 417,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/drift/snapshots",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/driftRoutes.ts",
+    "line": 346,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/exercises",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 121,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 33,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/exercises-resilience/:exerciseId/comparison",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/exerciseResilienceRoutes.ts",
+    "line": 106,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises-resilience/auto-checklist",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/exerciseResilienceRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises-resilience/link",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseResilienceRoutes.ts",
+    "line": 39,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/exercises/:exerciseId/checklist/:itemId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 254,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/exercises/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 143,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/exercises/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 175,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises/:id/analysis",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 360,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises/:id/assistant",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 477,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/exercises/:id/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 420,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises/:id/results",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 310,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/exercises/:id/simulations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 560,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/exercises/:id/simulations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/exerciseRoutes.ts",
+    "line": 527,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/financial/calculate-ale",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 348,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/financial/calculate-roi",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 426,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/financial/drift/:driftId/impact",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 659,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/flows-coverage",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 566,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/node/:nodeId/flow-impact",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 484,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/node/:nodeId/impact",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 589,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/financial/node/:nodeId/override",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 929,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/org-profile",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 810,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/financial/org-profile",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 835,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 751,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/financial/trend",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/financialRoutes.ts",
+    "line": 777,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/graph",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/graphRoutes.ts",
+    "line": 195,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/graph/dependencies-only",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/graphRoutes.ts",
+    "line": 83,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/graph/flows",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/graphRoutes.ts",
+    "line": 357,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/incidents",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 211,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/incidents",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 266,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/incidents/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 235,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/incidents/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 367,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/incidents/:id/actions",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 542,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/incidents/:id/actions",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 565,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/incidents/dashboard",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 52,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/incidents/notification-channels",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 102,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/incidents/notification-channels",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 121,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/incidents/notification-channels/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/incidentRoutes.ts",
+    "line": 160,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/infra/components",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/infraRoutes.ts",
+    "line": 162,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/infra/components",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/infraRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/infra/components/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/infraRoutes.ts",
+    "line": 230,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/infra/components/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/infraRoutes.ts",
+    "line": 71,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/infra/link",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/infraRoutes.ts",
+    "line": 190,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/integrations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/integrationsRoutes.ts",
+    "line": 11,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/integrations/:type/configure",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/integrationsRoutes.ts",
+    "line": 34,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/integrations/:type/logs",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/integrationsRoutes.ts",
+    "line": 83,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/integrations/:type/test",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/integrationsRoutes.ts",
+    "line": 62,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/license",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 14,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/license/check-feature",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 170,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/license/check-quota",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 200,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/license/usage",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/licenseRoutes.ts",
+    "line": 55,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/pra-exercises",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/praExerciseRoutes.ts",
+    "line": 286,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/pra-exercises",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/praExerciseRoutes.ts",
+    "line": 42,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/pra-exercises/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/praExerciseRoutes.ts",
+    "line": 122,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/pra-exercises/:id/comparison",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/praExerciseRoutes.ts",
+    "line": 315,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/recommendations/hybrid",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/recommendationEngineRoutes.ts",
+    "line": 10,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/recommendations/landing-zone",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/landingZoneResilienceRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/recommendations/landing-zone",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/landingZoneResilienceRoutes.ts",
+    "line": 64,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/recommendations/landing-zone/cost-summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/landingZoneResilienceRoutes.ts",
+    "line": 124,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/remediation-tasks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/remediationTaskRoutes.ts",
+    "line": 97,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/remediation-tasks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/remediationTaskRoutes.ts",
+    "line": 47,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/remediation-tasks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/remediationTaskRoutes.ts",
+    "line": 127,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/remediation-tasks/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/remediationTaskRoutes.ts",
+    "line": 228,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/reports/executive-financial",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 964,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/reports/executive-summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 860,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/reports/generate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 766,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/reports/pra-pca",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 755,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/reports/pra-pca/latest",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 778,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/reports/prerequisites",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 826,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/reports/preview",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/reportRoutes.ts",
+    "line": 793,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/resilience/graph",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 16,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/resilience/graph/blast-radius/:nodeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 81,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/resilience/graph/edges",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 148,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/resilience/graph/edges/:edgeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 181,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/resilience/graph/ingest",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 222,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/resilience/graph/nodes",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 111,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/resilience/graph/nodes/:nodeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 47,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/resilience/graph/stats",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/resilienceGraphRoutes.ts",
+    "line": 33,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 58,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/risks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 239,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/risks-resilience/auto-detect",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskResilienceRoutes.ts",
+    "line": 16,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks-resilience/by-node/:nodeId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskResilienceRoutes.ts",
+    "line": 155,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks-resilience/matrix",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskResilienceRoutes.ts",
+    "line": 113,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 205,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/risks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 360,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/risks/:id/mitigations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 446,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/risks/:id/mitigations/:mitigationId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 497,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks/matrix",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 146,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/risks/summary",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/riskRoutes.ts",
+    "line": 131,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/roi",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/roiRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/runbooks",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 548,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/runbooks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 693,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/runbooks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 565,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PATCH",
+    "endpoint": "/api/runbooks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 639,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/runbooks/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 632,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/runbooks/:id/validate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 646,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/runbooks/generate",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 715,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/runbooks/templates",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 426,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/runbooks/templates",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 223,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/runbooks/templates/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 517,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/runbooks/templates/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 455,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/runbooks/templates/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 485,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/runbooks/templates/presign",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 297,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/runbooks/templates/register",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/runbookRoutes.ts",
+    "line": 350,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/scenario-catalog",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/scenarioCatalogRoutes.ts",
+    "line": 13,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/scenario-catalog/sync",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/scenarioCatalogRoutes.ts",
+    "line": 32,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/scenarios",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 24,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/scenarios",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 86,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/scenarios/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 356,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/scenarios/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 200,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/scenarios/:id/steps",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 390,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/scenarios/:id/steps/:stepId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 556,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/scenarios/:id/steps/:stepId",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/scenarioRoutes.ts",
+    "line": 466,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/scenarios/cyber",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/cyberExerciseRoutes.ts",
+    "line": 52,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/scenarios/cyber",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/cyberExerciseRoutes.ts",
+    "line": 94,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/scenarios/cyber/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/cyberExerciseRoutes.ts",
+    "line": 171,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/scenarios/cyber/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/cyberExerciseRoutes.ts",
+    "line": 69,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/scenarios/cyber/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/cyberExerciseRoutes.ts",
+    "line": 132,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/services",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 40,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/services",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 315,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/services/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 269,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "PUT",
+    "endpoint": "/api/services/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 94,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/services/:id/dependencies",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 430,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/services/graph",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/serviceRoutes.ts",
+    "line": 496,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 65,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/simulations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 17,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "DELETE",
+    "endpoint": "/api/simulations/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 234,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations/:id",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 212,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations/:id/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 257,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations/compare",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 151,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations/recovery-priorities",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 125,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/simulations/templates",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/simulationRoutes.ts",
+    "line": 94,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/vulnerabilities",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/vulnerabilityRoutes.ts",
+    "line": 143,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/vulnerabilities/:id/integrations",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/vulnerabilityRoutes.ts",
+    "line": 487,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/vulnerabilities/report",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/vulnerabilityRoutes.ts",
+    "line": 192,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/vulnerabilities/scan",
+    "tenantFilter": "yes",
+    "hasPrismaCall": true,
+    "file": "backend/src/routes/vulnerabilityRoutes.ts",
+    "line": 236,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "GET",
+    "endpoint": "/api/webhooks/catalog",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/webhookRoutes.ts",
+    "line": 9,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  },
+  {
+    "method": "POST",
+    "endpoint": "/api/webhooks/n8n/document-ingestion",
+    "tenantFilter": "yes",
+    "hasPrismaCall": false,
+    "file": "backend/src/routes/webhookRoutes.ts",
+    "line": 58,
+    "risk": "LOW",
+    "note": "tenant marker found in handler"
+  }
+]

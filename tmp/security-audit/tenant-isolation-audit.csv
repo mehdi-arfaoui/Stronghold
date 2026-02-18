@@ -1,0 +1,290 @@
+method,endpoint,tenantFilter,hasPrismaCall,risk,file,line,note
+GET,/api/analysis/compliance/checklists,no,false,MEDIUM,backend/src/routes/analysisRoutes.ts,835,no explicit tenant marker in handler
+GET,/api/analysis/compliance/templates,no,false,MEDIUM,backend/src/routes/analysisRoutes.ts,831,no explicit tenant marker in handler
+POST,/api/analysis/financial-report,no,false,MEDIUM,backend/src/routes/analysisRoutes.ts,1499,no explicit tenant marker in handler
+GET,/api/currency/rates,no,false,MEDIUM,backend/src/routes/currencyRoutes.ts,48,no explicit tenant marker in handler
+GET,/api/cyber-scenarios,no,false,MEDIUM,backend/src/routes/cyberScenarioRoutes.ts,8,no explicit tenant marker in handler
+GET,/api/cyber-scenarios/:id,no,false,MEDIUM,backend/src/routes/cyberScenarioRoutes.ts,13,no explicit tenant marker in handler
+POST,/api/discovery/run,no,false,MEDIUM,backend/src/routes/discoveryRoutes.ts,265,no explicit tenant marker in handler
+POST,/api/discovery/scan,no,false,MEDIUM,backend/src/routes/discoveryRoutes.ts,275,no explicit tenant marker in handler
+GET,/api/financial/benchmarks,no,false,MEDIUM,backend/src/routes/financialRoutes.ts,987,no explicit tenant marker in handler
+GET,/api/financial/benchmarks/vertical/:sector,no,false,MEDIUM,backend/src/routes/financialRoutes.ts,1000,no explicit tenant marker in handler
+GET,/api/knowledge-base,no,false,MEDIUM,backend/src/routes/knowledgeBaseRoutes.ts,6,no explicit tenant marker in handler
+GET,/api/knowledge-base/article/:slug,no,false,MEDIUM,backend/src/routes/knowledgeBaseRoutes.ts,32,no explicit tenant marker in handler
+GET,/api/knowledge-base/categories,no,false,MEDIUM,backend/src/routes/knowledgeBaseRoutes.ts,24,no explicit tenant marker in handler
+GET,/api/knowledge-base/term/:term,no,false,MEDIUM,backend/src/routes/knowledgeBaseRoutes.ts,47,no explicit tenant marker in handler
+GET,/api/license/features,no,false,MEDIUM,backend/src/routes/licenseRoutes.ts,162,no explicit tenant marker in handler
+GET,/api/license/plans,no,false,MEDIUM,backend/src/routes/licenseRoutes.ts,146,no explicit tenant marker in handler
+POST,/api/pricing/aws/products,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,81,no explicit tenant marker in handler
+POST,/api/pricing/azure/retail,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,133,no explicit tenant marker in handler
+POST,/api/pricing/estimate,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,58,no explicit tenant marker in handler
+POST,/api/pricing/gcp/skus,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,173,no explicit tenant marker in handler
+POST,/api/pricing/normalize,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,42,no explicit tenant marker in handler
+GET,/api/pricing/providers,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,38,no explicit tenant marker in handler
+POST,/api/pricing/scenario-estimates,no,false,MEDIUM,backend/src/routes/pricingRoutes.ts,211,no explicit tenant marker in handler
+GET,/api/resilience/graph/enums,no,false,MEDIUM,backend/src/routes/resilienceGraphRoutes.ts,248,no explicit tenant marker in handler
+GET,/api/roi/compliance,no,false,MEDIUM,backend/src/routes/roiRoutes.ts,56,no explicit tenant marker in handler
+GET,/api/roi/compliance/coverage,no,false,MEDIUM,backend/src/routes/roiRoutes.ts,68,no explicit tenant marker in handler
+GET,/api/roi/compliance/tags,no,false,MEDIUM,backend/src/routes/roiRoutes.ts,61,no explicit tenant marker in handler
+GET,/api/roi/market-data,no,false,MEDIUM,backend/src/routes/roiRoutes.ts,42,no explicit tenant marker in handler
+GET,/api/roi/recovery-strategies,no,false,MEDIUM,backend/src/routes/roiRoutes.ts,51,no explicit tenant marker in handler
+GET,/api/analysis/basic,yes,true,LOW,backend/src/routes/analysisRoutes.ts,1408,tenant marker found in handler
+GET,/api/analysis/compliance-report,yes,false,LOW,backend/src/routes/analysisRoutes.ts,816,tenant marker found in handler
+GET,/api/analysis/compliance/report,yes,false,LOW,backend/src/routes/analysisRoutes.ts,839,tenant marker found in handler
+GET,/api/analysis/compliance/statement-of-applicability,yes,false,LOW,backend/src/routes/analysisRoutes.ts,859,tenant marker found in handler
+POST,/api/analysis/documents/:id/classification-feedback,yes,false,LOW,backend/src/routes/analysisRoutes.ts,2080,tenant marker found in handler
+POST,/api/analysis/documents/:id/extracted-facts,yes,false,LOW,backend/src/routes/analysisRoutes.ts,2048,tenant marker found in handler
+POST,/api/analysis/feedback/entities,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1195,tenant marker found in handler
+POST,/api/analysis/feedback/rag-experiments,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1332,tenant marker found in handler
+POST,/api/analysis/feedback/recommendations,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1235,tenant marker found in handler
+POST,/api/analysis/feedback/user,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1288,tenant marker found in handler
+GET,/api/analysis/full-report-json,yes,true,LOW,backend/src/routes/analysisRoutes.ts,1688,tenant marker found in handler
+GET,/api/analysis/infra-basic,yes,true,LOW,backend/src/routes/analysisRoutes.ts,1440,tenant marker found in handler
+GET,/api/analysis/maturity-score,yes,true,LOW,backend/src/routes/analysisRoutes.ts,879,tenant marker found in handler
+POST,/api/analysis/ml-training/run,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1385,tenant marker found in handler
+GET,/api/analysis/next-actions,yes,false,LOW,backend/src/routes/analysisRoutes.ts,942,tenant marker found in handler
+GET,/api/analysis/pra-dashboard,yes,true,LOW,backend/src/routes/analysisRoutes.ts,686,tenant marker found in handler
+POST,/api/analysis/pra-options,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1612,tenant marker found in handler
+POST,/api/analysis/pra-rag-report,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1095,tenant marker found in handler
+POST,/api/analysis/rag-query,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1035,tenant marker found in handler
+GET,/api/analysis/report,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1468,tenant marker found in handler
+GET,/api/analysis/report/pdf,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1482,tenant marker found in handler
+POST,/api/analysis/resilience,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,15,tenant marker found in handler
+GET,/api/analysis/resilience/nodes/:nodeId,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,79,tenant marker found in handler
+GET,/api/analysis/resilience/redundancy-issues,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,246,tenant marker found in handler
+GET,/api/analysis/resilience/regional-risks,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,279,tenant marker found in handler
+GET,/api/analysis/resilience/score,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,133,tenant marker found in handler
+GET,/api/analysis/resilience/spofs,yes,true,LOW,backend/src/routes/analysisResilienceRoutes.ts,207,tenant marker found in handler
+GET,/api/analysis/risk-heatmap,yes,true,LOW,backend/src/routes/analysisRoutes.ts,961,tenant marker found in handler
+POST,/api/analysis/runbook-draft,yes,false,LOW,backend/src/routes/analysisRoutes.ts,1145,tenant marker found in handler
+GET,/api/audit-logs,yes,true,LOW,backend/src/routes/auditRoutes.ts,22,tenant marker found in handler
+GET,/api/auth/api-keys,yes,true,LOW,backend/src/routes/authRoutes.ts,28,tenant marker found in handler
+POST,/api/auth/api-keys,yes,true,LOW,backend/src/routes/authRoutes.ts,70,tenant marker found in handler
+POST,/api/auth/api-keys/:id/reveal,yes,true,LOW,backend/src/routes/authRoutes.ts,158,tenant marker found in handler
+POST,/api/auth/api-keys/:id/review,yes,true,LOW,backend/src/routes/authRoutes.ts,117,tenant marker found in handler
+POST,/api/auth/api-keys/rotate,yes,true,LOW,backend/src/routes/authRoutes.ts,219,tenant marker found in handler
+POST,/api/bia-resilience/auto-generate,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,20,tenant marker found in handler
+GET,/api/bia-resilience/entries,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,115,tenant marker found in handler
+GET,/api/bia-resilience/export/csv,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,354,tenant marker found in handler
+GET,/api/bia-resilience/export/json,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,394,tenant marker found in handler
+GET,/api/bia-resilience/export/pdf,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,469,tenant marker found in handler
+GET,/api/bia-resilience/export/xlsx,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,429,tenant marker found in handler
+GET,/api/bia-resilience/matrix,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,637,tenant marker found in handler
+PATCH,/api/bia-resilience/processes/:processId,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,544,tenant marker found in handler
+GET,/api/bia-resilience/report,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,521,tenant marker found in handler
+GET,/api/bia-resilience/summary,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,295,tenant marker found in handler
+POST,/api/bia-resilience/validate-all,yes,true,LOW,backend/src/routes/biaResilienceRoutes.ts,592,tenant marker found in handler
+GET,/api/bia/dashboard,yes,false,LOW,backend/src/routes/biaRoutes.ts,92,tenant marker found in handler
+GET,/api/bia/integration/process/:processId,yes,false,LOW,backend/src/routes/biaRoutes.ts,273,tenant marker found in handler
+POST,/api/bia/integration/process/:processId/create-risk,yes,false,LOW,backend/src/routes/biaRoutes.ts,331,tenant marker found in handler
+POST,/api/bia/integration/process/:processId/link-risk,yes,true,LOW,backend/src/routes/biaRoutes.ts,297,tenant marker found in handler
+GET,/api/bia/integration/summary,yes,false,LOW,backend/src/routes/biaRoutes.ts,258,tenant marker found in handler
+GET,/api/bia/processes,yes,true,LOW,backend/src/routes/biaRoutes.ts,197,tenant marker found in handler
+POST,/api/bia/processes,yes,true,LOW,backend/src/routes/biaRoutes.ts,107,tenant marker found in handler
+POST,/api/bia/reports/generate,yes,false,LOW,backend/src/routes/biaRoutes.ts,221,tenant marker found in handler
+GET,/api/bia/settings,yes,false,LOW,backend/src/routes/biaRoutes.ts,382,tenant marker found in handler
+PUT,/api/bia/settings/alerts,yes,false,LOW,backend/src/routes/biaRoutes.ts,508,tenant marker found in handler
+PUT,/api/bia/settings/display,yes,false,LOW,backend/src/routes/biaRoutes.ts,528,tenant marker found in handler
+POST,/api/bia/settings/reset,yes,false,LOW,backend/src/routes/biaRoutes.ts,544,tenant marker found in handler
+POST,/api/bia/settings/templates,yes,false,LOW,backend/src/routes/biaRoutes.ts,397,tenant marker found in handler
+DELETE,/api/bia/settings/templates/:templateId,yes,false,LOW,backend/src/routes/biaRoutes.ts,434,tenant marker found in handler
+PATCH,/api/bia/settings/templates/:templateId/toggle,yes,false,LOW,backend/src/routes/biaRoutes.ts,458,tenant marker found in handler
+PUT,/api/bia/settings/thresholds,yes,false,LOW,backend/src/routes/biaRoutes.ts,488,tenant marker found in handler
+GET,/api/bia/summary,yes,false,LOW,backend/src/routes/biaRoutes.ts,77,tenant marker found in handler
+GET,/api/branding,yes,true,LOW,backend/src/routes/brandingRoutes.ts,19,tenant marker found in handler
+PUT,/api/branding,yes,true,LOW,backend/src/routes/brandingRoutes.ts,42,tenant marker found in handler
+GET,/api/business-flows,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,436,tenant marker found in handler
+POST,/api/business-flows,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,365,tenant marker found in handler
+DELETE,/api/business-flows/:id,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,546,tenant marker found in handler
+GET,/api/business-flows/:id,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,459,tenant marker found in handler
+PATCH,/api/business-flows/:id,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,496,tenant marker found in handler
+POST,/api/business-flows/:id/nodes,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,595,tenant marker found in handler
+DELETE,/api/business-flows/:id/nodes/:nodeId,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,735,tenant marker found in handler
+POST,/api/business-flows/:id/validate,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,564,tenant marker found in handler
+POST,/api/business-flows/ai/suggest,yes,true,LOW,backend/src/routes/businessFlowRoutes.ts,314,tenant marker found in handler
+POST,/api/business-flows/cloud/enrich,yes,false,LOW,backend/src/routes/businessFlowRoutes.ts,353,tenant marker found in handler
+GET,/api/continuity/backup-strategies,yes,true,LOW,backend/src/routes/continuityRoutes.ts,84,tenant marker found in handler
+POST,/api/continuity/backup-strategies,yes,true,LOW,backend/src/routes/continuityRoutes.ts,17,tenant marker found in handler
+GET,/api/continuity/dependency-cycles,yes,true,LOW,backend/src/routes/continuityRoutes.ts,243,tenant marker found in handler
+POST,/api/continuity/dependency-cycles,yes,true,LOW,backend/src/routes/continuityRoutes.ts,187,tenant marker found in handler
+GET,/api/continuity/security-policies,yes,true,LOW,backend/src/routes/continuityRoutes.ts,163,tenant marker found in handler
+POST,/api/continuity/security-policies,yes,true,LOW,backend/src/routes/continuityRoutes.ts,110,tenant marker found in handler
+POST,/api/discovery-resilience/auto-scan,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,26,tenant marker found in handler
+GET,/api/discovery-resilience/health,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,222,tenant marker found in handler
+POST,/api/discovery-resilience/ingest,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,168,tenant marker found in handler
+GET,/api/discovery-resilience/scan-jobs,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,101,tenant marker found in handler
+GET,/api/discovery-resilience/scan-jobs/:jobId,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,81,tenant marker found in handler
+GET,/api/discovery-resilience/schedules,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,152,tenant marker found in handler
+POST,/api/discovery-resilience/schedules,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,117,tenant marker found in handler
+POST,/api/discovery-resilience/seed-demo,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,236,tenant marker found in handler
+POST,/api/discovery-resilience/test-credentials,yes,false,LOW,backend/src/routes/discoveryResilienceRoutes.ts,196,tenant marker found in handler
+POST,/api/discovery/flows/import,yes,false,LOW,backend/src/routes/discoveryRoutes.ts,385,tenant marker found in handler
+POST,/api/discovery/github-import,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,680,tenant marker found in handler
+GET,/api/discovery/health,yes,false,LOW,backend/src/routes/discoveryRoutes.ts,292,tenant marker found in handler
+GET,/api/discovery/history,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,487,tenant marker found in handler
+POST,/api/discovery/import,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,566,tenant marker found in handler
+GET,/api/discovery/resources,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,423,tenant marker found in handler
+GET,/api/discovery/schedules,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,362,tenant marker found in handler
+POST,/api/discovery/schedules,yes,false,LOW,backend/src/routes/discoveryRoutes.ts,311,tenant marker found in handler
+GET,/api/discovery/status/:jobId,yes,true,LOW,backend/src/routes/discoveryRoutes.ts,457,tenant marker found in handler
+POST,/api/discovery/suggestions,yes,false,LOW,backend/src/routes/discoveryRoutes.ts,524,tenant marker found in handler
+GET,/api/documents,yes,true,LOW,backend/src/routes/documentRoutes.ts,398,tenant marker found in handler
+POST,/api/documents,yes,true,LOW,backend/src/routes/documentRoutes.ts,159,tenant marker found in handler
+DELETE,/api/documents/:id,yes,true,LOW,backend/src/routes/documentRoutes.ts,578,tenant marker found in handler
+PUT,/api/documents/:id,yes,true,LOW,backend/src/routes/documentRoutes.ts,483,tenant marker found in handler
+POST,/api/documents/:id/classification-feedback,yes,false,LOW,backend/src/routes/documentRoutes.ts,535,tenant marker found in handler
+POST,/api/documents/:id/extract,yes,false,LOW,backend/src/routes/documentRoutes.ts,773,tenant marker found in handler
+GET,/api/documents/:id/extraction-suggestions,yes,true,LOW,backend/src/routes/documentRoutes.ts,608,tenant marker found in handler
+POST,/api/documents/:id/extraction-suggestions/approve,yes,true,LOW,backend/src/routes/documentRoutes.ts,645,tenant marker found in handler
+POST,/api/documents/:id/extraction-suggestions/reject,yes,true,LOW,backend/src/routes/documentRoutes.ts,688,tenant marker found in handler
+GET,/api/documents/:id/sensitivity-report,yes,true,LOW,backend/src/routes/documentRoutes.ts,735,tenant marker found in handler
+POST,/api/documents/extract-all-pending,yes,true,LOW,backend/src/routes/documentRoutes.ts,800,tenant marker found in handler
+POST,/api/documents/presign,yes,false,LOW,backend/src/routes/documentRoutes.ts,274,tenant marker found in handler
+POST,/api/documents/register,yes,true,LOW,backend/src/routes/documentRoutes.ts,320,tenant marker found in handler
+POST,/api/drift/check,yes,false,LOW,backend/src/routes/driftRoutes.ts,135,tenant marker found in handler
+GET,/api/drift/events,yes,true,LOW,backend/src/routes/driftRoutes.ts,159,tenant marker found in handler
+GET,/api/drift/events/:id,yes,true,LOW,backend/src/routes/driftRoutes.ts,289,tenant marker found in handler
+PATCH,/api/drift/events/:id,yes,true,LOW,backend/src/routes/driftRoutes.ts,311,tenant marker found in handler
+GET,/api/drift/schedule,yes,true,LOW,backend/src/routes/driftRoutes.ts,439,tenant marker found in handler
+PUT,/api/drift/schedule,yes,true,LOW,backend/src/routes/driftRoutes.ts,464,tenant marker found in handler
+GET,/api/drift/score,yes,true,LOW,backend/src/routes/driftRoutes.ts,373,tenant marker found in handler
+GET,/api/drift/score/history,yes,true,LOW,backend/src/routes/driftRoutes.ts,417,tenant marker found in handler
+GET,/api/drift/snapshots,yes,true,LOW,backend/src/routes/driftRoutes.ts,346,tenant marker found in handler
+GET,/api/exercises,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,121,tenant marker found in handler
+POST,/api/exercises,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,33,tenant marker found in handler
+GET,/api/exercises-resilience/:exerciseId/comparison,yes,false,LOW,backend/src/routes/exerciseResilienceRoutes.ts,106,tenant marker found in handler
+POST,/api/exercises-resilience/auto-checklist,yes,false,LOW,backend/src/routes/exerciseResilienceRoutes.ts,17,tenant marker found in handler
+POST,/api/exercises-resilience/link,yes,true,LOW,backend/src/routes/exerciseResilienceRoutes.ts,39,tenant marker found in handler
+PATCH,/api/exercises/:exerciseId/checklist/:itemId,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,254,tenant marker found in handler
+GET,/api/exercises/:id,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,143,tenant marker found in handler
+PATCH,/api/exercises/:id,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,175,tenant marker found in handler
+POST,/api/exercises/:id/analysis,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,360,tenant marker found in handler
+POST,/api/exercises/:id/assistant,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,477,tenant marker found in handler
+GET,/api/exercises/:id/report,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,420,tenant marker found in handler
+POST,/api/exercises/:id/results,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,310,tenant marker found in handler
+GET,/api/exercises/:id/simulations,yes,true,LOW,backend/src/routes/exerciseRoutes.ts,560,tenant marker found in handler
+POST,/api/exercises/:id/simulations,yes,false,LOW,backend/src/routes/exerciseRoutes.ts,527,tenant marker found in handler
+POST,/api/financial/calculate-ale,yes,false,LOW,backend/src/routes/financialRoutes.ts,348,tenant marker found in handler
+POST,/api/financial/calculate-roi,yes,false,LOW,backend/src/routes/financialRoutes.ts,426,tenant marker found in handler
+POST,/api/financial/drift/:driftId/impact,yes,true,LOW,backend/src/routes/financialRoutes.ts,659,tenant marker found in handler
+GET,/api/financial/flows-coverage,yes,true,LOW,backend/src/routes/financialRoutes.ts,566,tenant marker found in handler
+GET,/api/financial/node/:nodeId/flow-impact,yes,true,LOW,backend/src/routes/financialRoutes.ts,484,tenant marker found in handler
+GET,/api/financial/node/:nodeId/impact,yes,true,LOW,backend/src/routes/financialRoutes.ts,589,tenant marker found in handler
+PUT,/api/financial/node/:nodeId/override,yes,true,LOW,backend/src/routes/financialRoutes.ts,929,tenant marker found in handler
+GET,/api/financial/org-profile,yes,true,LOW,backend/src/routes/financialRoutes.ts,810,tenant marker found in handler
+PUT,/api/financial/org-profile,yes,true,LOW,backend/src/routes/financialRoutes.ts,835,tenant marker found in handler
+GET,/api/financial/summary,yes,false,LOW,backend/src/routes/financialRoutes.ts,751,tenant marker found in handler
+GET,/api/financial/trend,yes,false,LOW,backend/src/routes/financialRoutes.ts,777,tenant marker found in handler
+GET,/api/graph,yes,true,LOW,backend/src/routes/graphRoutes.ts,195,tenant marker found in handler
+GET,/api/graph/dependencies-only,yes,true,LOW,backend/src/routes/graphRoutes.ts,83,tenant marker found in handler
+GET,/api/graph/flows,yes,true,LOW,backend/src/routes/graphRoutes.ts,357,tenant marker found in handler
+GET,/api/incidents,yes,true,LOW,backend/src/routes/incidentRoutes.ts,211,tenant marker found in handler
+POST,/api/incidents,yes,true,LOW,backend/src/routes/incidentRoutes.ts,266,tenant marker found in handler
+GET,/api/incidents/:id,yes,true,LOW,backend/src/routes/incidentRoutes.ts,235,tenant marker found in handler
+PATCH,/api/incidents/:id,yes,true,LOW,backend/src/routes/incidentRoutes.ts,367,tenant marker found in handler
+GET,/api/incidents/:id/actions,yes,true,LOW,backend/src/routes/incidentRoutes.ts,542,tenant marker found in handler
+POST,/api/incidents/:id/actions,yes,true,LOW,backend/src/routes/incidentRoutes.ts,565,tenant marker found in handler
+GET,/api/incidents/dashboard,yes,true,LOW,backend/src/routes/incidentRoutes.ts,52,tenant marker found in handler
+GET,/api/incidents/notification-channels,yes,true,LOW,backend/src/routes/incidentRoutes.ts,102,tenant marker found in handler
+POST,/api/incidents/notification-channels,yes,true,LOW,backend/src/routes/incidentRoutes.ts,121,tenant marker found in handler
+PATCH,/api/incidents/notification-channels/:id,yes,true,LOW,backend/src/routes/incidentRoutes.ts,160,tenant marker found in handler
+GET,/api/infra/components,yes,true,LOW,backend/src/routes/infraRoutes.ts,162,tenant marker found in handler
+POST,/api/infra/components,yes,true,LOW,backend/src/routes/infraRoutes.ts,17,tenant marker found in handler
+DELETE,/api/infra/components/:id,yes,true,LOW,backend/src/routes/infraRoutes.ts,230,tenant marker found in handler
+PUT,/api/infra/components/:id,yes,true,LOW,backend/src/routes/infraRoutes.ts,71,tenant marker found in handler
+POST,/api/infra/link,yes,true,LOW,backend/src/routes/infraRoutes.ts,190,tenant marker found in handler
+GET,/api/integrations,yes,false,LOW,backend/src/routes/integrationsRoutes.ts,11,tenant marker found in handler
+POST,/api/integrations/:type/configure,yes,false,LOW,backend/src/routes/integrationsRoutes.ts,34,tenant marker found in handler
+GET,/api/integrations/:type/logs,yes,false,LOW,backend/src/routes/integrationsRoutes.ts,83,tenant marker found in handler
+POST,/api/integrations/:type/test,yes,false,LOW,backend/src/routes/integrationsRoutes.ts,62,tenant marker found in handler
+GET,/api/license,yes,false,LOW,backend/src/routes/licenseRoutes.ts,14,tenant marker found in handler
+POST,/api/license/check-feature,yes,false,LOW,backend/src/routes/licenseRoutes.ts,170,tenant marker found in handler
+POST,/api/license/check-quota,yes,false,LOW,backend/src/routes/licenseRoutes.ts,200,tenant marker found in handler
+GET,/api/license/usage,yes,false,LOW,backend/src/routes/licenseRoutes.ts,55,tenant marker found in handler
+GET,/api/pra-exercises,yes,true,LOW,backend/src/routes/praExerciseRoutes.ts,286,tenant marker found in handler
+POST,/api/pra-exercises,yes,true,LOW,backend/src/routes/praExerciseRoutes.ts,42,tenant marker found in handler
+PATCH,/api/pra-exercises/:id,yes,true,LOW,backend/src/routes/praExerciseRoutes.ts,122,tenant marker found in handler
+GET,/api/pra-exercises/:id/comparison,yes,true,LOW,backend/src/routes/praExerciseRoutes.ts,315,tenant marker found in handler
+GET,/api/recommendations/hybrid,yes,false,LOW,backend/src/routes/recommendationEngineRoutes.ts,10,tenant marker found in handler
+GET,/api/recommendations/landing-zone,yes,false,LOW,backend/src/routes/landingZoneResilienceRoutes.ts,17,tenant marker found in handler
+PATCH,/api/recommendations/landing-zone,yes,true,LOW,backend/src/routes/landingZoneResilienceRoutes.ts,64,tenant marker found in handler
+GET,/api/recommendations/landing-zone/cost-summary,yes,false,LOW,backend/src/routes/landingZoneResilienceRoutes.ts,124,tenant marker found in handler
+GET,/api/remediation-tasks,yes,true,LOW,backend/src/routes/remediationTaskRoutes.ts,97,tenant marker found in handler
+POST,/api/remediation-tasks,yes,true,LOW,backend/src/routes/remediationTaskRoutes.ts,47,tenant marker found in handler
+PATCH,/api/remediation-tasks/:id,yes,true,LOW,backend/src/routes/remediationTaskRoutes.ts,127,tenant marker found in handler
+GET,/api/remediation-tasks/summary,yes,true,LOW,backend/src/routes/remediationTaskRoutes.ts,228,tenant marker found in handler
+POST,/api/reports/executive-financial,yes,false,LOW,backend/src/routes/reportRoutes.ts,964,tenant marker found in handler
+POST,/api/reports/executive-summary,yes,true,LOW,backend/src/routes/reportRoutes.ts,860,tenant marker found in handler
+POST,/api/reports/generate,yes,false,LOW,backend/src/routes/reportRoutes.ts,766,tenant marker found in handler
+POST,/api/reports/pra-pca,yes,false,LOW,backend/src/routes/reportRoutes.ts,755,tenant marker found in handler
+GET,/api/reports/pra-pca/latest,yes,false,LOW,backend/src/routes/reportRoutes.ts,778,tenant marker found in handler
+GET,/api/reports/prerequisites,yes,false,LOW,backend/src/routes/reportRoutes.ts,826,tenant marker found in handler
+GET,/api/reports/preview,yes,true,LOW,backend/src/routes/reportRoutes.ts,793,tenant marker found in handler
+GET,/api/resilience/graph,yes,false,LOW,backend/src/routes/resilienceGraphRoutes.ts,16,tenant marker found in handler
+GET,/api/resilience/graph/blast-radius/:nodeId,yes,false,LOW,backend/src/routes/resilienceGraphRoutes.ts,81,tenant marker found in handler
+POST,/api/resilience/graph/edges,yes,true,LOW,backend/src/routes/resilienceGraphRoutes.ts,148,tenant marker found in handler
+PATCH,/api/resilience/graph/edges/:edgeId,yes,true,LOW,backend/src/routes/resilienceGraphRoutes.ts,181,tenant marker found in handler
+POST,/api/resilience/graph/ingest,yes,false,LOW,backend/src/routes/resilienceGraphRoutes.ts,222,tenant marker found in handler
+POST,/api/resilience/graph/nodes,yes,true,LOW,backend/src/routes/resilienceGraphRoutes.ts,111,tenant marker found in handler
+GET,/api/resilience/graph/nodes/:nodeId,yes,false,LOW,backend/src/routes/resilienceGraphRoutes.ts,47,tenant marker found in handler
+GET,/api/resilience/graph/stats,yes,false,LOW,backend/src/routes/resilienceGraphRoutes.ts,33,tenant marker found in handler
+GET,/api/risks,yes,true,LOW,backend/src/routes/riskRoutes.ts,58,tenant marker found in handler
+POST,/api/risks,yes,true,LOW,backend/src/routes/riskRoutes.ts,239,tenant marker found in handler
+POST,/api/risks-resilience/auto-detect,yes,true,LOW,backend/src/routes/riskResilienceRoutes.ts,16,tenant marker found in handler
+GET,/api/risks-resilience/by-node/:nodeId,yes,true,LOW,backend/src/routes/riskResilienceRoutes.ts,155,tenant marker found in handler
+GET,/api/risks-resilience/matrix,yes,true,LOW,backend/src/routes/riskResilienceRoutes.ts,113,tenant marker found in handler
+GET,/api/risks/:id,yes,true,LOW,backend/src/routes/riskRoutes.ts,205,tenant marker found in handler
+PUT,/api/risks/:id,yes,true,LOW,backend/src/routes/riskRoutes.ts,360,tenant marker found in handler
+POST,/api/risks/:id/mitigations,yes,true,LOW,backend/src/routes/riskRoutes.ts,446,tenant marker found in handler
+PATCH,/api/risks/:id/mitigations/:mitigationId,yes,true,LOW,backend/src/routes/riskRoutes.ts,497,tenant marker found in handler
+GET,/api/risks/matrix,yes,true,LOW,backend/src/routes/riskRoutes.ts,146,tenant marker found in handler
+GET,/api/risks/summary,yes,false,LOW,backend/src/routes/riskRoutes.ts,131,tenant marker found in handler
+GET,/api/roi,yes,false,LOW,backend/src/routes/roiRoutes.ts,17,tenant marker found in handler
+GET,/api/runbooks,yes,true,LOW,backend/src/routes/runbookRoutes.ts,548,tenant marker found in handler
+DELETE,/api/runbooks/:id,yes,true,LOW,backend/src/routes/runbookRoutes.ts,693,tenant marker found in handler
+GET,/api/runbooks/:id,yes,true,LOW,backend/src/routes/runbookRoutes.ts,565,tenant marker found in handler
+PATCH,/api/runbooks/:id,yes,false,LOW,backend/src/routes/runbookRoutes.ts,639,tenant marker found in handler
+PUT,/api/runbooks/:id,yes,false,LOW,backend/src/routes/runbookRoutes.ts,632,tenant marker found in handler
+PUT,/api/runbooks/:id/validate,yes,true,LOW,backend/src/routes/runbookRoutes.ts,646,tenant marker found in handler
+POST,/api/runbooks/generate,yes,true,LOW,backend/src/routes/runbookRoutes.ts,715,tenant marker found in handler
+GET,/api/runbooks/templates,yes,true,LOW,backend/src/routes/runbookRoutes.ts,426,tenant marker found in handler
+POST,/api/runbooks/templates,yes,true,LOW,backend/src/routes/runbookRoutes.ts,223,tenant marker found in handler
+DELETE,/api/runbooks/templates/:id,yes,true,LOW,backend/src/routes/runbookRoutes.ts,517,tenant marker found in handler
+GET,/api/runbooks/templates/:id,yes,true,LOW,backend/src/routes/runbookRoutes.ts,455,tenant marker found in handler
+PUT,/api/runbooks/templates/:id,yes,true,LOW,backend/src/routes/runbookRoutes.ts,485,tenant marker found in handler
+POST,/api/runbooks/templates/presign,yes,false,LOW,backend/src/routes/runbookRoutes.ts,297,tenant marker found in handler
+POST,/api/runbooks/templates/register,yes,true,LOW,backend/src/routes/runbookRoutes.ts,350,tenant marker found in handler
+GET,/api/scenario-catalog,yes,false,LOW,backend/src/routes/scenarioCatalogRoutes.ts,13,tenant marker found in handler
+POST,/api/scenario-catalog/sync,yes,false,LOW,backend/src/routes/scenarioCatalogRoutes.ts,32,tenant marker found in handler
+GET,/api/scenarios,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,24,tenant marker found in handler
+POST,/api/scenarios,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,86,tenant marker found in handler
+DELETE,/api/scenarios/:id,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,356,tenant marker found in handler
+PUT,/api/scenarios/:id,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,200,tenant marker found in handler
+POST,/api/scenarios/:id/steps,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,390,tenant marker found in handler
+DELETE,/api/scenarios/:id/steps/:stepId,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,556,tenant marker found in handler
+PUT,/api/scenarios/:id/steps/:stepId,yes,true,LOW,backend/src/routes/scenarioRoutes.ts,466,tenant marker found in handler
+GET,/api/scenarios/cyber,yes,true,LOW,backend/src/routes/cyberExerciseRoutes.ts,52,tenant marker found in handler
+POST,/api/scenarios/cyber,yes,false,LOW,backend/src/routes/cyberExerciseRoutes.ts,94,tenant marker found in handler
+DELETE,/api/scenarios/cyber/:id,yes,false,LOW,backend/src/routes/cyberExerciseRoutes.ts,171,tenant marker found in handler
+GET,/api/scenarios/cyber/:id,yes,true,LOW,backend/src/routes/cyberExerciseRoutes.ts,69,tenant marker found in handler
+PUT,/api/scenarios/cyber/:id,yes,false,LOW,backend/src/routes/cyberExerciseRoutes.ts,132,tenant marker found in handler
+GET,/api/services,yes,true,LOW,backend/src/routes/serviceRoutes.ts,40,tenant marker found in handler
+POST,/api/services,yes,true,LOW,backend/src/routes/serviceRoutes.ts,315,tenant marker found in handler
+DELETE,/api/services/:id,yes,true,LOW,backend/src/routes/serviceRoutes.ts,269,tenant marker found in handler
+PUT,/api/services/:id,yes,true,LOW,backend/src/routes/serviceRoutes.ts,94,tenant marker found in handler
+POST,/api/services/:id/dependencies,yes,true,LOW,backend/src/routes/serviceRoutes.ts,430,tenant marker found in handler
+GET,/api/services/graph,yes,true,LOW,backend/src/routes/serviceRoutes.ts,496,tenant marker found in handler
+GET,/api/simulations,yes,true,LOW,backend/src/routes/simulationRoutes.ts,65,tenant marker found in handler
+POST,/api/simulations,yes,true,LOW,backend/src/routes/simulationRoutes.ts,17,tenant marker found in handler
+DELETE,/api/simulations/:id,yes,true,LOW,backend/src/routes/simulationRoutes.ts,234,tenant marker found in handler
+GET,/api/simulations/:id,yes,true,LOW,backend/src/routes/simulationRoutes.ts,212,tenant marker found in handler
+GET,/api/simulations/:id/report,yes,true,LOW,backend/src/routes/simulationRoutes.ts,257,tenant marker found in handler
+GET,/api/simulations/compare,yes,true,LOW,backend/src/routes/simulationRoutes.ts,151,tenant marker found in handler
+GET,/api/simulations/recovery-priorities,yes,false,LOW,backend/src/routes/simulationRoutes.ts,125,tenant marker found in handler
+GET,/api/simulations/templates,yes,false,LOW,backend/src/routes/simulationRoutes.ts,94,tenant marker found in handler
+GET,/api/vulnerabilities,yes,true,LOW,backend/src/routes/vulnerabilityRoutes.ts,143,tenant marker found in handler
+POST,/api/vulnerabilities/:id/integrations,yes,true,LOW,backend/src/routes/vulnerabilityRoutes.ts,487,tenant marker found in handler
+GET,/api/vulnerabilities/report,yes,true,LOW,backend/src/routes/vulnerabilityRoutes.ts,192,tenant marker found in handler
+POST,/api/vulnerabilities/scan,yes,true,LOW,backend/src/routes/vulnerabilityRoutes.ts,236,tenant marker found in handler
+GET,/api/webhooks/catalog,yes,false,LOW,backend/src/routes/webhookRoutes.ts,9,tenant marker found in handler
+POST,/api/webhooks/n8n/document-ingestion,yes,false,LOW,backend/src/routes/webhookRoutes.ts,58,tenant marker found in handler
