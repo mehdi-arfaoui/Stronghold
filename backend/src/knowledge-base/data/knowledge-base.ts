@@ -1112,6 +1112,323 @@ Un exercice sur table est une simulation de crise en salle de reunion ou les par
     relatedTerms: ['maturite', 'PCA', 'amelioration', 'gouvernance'],
     source: 'BCI Maturity Model / ISO 22301',
   },
+  {
+    id: 'kb-guide-dashboard',
+    slug: 'guide-module-tableau-de-bord',
+    title: 'Guide module Tableau de bord',
+    category: 'governance',
+    tags: ['guide-module', 'dashboard', 'kpi', 'resilience'],
+    summary: 'Lire rapidement la posture resilience globale, les priorites et les alertes actives.',
+    content: `## Objectif
+Le tableau de bord donne une vue synthese de la posture resilience: score, SPOF critiques, risques majeurs et progression.
+
+## Parcours recommande
+1. Verifier le score global et son evolution
+2. Ouvrir les alerts critiques (SPOF, drift, incidents)
+3. Prioriser les actions vers Analyse, Recommandations et Runbooks
+
+## Bonnes pratiques
+- Suivre un rituel hebdomadaire de revue
+- Comparer score, alea financier et tendance des incidents`,
+    relatedTerms: ['dashboard', 'kpi', 'resilience', 'pilotage'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-settings',
+    slug: 'guide-module-parametres',
+    title: 'Guide module Parametres',
+    category: 'governance',
+    tags: ['guide-module', 'parametres', 'tenant', 'securite'],
+    summary: 'Configurer le tenant, les preferences et les garde-fous de gouvernance.',
+    content: `## Objectif
+Le module Parametres centralise les choix tenant: contexte organisationnel, options de resilience et configuration generale.
+
+## Parcours recommande
+1. Valider les informations organisationnelles
+2. Verifier devise et hypothese financiere
+3. Controler les acces et conventions de nommage
+
+## Bonnes pratiques
+- Garder des parametres harmonises entre environnements
+- Journaliser toute modification critique`,
+    relatedTerms: ['parametres', 'tenant', 'gouvernance', 'configuration'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-discovery',
+    slug: 'guide-module-decouverte',
+    title: 'Guide module Decouverte',
+    category: 'architecture',
+    tags: ['guide-module', 'decouverte', 'graph', 'dependances', 'spof'],
+    summary: "Comprendre la cartographie auto de l'infrastructure et valider les dependances detectees.",
+    content: `## Objectif
+Le module Decouverte construit le graphe services-applications-infra (on-prem et cloud) et sert de base a toute analyse resilience.
+
+## Parcours recommande
+1. Verifier couverture providers/regions
+2. Confirmer ou rejeter les dependances inferees
+3. Identifier les SPOF avant passage en Analyse & BIA
+
+## Bonnes pratiques
+- Relancer le scan apres changement d'architecture
+- Garder un graphe propre avant calculs financiers`,
+    relatedTerms: ['decouverte', 'graph', 'dependances', 'SPOF'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-analysis-bia',
+    slug: 'guide-module-analyse-bia',
+    title: 'Guide module Analyse & BIA',
+    category: 'BIA',
+    tags: ['guide-module', 'BIA', 'RTO', 'RPO', 'validation'],
+    summary: 'Piloter la criticite, valider les estimations IA et fiabiliser les objectifs de reprise.',
+    content: `## Objectif
+Analyse & BIA transforme la cartographie technique en priorites metier: tiers de reprise, RTO/RPO/MTPD, risques.
+
+## Parcours recommande
+1. Ouvrir les services critiques proposes
+2. Corriger puis valider les estimations BIA
+3. Exporter le jeu valide avant ROI & Finance
+
+## Bonnes pratiques
+- Ne pas melanger suggestions et donnees validees
+- Revalider apres tout changement metier majeur`,
+    relatedTerms: ['BIA', 'validation', 'RTO', 'RPO', 'MTPD'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-business-flows',
+    slug: 'guide-module-flux-metier',
+    title: 'Guide module Flux Metier',
+    category: 'governance',
+    tags: ['guide-module', 'flux-metier', 'cloud-enrich', 'cout-horaire'],
+    summary: 'Mapper les flux critiques sur les noeuds techniques pour affiner les calculs financiers.',
+    content: `## Objectif
+Flux Metier lie la valeur business a la topologie technique pour un cout horaire de panne plus fiable.
+
+## Parcours recommande
+1. Creer ou enrichir les flux (AI suggestions / Cloud Enrich)
+2. Verifier la criticite de chaque noeud du flux
+3. Valider les flux utilises pour le moteur financier
+
+## Bonnes pratiques
+- Commencer par les flux revenus et compliance
+- Mettre a jour les flux apres evolution produit`,
+    relatedTerms: ['flux-metier', 'cloud-enrich', 'cout', 'ROI'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-recommendations',
+    slug: 'guide-module-recommandations',
+    title: 'Guide module Recommandations',
+    category: 'PRA',
+    tags: ['guide-module', 'recommandations', 'priorisation', 'remediation'],
+    summary: 'Prioriser les actions de resilience et suivre leur statut de decision.',
+    content: `## Objectif
+Le module Recommandations propose des actions techniques et organisationnelles classees par priorite et impact.
+
+## Parcours recommande
+1. Traiter les actions P0 en premier
+2. Changer le statut (pending / validated / rejected) selon arbitrage
+3. Reouvrir une recommandation si le contexte change
+
+## Bonnes pratiques
+- Documenter les raisons de rejet
+- Synchroniser avec backlog remediation`,
+    relatedTerms: ['recommandations', 'priorite', 'PRA', 'remediation'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-finance',
+    slug: 'guide-module-roi-finance',
+    title: 'Guide module ROI & Finance',
+    category: 'governance',
+    tags: ['guide-module', 'ROI', 'ALE', 'finance', 'bia-valide'],
+    summary: 'Mesurer le risque annuel, les gains potentiels et la rentabilite des controles.',
+    content: `## Objectif
+ROI & Finance calcule ALE, reduction de risque, ROI et payback a partir des donnees techniques et BIA validees.
+
+## Parcours recommande
+1. Verifier que les estimations BIA sont validees
+2. Lire ALE courant puis ALE projete
+3. Arbitrer les actions selon ROI et delai de retour
+
+## Bonnes pratiques
+- Exclure les donnees non validees des decisions budget
+- Revoir les hypotheses de cout avec la finance`,
+    relatedTerms: ['ROI', 'ALE', 'payback', 'finance'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-simulations',
+    slug: 'guide-module-simulations',
+    title: 'Guide module Simulations',
+    category: 'testing',
+    tags: ['guide-module', 'simulations', 'war-room', 'impact'],
+    summary: "Executer des scenarios d'incident et observer l'impact technique et financier.",
+    content: `## Objectif
+Le module Simulations permet de tester des scenarios cyber et infra sur le graphe reel.
+
+## Parcours recommande
+1. Choisir un scenario de bibliotheque
+2. Lancer la simulation et lire le blast radius
+3. Ouvrir la War Room pour suivre propagation et pertes
+
+## Bonnes pratiques
+- Comparer les resultats avant/apres actions correctives
+- Capturer les enseignements dans le runbook`,
+    relatedTerms: ['simulation', 'war-room', 'blast-radius', 'scenario'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-drift',
+    slug: 'guide-module-drift-detection',
+    title: 'Guide module Drift Detection',
+    category: 'architecture',
+    tags: ['guide-module', 'drift', 'ecart', 'conformite', 'alerte'],
+    summary: 'Detecter les ecarts architecture vs reference et estimer leur impact resilience.',
+    content: `## Objectif
+Drift Detection identifie les ecarts qui degradent la posture resilience (redondance, region, backup, BIA coverage).
+
+## Parcours recommande
+1. Filtrer par severite critique/haute
+2. Qualifier les ecarts sur composants sensibles
+3. Ouvrir les actions de correction associees
+
+## Bonnes pratiques
+- Traiter les drifts critiques sous 7 jours
+- Verifier la recurrence des memes ecarts`,
+    relatedTerms: ['drift', 'conformite', 'ecart', 'resilience'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-runbooks',
+    slug: 'guide-module-runbooks',
+    title: 'Guide module Runbooks',
+    category: 'PRA',
+    tags: ['guide-module', 'runbook', 'procedure', 'reprise', 'failover'],
+    summary: 'Structurer les procedures de reprise et les maintenir testables.',
+    content: `## Objectif
+Runbooks formalise les etapes de reprise: pre-requis, sequence d'actions, criteres de succes et validation.
+
+## Parcours recommande
+1. Generer un runbook depuis une simulation ou un incident
+2. Completer les etapes techniques et contacts
+3. Passer le runbook en statut actif apres revue
+
+## Bonnes pratiques
+- Versionner les changements critiques
+- Associer chaque runbook a un exercice PRA`,
+    relatedTerms: ['runbook', 'procedure', 'PRA', 'failover'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-pra-exercises',
+    slug: 'guide-module-exercices-pra',
+    title: 'Guide module Exercices PRA',
+    category: 'testing',
+    tags: ['guide-module', 'exercices-pra', 'test', 'retour-experience'],
+    summary: 'Planifier et executer les exercices de reprise pour valider les runbooks.',
+    content: `## Objectif
+Exercices PRA transforme les plans en validation terrain avec ecarts mesures et actions correctives.
+
+## Parcours recommande
+1. Selectionner runbook et scenario
+2. Capturer temps reel et ecarts vs prevision
+3. Clore avec RETEX et plan d'amelioration
+
+## Bonnes pratiques
+- Comparer predit vs reel sur RTO/RPO
+- Rejouer les exercices apres remediation`,
+    relatedTerms: ['exercices', 'PRA', 'test', 'RETEX'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-incidents',
+    slug: 'guide-module-incidents',
+    title: 'Guide module Incidents',
+    category: 'PCA',
+    tags: ['guide-module', 'incidents', 'crise', 'coordination'],
+    summary: 'Centraliser la gestion des incidents et la coordination de reprise.',
+    content: `## Objectif
+Incidents suit les evenements operationnels, leur impact, les actions et la resolution.
+
+## Parcours recommande
+1. Declarer incident et perimetre impacte
+2. Prioriser les actions de containment
+3. Clore avec causes, impacts et mesures preventives
+
+## Bonnes pratiques
+- Lier les incidents aux runbooks utilises
+- Alimenter la base de connaissance avec les lecons apprises`,
+    relatedTerms: ['incident', 'crise', 'PCA', 'reprise'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-documents',
+    slug: 'guide-module-documents',
+    title: 'Guide module Documents',
+    category: 'governance',
+    tags: ['guide-module', 'documents', 'preuves', 'audit'],
+    summary: 'Organiser les artefacts de resilience et les preuves de conformite.',
+    content: `## Objectif
+Documents centralise politiques, procedures, evidences et exports utiles aux audits.
+
+## Parcours recommande
+1. Structurer les dossiers par domaine (BIA, PRA, PCA, incidents)
+2. Versionner les documents sensibles
+3. Partager les pieces de preuve pour audit interne/externe
+
+## Bonnes pratiques
+- Maintenir une nomenclature stable
+- Archiver les versions obsoletes mais tracables`,
+    relatedTerms: ['documents', 'audit', 'preuves', 'gouvernance'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-report-reading',
+    slug: 'guide-lecture-rapport-pra-pca',
+    title: 'Guide de lecture du rapport PRA/PCA',
+    category: 'governance',
+    tags: ['rapport', 'PRA', 'PCA', 'lecture', 'decision'],
+    summary: 'Interpretrer le rapport genere et convertir les constats en plan d action.',
+    content: `## Objectif
+Ce guide explique comment lire le rapport final pour decider: risques prioritaires, ecarts, budget et plan de remediation.
+
+## Ordre de lecture recommande
+1. Resume executif (niveau de risque global)
+2. Sections techniques (SPOF, BIA, simulations, drifts)
+3. Recommandations et ROI associe
+4. Plan d'execution et priorites
+
+## Points de vigilance
+- Verifier date de generation et perimetre couvert
+- Distinguer faits observes et estimations
+- Affecter un responsable et une echeance par action`,
+    relatedTerms: ['rapport', 'lecture', 'PRA', 'PCA', 'plan-action'],
+    source: 'Stronghold Product Guide',
+  },
+  {
+    id: 'kb-guide-knowledge-base',
+    slug: 'guide-module-knowledge-base',
+    title: 'Guide module Knowledge Base',
+    category: 'governance',
+    tags: ['guide-module', 'knowledge-base', 'aide', 'capitalisation'],
+    summary: 'Utiliser la base de connaissances comme support operationnel et de gouvernance.',
+    content: `## Objectif
+Knowledge Base fournit definitions, guides module, normes et bonnes pratiques.
+
+## Parcours recommande
+1. Ouvrir les articles suggeres depuis le bouton Aide
+2. Rechercher par terme (RTO, RPO, failover, DORA)
+3. Partager les articles de reference dans les rituels equipe
+
+## Bonnes pratiques
+- Mettre a jour les guides selon les retours terrain
+- Relier chaque module a ses articles de reference`,
+    relatedTerms: ['knowledge-base', 'aide', 'guide', 'capitalisation'],
+    source: 'Stronghold Product Guide',
+  },
 ];
 
 export const KNOWLEDGE_BASE_CATEGORIES = [

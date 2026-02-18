@@ -43,6 +43,38 @@ function getSeverity(impact: number): keyof typeof SEVERITY_CONFIG {
   return 'low';
 }
 
+function resolveCumulativeLossAtMinutes(
+  minutes: number,
+  timeline: Array<{ timestampMinutes: number; cumulativeBusinessLoss: number }> | undefined,
+  hourlyLossFallback: number,
+): number {
+  const safeMinutes = Math.max(0, minutes);
+  if (!timeline || timeline.length === 0) {
+    return (hourlyLossFallback * safeMinutes) / 60;
+  }
+
+  const ordered = [...timeline].sort((a, b) => a.timestampMinutes - b.timestampMinutes);
+  const first = ordered[0];
+  if (!first) return 0;
+
+  if (safeMinutes <= first.timestampMinutes) {
+    return first.cumulativeBusinessLoss;
+  }
+
+  for (let index = 1; index < ordered.length; index += 1) {
+    const previous = ordered[index - 1];
+    const current = ordered[index];
+    if (!previous || !current) continue;
+    if (safeMinutes > current.timestampMinutes) continue;
+
+    const range = Math.max(1, current.timestampMinutes - previous.timestampMinutes);
+    const ratio = (safeMinutes - previous.timestampMinutes) / range;
+    return previous.cumulativeBusinessLoss + ratio * (current.cumulativeBusinessLoss - previous.cumulativeBusinessLoss);
+  }
+
+  return ordered[ordered.length - 1]?.cumulativeBusinessLoss ?? 0;
+}
+
 export function WarRoom({
   open,
   onClose,
@@ -92,7 +124,22 @@ export function WarRoom({
   const estimatedUsers =
     impactedServiceCount *
     Math.max(Math.round((result.blastRadiusMetrics?.totalNodesInGraph ?? 10) / Math.max(impactedServiceCount, 1)), 1);
-  const hourlyLoss = (result.financialLoss ?? 0) / Math.max((result.estimatedDowntime ?? 0) / 60, 1);
+  const estimatedDowntimeMinutes = Math.max(result.estimatedDowntime ?? 60, 1);
+  const projectedBusinessLoss = result.warRoomFinancial?.projectedBusinessLoss ?? result.financialLoss ?? 0;
+  const hourlyLoss =
+    result.warRoomFinancial?.hourlyDowntimeCost ??
+    projectedBusinessLoss / Math.max(estimatedDowntimeMinutes / 60, 1);
+  const recoveryCostEstimate =
+    result.warRoomFinancial?.recoveryCostEstimate ?? projectedBusinessLoss * 0.25;
+  const simulatedMinutes =
+    phase === 'complete'
+      ? estimatedDowntimeMinutes
+      : (Math.max(0, timelinePosition) / 100) * estimatedDowntimeMinutes;
+  const cumulativeBusinessLoss = resolveCumulativeLossAtMinutes(
+    simulatedMinutes,
+    result.warRoomFinancial?.cumulativeLossTimeline,
+    hourlyLoss,
+  );
 
   const startAnimation = useCallback(() => {
     setPhase('initial');
@@ -111,6 +158,7 @@ export function WarRoom({
     const animateStep = () => {
       if (step >= timelineEvents.length) {
         setPhase('complete');
+        setTimelinePosition(100);
         setIsPlaying(false);
         if (timerRef.current) clearInterval(timerRef.current);
         return;
@@ -210,7 +258,7 @@ export function WarRoom({
             <span>Services down: {downNodes}/{Math.max(totalNodes, 1)}</span>
             <span>Temps: {Math.floor(elapsedSeconds / 60)}min</span>
             <span className="font-semibold text-severity-critical">
-              {'\uD83D\uDCB0'} Cout total estime: {formatCurrency(result.financialLoss ?? 0)}
+              {'\uD83D\uDCB0'} Perte cumulee: {formatCurrency(cumulativeBusinessLoss)}
             </span>
           </div>
 
@@ -273,9 +321,29 @@ export function WarRoom({
           <div className="space-y-3 pt-2">
             <ImpactCard icon={Activity} label="Impactes" value={downNodes} total={totalNodes} color="text-severity-critical" animated={phase === 'propagating'} />
             <ImpactCard icon={DollarSign} label="Cout/heure" value={hourlyLoss ?? 0} format="currency" color="text-severity-medium" animated={phase === 'propagating'} />
-            <ImpactCard icon={DollarSign} label="Cout total scenario" value={result.financialLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} />
+            <ImpactCard icon={DollarSign} label="Perte cumulee" value={cumulativeBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} />
+            <ImpactCard icon={DollarSign} label="Cout recovery estime" value={recoveryCostEstimate ?? 0} format="currency" color="text-severity-high" animated={phase === 'propagating'} />
+            <ImpactCard icon={DollarSign} label="Perte business finale" value={projectedBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} />
             <ImpactCard icon={Clock} label="Utilisateurs impactes" value={estimatedUsers ?? 0} color="text-severity-high" animated={phase === 'propagating'} />
           </div>
+
+          {(result.warRoomFinancial?.nodeCostBreakdown?.length ?? 0) > 0 && (
+            <div className="space-y-2 pt-2">
+              <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Top couts noeuds impactes</h4>
+              {(result.warRoomFinancial?.nodeCostBreakdown ?? []).slice(0, 5).map((node) => (
+                <div key={node.nodeId} className="rounded-md border bg-background px-2 py-1.5 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{node.nodeName}</span>
+                    <span className="font-mono">{formatCurrency(node.costPerHour)}/h</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between text-muted-foreground">
+                    <span>{node.nodeType}</span>
+                    <span>RTO {Math.max(1, Math.round(node.rtoMinutes))} min</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="space-y-3 pt-2">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">RTO/RPO</h4>

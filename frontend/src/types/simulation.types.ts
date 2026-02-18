@@ -66,6 +66,25 @@ export interface WarRoomData {
   }>;
 }
 
+export interface WarRoomFinancial {
+  hourlyDowntimeCost: number;
+  recoveryCostEstimate: number;
+  projectedBusinessLoss: number;
+  cumulativeLossTimeline: Array<{
+    timestampMinutes: number;
+    cumulativeBusinessLoss: number;
+    activeHourlyCost: number;
+  }>;
+  nodeCostBreakdown: Array<{
+    nodeId: string;
+    nodeName: string;
+    nodeType: string;
+    costPerHour: number;
+    recoveryCost: number;
+    rtoMinutes: number;
+  }>;
+}
+
 export interface SimulationResult {
   nodesDown: number;
   nodesDegraded: number;
@@ -80,6 +99,7 @@ export interface SimulationResult {
   recommendations: SimulationRecommendation[];
   blastRadiusMetrics: BlastRadiusMetrics;
   warRoomData: WarRoomData;
+  warRoomFinancial?: WarRoomFinancial;
   cascadeSteps: CascadeStep[];
 }
 

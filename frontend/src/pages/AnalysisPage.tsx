@@ -200,7 +200,7 @@ export function AnalysisPage() {
                   {(risk.mitigations ?? []).length > 0 && (
                     <div className="mt-2 space-y-1">
                       {risk.mitigations.map((m) => (
-                        <p key={m.id} className="text-xs text-muted-foreground">— {m.description} ({m.status})</p>
+                        <p key={m.id} className="text-xs text-muted-foreground">- {m.description} ({m.status})</p>
                       ))}
                     </div>
                   )}
@@ -213,7 +213,7 @@ export function AnalysisPage() {
           </Card>
         </TabsContent>
 
-        {/* Redundancy Tab — Enhanced with RedundancyGraph */}
+        {/* Redundancy Tab - Enhanced with RedundancyGraph */}
         <TabsContent value="redundancy" className="space-y-6">
           <RedundancyGraph data={redundancy} />
         </TabsContent>

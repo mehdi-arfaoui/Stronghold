@@ -57,6 +57,7 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
   const recommendationsRaw = Array.isArray(raw.recommendations) ? raw.recommendations : [];
   const blastRadiusMetricsRaw = isObject(raw.blastRadiusMetrics) ? raw.blastRadiusMetrics : {};
   const warRoomDataRaw = isObject(raw.warRoomData) ? raw.warRoomData : {};
+  const warRoomFinancialRaw = isObject(raw.warRoomFinancial) ? raw.warRoomFinancial : {};
 
   const affectedNodes = [
     ...directlyAffected.map((node, index) => {
@@ -173,6 +174,36 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
                 priorityRaw === 'P0' || priorityRaw === 'P1' || priorityRaw === 'P2'
                   ? priorityRaw
                   : ('P2' as const),
+            };
+          })
+        : [],
+    },
+    warRoomFinancial: {
+      hourlyDowntimeCost: Number(warRoomFinancialRaw.hourlyDowntimeCost ?? 0),
+      recoveryCostEstimate: Number(warRoomFinancialRaw.recoveryCostEstimate ?? 0),
+      projectedBusinessLoss: Number(
+        warRoomFinancialRaw.projectedBusinessLoss ?? metrics.estimatedFinancialLoss ?? 0,
+      ),
+      cumulativeLossTimeline: Array.isArray(warRoomFinancialRaw.cumulativeLossTimeline)
+        ? warRoomFinancialRaw.cumulativeLossTimeline.map((row, index) => {
+            const item = isObject(row) ? row : {};
+            return {
+              timestampMinutes: Number(item.timestampMinutes ?? index),
+              cumulativeBusinessLoss: Number(item.cumulativeBusinessLoss ?? 0),
+              activeHourlyCost: Number(item.activeHourlyCost ?? 0),
+            };
+          })
+        : [],
+      nodeCostBreakdown: Array.isArray(warRoomFinancialRaw.nodeCostBreakdown)
+        ? warRoomFinancialRaw.nodeCostBreakdown.map((row, index) => {
+            const item = isObject(row) ? row : {};
+            return {
+              nodeId: String(item.nodeId ?? `node-${index}`),
+              nodeName: String(item.nodeName ?? 'Node'),
+              nodeType: String(item.nodeType ?? 'UNKNOWN'),
+              costPerHour: Number(item.costPerHour ?? 0),
+              recoveryCost: Number(item.recoveryCost ?? 0),
+              rtoMinutes: Number(item.rtoMinutes ?? 0),
             };
           })
         : [],

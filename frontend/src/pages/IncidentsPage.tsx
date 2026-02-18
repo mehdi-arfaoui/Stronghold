@@ -76,7 +76,7 @@ export function IncidentsPage() {
               <div className="mt-2 flex gap-4 text-xs text-muted-foreground">
                 <span>Cree {formatRelativeTime(inc.createdAt)}</span>
                 {inc.resolvedAt && <span>Resolu {formatRelativeTime(inc.resolvedAt)}</span>}
-                <span>{inc.affectedNodes.length} noeud(s) impacte(s)</span>
+                <span>{inc.affectedNodes?.length ?? 0} noeud(s) impacte(s)</span>
               </div>
             </CardContent>
           </Card>

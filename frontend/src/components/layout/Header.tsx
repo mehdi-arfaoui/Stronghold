@@ -12,11 +12,14 @@ import { useUIStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
 
 const ROUTE_TITLES: Record<string, string> = {
-  '/': 'Configuration',
+  '/': 'Onboarding',
   '/dashboard': 'Tableau de bord',
   '/discovery': 'Decouverte',
   '/analysis': 'Analyse & BIA',
+  '/business-flows': 'Flux Metier',
+  '/finance': 'ROI & Finance',
   '/simulations': 'Simulations',
+  '/drift': 'Drift Detection',
   '/simulations/runbooks': 'Runbooks',
   '/simulations/pra-exercises': 'Exercices PRA',
   '/recommendations': 'Recommandations',
@@ -27,8 +30,6 @@ const ROUTE_TITLES: Record<string, string> = {
   '/report': 'Rapport PRA/PCA',
   '/settings': 'Parametres',
   '/knowledge-base': 'Base de connaissances',
-  '/drift': 'Drift Detection',
-  '/finance': 'ROI & Finance',
 };
 
 function resolveRouteTitle(pathname: string): string {

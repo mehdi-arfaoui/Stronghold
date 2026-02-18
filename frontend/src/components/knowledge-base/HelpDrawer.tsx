@@ -14,62 +14,97 @@ type HelpContext = {
 };
 
 const HELP_CONTEXTS: Record<string, HelpContext> = {
+  '/dashboard': {
+    label: 'Tableau de bord',
+    slugs: ['guide-module-tableau-de-bord', 'guide-module-roi-finance', 'modele-maturite-pca'],
+    tags: ['guide-module', 'dashboard', 'kpi', 'resilience'],
+  },
+  '/settings': {
+    label: 'Parametres',
+    slugs: ['guide-module-parametres', 'roles-gouvernance-pca'],
+    tags: ['parametres', 'tenant', 'gouvernance', 'configuration'],
+  },
   '/discovery': {
     label: 'Discovery',
-    slugs: ['spof-single-point-of-failure', 'haute-disponibilite', 'resilience-cloud', 'chaos-engineering'],
-    tags: ['SPOF', 'architecture', 'redundance', 'cloud'],
+    slugs: ['guide-module-decouverte', 'spof-single-point-of-failure', 'haute-disponibilite', 'resilience-cloud'],
+    tags: ['guide-module', 'SPOF', 'architecture', 'dependances', 'cloud'],
   },
   '/analysis': {
     label: 'Analysis & BIA',
-    slugs: ['quest-ce-quun-bia', 'methodologie-bia', 'rto-explique', 'rpo-explique', 'mtpd-explique'],
-    tags: ['BIA', 'RTO', 'RPO', 'MTPD'],
+    slugs: ['guide-module-analyse-bia', 'quest-ce-quun-bia', 'methodologie-bia', 'rto-explique', 'rpo-explique'],
+    tags: ['guide-module', 'BIA', 'RTO', 'RPO', 'MTPD'],
+  },
+  '/business-flows': {
+    label: 'Flux Metier',
+    slugs: ['guide-module-flux-metier', 'impact-financier-bia', 'guide-module-roi-finance'],
+    tags: ['guide-module', 'flux-metier', 'cout-horaire', 'ROI'],
   },
   '/simulations': {
     label: 'Simulations',
-    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'chaos-engineering', 'strategies-reprise'],
-    tags: ['simulation', 'tabletop', 'failover', 'test'],
+    slugs: ['guide-module-simulations', 'exercices-tests-pca', 'exercice-tabletop', 'chaos-engineering'],
+    tags: ['guide-module', 'simulation', 'war-room', 'tabletop', 'test'],
   },
   '/simulations/runbooks': {
     label: 'Runbooks',
-    slugs: ['exercices-tests-pca', 'strategies-reprise', 'failover-switchover'],
-    tags: ['runbook', 'PRA', 'failover'],
+    slugs: ['guide-module-runbooks', 'strategies-reprise', 'failover-switchover'],
+    tags: ['guide-module', 'runbook', 'PRA', 'failover'],
   },
   '/simulations/pra-exercises': {
     label: 'PRA Exercises',
-    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'modele-maturite-pca'],
-    tags: ['exercices', 'tabletop', 'maturite'],
+    slugs: ['guide-module-exercices-pra', 'exercices-tests-pca', 'exercice-tabletop'],
+    tags: ['guide-module', 'exercices', 'tabletop', 'PRA'],
   },
   '/recommendations': {
     label: 'Recommendations',
-    slugs: ['strategies-reprise', 'spof-single-point-of-failure', 'resilience-cloud', 'failover-switchover'],
-    tags: ['PRA', 'SPOF', 'failover', 'redundance'],
+    slugs: ['guide-module-recommandations', 'strategies-reprise', 'spof-single-point-of-failure', 'failover-switchover'],
+    tags: ['guide-module', 'PRA', 'SPOF', 'failover', 'remediation'],
   },
   '/recommendations/remediation': {
     label: 'Remediation',
-    slugs: ['strategies-reprise', 'modele-maturite-pca', 'failover-switchover'],
-    tags: ['remediation', 'actions', 'PRA'],
+    slugs: ['guide-module-recommandations', 'strategies-reprise', 'modele-maturite-pca'],
+    tags: ['guide-module', 'remediation', 'actions', 'PRA'],
+  },
+  '/finance': {
+    label: 'ROI & Finance',
+    slugs: ['guide-module-roi-finance', 'impact-financier-bia', 'iso-22301-overview'],
+    tags: ['guide-module', 'ROI', 'ALE', 'finance', 'BIA'],
+  },
+  '/drift': {
+    label: 'Drift Detection',
+    slugs: ['guide-module-drift-detection', 'resilience-cloud', 'analyse-risques-pca'],
+    tags: ['guide-module', 'drift', 'ecart', 'conformite'],
   },
   '/report': {
     label: 'Reporting',
-    slugs: ['iso-22301-overview', 'dora-reglement-europeen', 'pca-vs-pra-differences'],
-    tags: ['ISO22301', 'DORA', 'PCA', 'PRA'],
+    slugs: ['guide-lecture-rapport-pra-pca', 'iso-22301-overview', 'dora-reglement-europeen'],
+    tags: ['rapport', 'lecture', 'ISO22301', 'DORA', 'PCA', 'PRA'],
   },
   '/exercises': {
     label: 'Exercises',
-    slugs: ['exercices-tests-pca', 'exercice-tabletop', 'modele-maturite-pca'],
-    tags: ['exercices', 'tabletop', 'maturite'],
+    slugs: ['guide-module-exercices-pra', 'exercices-tests-pca', 'exercice-tabletop'],
+    tags: ['guide-module', 'exercices', 'tabletop', 'maturite'],
   },
   '/incidents': {
     label: 'Incidents',
-    slugs: ['communication-de-crise', 'mode-degrade', 'failover-switchover'],
-    tags: ['incident', 'crise', 'PCA'],
+    slugs: ['guide-module-incidents', 'communication-de-crise', 'mode-degrade'],
+    tags: ['guide-module', 'incident', 'crise', 'PCA'],
+  },
+  '/documents': {
+    label: 'Documents',
+    slugs: ['guide-module-documents', 'guide-lecture-rapport-pra-pca'],
+    tags: ['guide-module', 'documents', 'preuves', 'audit'],
+  },
+  '/knowledge-base': {
+    label: 'Knowledge Base',
+    slugs: ['guide-module-knowledge-base', 'guide-lecture-rapport-pra-pca', 'iso-22301-overview'],
+    tags: ['guide-module', 'knowledge-base', 'aide', 'guide'],
   },
 };
 
 const DEFAULT_CONTEXT: HelpContext = {
   label: 'Knowledge Base',
-  slugs: ['quest-ce-quun-bia', 'pca-plan-continuite-activite', 'pra-plan-reprise-activite'],
-  tags: ['PRA', 'PCA', 'BIA'],
+  slugs: ['guide-module-knowledge-base', 'quest-ce-quun-bia', 'guide-lecture-rapport-pra-pca'],
+  tags: ['guide-module', 'PRA', 'PCA', 'BIA'],
 };
 
 function resolveContext(pathname: string): HelpContext {

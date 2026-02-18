@@ -226,9 +226,14 @@ async function loadFinancialContext(tenantId: string) {
     })),
   };
 
+  const latestBiaProcesses = latestBia?.processes ?? [];
+  const validatedBiaProcesses = latestBiaProcesses.filter(
+    (process) => process.validationStatus === 'validated',
+  );
+
   const biaResult: BIAResultInput = {
     processes:
-      latestBia?.processes.map((process) => ({
+      validatedBiaProcesses.map((process) => ({
         serviceNodeId: process.serviceNodeId,
         recoveryTier: process.recoveryTier,
         suggestedRTO: process.suggestedRTO,
@@ -249,6 +254,10 @@ async function loadFinancialContext(tenantId: string) {
     biaResult,
     profile,
     overridesByNodeId,
+    biaValidationScope: {
+      biaValidatedIncluded: validatedBiaProcesses.length,
+      biaExcludedPending: Math.max(0, latestBiaProcesses.length - validatedBiaProcesses.length),
+    },
   };
 }
 
@@ -383,6 +392,7 @@ router.post('/calculate-ale', requireCalcRateLimit, async (req: TenantRequest, r
 
     const alePayload = {
       ...ale,
+      validationScope: context.biaValidationScope,
       orgProfile: {
         sizeCategory: profile?.sizeCategory ?? 'midMarket',
         verticalSector: profile?.verticalSector ?? null,
@@ -463,7 +473,12 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
       resolved.resolvedNodeCostsByNodeId,
     );
 
-    await writeCache(cacheKey, roi);
+    const roiPayload = {
+      ...roi,
+      validationScope: context.biaValidationScope,
+    };
+
+    await writeCache(cacheKey, roiPayload);
 
     appLogger.info('financial.roi.calculated', {
       tenantId,
@@ -474,7 +489,7 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
       methodology: 'stronghold_financial_engine_v1',
     });
 
-    return res.json(roi);
+    return res.json(roiPayload);
   } catch (error) {
     appLogger.error('Error calculating ROI', error);
     return res.status(500).json({ error: 'Internal server error' });

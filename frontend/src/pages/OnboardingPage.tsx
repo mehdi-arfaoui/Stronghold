@@ -221,6 +221,7 @@ export function OnboardingPage() {
         queryClient.invalidateQueries({ queryKey: ['incidents'] }),
       ]);
       toast.success('Demo onboarding completed');
+      navigate('/discovery');
     },
     onError: (error) => {
       toast.error(parseApiError(error, 'Unable to load demo onboarding'));

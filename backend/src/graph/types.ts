@@ -311,6 +311,7 @@ export interface SimulationResult {
   blastRadiusMetrics: BlastRadiusMetrics;
   recommendations: SimulationRecommendation[];
   warRoomData: WarRoomData;
+  warRoomFinancial?: WarRoomFinancial;
   postIncidentResilienceScore: number;
 }
 
@@ -360,6 +361,25 @@ export interface WarRoomData {
     title: string;
     status: 'pending' | 'in_progress' | 'completed';
     priority: 'P0' | 'P1' | 'P2';
+  }>;
+}
+
+export interface WarRoomFinancial {
+  hourlyDowntimeCost: number;
+  recoveryCostEstimate: number;
+  projectedBusinessLoss: number;
+  cumulativeLossTimeline: Array<{
+    timestampMinutes: number;
+    cumulativeBusinessLoss: number;
+    activeHourlyCost: number;
+  }>;
+  nodeCostBreakdown: Array<{
+    nodeId: string;
+    nodeName: string;
+    nodeType: string;
+    costPerHour: number;
+    recoveryCost: number;
+    rtoMinutes: number;
   }>;
 }
 

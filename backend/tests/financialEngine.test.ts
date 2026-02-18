@@ -146,6 +146,7 @@ test('calculateROI keeps projected ALE unchanged when no recommendations', () =>
   assert.equal(roi.currentALE, roi.projectedALE);
   assert.equal(roi.riskReductionAmount, 0);
   assert.ok(roi.annualRemediationCost >= 9600);
+  assert.equal(roi.paybackMonths, -1);
 });
 
 test('calculateDriftFinancialImpact estimates positive delta for redundancy loss', () => {

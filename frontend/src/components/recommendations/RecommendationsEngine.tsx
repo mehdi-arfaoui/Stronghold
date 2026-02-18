@@ -46,6 +46,10 @@ function money(amount: number, currencySymbol: string): string {
   return `${currencySymbol}${Math.round(amount)}`;
 }
 
+function formatPaybackMonths(paybackMonths: number): string {
+  return paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
+}
+
 function priorityWeight(priority: Recommendation['priority']): number {
   if (typeof priority === 'number') return priority;
   if (priority === 'P0') return 0;
@@ -58,11 +62,28 @@ interface RecommendationsEngineProps {
   className?: string;
 }
 
+type RecommendationStatus = 'pending' | 'validated' | 'rejected';
+
+function resolveRecommendationStatus(recommendation: Recommendation): RecommendationStatus {
+  if (recommendation.status === 'validated' || recommendation.status === 'rejected' || recommendation.status === 'pending') {
+    return recommendation.status;
+  }
+  if (recommendation.accepted === true) return 'validated';
+  if (recommendation.accepted === false) return 'rejected';
+  return 'pending';
+}
+
+function recommendationStatusLabel(status: RecommendationStatus): string {
+  if (status === 'validated') return 'Validee';
+  if (status === 'rejected') return 'Rejetee';
+  return 'En attente';
+}
+
 export function RecommendationsEngine({ className }: RecommendationsEngineProps) {
   const queryClient = useQueryClient();
   const tenantScope = getCredentialScopeKey();
   const [currency, setCurrency] = useState<string>('EUR');
-  const [localStatuses, setLocalStatuses] = useState<Record<string, boolean | null>>({});
+  const [localStatuses, setLocalStatuses] = useState<Record<string, RecommendationStatus>>({});
 
   const currencyMeta = CURRENCIES.find((item) => item.code === currency) ?? CURRENCIES[0];
 
@@ -108,8 +129,8 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, accepted }: { id: string; accepted: boolean }) =>
-      recommendationsApi.updateStatus(id, { accepted }),
+    mutationFn: ({ id, status }: { id: string; status: RecommendationStatus }) =>
+      recommendationsApi.updateStatus(id, { status }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['recommendations'] });
       queryClient.invalidateQueries({ queryKey: ['financial-recommendations-roi'] });
@@ -124,10 +145,16 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     return new Map(breakdown.map((entry) => [entry.recommendationId, entry]));
   }, [roiQuery.data]);
 
-  const setRecommendationStatus = (recommendation: Recommendation, accepted: boolean) => {
-    setLocalStatuses((previous) => ({ ...previous, [recommendation.id]: accepted }));
-    updateMutation.mutate({ id: recommendation.id, accepted });
-    toast.success(accepted ? 'Recommandation integree au plan' : 'Recommandation rejetee');
+  const setRecommendationStatus = (recommendation: Recommendation, status: RecommendationStatus) => {
+    setLocalStatuses((previous) => ({ ...previous, [recommendation.id]: status }));
+    updateMutation.mutate({ id: recommendation.id, status });
+    toast.success(
+      status === 'validated'
+        ? 'Recommandation validee'
+        : status === 'rejected'
+          ? 'Recommandation rejetee'
+          : 'Recommandation reouverte',
+    );
   };
 
   return (
@@ -172,7 +199,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               <Metric label="Risque annuel actuel (ALE)" value={money(roiQuery.data.currentALE, currencyMeta.symbol)} color="text-red-600" />
               <Metric label="Risque annuel projete" value={money(roiQuery.data.projectedALE, currencyMeta.symbol)} color="text-green-600" />
               <Metric label="Cout remediation annuel" value={money(roiQuery.data.annualRemediationCost, currencyMeta.symbol)} />
-              <Metric label="Payback" value={`${roiQuery.data.paybackMonths} mois`} />
+              <Metric label="Payback" value={formatPaybackMonths(roiQuery.data.paybackMonths)} />
             </div>
 
             <div className="rounded-lg border bg-muted/20 p-4 space-y-1">
@@ -207,7 +234,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           const annualSavings = breakdown?.riskReduction ?? 0;
           const individualROI = breakdown?.individualROI ?? 0;
           const isQuickWin = individualROI > 500 && monthlyCost < 500;
-          const status = localStatuses[recommendation.id] ?? recommendation.accepted ?? null;
+          const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
 
           return (
             <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
@@ -231,32 +258,75 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   <p className="text-xs text-muted-foreground">
                     Source: {breakdown ? 'Estimation Stronghold (FinancialEngine)' : 'Estimation recommendation engine'}
                   </p>
-                  {status === null ? (
-                    <div className="flex items-center gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => setRecommendationStatus(recommendation, true)}
-                        disabled={updateMutation.isPending}
-                      >
-                        <Check className="mr-1 h-3.5 w-3.5" />
-                        Accepter
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setRecommendationStatus(recommendation, false)}
-                        disabled={updateMutation.isPending}
-                      >
-                        <X className="mr-1 h-3.5 w-3.5" />
-                        Rejeter
-                      </Button>
-                    </div>
-                  ) : (
-                    <Badge variant={status ? 'default' : 'secondary'}>
-                      {status ? 'Integree au plan' : 'Rejetee'}
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      variant={status === 'validated' ? 'default' : status === 'rejected' ? 'secondary' : 'outline'}
+                    >
+                      {recommendationStatusLabel(status)}
                     </Badge>
-                  )}
+                    {status === 'pending' ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRecommendationStatus(recommendation, 'validated')}
+                          disabled={updateMutation.isPending}
+                        >
+                          <Check className="mr-1 h-3.5 w-3.5" />
+                          Accepter
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setRecommendationStatus(recommendation, 'rejected')}
+                          disabled={updateMutation.isPending}
+                        >
+                          <X className="mr-1 h-3.5 w-3.5" />
+                          Rejeter
+                        </Button>
+                      </>
+                    ) : status === 'validated' ? (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setRecommendationStatus(recommendation, 'rejected')}
+                          disabled={updateMutation.isPending}
+                        >
+                          <X className="mr-1 h-3.5 w-3.5" />
+                          Rejeter
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRecommendationStatus(recommendation, 'pending')}
+                          disabled={updateMutation.isPending}
+                        >
+                          Reouvrir
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRecommendationStatus(recommendation, 'validated')}
+                          disabled={updateMutation.isPending}
+                        >
+                          <Check className="mr-1 h-3.5 w-3.5" />
+                          Accepter
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setRecommendationStatus(recommendation, 'pending')}
+                          disabled={updateMutation.isPending}
+                        >
+                          Reouvrir
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>

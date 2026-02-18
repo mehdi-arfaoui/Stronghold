@@ -771,7 +771,7 @@ export class FinancialEngineService {
     const paybackMonths =
       netAnnualSavings > 0
         ? Number((annualRemediationCost / (netAnnualSavings / 12)).toFixed(2))
-        : 999;
+        : -1;
 
     return {
       currentALE: roundAmount(currentALE),

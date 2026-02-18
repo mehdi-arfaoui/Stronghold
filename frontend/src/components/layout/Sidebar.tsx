@@ -5,7 +5,7 @@ import {
   BarChart3,
   FlaskConical,
   Lightbulb,
-  ClipboardCheck,
+  ClipboardList,
   AlertTriangle,
   FileText,
   FileDown,
@@ -38,38 +38,48 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
+    label: 'Configuration',
     items: [
-      { label: 'Configuration', icon: Shield, path: '/', exact: true },
+      { label: 'Parametres', icon: Settings, path: '/settings' },
       { label: 'Tableau de bord', icon: LayoutDashboard, path: '/dashboard', exact: true },
+    ],
+  },
+  {
+    label: 'Decouverte',
+    items: [
       { label: 'Decouverte', icon: Radar, path: '/discovery' },
+    ],
+  },
+  {
+    label: 'Analyse',
+    items: [
       { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
       { label: 'Flux Metier', icon: GitBranch, path: '/business-flows' },
-      { label: 'Simulations', icon: FlaskConical, path: '/simulations', exact: true },
-      { label: 'Runbooks', icon: ClipboardCheck, path: '/simulations/runbooks' },
-      { label: 'Exercices PRA', icon: ClipboardCheck, path: '/simulations/pra-exercises' },
       { label: 'Recommandations', icon: Lightbulb, path: '/recommendations', exact: true },
-      { label: 'Suivi Remediation', icon: ClipboardCheck, path: '/recommendations/remediation' },
       { label: 'ROI & Finance', icon: CircleDollarSign, path: '/finance' },
+    ],
+  },
+  {
+    label: 'Resilience',
+    items: [
+      { label: 'Simulations', icon: FlaskConical, path: '/simulations', exact: true },
       { label: 'Drift Detection', icon: Activity, path: '/drift' },
-      { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
+      { label: 'Runbooks', icon: ClipboardList, path: '/simulations/runbooks' },
     ],
   },
   {
     label: 'Operations',
     items: [
+      { label: 'Exercices PRA', icon: ClipboardList, path: '/simulations/pra-exercises' },
       { label: 'Incidents', icon: AlertTriangle, path: '/incidents' },
+    ],
+  },
+  {
+    label: 'Documentation',
+    items: [
       { label: 'Documents', icon: FileText, path: '/documents' },
-    ],
-  },
-  {
-    label: 'Resultats',
-    items: [
       { label: 'Rapport PRA/PCA', icon: FileDown, path: '/report' },
-    ],
-  },
-  {
-    items: [
-      { label: 'Parametres', icon: Settings, path: '/settings' },
+      { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
     ],
   },
 ];
@@ -117,9 +127,9 @@ export function Sidebar() {
                     key={item.path}
                     to={item.path}
                     className={cn(
-                      'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',
+                      'flex items-center gap-3 rounded-md border border-transparent px-3 py-2 text-sm font-medium transition-colors',
                       isActive
-                        ? 'bg-primary/10 text-primary'
+                        ? 'border-primary/40 bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                       !sidebarOpen && 'justify-center px-2'
                     )}

@@ -124,6 +124,10 @@ export type FinancialSummaryPayload = {
   disclaimer: string;
   sources: string[];
   currency: SupportedCurrency;
+  validationScope: {
+    biaValidatedIncluded: number;
+    biaExcludedPending: number;
+  };
   generatedAt: string;
 };
 
@@ -422,9 +426,14 @@ export async function loadFinancialContext(prismaClient: PrismaClient, tenantId:
     nodes: nodes.map(toNodeInput),
   };
 
+  const latestBiaProcesses = latestBia?.processes ?? [];
+  const validatedBiaProcesses = latestBiaProcesses.filter(
+    (process) => process.validationStatus === 'validated',
+  );
+
   const biaResult: BIAResultInput = {
     processes:
-      latestBia?.processes.map((process) => ({
+      validatedBiaProcesses.map((process) => ({
         serviceNodeId: process.serviceNodeId,
         recoveryTier: process.recoveryTier,
         suggestedRTO: process.suggestedRTO,
@@ -449,6 +458,10 @@ export async function loadFinancialContext(prismaClient: PrismaClient, tenantId:
     profile,
     overridesByNodeId,
     nodeMetadataById,
+    biaValidationScope: {
+      biaValidatedIncluded: validatedBiaProcesses.length,
+      biaExcludedPending: Math.max(0, latestBiaProcesses.length - validatedBiaProcesses.length),
+    },
   };
 }
 
@@ -830,6 +843,7 @@ export async function buildFinancialSummaryPayload(
     disclaimer: DEFAULT_DASHBOARD_DISCLAIMER,
     sources: dedupeSources(ale.sources, roi.sources),
     currency: ale.currency,
+    validationScope: context.biaValidationScope,
     generatedAt: new Date().toISOString(),
   };
 }

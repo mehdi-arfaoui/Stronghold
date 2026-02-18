@@ -23,6 +23,10 @@ export interface FinancialROIResult {
   disclaimer: string;
   currency: string;
   calculatedAt: string;
+  validationScope?: {
+    biaValidatedIncluded: number;
+    biaExcludedPending: number;
+  };
   cached?: boolean;
 }
 
@@ -214,6 +218,10 @@ export interface FinancialSummary {
   disclaimer: string;
   sources: string[];
   currency: string;
+  validationScope?: {
+    biaValidatedIncluded: number;
+    biaExcludedPending: number;
+  };
   generatedAt: string;
   cached?: boolean;
 }

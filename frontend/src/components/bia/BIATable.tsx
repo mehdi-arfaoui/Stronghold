@@ -37,31 +37,31 @@ function precisionBadgeModel(entry: BIAEntry): {
   switch (entry.financialPrecisionBadge) {
     case 'business_flow_validated':
       return {
-        label: 'ðŸ“Šâœ… Flow valide',
+        label: 'Flow valide',
         className: 'border-green-300 bg-green-50 text-green-800',
         tooltip: 'Calcule depuis un flux metier valide.',
       };
     case 'estimation_enriched':
       return {
-        label: 'â˜ï¸ Estimation enrichie',
+        label: 'Estimation enrichie',
         className: 'border-amber-300 bg-amber-50 text-amber-800',
         tooltip: 'Estimation enrichie par les donnees cloud.',
       };
     case 'override_user':
       return {
-        label: 'âœï¸âœ… Override',
+        label: 'Override valide',
         className: 'border-green-300 bg-green-50 text-green-800',
         tooltip: 'Valeur saisie manuellement par utilisateur.',
       };
     case 'business_flow_not_validated':
       return {
-        label: 'ðŸ“Šâš ï¸ Flow non valide',
+        label: 'Flow non valide',
         className: 'border-sky-300 bg-sky-50 text-sky-800',
         tooltip: 'Flux metier detecte mais non valide.',
       };
     default:
       return {
-        label: 'âš ï¸ Estimation',
+        label: '⚠️ Estimation',
         className: 'border-red-300 bg-red-50 text-red-800',
         tooltip: 'Estimation de base generique.',
       };
@@ -289,7 +289,7 @@ export function BIATable({
                         <textarea
                           value={overrideJustification}
                           onChange={(event) => setOverrideJustification(event.target.value)}
-                          placeholder="Ex: basÃ© sur notre analyse interne Q4 2025"
+                          placeholder="Ex: base sur notre analyse interne Q4 2025"
                           className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         />
                       </div>

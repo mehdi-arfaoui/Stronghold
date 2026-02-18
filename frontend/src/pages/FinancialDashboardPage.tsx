@@ -149,6 +149,13 @@ function FinancialDashboardInner() {
   const profileConfigured = orgProfileQuery.data?.isConfigured !== false;
   const currency = summary?.currency || 'EUR';
   const financialPrecision = summary?.financialPrecision;
+  const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
+  const paybackMonths = summary?.metrics.paybackMonths ?? -1;
+  const paybackValue = paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
+  const paybackSubtitle =
+    paybackMonths > 0
+      ? 'Temps de retour sur investissement'
+      : 'Les gains annuels estimes ne couvrent pas les couts';
 
   const chartData = useMemo(() => {
     if (!summary) return [];
@@ -354,6 +361,14 @@ function FinancialDashboardInner() {
         </div>
       )}
 
+      {excludedBiaEstimations > 0 && (
+        <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-blue-900">
+          <p className="text-sm font-medium">
+            {excludedBiaEstimations} estimation(s) BIA non validee(s) ne sont pas incluses dans ces calculs.
+          </p>
+        </div>
+      )}
+
       {financialPrecision && (
         <Card className="border-muted/60">
           <CardHeader>
@@ -414,8 +429,8 @@ function FinancialDashboardInner() {
         />
         <KpiCard
           title="Payback"
-          value={`${summary.metrics.paybackMonths.toFixed(1)} mois`}
-          subtitle="Temps de retour sur investissement"
+          value={paybackValue}
+          subtitle={paybackSubtitle}
           icon={Clock3}
           tone="payback"
         />

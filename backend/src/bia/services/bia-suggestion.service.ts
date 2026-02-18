@@ -1,6 +1,10 @@
 import type { GraphInstance } from '../../graph/graphService.js';
 import type { InfraNodeAttrs } from '../../graph/types.js';
-import { BIA_REFERENCE_DATA, type BiaCriticalityLevel, type BiaReferenceEntry } from '../data/bia-reference-data.js';
+import {
+  BIA_REFERENCE_DATA,
+  type BiaCriticalityLevel,
+  type BiaReferenceEntry,
+} from '../data/bia-reference-data.js';
 
 export interface BIASuggestion {
   rto: number;
@@ -53,7 +57,9 @@ const getCriticalityLevel = (score: number): BiaCriticalityLevel => {
   return 'low';
 };
 
-const matchReference = (node: InfraNodeAttrs): { reference: BiaReferenceEntry; keywordHit?: string; score: number } => {
+const matchReference = (
+  node: InfraNodeAttrs,
+): { reference: BiaReferenceEntry; keywordHit?: string; score: number } => {
   const haystacks = [node.name, node.type, ...Object.keys(node.tags ?? {}), ...Object.values(node.tags ?? {})]
     .map(toText)
     .join(' ');
@@ -68,8 +74,7 @@ const matchReference = (node: InfraNodeAttrs): { reference: BiaReferenceEntry; k
     if (entry.nodeTypes.length === 0) score += 0.1;
 
     return { entry, keywordHit, score, index };
-  })
-    .sort((a, b) => b.score - a.score || a.index - b.index);
+  }).sort((a, b) => b.score - a.score || a.index - b.index);
 
   const best = scored[0];
   const fallbackReference = BIA_REFERENCE_DATA[BIA_REFERENCE_DATA.length - 1] as BiaReferenceEntry;
@@ -95,15 +100,21 @@ export class BIASuggestionService {
     if (score > 0) signalCount += 1;
     if (keywordHit) signalCount += 1;
 
-    reasoning.push(`Catégorie: ${reference.category}. ${reference.description}`);
-    if (keywordHit) {
-      reasoning.push(`Mot-clé détecté: "${keywordHit}".`);
+    reasoning.push(`Categorie metier: ${reference.category}.`);
+    if (reference.keywords.length > 0) {
+      reasoning.push(`Mots-cles de reference: ${reference.keywords.join(', ')}.`);
     }
+    if (keywordHit) {
+      reasoning.push(`Mot-cle detecte: "${keywordHit}".`);
+    } else if (reference.keywords.length > 0) {
+      reasoning.push('Aucun mot-cle direct detecte, correspondance par type de composant.');
+    }
+    reasoning.push(`Contexte metier: ${reference.description}`);
 
     const rawCriticalityScore = Number(node.criticalityScore ?? context.explicitCriticalityScore ?? 30);
     const criticalityScore = Number.isFinite(rawCriticalityScore) ? rawCriticalityScore : 30;
     const criticalityLevel = getCriticalityLevel(criticalityScore);
-    reasoning.push(`Criticité détectée: ${criticalityLevel} (score ${criticalityScore}).`);
+    reasoning.push(`Criticite detectee: ${criticalityLevel} (score ${criticalityScore}).`);
     signalCount += 1;
 
     let rto = reference.rto[criticalityLevel];
@@ -121,36 +132,38 @@ export class BIASuggestionService {
 
     if (backupValue !== undefined) {
       rpo = Math.min(rpo, backupValue);
-      adjustments.backupFrequency = `Backup détecté (~${backupValue} min) → RPO aligné à ${rpo} min.`;
+      adjustments.backupFrequency = `Backup detecte (~${backupValue} min) -> RPO aligne a ${rpo} min.`;
       reasoning.push(adjustments.backupFrequency);
       signalCount += 1;
     }
 
-    const azText = [toText(metadata.multiAz), toText(metadata.isMultiAZ), toText(tags.multi_az), toText(tags.multiaz)].join(' ');
+    const azText = [
+      toText(metadata.multiAz),
+      toText(metadata.isMultiAZ),
+      toText(tags.multi_az),
+      toText(tags.multiaz),
+    ].join(' ');
     const isMultiAZ = azText.includes('true') || azText.includes('yes') || azText.includes('enabled');
     const replicaCount = Number(metadata.replicaCount ?? metadata.replicas ?? tags.replicas ?? 0);
 
     if (isMultiAZ) {
       rto = clampMinimum(rto * 0.5);
-      adjustments.replication = `Multi-AZ activé → RTO réduit de 50% (${rto} min).`;
+      adjustments.replication = `Multi-AZ active -> RTO reduit de 50% (${rto} min).`;
       reasoning.push(adjustments.replication);
       signalCount += 1;
     } else if (Number.isFinite(replicaCount) && replicaCount > 0) {
       rto = clampMinimum(rto * 0.7);
-      adjustments.replication = `Replica détecté (${replicaCount}) → RTO réduit de 30% (${rto} min).`;
+      adjustments.replication = `Replica detecte (${replicaCount}) -> RTO reduit de 30% (${rto} min).`;
       reasoning.push(adjustments.replication);
       signalCount += 1;
     }
 
-    const dependents = Math.max(
-      Number(node.dependentsCount ?? 0),
-      context.graph.inDegree(node.id) || 0
-    );
+    const dependents = Math.max(Number(node.dependentsCount ?? 0), context.graph.inDegree(node.id) || 0);
 
     if (dependents > 5) {
       rto = clampMinimum(rto * 0.7);
       mtpd = clampMinimum(mtpd * 0.7);
-      adjustments.dependencies = `Dépendants élevés (${dependents}) → RTO et MTPD réduits de 30%.`;
+      adjustments.dependencies = `Dependants eleves (${dependents}) -> RTO et MTPD reduits de 30%.`;
       reasoning.push(adjustments.dependencies);
       signalCount += 1;
     }
@@ -158,12 +171,13 @@ export class BIASuggestionService {
     const isSPOF = Boolean(node.isSPOF) || String(metadata.spof ?? '').toLowerCase() === 'true';
     if (isSPOF) {
       mtpd = clampMinimum(mtpd * 0.5);
-      adjustments.spof = 'SPOF détecté → MTPD réduit de 50% pour renforcer l’urgence de traitement.';
+      adjustments.spof = 'SPOF detecte -> MTPD reduit de 50% pour renforcer l urgence de traitement.';
       reasoning.push(adjustments.spof);
       signalCount += 1;
     }
 
-    const confidence: BIASuggestion['confidence'] = signalCount >= 3 ? 'high' : signalCount === 2 ? 'medium' : 'low';
+    const confidence: BIASuggestion['confidence'] =
+      signalCount >= 3 ? 'high' : signalCount === 2 ? 'medium' : 'low';
 
     return {
       rto,

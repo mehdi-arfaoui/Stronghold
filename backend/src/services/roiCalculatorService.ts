@@ -213,7 +213,7 @@ export async function calculateROI(
     : 0;
   const paybackPeriodMonths = riskReduction > 0
     ? Math.round((annualRemediationCost / (riskReduction / 12)) * 10) / 10
-    : 999;
+    : -1;
 
   // 7. Calculate average RTO
   const allRtos = (biaReport?.processes ?? []).map(p => p.validatedRTO ?? p.suggestedRTO ?? 0).filter(r => r > 0);

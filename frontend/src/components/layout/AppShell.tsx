@@ -6,6 +6,7 @@ import { HelpDrawer } from '@/components/knowledge-base/HelpDrawer';
 import { useUIStore } from '@/stores/ui.store';
 import { cn } from '@/lib/utils';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
+import { GuidedTabTour } from './GuidedTabTour';
 
 export function AppShell() {
   const location = useLocation();
@@ -27,13 +28,14 @@ export function AppShell() {
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
         <main className="flex-1 overflow-y-auto bg-background p-6">
-          <ModuleErrorBoundary moduleName="Page">
-            <div key={location.pathname} className="animate-in fade-in duration-200">
+          <ModuleErrorBoundary key={location.pathname} moduleName="Page">
+            <div className="animate-in fade-in duration-200">
               <Outlet />
             </div>
           </ModuleErrorBoundary>
         </main>
       </div>
+      <GuidedTabTour />
       <HelpDrawer />
       <Toaster position="top-right" richColors closeButton />
     </div>

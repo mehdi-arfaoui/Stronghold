@@ -9,6 +9,14 @@ export interface Recommendation {
   estimatedCost?: number;
   roi?: number;
   accepted?: boolean | null;
+  status?: 'pending' | 'validated' | 'rejected';
+  statusUpdatedAt?: string | null;
+  statusHistory?: Array<{
+    from: 'pending' | 'validated' | 'rejected';
+    to: 'pending' | 'validated' | 'rejected';
+    changedAt: string;
+    notes: string | null;
+  }>;
   notes?: string;
   description: string;
   priority: number | 'P0' | 'P1' | 'P2' | 'P3';
@@ -38,9 +46,12 @@ export const recommendationsApi = {
   getSummary: () =>
     api.get<RecommendationsSummary>('/recommendations/landing-zone/cost-summary'),
 
-  updateStatus: (id: string, data: { accepted: boolean; notes?: string }) =>
+  updateStatus: (
+    id: string,
+    data: { status?: 'pending' | 'validated' | 'rejected'; accepted?: boolean | null; notes?: string | null },
+  ) =>
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, ...data }] }),
 
   resetStatus: (id: string) =>
-    api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, accepted: null, notes: null }] }),
+    api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, status: 'pending', notes: null }] }),
 };

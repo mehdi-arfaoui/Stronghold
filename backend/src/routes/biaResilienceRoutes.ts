@@ -589,12 +589,35 @@ router.patch('/processes/:processId', async (req: TenantRequest, res) => {
 });
 
 // ─── POST /bia-resilience/validate-all — Validate all processes at once ──────────
+type ValidateAllOverrideInput = {
+  processId: string;
+  validatedRTO?: unknown;
+  validatedRPO?: unknown;
+  validatedMTPD?: unknown;
+  notes?: unknown;
+};
+
+function resolveValidatedValue(value: unknown, fallback: number | null | undefined): number | null {
+  if (value === undefined) return fallback ?? null;
+  if (value === null || value === '') return null;
+
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Invalid validated metric value: ${String(value)}`);
+  }
+  return Math.round(parsed);
+}
+
 router.post('/validate-all', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const { overrides } = req.body;
+    const requestBody = (req.body ?? {}) as { overrides?: unknown };
+    if (requestBody.overrides !== undefined && !Array.isArray(requestBody.overrides)) {
+      return res.status(400).json({ error: 'Invalid payload: overrides must be an array' });
+    }
+    const overrides = (requestBody.overrides ?? []) as ValidateAllOverrideInput[];
 
     // Get latest report
     const report = await prisma.bIAReport2.findFirst({
@@ -609,26 +632,44 @@ router.post('/validate-all', async (req: TenantRequest, res) => {
 
     // Apply overrides if provided
     const overrideMap = new Map(
-      (overrides || []).map((o: any) => [o.processId, o])
+      overrides
+        .filter((o) => typeof o?.processId === 'string' && o.processId.trim().length > 0)
+        .map((o) => [o.processId, o])
     );
 
-    for (const process of report.processes) {
-      const override = overrideMap.get(process.id) as any;
-      await prisma.bIAProcess2.update({
-        where: { id: process.id },
-        data: {
+    const results = await prisma.$transaction(
+      report.processes.map((process) => {
+        const override = overrideMap.get(process.id);
+        const updateData: {
+          validationStatus: string;
+          validatedRTO: number | null;
+          validatedRPO: number | null;
+          validatedMTPD: number | null;
+          notes?: string | null;
+        } = {
           validationStatus: 'validated',
-          validatedRTO: override?.validatedRTO ?? process.suggestedRTO,
-          validatedRPO: override?.validatedRPO ?? process.suggestedRPO,
-          validatedMTPD: override?.validatedMTPD ?? process.suggestedMTPD,
-          notes: override?.notes ?? undefined,
-        },
-      });
-    }
+          validatedRTO: resolveValidatedValue(override?.validatedRTO, process.suggestedRTO),
+          validatedRPO: resolveValidatedValue(override?.validatedRPO, process.suggestedRPO),
+          validatedMTPD: resolveValidatedValue(override?.validatedMTPD, process.suggestedMTPD),
+        };
 
-    return res.json({ validated: report.processes.length });
+        if (override?.notes !== undefined) {
+          updateData.notes = override.notes === null ? null : String(override.notes);
+        }
+
+        return prisma.bIAProcess2.updateMany({
+          where: { id: process.id, tenantId },
+          data: updateData,
+        });
+      })
+    );
+
+    const validated = results.reduce((sum, result) => sum + result.count, 0);
+
+    return res.json({ validated });
   } catch (error) {
-    appLogger.error('Error validating BIA:', error);
+    const err = error instanceof Error ? error : new Error(String(error));
+    appLogger.error('Error validating BIA:', err.message, err.stack);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });
