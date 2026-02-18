@@ -7,6 +7,7 @@ import { useUIStore } from '@/stores/ui.store';
 import { cn } from '@/lib/utils';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { GuidedTabTour } from './GuidedTabTour';
+import { GUIDED_TAB_CONTENT_AREA_ID } from './guidedTabTour.config';
 
 export function AppShell() {
   const location = useLocation();
@@ -27,15 +28,15 @@ export function AppShell() {
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
-        <main className="flex-1 overflow-y-auto bg-background p-6">
+        <main id={GUIDED_TAB_CONTENT_AREA_ID} className="relative flex-1 overflow-y-auto bg-background p-6">
           <ModuleErrorBoundary key={location.pathname} moduleName="Page">
             <div className="animate-in fade-in duration-200">
               <Outlet />
             </div>
           </ModuleErrorBoundary>
+          <GuidedTabTour />
         </main>
       </div>
-      <GuidedTabTour />
       <HelpDrawer />
       <Toaster position="top-right" richColors closeButton />
     </div>

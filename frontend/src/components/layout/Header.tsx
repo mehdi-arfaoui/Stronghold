@@ -1,5 +1,5 @@
-﻿import { useLocation } from 'react-router-dom';
-import { Moon, Sun, User, Menu } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { CircleHelp, Menu, Moon, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,6 +10,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useUIStore } from '@/stores/ui.store';
 import { useAuthStore } from '@/stores/auth.store';
+import { useGuidedTourStore } from '@/stores/guidedTour.store';
+import { resolveGuidedTab } from './guidedTabTour.config';
 
 const ROUTE_TITLES: Record<string, string> = {
   '/': 'Onboarding',
@@ -47,8 +49,10 @@ export function Header() {
   const location = useLocation();
   const { theme, toggleTheme, toggleSidebar } = useUIStore();
   const { logout, user } = useAuthStore();
+  const requestOpenForPath = useGuidedTourStore((state) => state.requestOpenForPath);
 
   const title = resolveRouteTitle(location.pathname);
+  const activeGuide = resolveGuidedTab(location.pathname);
 
   return (
     <header className="flex h-16 items-center justify-between border-b bg-card px-6">
@@ -60,6 +64,19 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-2">
+        {activeGuide && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="gap-2 text-muted-foreground hover:text-foreground"
+            onClick={() => requestOpenForPath(location.pathname)}
+            aria-label={`Afficher le guide ${activeGuide.title}`}
+          >
+            <CircleHelp className="h-4 w-4" />
+            <span className="hidden md:inline">Guide</span>
+          </Button>
+        )}
+
         <Button variant="ghost" size="icon" onClick={toggleTheme}>
           {theme === 'light' ? <Moon className="h-5 w-5" /> : <Sun className="h-5 w-5" />}
         </Button>
