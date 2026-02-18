@@ -3,10 +3,8 @@ import { useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { useGuidedTourStore } from '@/stores/guidedTour.store';
 import {
-  buildGuidedTabStorageKey,
   type GuidedTabGuide,
   GUIDED_TAB_CONTENT_AREA_ID,
   resolveGuidedTab,
@@ -196,31 +194,26 @@ function GuidedTabTourPanel({ guide, onDismiss }: GuidedTabTourPanelProps) {
 
 export function GuidedTabTour() {
   const location = useLocation();
-  const tenantScope = getCredentialScopeKey();
   const openRequest = useGuidedTourStore((state) => state.openRequest);
   const guide = useMemo(() => resolveGuidedTab(location.pathname), [location.pathname]);
   const [lastClosedManualNonce, setLastClosedManualNonce] = useState<number | null>(null);
-  const [dismissedVersion, setDismissedVersion] = useState(0);
+  const [panelVersion, setPanelVersion] = useState(0);
 
   if (!guide) return null;
 
-  const storageKey = buildGuidedTabStorageKey(guide, tenantScope);
-  const dismissed = localStorage.getItem(storageKey) === '1';
   const manualNonce = openRequest?.pathname === location.pathname ? openRequest.nonce : null;
-  const openedManually = manualNonce != null && manualNonce !== lastClosedManualNonce;
-  const shouldRender = !dismissed || openedManually;
+  const shouldRender = manualNonce != null && manualNonce !== lastClosedManualNonce;
 
   if (!shouldRender) return null;
 
   const handleDismiss = () => {
-    localStorage.setItem(storageKey, '1');
     if (manualNonce != null) {
       setLastClosedManualNonce(manualNonce);
     }
-    setDismissedVersion((current) => current + 1);
+    setPanelVersion((current) => current + 1);
   };
 
-  const panelInstanceKey = `${guide.id}:${manualNonce ?? 'auto'}:${dismissedVersion}`;
+  const panelInstanceKey = `${guide.id}:${manualNonce}:${panelVersion}`;
 
   return <GuidedTabTourPanel key={panelInstanceKey} guide={guide} onDismiss={handleDismiss} />;
 }
