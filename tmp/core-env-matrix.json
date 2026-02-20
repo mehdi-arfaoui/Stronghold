@@ -1,0 +1,776 @@
+[
+    {
+        "variable":  "POSTGRES_USER",
+        "root_env":  "pra_user",
+        "root_env_example":  "stronghold",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  7,
+                                 "text":  "POSTGRES_USER: ${POSTGRES_USER}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  13,
+                                 "text":  "test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}\"]"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  74,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  111,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             }
+                         ]
+    },
+    {
+        "variable":  "POSTGRES_PASSWORD",
+        "root_env":  "change_me_dev_only_please_override",
+        "root_env_example":  "CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  8,
+                                 "text":  "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  74,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  111,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             }
+                         ]
+    },
+    {
+        "variable":  "POSTGRES_DB",
+        "root_env":  "pra_platform",
+        "root_env_example":  "stronghold",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  9,
+                                 "text":  "POSTGRES_DB: ${POSTGRES_DB}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  13,
+                                 "text":  "test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}\"]"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  74,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  111,
+                                 "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                             }
+                         ]
+    },
+    {
+        "variable":  "DATABASE_URL",
+        "root_env":  "postgresql://pra_user:change_me_dev_only_please_override@postgres:5432/pra_platform?schema=public",
+        "root_env_example":  "postgresql://stronghold:CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS@postgres:5432/stronghold?schema=public",
+        "backend_env":  "postgresql://pra_user:change_me@localhost:5432/pra_platform?schema=public",
+        "backend_env_example":  "postgresql://stronghold:CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS@localhost:5432/stronghold?schema=public",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+
+                         }
+    },
+    {
+        "variable":  "DATABASE_POOL_SIZE",
+        "root_env":  null,
+        "root_env_example":  "10",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+
+                         }
+    },
+    {
+        "variable":  "REDIS_URL",
+        "root_env":  "redis://redis:6379",
+        "root_env_example":  "redis://:CHANGE_ME_REDIS_PASSWORD_20+_CHARS@redis:6379",
+        "backend_env":  null,
+        "backend_env_example":  "redis://localhost:6379",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  81,
+                                 "text":  "REDIS_URL: ${REDIS_URL}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  122,
+                                 "text":  "REDIS_URL: ${REDIS_URL}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "REDIS_PASSWORD",
+        "root_env":  null,
+        "root_env_example":  "CHANGE_ME_REDIS_PASSWORD_20+_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  55,
+                                 "text":  "command: [\"redis-server\", \"--appendonly\", \"yes\", \"--requirepass\", \"${REDIS_PASSWORD}\"]"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  57,
+                                 "text":  "test: [\"CMD-SHELL\", \"redis-cli -a \\\"${REDIS_PASSWORD}\\\" ping\"]"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  82,
+                                 "text":  "REDIS_PASSWORD: ${REDIS_PASSWORD}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  123,
+                                 "text":  "REDIS_PASSWORD: ${REDIS_PASSWORD}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "NODE_ENV",
+        "root_env":  "development",
+        "root_env_example":  "development",
+        "backend_env":  null,
+        "backend_env_example":  "development",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  103,
+                             "text":  "NODE_ENV: ${NODE_ENV}"
+                         }
+    },
+    {
+        "variable":  "PORT",
+        "root_env":  "4000",
+        "root_env_example":  "4000",
+        "backend_env":  null,
+        "backend_env_example":  "4000",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  104,
+                             "text":  "PORT: ${PORT}"
+                         }
+    },
+    {
+        "variable":  "HOST",
+        "root_env":  "0.0.0.0",
+        "root_env_example":  "0.0.0.0",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  105,
+                             "text":  "HOST: ${HOST}"
+                         }
+    },
+    {
+        "variable":  "FRONTEND_URL",
+        "root_env":  "http://localhost:3000",
+        "root_env_example":  "http://localhost:3000",
+        "backend_env":  null,
+        "backend_env_example":  "http://localhost:3000",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  106,
+                             "text":  "FRONTEND_URL: ${FRONTEND_URL}"
+                         }
+    },
+    {
+        "variable":  "CORS_ORIGINS",
+        "root_env":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+        "root_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+        "backend_env":  null,
+        "backend_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  110,
+                             "text":  "CORS_ORIGINS: ${CORS_ORIGINS}"
+                         }
+    },
+    {
+        "variable":  "CORS_ALLOWED_ORIGINS",
+        "root_env":  "http://localhost:3000,http://127.0.0.1:3000",
+        "root_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  107,
+                             "text":  "CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}"
+                         }
+    },
+    {
+        "variable":  "CORS_ORIGIN",
+        "root_env":  "http://localhost:3000",
+        "root_env_example":  "http://localhost:3000",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  108,
+                             "text":  "CORS_ORIGIN: ${CORS_ORIGIN}"
+                         }
+    },
+    {
+        "variable":  "CORS_ALLOW_NO_ORIGIN",
+        "root_env":  "true",
+        "root_env_example":  "false",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  109,
+                             "text":  "CORS_ALLOW_NO_ORIGIN: ${CORS_ALLOW_NO_ORIGIN}"
+                         }
+    },
+    {
+        "variable":  "JWT_SECRET",
+        "root_env":  "dev_jwt_secret_that_is_at_least_32_characters_long",
+        "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  124,
+                             "text":  "JWT_SECRET: ${JWT_SECRET}"
+                         }
+    },
+    {
+        "variable":  "SESSION_SECRET",
+        "root_env":  "dev_session_secret_that_is_at_least_32_chars",
+        "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  125,
+                             "text":  "SESSION_SECRET: ${SESSION_SECRET}"
+                         }
+    },
+    {
+        "variable":  "LICENSE_SIGNING_SECRET",
+        "root_env":  "dev_license_signing_secret_that_is_at_least_sixty_four_characters_long_123",
+        "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_64_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_64_CHARS",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  126,
+                             "text":  "LICENSE_SIGNING_SECRET: ${LICENSE_SIGNING_SECRET}"
+                         }
+    },
+    {
+        "variable":  "CREDENTIAL_ENCRYPTION_KEY",
+        "root_env":  null,
+        "root_env_example":  "CHANGE_ME_HEX_64",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+
+                         }
+    },
+    {
+        "variable":  "DISCOVERY_SECRET",
+        "root_env":  "dev_discovery_secret_that_is_at_least_32_characters",
+        "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  127,
+                             "text":  "DISCOVERY_SECRET: ${DISCOVERY_SECRET}"
+                         }
+    },
+    {
+        "variable":  "DOCKER_BUILDKIT",
+        "root_env":  "1",
+        "root_env_example":  "1",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  72,
+                                 "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  101,
+                                 "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  157,
+                                 "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "COMPOSE_DOCKER_CLI_BUILD",
+        "root_env":  "1",
+        "root_env_example":  "1",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  73,
+                                 "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  102,
+                                 "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  158,
+                                 "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "MINIO_ROOT_USER",
+        "root_env":  "minioadmin",
+        "root_env_example":  "stronghold_minio",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  23,
+                             "text":  "MINIO_ROOT_USER: ${MINIO_ROOT_USER}"
+                         }
+    },
+    {
+        "variable":  "MINIO_ROOT_PASSWORD",
+        "root_env":  "change_me_minio_dev_only",
+        "root_env_example":  "CHANGE_ME_MINIO_PASSWORD_20+_CHARS",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  24,
+                             "text":  "MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"
+                         }
+    },
+    {
+        "variable":  "S3_ENDPOINT",
+        "root_env":  "http://minio:9000",
+        "root_env_example":  "http://minio:9000",
+        "backend_env":  null,
+        "backend_env_example":  "http://localhost:9000",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  75,
+                                 "text":  "S3_ENDPOINT: ${S3_ENDPOINT}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  115,
+                                 "text":  "S3_ENDPOINT: ${S3_ENDPOINT}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_REGION",
+        "root_env":  "us-east-1",
+        "root_env_example":  "us-east-1",
+        "backend_env":  null,
+        "backend_env_example":  "us-east-1",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  76,
+                                 "text":  "S3_REGION: ${S3_REGION}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  116,
+                                 "text":  "S3_REGION: ${S3_REGION}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_ACCESS_KEY_ID",
+        "root_env":  "minioadmin",
+        "root_env_example":  "CHANGE_ME_S3_ACCESS_KEY_ID",
+        "backend_env":  null,
+        "backend_env_example":  "CHANGE_ME_S3_ACCESS_KEY_ID",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  77,
+                                 "text":  "S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  117,
+                                 "text":  "S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_SECRET_ACCESS_KEY",
+        "root_env":  "change_me_minio_dev_only",
+        "root_env_example":  "CHANGE_ME_S3_SECRET_ACCESS_KEY",
+        "backend_env":  null,
+        "backend_env_example":  "CHANGE_ME_S3_SECRET_ACCESS_KEY",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  78,
+                                 "text":  "S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  118,
+                                 "text":  "S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_BUCKET_PREFIX",
+        "root_env":  "stronghold-docs",
+        "root_env_example":  "stronghold-docs",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  79,
+                                 "text":  "S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  119,
+                                 "text":  "S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_FORCE_PATH_STYLE",
+        "root_env":  "true",
+        "root_env_example":  "true",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  80,
+                                 "text":  "S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  120,
+                                 "text":  "S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "S3_SIGNED_URL_TTL_SECONDS",
+        "root_env":  "900",
+        "root_env_example":  "900",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  121,
+                             "text":  "S3_SIGNED_URL_TTL_SECONDS: ${S3_SIGNED_URL_TTL_SECONDS}"
+                         }
+    },
+    {
+        "variable":  "CHROMADB_URL",
+        "root_env":  "http://chroma:8000",
+        "root_env_example":  "http://chroma:8000",
+        "backend_env":  null,
+        "backend_env_example":  "http://localhost:8000",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  83,
+                                 "text":  "CHROMADB_URL: ${CHROMADB_URL}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  112,
+                                 "text":  "CHROMADB_URL: ${CHROMADB_URL}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "CHROMADB_COLLECTION",
+        "root_env":  "pra-documents",
+        "root_env_example":  "pra-documents",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  84,
+                                 "text":  "CHROMADB_COLLECTION: ${CHROMADB_COLLECTION}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  113,
+                                 "text":  "CHROMADB_COLLECTION: ${CHROMADB_COLLECTION}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "CHROMADB_API_TOKEN",
+        "root_env":  "",
+        "root_env_example":  "",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  85,
+                                 "text":  "CHROMADB_API_TOKEN: ${CHROMADB_API_TOKEN}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  114,
+                                 "text":  "CHROMADB_API_TOKEN: ${CHROMADB_API_TOKEN}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "SEED_ON_START",
+        "root_env":  null,
+        "root_env_example":  null,
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  86,
+                             "text":  "SEED_ON_START: ${SEED_ON_START:-true}"
+                         }
+    },
+    {
+        "variable":  "SEED_API_KEY",
+        "root_env":  "dev_seed_api_key_for_local_runs",
+        "root_env_example":  "CHANGE_ME_DEV_API_KEY",
+        "backend_env":  "stronghold-dev-seed-2026",
+        "backend_env_example":  "CHANGE_ME_DEV_API_KEY",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  87,
+                             "text":  "SEED_API_KEY: ${SEED_API_KEY}"
+                         }
+    },
+    {
+        "variable":  "SEED_PLAN",
+        "root_env":  "PRO",
+        "root_env_example":  "PRO",
+        "backend_env":  null,
+        "backend_env_example":  "PRO",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  88,
+                             "text":  "SEED_PLAN: ${SEED_PLAN}"
+                         }
+    },
+    {
+        "variable":  "OWNER_EMAIL",
+        "root_env":  "mehdi@stronghold.io",
+        "root_env_example":  "mehdi@stronghold.io",
+        "backend_env":  null,
+        "backend_env_example":  "mehdi@stronghold.io",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  128,
+                             "text":  "OWNER_EMAIL: ${OWNER_EMAIL}"
+                         }
+    },
+    {
+        "variable":  "OWNER_API_KEY",
+        "root_env":  null,
+        "root_env_example":  "",
+        "backend_env":  null,
+        "backend_env_example":  "",
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  [
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  89,
+                                 "text":  "OWNER_API_KEY: ${OWNER_API_KEY:-}"
+                             },
+                             {
+                                 "file":  "docker-compose.yml",
+                                 "line":  129,
+                                 "text":  "OWNER_API_KEY: ${OWNER_API_KEY:-}"
+                             }
+                         ]
+    },
+    {
+        "variable":  "OWNER_PASSWORD",
+        "root_env":  "change_me_on_first_login",
+        "root_env_example":  "CHANGE_ME_AT_FIRST_LOGIN",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  130,
+                             "text":  "OWNER_PASSWORD: ${OWNER_PASSWORD}"
+                         }
+    },
+    {
+        "variable":  "ALLOW_DEMO_SEED",
+        "root_env":  "true",
+        "root_env_example":  "false",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  null,
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  131,
+                             "text":  "ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED}"
+                         }
+    },
+    {
+        "variable":  "VITE_API_URL",
+        "root_env":  "/api",
+        "root_env_example":  "/api",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  "http://localhost:3000",
+        "frontend_env_example":  "/api",
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  151,
+                             "text":  "VITE_API_URL: ${VITE_API_URL}"
+                         }
+    },
+    {
+        "variable":  "VITE_APP_VERSION",
+        "root_env":  "dev",
+        "root_env_example":  "dev",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  "dev",
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  152,
+                             "text":  "VITE_APP_VERSION: ${VITE_APP_VERSION}"
+                         }
+    },
+    {
+        "variable":  "VITE_ENV",
+        "root_env":  "development",
+        "root_env_example":  "development",
+        "backend_env":  null,
+        "backend_env_example":  null,
+        "frontend_env":  null,
+        "frontend_env_example":  "development",
+        "compose_refs":  {
+                             "file":  "docker-compose.yml",
+                             "line":  153,
+                             "text":  "VITE_ENV: ${VITE_ENV}"
+                         }
+    }
+]

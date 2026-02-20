@@ -1,0 +1,3081 @@
+[
+    {
+        "variable":  "ALLOW_DEMO_SEED",
+        "usedIn":  [
+                       ".\\backend\\tests\\discoveryResilienceRoutes.demoSeed.test.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:131"
+                   ],
+        "values":  {
+                       "root_env":  "true",
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  131,
+                                            "text":  "ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "ALLOWED_SENSITIVE_DATA_TYPES",
+        "usedIn":  ".\\backend\\src\\services\\sensitiveDataScanService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "ip,email,phone,iban,secret",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ANALYZE",
+        "usedIn":  ".\\frontend\\vite.config.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ANTHROPIC_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\businessFlowRoutes.ts",
+                       ".\\backend\\src\\services\\ai-flow-suggester.service.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ANTHROPIC_MODEL",
+        "usedIn":  ".\\backend\\src\\services\\ai-flow-suggester.service.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "API_KEY_ROTATION_BATCH_SIZE",
+        "usedIn":  ".\\backend\\src\\services\\apiKeyRotationService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "API_KEY_ROTATION_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "API_PUBLIC_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\documentIngestionService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "API_URL",
+        "usedIn":  ".\\backend\\scripts\\discovery-cli.js",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "APP_ENV",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "development",
+                       "backend_env":  null,
+                       "backend_env_example":  "development",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AUTO_UPDATE_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_ACCESS_KEY_ID",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_DEFAULT_REGION",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "us-east-1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_PRICING_REGION",
+        "usedIn":  ".\\backend\\src\\services\\awsPricingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "us-east-1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_REGION",
+        "usedIn":  ".\\backend\\src\\services\\ocrService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "us-east-1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_SECRET_ACCESS_KEY",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_TEXTRACT_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\ocrService.ts",
+                       ".\\backend\\tests\\ocrService.test.js"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AWS_TEXTRACT_REGION",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\ocrService.ts",
+                       ".\\backend\\tests\\ocrService.test.js"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "us-east-1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AZURE_CLIENT_ID",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AZURE_CLIENT_SECRET",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "AZURE_TENANT_ID",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "BCRYPT_ROUNDS",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "12",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CACHE_PREFIX",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\classificationService.js",
+                       ".\\backend\\src\\services\\classificationService.ts",
+                       ".\\backend\\src\\services\\licenseService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CHROMADB_API_TOKEN",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\chromaClient.ts",
+                       ".\\backend\\src\\services\\documentIntelligenceService.js",
+                       ".\\backend\\src\\services\\documentIntelligenceService.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:114",
+                       "docker-compose.yml:85"
+                   ],
+        "values":  {
+                       "root_env":  "",
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  85,
+                                                "text":  "CHROMADB_API_TOKEN: ${CHROMADB_API_TOKEN}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  114,
+                                                "text":  "CHROMADB_API_TOKEN: ${CHROMADB_API_TOKEN}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "CHROMADB_COLLECTION",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\ragService.js",
+                       ".\\backend\\src\\ai\\ragService.ts",
+                       ".\\backend\\src\\services\\documentIntelligenceService.js",
+                       ".\\backend\\src\\services\\documentIntelligenceService.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:113",
+                       "docker-compose.yml:84"
+                   ],
+        "values":  {
+                       "root_env":  "pra-documents",
+                       "root_env_example":  "pra-documents",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  84,
+                                                "text":  "CHROMADB_COLLECTION: ${CHROMADB_COLLECTION}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  113,
+                                                "text":  "CHROMADB_COLLECTION: ${CHROMADB_COLLECTION}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "CHROMADB_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\chromaClient.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts",
+                       ".\\backend\\src\\services\\documentIntelligenceService.js",
+                       ".\\backend\\src\\services\\documentIntelligenceService.ts",
+                       ".\\backend\\tests\\documentIntelligenceIntegration.test.js",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:112",
+                       "docker-compose.yml:83"
+                   ],
+        "values":  {
+                       "root_env":  "http://chroma:8000",
+                       "root_env_example":  "http://chroma:8000",
+                       "backend_env":  null,
+                       "backend_env_example":  "http://localhost:8000",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  83,
+                                                "text":  "CHROMADB_URL: ${CHROMADB_URL}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  112,
+                                                "text":  "CHROMADB_URL: ${CHROMADB_URL}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "CIRCUIT_BREAKER_REDIS_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\circuitBreakerStore.js",
+                       ".\\backend\\src\\ai\\circuitBreakerStore.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CLASSIFICATION_CACHE_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\classificationService.js",
+                       ".\\backend\\src\\services\\classificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CLASSIFICATION_CACHE_TTL_SEC",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\classificationService.js",
+                       ".\\backend\\src\\services\\classificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "900",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "COMPOSE_DOCKER_CLI_BUILD",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:102",
+                       "docker-compose.yml:158",
+                       "docker-compose.yml:73"
+                   ],
+        "values":  {
+                       "root_env":  "1",
+                       "root_env_example":  "1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  73,
+                                                "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  102,
+                                                "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  158,
+                                                "text":  "COMPOSE_DOCKER_CLI_BUILD: ${COMPOSE_DOCKER_CLI_BUILD}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "CORS_ALLOW_NO_ORIGIN",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:109"
+                   ],
+        "values":  {
+                       "root_env":  "true",
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  109,
+                                            "text":  "CORS_ALLOW_NO_ORIGIN: ${CORS_ALLOW_NO_ORIGIN}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "CORS_ALLOWED_ORIGINS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\env.validation.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:107"
+                   ],
+        "values":  {
+                       "root_env":  "http://localhost:3000,http://127.0.0.1:3000",
+                       "root_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  107,
+                                            "text":  "CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "CORS_ORIGIN",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\env.validation.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:108"
+                   ],
+        "values":  {
+                       "root_env":  "http://localhost:3000",
+                       "root_env_example":  "http://localhost:3000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  108,
+                                            "text":  "CORS_ORIGIN: ${CORS_ORIGIN}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "CORS_ORIGINS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\env.validation.ts",
+                       ".\\backend\\src\\index.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:110"
+                   ],
+        "values":  {
+                       "root_env":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+                       "root_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+                       "backend_env":  null,
+                       "backend_env_example":  "http://localhost:3000,http://127.0.0.1:3000,http://localhost:5173",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  110,
+                                            "text":  "CORS_ORIGINS: ${CORS_ORIGINS}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "CREDENTIAL_ENCRYPTION_KEY",
+        "usedIn":  ".\\backend\\src\\routes\\discoveryResilienceRoutes.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "CHANGE_ME_HEX_64",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CREDENTIAL_ENCRYPTION_KEY_ENV",
+        "usedIn":  ".\\backend\\src\\utils\\credential-encryption.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CRON_API_KEY_ROTATION",
+        "usedIn":  ".\\backend\\src\\workers\\apiKeyRotationWorker.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0 */6 * * *",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CRON_DISCOVERY",
+        "usedIn":  ".\\backend\\src\\workers\\discoveryScheduler.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "*/30 * * * *",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CRON_DRIFT_CHECK",
+        "usedIn":  ".\\backend\\src\\workers\\driftScheduler.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0 6 * * 1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "CRON_LICENSE_RESET",
+        "usedIn":  ".\\backend\\src\\workers\\licenseQuotaResetWorker.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0 0 1 * *",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DATABASE_POOL_SIZE",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "10",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DATABASE_URL",
+        "usedIn":  ".\\backend\\prisma\\schema.prisma",
+        "values":  {
+                       "root_env":  "postgresql://pra_user:change_me_dev_only_please_override@postgres:5432/pra_platform?schema=public",
+                       "root_env_example":  "postgresql://stronghold:CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS@postgres:5432/stronghold?schema=public",
+                       "backend_env":  "postgresql://pra_user:change_me@localhost:5432/pra_platform?schema=public",
+                       "backend_env_example":  "postgresql://stronghold:CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS@localhost:5432/stronghold?schema=public",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DEMO_PRA_EXERCISE_KEY",
+        "usedIn":  ".\\backend\\src\\services\\demoOnboardingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DEMO_RUNBOOK_KEY",
+        "usedIn":  ".\\backend\\src\\services\\demoOnboardingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DEPLOYMENT_MODE",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "saas",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DISCOVERY_SCHEDULER_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DISCOVERY_SCHEDULER_INTERVAL_MS",
+        "usedIn":  ".\\backend\\src\\services\\discoveryScheduleService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "60000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DISCOVERY_SECRET",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\discoveryRoutes.ts",
+                       ".\\backend\\src\\workers\\discoveryWorker.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:127"
+                   ],
+        "values":  {
+                       "root_env":  "dev_discovery_secret_that_is_at_least_32_characters",
+                       "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  127,
+                                            "text":  "DISCOVERY_SECRET: ${DISCOVERY_SECRET}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "DISCOVERY_WORKER_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DLP_YARA_BIN",
+        "usedIn":  ".\\backend\\src\\services\\sensitiveDataScanService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "yara",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DLP_YARA_ENABLED",
+        "usedIn":  ".\\backend\\src\\services\\sensitiveDataScanService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DLP_YARA_RULES_PATH",
+        "usedIn":  ".\\backend\\src\\services\\sensitiveDataScanService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_ENDPOINT",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_LABEL_MAP",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_LABELS",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_MAX_CHARS",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "8000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_MODE",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "zero-shot",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_MODEL",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentClassificationFeedbackService.js",
+                       ".\\backend\\src\\services\\documentClassificationFeedbackService.ts",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "bert",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_PROVIDER",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "ml",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_CLASSIFICATION_TIMEOUT_MS",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentTypeClassificationService.js",
+                       ".\\backend\\src\\services\\documentTypeClassificationService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "8000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOC_RETENTION_DAYS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\observability.js",
+                       ".\\backend\\src\\config\\observability.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "180",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOCKER_BUILDKIT",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:101",
+                       "docker-compose.yml:157",
+                       "docker-compose.yml:72"
+                   ],
+        "values":  {
+                       "root_env":  "1",
+                       "root_env_example":  "1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  72,
+                                                "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  101,
+                                                "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  157,
+                                                "text":  "DOCKER_BUILDKIT: ${DOCKER_BUILDKIT}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "DOCUMENT_DIRECT_UPLOADS_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\documentRoutes.js",
+                       ".\\backend\\src\\routes\\documentRoutes.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOCUMENT_ENCRYPTION_SECRET",
+        "usedIn":  ".\\backend\\src\\services\\encryptionService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOCUMENT_INGESTION_QUEUE_MODE",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\documentIngestionService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "bullmq",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DOCUMENT_WORKER_ENABLED",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "DRIFT_CHECK_ENABLED",
+        "usedIn":  ".\\backend\\src\\index.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "EMBEDDING_RETENTION_DAYS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\observability.js",
+                       ".\\backend\\src\\config\\observability.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "365",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ENABLE_OCR",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\ocrService.ts",
+                       ".\\backend\\tests\\ocrService.test.js"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "EXTRACTION_FAILURE_ALERT_THRESHOLD",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\observability.js",
+                       ".\\backend\\src\\config\\observability.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0.2",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "FRONTEND_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:106"
+                   ],
+        "values":  {
+                       "root_env":  "http://localhost:3000",
+                       "root_env_example":  "http://localhost:3000",
+                       "backend_env":  null,
+                       "backend_env_example":  "http://localhost:3000",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  106,
+                                            "text":  "FRONTEND_URL: ${FRONTEND_URL}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "GCP_CATALOG_ENDPOINT",
+        "usedIn":  ".\\backend\\src\\services\\gcpPricingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "GCP_PRICING_API_KEY",
+        "usedIn":  ".\\backend\\src\\services\\gcpPricingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "GCP_SERVICE_ACCOUNT_KEY",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "HEALTHCHECK_RETRIES",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "2",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "HEALTHCHECK_RETRY_DELAY_MS",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "500",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "HEALTHCHECK_TIMEOUT_MS",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "2000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "HOST",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:105"
+                   ],
+        "values":  {
+                       "root_env":  "0.0.0.0",
+                       "root_env_example":  "0.0.0.0",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  105,
+                                            "text":  "HOST: ${HOST}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "IMPACT_LEVEL_MAX",
+        "usedIn":  ".\\backend\\src\\routes\\biaRoutes.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "JWT_EXPIRATION",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "24h",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "JWT_SECRET",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:124"
+                   ],
+        "values":  {
+                       "root_env":  "dev_jwt_secret_that_is_at_least_32_characters_long",
+                       "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  124,
+                                            "text":  "JWT_SECRET: ${JWT_SECRET}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "LICENSE_FILE_PATH",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "LICENSE_ISSUER",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "stronghold",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "LICENSE_QUOTA_RESET_ENABLED",
+        "usedIn":  ".\\backend\\src\\index.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "LICENSE_SIGNING_SECRET",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:126"
+                   ],
+        "values":  {
+                       "root_env":  "dev_license_signing_secret_that_is_at_least_sixty_four_characters_long_123",
+                       "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_64_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_64_CHARS",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  126,
+                                            "text":  "LICENSE_SIGNING_SECRET: ${LICENSE_SIGNING_SECRET}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "LLM_FAILURE_ALERT_THRESHOLD",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\observability.js",
+                       ".\\backend\\src\\config\\observability.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0.15",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "MASTER_KEY_ENV",
+        "usedIn":  ".\\backend\\src\\services\\secretVaultService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "MINIO_ROOT_PASSWORD",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:24"
+                   ],
+        "values":  {
+                       "root_env":  "change_me_minio_dev_only",
+                       "root_env_example":  "CHANGE_ME_MINIO_PASSWORD_20+_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  24,
+                                            "text":  "MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "MINIO_ROOT_USER",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:23"
+                   ],
+        "values":  {
+                       "root_env":  "minioadmin",
+                       "root_env_example":  "stronghold_minio",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  23,
+                                            "text":  "MINIO_ROOT_USER: ${MINIO_ROOT_USER}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "ML_TRAINING_ENABLED",
+        "usedIn":  ".\\backend\\src\\services\\mlTrainingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ML_TRAINING_FORCE",
+        "usedIn":  ".\\backend\\scripts\\retrainModels.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ML_TRAINING_INTERVAL_HOURS",
+        "usedIn":  ".\\backend\\src\\services\\mlTrainingService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "24",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "ML_TRAINING_TRIGGER",
+        "usedIn":  ".\\backend\\scripts\\retrainModels.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "N8N_ALERT_WEBHOOK_TOKEN",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\n8nAlertService.js",
+                       ".\\backend\\src\\services\\n8nAlertService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "N8N_ALERT_WEBHOOK_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\n8nAlertService.js",
+                       ".\\backend\\src\\services\\n8nAlertService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "N8N_INGESTION_CALLBACK_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\documentIngestionService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "N8N_INGESTION_TRIGGER_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\documentIngestionService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "N8N_WEBHOOK_TOKEN",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\webhookRoutes.js",
+                       ".\\backend\\src\\routes\\webhookRoutes.ts",
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\documentIngestionService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "NMAP_PATH",
+        "usedIn":  ".\\backend\\src\\services\\discoveryConnectors.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "NODE_ENV",
+        "usedIn":  [
+                       ".\\backend\\src\\filters\\global-exception.filter.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts",
+                       ".\\backend\\src\\services\\currency.service.ts",
+                       ".\\backend\\tests\\discoveryResilienceRoutes.demoSeed.test.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:103"
+                   ],
+        "values":  {
+                       "root_env":  "development",
+                       "root_env_example":  "development",
+                       "backend_env":  null,
+                       "backend_env_example":  "development",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  103,
+                                            "text":  "NODE_ENV: ${NODE_ENV}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "OCR_LANGS",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\documentIngestionService.js",
+                       ".\\backend\\src\\services\\ocrService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "eng+fra",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OCR_PROVIDER",
+        "usedIn":  [
+                       ".\\backend\\src\\services\\ocrService.ts",
+                       ".\\backend\\tests\\ocrService.test.js"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "tesseract",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OCR_TESSERACT_DOC_URL",
+        "usedIn":  ".\\backend\\src\\services\\ocrService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OPENAI_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.js",
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.ts",
+                       ".\\backend\\tests\\openAiAnalyzer.test.js"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OPENAI_CIRCUIT_BREAKER_OPEN_MS",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.js",
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "60000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OPENAI_CIRCUIT_BREAKER_THRESHOLD",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.js",
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0.5",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OPENAI_MODEL",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.js",
+                       ".\\backend\\src\\ai\\extractedFactsAnalyzer.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "gpt-4.1-mini",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OTEL_SERVICE_NAME",
+        "usedIn":  [
+                       ".\\backend\\src\\observability\\telemetry.js",
+                       ".\\backend\\src\\observability\\telemetry.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "stronghold-backend",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "OWNER_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\prisma\\seed.cjs",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:129",
+                       "docker-compose.yml:89"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  "",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  89,
+                                                "text":  "OWNER_API_KEY: ${OWNER_API_KEY:-}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  129,
+                                                "text":  "OWNER_API_KEY: ${OWNER_API_KEY:-}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "OWNER_EMAIL",
+        "usedIn":  [
+                       ".\\backend\\prisma\\seed.cjs",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:128"
+                   ],
+        "values":  {
+                       "root_env":  "mehdi@stronghold.io",
+                       "root_env_example":  "mehdi@stronghold.io",
+                       "backend_env":  null,
+                       "backend_env_example":  "mehdi@stronghold.io",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  128,
+                                            "text":  "OWNER_EMAIL: ${OWNER_EMAIL}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "OWNER_PASSWORD",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:130"
+                   ],
+        "values":  {
+                       "root_env":  "change_me_on_first_login",
+                       "root_env_example":  "CHANGE_ME_AT_FIRST_LOGIN",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  130,
+                                            "text":  "OWNER_PASSWORD: ${OWNER_PASSWORD}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "PORT",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:104"
+                   ],
+        "values":  {
+                       "root_env":  "4000",
+                       "root_env_example":  "4000",
+                       "backend_env":  null,
+                       "backend_env_example":  "4000",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  104,
+                                            "text":  "PORT: ${PORT}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "POSTGRES_DB",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:111",
+                       "docker-compose.yml:13",
+                       "docker-compose.yml:74",
+                       "docker-compose.yml:9"
+                   ],
+        "values":  {
+                       "root_env":  "pra_platform",
+                       "root_env_example":  "stronghold",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  9,
+                                                "text":  "POSTGRES_DB: ${POSTGRES_DB}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  13,
+                                                "text":  "test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}\"]"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  74,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  111,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "POSTGRES_PASSWORD",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:111",
+                       "docker-compose.yml:74",
+                       "docker-compose.yml:8"
+                   ],
+        "values":  {
+                       "root_env":  "change_me_dev_only_please_override",
+                       "root_env_example":  "CHANGE_ME_POSTGRES_PASSWORD_20+_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  8,
+                                                "text":  "POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  74,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  111,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "POSTGRES_USER",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:111",
+                       "docker-compose.yml:13",
+                       "docker-compose.yml:7",
+                       "docker-compose.yml:74"
+                   ],
+        "values":  {
+                       "root_env":  "pra_user",
+                       "root_env_example":  "stronghold",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  7,
+                                                "text":  "POSTGRES_USER: ${POSTGRES_USER}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  13,
+                                                "text":  "test: [\"CMD-SHELL\", \"pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}\"]"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  74,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  111,
+                                                "text":  "DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "RAG_CROSS_WEIGHTS",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\ragService.js",
+                       ".\\backend\\src\\ai\\ragService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "RAG_FUSION_ALPHA",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\ragService.js",
+                       ".\\backend\\src\\ai\\ragService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "0.5",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "RAG_RECALL_KS",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\ragService.js",
+                       ".\\backend\\src\\ai\\ragService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "5,10,20",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "RAG_RERANKING",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\ragService.js",
+                       ".\\backend\\src\\ai\\ragService.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "rrf",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "REDIS_PASSWORD",
+        "usedIn":  [
+                       ".\\backend\\src\\utils\\redisConnection.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:123",
+                       "docker-compose.yml:55",
+                       "docker-compose.yml:57",
+                       "docker-compose.yml:82"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "CHANGE_ME_REDIS_PASSWORD_20+_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  55,
+                                                "text":  "command: [\"redis-server\", \"--appendonly\", \"yes\", \"--requirepass\", \"${REDIS_PASSWORD}\"]"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  57,
+                                                "text":  "test: [\"CMD-SHELL\", \"redis-cli -a \\\"${REDIS_PASSWORD}\\\" ping\"]"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  82,
+                                                "text":  "REDIS_PASSWORD: ${REDIS_PASSWORD}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  123,
+                                                "text":  "REDIS_PASSWORD: ${REDIS_PASSWORD}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "REDIS_URL",
+        "usedIn":  [
+                       ".\\backend\\src\\ai\\circuitBreakerStore.js",
+                       ".\\backend\\src\\ai\\circuitBreakerStore.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\queues\\documentIngestionQueue.js",
+                       ".\\backend\\src\\services\\classificationService.js",
+                       ".\\backend\\src\\services\\classificationService.ts",
+                       ".\\backend\\src\\utils\\redisConnection.ts",
+                       ".\\backend\\tests\\financialMultiTenantE2E.test.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:122",
+                       "docker-compose.yml:81"
+                   ],
+        "values":  {
+                       "root_env":  "redis://redis:6379",
+                       "root_env_example":  "redis://:CHANGE_ME_REDIS_PASSWORD_20+_CHARS@redis:6379",
+                       "backend_env":  null,
+                       "backend_env_example":  "redis://localhost:6379",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  81,
+                                                "text":  "REDIS_URL: ${REDIS_URL}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  122,
+                                                "text":  "REDIS_URL: ${REDIS_URL}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "RUNBOOK_TEMPLATE_ALLOWED_MIME_TYPES",
+        "usedIn":  ".\\backend\\src\\routes\\runbookRoutes.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.oasis.opendocument.text,text/markdown",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "RUNBOOK_TEMPLATE_DIRECT_UPLOADS_ENABLED",
+        "usedIn":  ".\\backend\\src\\routes\\runbookRoutes.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "RUNBOOK_TEMPLATE_MAX_FILE_SIZE_MB",
+        "usedIn":  ".\\backend\\src\\routes\\runbookRoutes.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "10",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "S3_ACCESS_KEY_ID",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:117",
+                       "docker-compose.yml:77"
+                   ],
+        "values":  {
+                       "root_env":  "minioadmin",
+                       "root_env_example":  "CHANGE_ME_S3_ACCESS_KEY_ID",
+                       "backend_env":  null,
+                       "backend_env_example":  "CHANGE_ME_S3_ACCESS_KEY_ID",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  77,
+                                                "text":  "S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  117,
+                                                "text":  "S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_BUCKET_PREFIX",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:119",
+                       "docker-compose.yml:79"
+                   ],
+        "values":  {
+                       "root_env":  "stronghold-docs",
+                       "root_env_example":  "stronghold-docs",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  79,
+                                                "text":  "S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  119,
+                                                "text":  "S3_BUCKET_PREFIX: ${S3_BUCKET_PREFIX}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_ENDPOINT",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:115",
+                       "docker-compose.yml:75"
+                   ],
+        "values":  {
+                       "root_env":  "http://minio:9000",
+                       "root_env_example":  "http://minio:9000",
+                       "backend_env":  null,
+                       "backend_env_example":  "http://localhost:9000",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  75,
+                                                "text":  "S3_ENDPOINT: ${S3_ENDPOINT}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  115,
+                                                "text":  "S3_ENDPOINT: ${S3_ENDPOINT}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_FORCE_PATH_STYLE",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:120",
+                       "docker-compose.yml:80"
+                   ],
+        "values":  {
+                       "root_env":  "true",
+                       "root_env_example":  "true",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  80,
+                                                "text":  "S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  120,
+                                                "text":  "S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_REGION",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:116",
+                       "docker-compose.yml:76"
+                   ],
+        "values":  {
+                       "root_env":  "us-east-1",
+                       "root_env_example":  "us-east-1",
+                       "backend_env":  null,
+                       "backend_env_example":  "us-east-1",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  76,
+                                                "text":  "S3_REGION: ${S3_REGION}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  116,
+                                                "text":  "S3_REGION: ${S3_REGION}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_SECRET_ACCESS_KEY",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:118",
+                       "docker-compose.yml:78"
+                   ],
+        "values":  {
+                       "root_env":  "change_me_minio_dev_only",
+                       "root_env_example":  "CHANGE_ME_S3_SECRET_ACCESS_KEY",
+                       "backend_env":  null,
+                       "backend_env_example":  "CHANGE_ME_S3_SECRET_ACCESS_KEY",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  [
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  78,
+                                                "text":  "S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}"
+                                            },
+                                            {
+                                                "file":  "docker-compose.yml",
+                                                "line":  118,
+                                                "text":  "S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}"
+                                            }
+                                        ]
+                   }
+    },
+    {
+        "variable":  "S3_SERVER_SIDE_ENCRYPTION",
+        "usedIn":  ".\\backend\\src\\clients\\s3Client.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "S3_SIGNED_URL_TTL_SECONDS",
+        "usedIn":  [
+                       ".\\backend\\src\\clients\\s3Client.js",
+                       ".\\backend\\src\\clients\\s3Client.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:121"
+                   ],
+        "values":  {
+                       "root_env":  "900",
+                       "root_env_example":  "900",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  121,
+                                            "text":  "S3_SIGNED_URL_TTL_SECONDS: ${S3_SIGNED_URL_TTL_SECONDS}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "S3_SSE_ALGORITHM",
+        "usedIn":  ".\\backend\\src\\clients\\s3Client.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "S3_SSE_KMS_KEY_ID",
+        "usedIn":  ".\\backend\\src\\clients\\s3Client.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "SCENARIO_CATALOG_SOURCE_URL",
+        "usedIn":  ".\\backend\\src\\services\\scenarioCatalogService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "SEED_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\prisma\\seed.cjs",
+                       ".\\backend\\prisma\\seed-demo.ts",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:87"
+                   ],
+        "values":  {
+                       "root_env":  "dev_seed_api_key_for_local_runs",
+                       "root_env_example":  "CHANGE_ME_DEV_API_KEY",
+                       "backend_env":  "stronghold-dev-seed-2026",
+                       "backend_env_example":  "CHANGE_ME_DEV_API_KEY",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  87,
+                                            "text":  "SEED_API_KEY: ${SEED_API_KEY}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "SEED_ON_START",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:86"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  86,
+                                            "text":  "SEED_ON_START: ${SEED_ON_START:-true}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "SEED_PLAN",
+        "usedIn":  [
+                       ".\\backend\\prisma\\seed.cjs",
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:88"
+                   ],
+        "values":  {
+                       "root_env":  "PRO",
+                       "root_env_example":  "PRO",
+                       "backend_env":  null,
+                       "backend_env_example":  "PRO",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  88,
+                                            "text":  "SEED_PLAN: ${SEED_PLAN}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "SESSION_SECRET",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:125"
+                   ],
+        "values":  {
+                       "root_env":  "dev_session_secret_that_is_at_least_32_chars",
+                       "root_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "backend_env":  null,
+                       "backend_env_example":  "CHANGE_ME_IN_PRODUCTION_MIN_32_CHARS",
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  125,
+                                            "text":  "SESSION_SECRET: ${SESSION_SECRET}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "STRONGHOLD_API_KEY",
+        "usedIn":  [
+                       ".\\backend\\scripts\\discovery-cli.js",
+                       ".\\backend\\scripts\\import-github-discovery.mjs"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "STRONGHOLD_API_URL",
+        "usedIn":  ".\\backend\\scripts\\discovery-cli.js",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "STRONGHOLD_BACKEND_URL",
+        "usedIn":  ".\\backend\\scripts\\import-github-discovery.mjs",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_MAX_DOCUMENTS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "5000",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_MAX_RPM",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "1200",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_MAX_RUNBOOKS_PER_MONTH",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "200",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_MAX_STORAGE_GB",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "200",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_MAX_USERS",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "50",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "TENANT_SCHEMA_PREFIX",
+        "usedIn":  [
+                       ".\\backend\\src\\config\\deployment.js",
+                       ".\\backend\\src\\config\\deployment.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "tenant",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "UPLOAD_ALLOWED_MIME_TYPES",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\documentRoutes.js",
+                       ".\\backend\\src\\routes\\documentRoutes.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "application/pdf,text/plain,application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "UPLOAD_MAX_FILE_SIZE_MB",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\documentRoutes.js",
+                       ".\\backend\\src\\routes\\documentRoutes.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "25",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "UPLOAD_MAX_FILES",
+        "usedIn":  [
+                       ".\\backend\\src\\routes\\documentRoutes.js",
+                       ".\\backend\\src\\routes\\documentRoutes.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "1",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VAULT_ADDR",
+        "usedIn":  ".\\backend\\src\\services\\discoveryVaultService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VAULT_TOKEN",
+        "usedIn":  ".\\backend\\src\\services\\discoveryVaultService.ts",
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VECTOR_DB_OPTIONAL",
+        "usedIn":  [
+                       ".\\backend\\src\\index.js",
+                       ".\\backend\\src\\index.ts"
+                   ],
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  "false",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VITE_API_KEY",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  "dev-key",
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VITE_API_URL",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       ".\\frontend\\src\\api\\client.ts",
+                       ".\\frontend\\src\\lib\\constants.ts",
+                       ".\\frontend\\src\\pages\\SettingsPage.tsx",
+                       "docker-compose.yml:151"
+                   ],
+        "values":  {
+                       "root_env":  "/api",
+                       "root_env_example":  "/api",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  "http://localhost:3000",
+                       "frontend_env_example":  "/api",
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  151,
+                                            "text":  "VITE_API_URL: ${VITE_API_URL}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "VITE_APP_VERSION",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:152"
+                   ],
+        "values":  {
+                       "root_env":  "dev",
+                       "root_env_example":  "dev",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  "dev",
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  152,
+                                            "text":  "VITE_APP_VERSION: ${VITE_APP_VERSION}"
+                                        }
+                   }
+    },
+    {
+        "variable":  "VITE_BACKEND_URL",
+        "usedIn":  {
+
+                   },
+        "values":  {
+                       "root_env":  null,
+                       "root_env_example":  null,
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  "http://localhost:4000",
+                       "frontend_env_example":  null,
+                       "compose_refs":  {
+
+                                        }
+                   }
+    },
+    {
+        "variable":  "VITE_ENV",
+        "usedIn":  [
+                       ".\\docker-compose.yml",
+                       "docker-compose.yml:153"
+                   ],
+        "values":  {
+                       "root_env":  "development",
+                       "root_env_example":  "development",
+                       "backend_env":  null,
+                       "backend_env_example":  null,
+                       "frontend_env":  null,
+                       "frontend_env_example":  "development",
+                       "compose_refs":  {
+                                            "file":  "docker-compose.yml",
+                                            "line":  153,
+                                            "text":  "VITE_ENV: ${VITE_ENV}"
+                                        }
+                   }
+    }
+]

@@ -30,6 +30,8 @@ import {
   buildFinancialSummaryPayload,
   buildFinancialTrendPayload,
 } from '../services/financial-dashboard.service.js';
+import { CurrencyService } from '../services/currency.service.js';
+import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
 
 const router = Router();
 
@@ -75,6 +77,30 @@ function parseCurrency(rawCurrency: unknown): SupportedCurrency | undefined {
   const normalized = rawCurrency.toUpperCase();
   if ((SUPPORTED_CURRENCIES as readonly string[]).includes(normalized)) {
     return normalized as SupportedCurrency;
+  }
+  return undefined;
+}
+
+function parseNullableNumber(
+  value: unknown,
+  options?: { min?: number; max?: number },
+): number | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return undefined;
+  if (options?.min != null && parsed < options.min) return undefined;
+  if (options?.max != null && parsed > options.max) return undefined;
+  return parsed;
+}
+
+function normalizeProfileSource(
+  value: unknown,
+): 'user_input' | 'inferred' | 'hybrid' | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'user_input' || normalized === 'inferred' || normalized === 'hybrid') {
+    return normalized;
   }
   return undefined;
 }
@@ -358,6 +384,7 @@ router.post('/calculate-ale', requireCalcRateLimit, async (req: TenantRequest, r
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const stateSignature = await buildTenantStateSignature(tenantId);
     const payloadHash = buildPayloadHash(req.body);
@@ -437,6 +464,7 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const stateSignature = await buildTenantStateSignature(tenantId);
     const payloadHash = buildPayloadHash(req.body);
@@ -500,6 +528,7 @@ router.get('/node/:nodeId/flow-impact', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const nodeId = req.params.nodeId;
     if (!nodeId) return res.status(400).json({ error: 'nodeId is required' });
@@ -561,6 +590,7 @@ router.get('/node/:nodeId/flow-impact', async (req: TenantRequest, res) => {
         provider: node.provider,
       },
       flowImpact,
+      currency: flowImpact.currency,
       precisionBadge:
         flowImpact.method === 'user_override'
           ? 'override_user'
@@ -605,6 +635,7 @@ router.get('/node/:nodeId/impact', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const nodeId = req.params.nodeId;
     if (!nodeId) return res.status(400).json({ error: 'nodeId is required' });
@@ -675,6 +706,7 @@ router.post('/drift/:driftId/impact', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const driftId = req.params.driftId;
     if (!driftId) return res.status(400).json({ error: 'driftId is required' });
@@ -756,7 +788,11 @@ router.post('/drift/:driftId/impact', async (req: TenantRequest, res) => {
       currentState,
     );
 
-    return res.json(impact);
+    const currency = nodeImpact?.breakdown.currency || String(profile?.customCurrency || 'EUR').toUpperCase();
+    return res.json({
+      ...impact,
+      currency,
+    });
   } catch (error) {
     appLogger.error('Error calculating drift impact', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -767,6 +803,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const stateSignature = await buildTenantStateSignature(tenantId);
     const payloadHash = buildPayloadHash({ currency: req.query.currency });
@@ -793,6 +830,7 @@ router.get('/trend', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const monthsRaw = Number(req.query.months);
     const months =
@@ -827,19 +865,39 @@ router.get('/org-profile', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const profile = await prisma.organizationProfile.findUnique({ where: { tenantId } });
-    if (!profile) {
-      return res.json({
-        tenantId,
-        sizeCategory: 'midMarket',
-        customCurrency: 'EUR',
-        isConfigured: false,
-      });
-    }
-
+    const [profile, resolved] = await Promise.all([
+      prisma.organizationProfile.findUnique({ where: { tenantId } }),
+      resolveCompanyFinancialProfile(prisma, tenantId, {
+        preferredCurrency: req.query.currency,
+      }),
+    ]);
+    const annualRevenueUsd =
+      profile?.annualRevenueUSD ??
+      (resolved.annualRevenue
+        ? CurrencyService.convertAmount(resolved.annualRevenue, resolved.currency, 'USD')
+        : null);
     return res.json({
-      ...profile,
-      isConfigured: true,
+      tenantId,
+      sizeCategory: resolved.sizeCategory,
+      verticalSector: profile?.verticalSector ?? null,
+      employeeCount: resolved.employeeCount,
+      annualRevenueUSD: annualRevenueUsd ? Math.round(annualRevenueUsd) : null,
+      annualRevenue: resolved.annualRevenue,
+      industrySector: resolved.industrySector,
+      annualITBudget: resolved.annualITBudget,
+      drBudgetPercent: resolved.drBudgetPercent,
+      hourlyDowntimeCost: resolved.hourlyDowntimeCost,
+      customDowntimeCostPerHour: resolved.customDowntimeCostPerHour,
+      customCurrency: resolved.currency,
+      strongholdPlanId: resolved.strongholdPlanId,
+      strongholdMonthlyCost: resolved.strongholdMonthlyCost,
+      isConfigured: resolved.isConfigured,
+      profileSource: resolved.source,
+      profileConfidence: resolved.confidence,
+      sourceDisclaimer: resolved.sourceDisclaimer,
+      inferenceBanner: resolved.inferenceBanner,
+      fieldSources: resolved.fieldSources,
+      estimatedDrBudgetAnnual: resolved.estimatedDrBudgetAnnual,
     });
   } catch (error) {
     appLogger.error('Error fetching organization profile', error);
@@ -851,6 +909,7 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const sizeCategoryRaw = req.body?.sizeCategory;
     const sizeCategory =
@@ -858,7 +917,68 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
         ? sizeCategoryRaw
         : undefined;
 
-    const currency = parseCurrency(req.body?.customCurrency);
+    const existingProfile = await prisma.organizationProfile.findUnique({ where: { tenantId } });
+    const currency =
+      parseCurrency(req.body?.customCurrency) ||
+      parseCurrency(existingProfile?.customCurrency) ||
+      'EUR';
+
+    const employeeCountInput = parseNullableNumber(req.body?.employeeCount, { min: 0 });
+    const annualRevenueUsdInput = parseNullableNumber(req.body?.annualRevenueUSD, { min: 0 });
+    const annualRevenueInput = parseNullableNumber(req.body?.annualRevenue, { min: 0 });
+    const annualItBudgetInput = parseNullableNumber(req.body?.annualITBudget, { min: 0 });
+    const drBudgetPercentInput = parseNullableNumber(req.body?.drBudgetPercent, { min: 0, max: 100 });
+    const hourlyDowntimeCostInput = parseNullableNumber(req.body?.hourlyDowntimeCost, { min: 0 });
+    const legacyDowntimeInput = parseNullableNumber(req.body?.customDowntimeCostPerHour, { min: 0 });
+    const strongholdMonthlyCostInput = parseNullableNumber(req.body?.strongholdMonthlyCost, { min: 0 });
+    const profileConfidenceInput = parseNullableNumber(req.body?.profileConfidence, { min: 0, max: 1 });
+
+    const revenueFromAnnual =
+      annualRevenueInput != null
+        ? CurrencyService.convertAmount(annualRevenueInput, currency, 'USD')
+        : undefined;
+    const annualRevenueUsdResolved =
+      annualRevenueUsdInput !== undefined
+        ? annualRevenueUsdInput
+        : revenueFromAnnual !== undefined
+          ? revenueFromAnnual
+          : undefined;
+
+    const verticalSectorInput =
+      req.body?.verticalSector === null
+        ? null
+        : typeof req.body?.verticalSector === 'string'
+          ? req.body.verticalSector
+          : undefined;
+    const industrySectorInput =
+      req.body?.industrySector === null
+        ? null
+        : typeof req.body?.industrySector === 'string'
+          ? req.body.industrySector
+          : undefined;
+    const profileSourceInput = normalizeProfileSource(req.body?.profileSource);
+
+    const userProvidedFinancialFields = [
+      employeeCountInput,
+      annualRevenueUsdInput,
+      annualRevenueInput,
+      annualItBudgetInput,
+      drBudgetPercentInput,
+      hourlyDowntimeCostInput,
+      legacyDowntimeInput,
+      industrySectorInput,
+      verticalSectorInput,
+    ].some((value) => value !== undefined);
+    const resolvedProfileSource =
+      profileSourceInput ??
+      (userProvidedFinancialFields
+        ? existingProfile?.profileSource === 'inferred'
+          ? 'hybrid'
+          : 'user_input'
+        : undefined);
+    const resolvedProfileConfidence =
+      profileConfidenceInput ??
+      (userProvidedFinancialFields ? 0.85 : undefined);
 
     const profile = await prisma.organizationProfile.upsert({
       where: { tenantId },
@@ -870,59 +990,92 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
             ? req.body.verticalSector
             : null,
         employeeCount:
-          Number.isFinite(req.body?.employeeCount) && req.body.employeeCount >= 0
-            ? Number(req.body.employeeCount)
-            : null,
+          employeeCountInput !== undefined ? employeeCountInput : null,
         annualRevenueUSD:
-          Number.isFinite(req.body?.annualRevenueUSD) && req.body.annualRevenueUSD >= 0
-            ? Number(req.body.annualRevenueUSD)
-            : null,
+          annualRevenueUsdResolved !== undefined ? annualRevenueUsdResolved : null,
+        annualRevenue:
+          annualRevenueInput !== undefined ? annualRevenueInput : null,
+        industrySector: industrySectorInput !== undefined ? industrySectorInput : null,
+        annualITBudget:
+          annualItBudgetInput !== undefined ? annualItBudgetInput : null,
+        drBudgetPercent:
+          drBudgetPercentInput !== undefined ? drBudgetPercentInput : null,
+        hourlyDowntimeCost:
+          hourlyDowntimeCostInput !== undefined
+            ? hourlyDowntimeCostInput
+            : legacyDowntimeInput !== undefined
+              ? legacyDowntimeInput
+              : null,
         customDowntimeCostPerHour:
-          Number.isFinite(req.body?.customDowntimeCostPerHour) &&
-          req.body.customDowntimeCostPerHour > 0
-            ? Number(req.body.customDowntimeCostPerHour)
-            : null,
-        customCurrency: currency || 'EUR',
+          legacyDowntimeInput !== undefined
+            ? legacyDowntimeInput
+            : hourlyDowntimeCostInput !== undefined
+              ? hourlyDowntimeCostInput
+              : null,
+        customCurrency: currency,
+        profileSource: resolvedProfileSource ?? 'inferred',
+        profileConfidence: resolvedProfileConfidence ?? 0.4,
+        ...(userProvidedFinancialFields || resolvedProfileSource
+          ? {
+              profileMetadata: {
+                lastManualUpdateAt: new Date().toISOString(),
+                hasUserOverrides: Boolean(userProvidedFinancialFields),
+              },
+            }
+          : {}),
         strongholdPlanId:
           typeof req.body?.strongholdPlanId === 'string'
             ? req.body.strongholdPlanId
             : null,
-        strongholdMonthlyCost:
-          Number.isFinite(req.body?.strongholdMonthlyCost) && req.body.strongholdMonthlyCost >= 0
-            ? Number(req.body.strongholdMonthlyCost)
-            : null,
+        strongholdMonthlyCost: strongholdMonthlyCostInput ?? null,
       },
       update: {
         ...(sizeCategory ? { sizeCategory } : {}),
-        ...(typeof req.body?.verticalSector === 'string'
-          ? { verticalSector: req.body.verticalSector }
+        ...(verticalSectorInput !== undefined
+          ? { verticalSector: verticalSectorInput }
           : {}),
-        ...(req.body?.employeeCount === null
-          ? { employeeCount: null }
-          : Number.isFinite(req.body?.employeeCount) && req.body.employeeCount >= 0
-            ? { employeeCount: Number(req.body.employeeCount) }
-            : {}),
-        ...(req.body?.annualRevenueUSD === null
-          ? { annualRevenueUSD: null }
-          : Number.isFinite(req.body?.annualRevenueUSD) && req.body.annualRevenueUSD >= 0
-            ? { annualRevenueUSD: Number(req.body.annualRevenueUSD) }
-            : {}),
-        ...(req.body?.customDowntimeCostPerHour === null
-          ? { customDowntimeCostPerHour: null }
-          : Number.isFinite(req.body?.customDowntimeCostPerHour) &&
-              req.body.customDowntimeCostPerHour > 0
-            ? { customDowntimeCostPerHour: Number(req.body.customDowntimeCostPerHour) }
+        ...(employeeCountInput !== undefined
+          ? { employeeCount: employeeCountInput }
+          : {}),
+        ...(annualRevenueUsdResolved !== undefined
+          ? { annualRevenueUSD: annualRevenueUsdResolved }
+          : {}),
+        ...(annualRevenueInput !== undefined ? { annualRevenue: annualRevenueInput } : {}),
+        ...(industrySectorInput !== undefined ? { industrySector: industrySectorInput } : {}),
+        ...(annualItBudgetInput !== undefined ? { annualITBudget: annualItBudgetInput } : {}),
+        ...(drBudgetPercentInput !== undefined ? { drBudgetPercent: drBudgetPercentInput } : {}),
+        ...(hourlyDowntimeCostInput !== undefined
+          ? { hourlyDowntimeCost: hourlyDowntimeCostInput }
+          : {}),
+        ...(legacyDowntimeInput !== undefined
+          ? { customDowntimeCostPerHour: legacyDowntimeInput }
+          : hourlyDowntimeCostInput !== undefined
+            ? { customDowntimeCostPerHour: hourlyDowntimeCostInput }
             : {}),
         ...(currency ? { customCurrency: currency } : {}),
+        ...(resolvedProfileSource ? { profileSource: resolvedProfileSource } : {}),
+        ...(resolvedProfileConfidence != null
+          ? { profileConfidence: resolvedProfileConfidence }
+          : {}),
+        ...(userProvidedFinancialFields || resolvedProfileSource
+          ? {
+              profileMetadata: {
+                ...(typeof existingProfile?.profileMetadata === 'object' &&
+                existingProfile?.profileMetadata &&
+                !Array.isArray(existingProfile.profileMetadata)
+                  ? (existingProfile.profileMetadata as Record<string, unknown>)
+                  : {}),
+                lastManualUpdateAt: new Date().toISOString(),
+                hasUserOverrides: true,
+              },
+            }
+          : {}),
         ...(typeof req.body?.strongholdPlanId === 'string'
           ? { strongholdPlanId: req.body.strongholdPlanId }
           : {}),
-        ...(req.body?.strongholdMonthlyCost === null
-          ? { strongholdMonthlyCost: null }
-          : Number.isFinite(req.body?.strongholdMonthlyCost) &&
-              req.body.strongholdMonthlyCost >= 0
-            ? { strongholdMonthlyCost: Number(req.body.strongholdMonthlyCost) }
-            : {}),
+        ...(strongholdMonthlyCostInput !== undefined
+          ? { strongholdMonthlyCost: strongholdMonthlyCostInput }
+          : {}),
       },
     });
 

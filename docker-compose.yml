@@ -149,6 +149,7 @@ services:
       target: runtime
       args:
         VITE_API_URL: ${VITE_API_URL}
+        VITE_API_KEY: ${VITE_API_KEY}
         VITE_APP_VERSION: ${VITE_APP_VERSION}
         VITE_ENV: ${VITE_ENV}
     image: stronghold-frontend

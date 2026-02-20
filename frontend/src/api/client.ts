@@ -34,7 +34,8 @@ export const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const apiKey = getStoredApiKey();
+  const fallbackApiKey = (import.meta.env.VITE_API_KEY as string | undefined)?.trim();
+  const apiKey = getStoredApiKey() || fallbackApiKey;
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }

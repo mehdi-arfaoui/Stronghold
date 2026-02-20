@@ -14,10 +14,28 @@ export function formatPercentage(value: number): string {
   return `${Math.round(value * 100) / 100}%`;
 }
 
-export function formatCurrency(amount: number): string {
-  if (amount >= 1000000) return `${(amount / 1000000).toFixed(1)}M\u20AC`;
-  if (amount >= 1000) return `${(amount / 1000).toFixed(0)}K\u20AC`;
-  return `${amount}\u20AC`;
+export function formatCurrency(amount: number, currency: string, locale = 'fr-FR'): string {
+  const safeAmount = Number.isFinite(amount) ? amount : 0;
+  const safeCurrency =
+    typeof currency === 'string' && currency.trim().length > 0
+      ? currency.toUpperCase()
+      : 'EUR';
+  const useCompact = Math.abs(safeAmount) >= 1_000;
+  const options: Intl.NumberFormatOptions = {
+    style: 'currency',
+    currency: safeCurrency,
+    maximumFractionDigits: useCompact ? 1 : 0,
+    ...(useCompact ? { notation: 'compact', compactDisplay: 'short' } : {}),
+  };
+
+  try {
+    return new Intl.NumberFormat(locale, options).format(safeAmount);
+  } catch {
+    return new Intl.NumberFormat(locale, {
+      ...options,
+      currency: 'EUR',
+    }).format(safeAmount);
+  }
 }
 
 export function formatRelativeTime(date: Date | string): string {

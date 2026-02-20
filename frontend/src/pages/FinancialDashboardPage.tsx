@@ -16,10 +16,13 @@ import { toast } from 'sonner';
 import {
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   Legend,
   Line,
   LineChart,
+  Pie,
+  PieChart,
   ReferenceDot,
   ResponsiveContainer,
   Tooltip,
@@ -28,6 +31,7 @@ import {
 } from 'recharts';
 
 import { financialApi } from '@/api/financial.api';
+import { recommendationsApi } from '@/api/recommendations.api';
 import { reportsApi } from '@/api/reports.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
@@ -54,7 +58,8 @@ function formatCompactMoney(value: number, currency: string): string {
   }).format(value);
 }
 
-function formatPercent(value: number): string {
+function formatPercentNullable(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return 'Non applicable';
   return `${value.toFixed(1)}%`;
 }
 
@@ -130,6 +135,11 @@ function FinancialDashboardInner() {
     queryFn: async () => (await financialApi.getFlowCoverage()).data,
     staleTime: 60_000,
   });
+  const recommendationsSummaryQuery = useQuery({
+    queryKey: ['recommendations-summary', tenantScope],
+    queryFn: async () => (await recommendationsApi.getSummary()).data,
+    staleTime: 60_000,
+  });
 
   useEffect(() => {
     if (!orgProfileQuery.isSuccess || wizardAutoOpened) return;
@@ -150,13 +160,13 @@ function FinancialDashboardInner() {
   const currency = summary?.currency || 'EUR';
   const financialPrecision = summary?.financialPrecision;
   const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
-  const paybackMonths = summary?.metrics.paybackMonths ?? -1;
-  const paybackValue = paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
+  const paybackMonths = summary?.metrics.paybackMonths ?? null;
+  const paybackValue =
+    paybackMonths != null && paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
   const paybackSubtitle =
-    paybackMonths > 0
+    paybackMonths != null && paybackMonths > 0
       ? 'Temps de retour sur investissement'
       : 'Les gains annuels estimes ne couvrent pas les couts';
-
   const chartData = useMemo(() => {
     if (!summary) return [];
     return [
@@ -172,6 +182,15 @@ function FinancialDashboardInner() {
       },
     ];
   }, [summary]);
+  const strategySplitData = useMemo(() => {
+    const annualCostByStrategy = recommendationsSummaryQuery.data?.annualCostByStrategy ?? {};
+    const shareByStrategy = recommendationsSummaryQuery.data?.costSharePercentByStrategy ?? {};
+    return Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => ({
+      strategy,
+      annualCost: Number(annualCost) || 0,
+      share: Number(shareByStrategy[strategy] ?? 0),
+    }));
+  }, [recommendationsSummaryQuery.data?.annualCostByStrategy, recommendationsSummaryQuery.data?.costSharePercentByStrategy]);
 
   const trendData = useMemo(() => {
     const points = trendQuery.data?.points ?? [];
@@ -352,6 +371,11 @@ function FinancialDashboardInner() {
           </div>
         </div>
       )}
+      {orgProfileQuery.data?.inferenceBanner && (
+        <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-blue-900">
+          <p className="text-sm font-medium">{orgProfileQuery.data.inferenceBanner}</p>
+        </div>
+      )}
 
       {flowCoverage && lowFlowCoverage && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
@@ -422,7 +446,7 @@ function FinancialDashboardInner() {
         />
         <KpiCard
           title="ROI estime"
-          value={formatPercent(summary.metrics.roiPercent)}
+          value={formatPercentNullable(summary.metrics.roiPercent)}
           subtitle="Retour sur investissement annuel net"
           icon={TrendingUp}
           tone="roi"
@@ -435,7 +459,6 @@ function FinancialDashboardInner() {
           tone="payback"
         />
       </div>
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -465,6 +488,52 @@ function FinancialDashboardInner() {
           </p>
         </CardContent>
       </Card>
+      {strategySplitData.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Repartition budget DR par strategie</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-6 lg:grid-cols-2">
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={strategySplitData}
+                    dataKey="annualCost"
+                    nameKey="strategy"
+                    innerRadius={55}
+                    outerRadius={95}
+                    label={(entry: any) =>
+                      `${String(entry?.strategy || '')} ${Number(entry?.share ?? 0).toFixed(1)}%`
+                    }
+                  >
+                    {strategySplitData.map((entry, index) => (
+                      <Cell
+                        key={`${entry.strategy}-${index}`}
+                        fill={['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6'][index % 5]}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(value) => formatMoney(Number(value), currency)} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-2 text-sm">
+              {strategySplitData.map((entry) => (
+                <div key={entry.strategy} className="rounded border px-3 py-2">
+                  <p className="font-medium">{entry.strategy}</p>
+                  <p className="text-muted-foreground">
+                    {formatMoney(entry.annualCost, currency)} / an ({entry.share.toFixed(1)}%)
+                  </p>
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">
+                Budget DR estime: {formatMoney(recommendationsSummaryQuery.data?.budgetAnnual ?? 0, currency)}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>
@@ -644,6 +713,13 @@ function FinancialDashboardInner() {
               <li key={source}>- {source}</li>
             ))}
           </ul>
+          {recommendationsSummaryQuery.data?.financialDisclaimers && (
+            <div className="rounded border bg-muted/20 p-3 text-xs text-muted-foreground">
+              <p>Strategies DR: {recommendationsSummaryQuery.data.financialDisclaimers.strategy}</p>
+              <p>Probabilites: {recommendationsSummaryQuery.data.financialDisclaimers.probability}</p>
+              <p>Couts infra: {recommendationsSummaryQuery.data.financialDisclaimers.serviceCost}</p>
+            </div>
+          )}
         </CardContent>
       </Card>
 

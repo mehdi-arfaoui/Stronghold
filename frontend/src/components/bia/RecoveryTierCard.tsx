@@ -8,6 +8,7 @@ interface RecoveryTierCardProps {
   rtoRange: string;
   serviceCount: number;
   financialImpact: number;
+  currency: string;
 }
 
 const TIER_STYLES: Record<number, string> = {
@@ -17,7 +18,14 @@ const TIER_STYLES: Record<number, string> = {
   4: 'border-l-severity-low',
 };
 
-export function RecoveryTierCard({ tier, label, rtoRange, serviceCount, financialImpact }: RecoveryTierCardProps) {
+export function RecoveryTierCard({
+  tier,
+  label,
+  rtoRange,
+  serviceCount,
+  financialImpact,
+  currency,
+}: RecoveryTierCardProps) {
   return (
     <Card className={cn('border-l-4', TIER_STYLES[tier] || 'border-l-muted')}>
       <CardContent className="p-4">
@@ -33,7 +41,7 @@ export function RecoveryTierCard({ tier, label, rtoRange, serviceCount, financia
         </div>
         <div className="mt-3 flex justify-between text-xs text-muted-foreground">
           <span>RTO {rtoRange}</span>
-          {financialImpact > 0 && <span>Impact: {formatCurrency(financialImpact)}/h</span>}
+          {financialImpact > 0 && <span>Impact: {formatCurrency(financialImpact, currency)}/h</span>}
         </div>
       </CardContent>
     </Card>

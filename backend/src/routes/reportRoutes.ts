@@ -211,8 +211,9 @@ function formatCurrencyValue(value: number, currency: string): string {
   }
 }
 
-function formatPercent(value: number): string {
-  return `${Number(value || 0).toFixed(1)}%`;
+function formatPercent(value: number | null | undefined): string {
+  if (!Number.isFinite(value as number)) return 'N/A';
+  return `${Number(value).toFixed(1)}%`;
 }
 
 function buildHexagonPath(cx: number, cy: number, radius: number): string {
@@ -446,8 +447,8 @@ export async function renderFinancialExecutiveSummaryPdf(options: {
   currency: string;
   annualRisk: number;
   potentialSavings: number;
-  roiPercent: number;
-  paybackMonths: number;
+  roiPercent: number | null;
+  paybackMonths: number | null;
   projectedAle: number;
   annualRemediationCost: number;
   topSpofs: Array<{
@@ -548,8 +549,14 @@ export async function renderFinancialExecutiveSummaryPdf(options: {
     width: cardWidth,
     height: cardHeight,
     title: 'Payback',
-    value: options.paybackMonths > 0 ? `${options.paybackMonths.toFixed(1)} months` : 'N/A',
-    subtitle: options.paybackMonths > 0 ? 'Investment return horizon' : 'Not profitable',
+    value:
+      typeof options.paybackMonths === 'number' && options.paybackMonths > 0
+        ? `${options.paybackMonths.toFixed(1)} months`
+        : 'N/A',
+    subtitle:
+      typeof options.paybackMonths === 'number' && options.paybackMonths > 0
+        ? 'Investment return horizon'
+        : 'Not profitable',
     valueColor: rgb(0.73, 0.35, 0.03),
     titleFont: fontBold,
     valueFont: fontBold,

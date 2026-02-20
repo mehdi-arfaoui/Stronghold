@@ -278,6 +278,7 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
 
   const flow = flowQuery.data;
   const graph = graphQuery.data;
+  const currency = String(flow?.currency || flow?.computedCost?.currency || 'EUR').toUpperCase();
   const graphNodes = graph?.nodes || [];
   const graphEdges = graph?.edges || [];
   const flowNodesSorted = useMemo(
@@ -785,11 +786,11 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
 
             <div className="rounded-md border bg-muted/25 p-3 text-sm">
               <p className="font-medium">Total</p>
-              <p>Direct: {formatMoney(currentPreview.directCostPerHour)}</p>
-              <p>SLA: {formatMoney(currentPreview.slaPenaltyPerHour)}</p>
-              <p>Indirect: {formatMoney(currentPreview.indirectCostPerHour)}</p>
-              <p className="font-semibold">Total: {formatMoney(currentPreview.totalCostPerHour)}</p>
-              <p className="font-semibold">Total peak: {formatMoney(currentPreview.peakCostPerHour)}</p>
+              <p>Direct: {formatMoney(currentPreview.directCostPerHour, currency)}</p>
+              <p>SLA: {formatMoney(currentPreview.slaPenaltyPerHour, currency)}</p>
+              <p>Indirect: {formatMoney(currentPreview.indirectCostPerHour, currency)}</p>
+              <p className="font-semibold">Total: {formatMoney(currentPreview.totalCostPerHour, currency)}</p>
+              <p className="font-semibold">Total peak: {formatMoney(currentPreview.peakCostPerHour, currency)}</p>
             </div>
           </CardContent>
         </Card>

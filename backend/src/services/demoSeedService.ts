@@ -214,7 +214,13 @@ const nodes: NodeDef[] = [
     provider: "aws",
     region: "eu-west-1",
     tags: { app: "shopmax", tier: "frontend", team: "platform" },
-    metadata: { replicas: 3, image: "shopmax/api-gateway:2.4.1", cpu: "500m", memory: "512Mi" },
+    metadata: {
+      replicas: 3,
+      image: "shopmax/api-gateway:2.4.1",
+      cpu: "500m",
+      memory: "512Mi",
+      drMonthlyCostOverride: 260,
+    },
   },
   {
     id: "svc-payment",
@@ -274,7 +280,13 @@ const nodes: NodeDef[] = [
     provider: "aws",
     region: "eu-west-1",
     tags: { app: "shopmax", tier: "frontend", team: "internal" },
-    metadata: { replicas: 1, image: "shopmax/admin:2.1.0", cpu: "250m", memory: "256Mi" },
+    metadata: {
+      replicas: 1,
+      image: "shopmax/admin:2.1.0",
+      cpu: "250m",
+      memory: "256Mi",
+      drMonthlyCostOverride: 520,
+    },
   },
 
   // -- DATABASES --
@@ -291,6 +303,7 @@ const nodes: NodeDef[] = [
       engine: "PostgreSQL 15.4", instanceType: "db.r6g.large",
       isMultiAZ: false, replicaCount: 0,
       isPubliclyAccessible: false, status: "available", storageGB: 500, iops: 3000,
+      drMonthlyCostOverride: 210,
     },
   },
   {
@@ -374,6 +387,7 @@ const nodes: NodeDef[] = [
     metadata: {
       engine: "Redis 7.0", instanceType: "cache.r6g.large",
       isMultiAZ: false, replicaCount: 0, status: "available",
+      drMonthlyCostOverride: 140,
     },
   },
 
@@ -502,6 +516,7 @@ const nodes: NodeDef[] = [
     metadata: {
       ip: "192.168.1.50", os: "Windows Server 2016",
       cpu: "Xeon E5-2680 v4", memoryGB: 64, status: "running",
+      drMonthlyCostOverride: 2600,
     },
   },
   {
@@ -759,6 +774,20 @@ async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) 
       tenantId,
       sizeCategory: 'midMarket',
       verticalSector: 'retail_ecommerce',
+      industrySector: 'retail_ecommerce',
+      employeeCount: 200,
+      annualRevenueUSD: 32_500_000,
+      annualRevenue: 30_000_000,
+      annualITBudget: 1_500_000,
+      drBudgetPercent: 4,
+      hourlyDowntimeCost: 25_000,
+      profileSource: 'user_input',
+      profileConfidence: 0.95,
+      profileMetadata: {
+        seededBy: 'demo-seed',
+        note: 'ShopMax ETI ecommerce reference profile',
+      },
+      customDowntimeCostPerHour: 25_000,
       customCurrency: 'EUR',
       strongholdPlanId: 'PRO',
       strongholdMonthlyCost: 800,
@@ -766,6 +795,20 @@ async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) 
     update: {
       sizeCategory: 'midMarket',
       verticalSector: 'retail_ecommerce',
+      industrySector: 'retail_ecommerce',
+      employeeCount: 200,
+      annualRevenueUSD: 32_500_000,
+      annualRevenue: 30_000_000,
+      annualITBudget: 1_500_000,
+      drBudgetPercent: 4,
+      hourlyDowntimeCost: 25_000,
+      profileSource: 'user_input',
+      profileConfidence: 0.95,
+      profileMetadata: {
+        seededBy: 'demo-seed',
+        note: 'ShopMax ETI ecommerce reference profile',
+      },
+      customDowntimeCostPerHour: 25_000,
       customCurrency: 'EUR',
       strongholdPlanId: 'PRO',
       strongholdMonthlyCost: 800,
@@ -1050,24 +1093,35 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
           summary: biaReport.summary as Prisma.InputJsonValue,
           tenantId,
           processes: {
-            create: biaReport.processes.map((processItem) => ({
-              serviceNodeId: processItem.serviceNodeId,
-              serviceName: processItem.serviceName,
-              serviceType: processItem.serviceType,
-              suggestedMAO: processItem.suggestedMAO,
-              suggestedMTPD: processItem.suggestedMTPD,
-              suggestedRTO: processItem.suggestedRTO,
-              suggestedRPO: processItem.suggestedRPO,
-              suggestedMBCO: processItem.suggestedMBCO,
-              impactCategory: processItem.impactCategory,
-              criticalityScore: processItem.criticalityScore,
-              recoveryTier: processItem.recoveryTier,
-              dependencyChain: processItem.dependencyChain as unknown as Prisma.InputJsonValue,
-              weakPoints: processItem.weakPoints as unknown as Prisma.InputJsonValue,
-              financialImpact: processItem.financialImpact as unknown as Prisma.InputJsonValue,
-              validationStatus: 'pending',
-              tenantId,
-            })),
+            create: biaReport.processes.map((processItem) => {
+              const isValidated =
+                (processItem.recoveryTier ?? 4) <= 2 ||
+                ['db-payment', 'redis-main', 'svc-api-gateway', 'erp-server'].includes(
+                  processItem.serviceNodeId,
+                );
+
+              return {
+                serviceNodeId: processItem.serviceNodeId,
+                serviceName: processItem.serviceName,
+                serviceType: processItem.serviceType,
+                suggestedMAO: processItem.suggestedMAO,
+                suggestedMTPD: processItem.suggestedMTPD,
+                suggestedRTO: processItem.suggestedRTO,
+                suggestedRPO: processItem.suggestedRPO,
+                suggestedMBCO: processItem.suggestedMBCO,
+                impactCategory: processItem.impactCategory,
+                criticalityScore: processItem.criticalityScore,
+                recoveryTier: processItem.recoveryTier,
+                dependencyChain: processItem.dependencyChain as unknown as Prisma.InputJsonValue,
+                weakPoints: processItem.weakPoints as unknown as Prisma.InputJsonValue,
+                financialImpact: processItem.financialImpact as unknown as Prisma.InputJsonValue,
+                validatedRTO: isValidated ? processItem.suggestedRTO : null,
+                validatedRPO: isValidated ? processItem.suggestedRPO : null,
+                validatedMTPD: isValidated ? processItem.suggestedMTPD : null,
+                validationStatus: isValidated ? 'validated' : 'pending',
+                tenantId,
+              };
+            }),
           },
         },
       });

@@ -1519,6 +1519,13 @@ model InfraNode {
   impactCategory         String?
   financialImpactPerHour Float?
 
+  // Financial cost traceability (production monthly infra estimate)
+  estimatedMonthlyCost           Float?
+  estimatedMonthlyCostCurrency   String?
+  estimatedMonthlyCostSource     String?
+  estimatedMonthlyCostConfidence Float?
+  estimatedMonthlyCostUpdatedAt  DateTime?
+
   // Relations
   outEdges           InfraEdge[]             @relation("SourceEdges")
   inEdges            InfraEdge[]             @relation("TargetEdges")
@@ -1549,6 +1556,16 @@ model OrganizationProfile {
   verticalSector   String?
   employeeCount    Int?
   annualRevenueUSD Float?
+
+  // Company financial profile (explicit / inferred / hybrid)
+  profileSource        String @default("inferred")
+  profileConfidence    Float  @default(0.4)
+  annualRevenue        Float?
+  industrySector       String?
+  annualITBudget       Float?
+  drBudgetPercent      Float?
+  hourlyDowntimeCost   Float?
+  profileMetadata      Json?
 
   // Overrides financiers (l'utilisateur remplace les estimations)
   customDowntimeCostPerHour Float?

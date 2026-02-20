@@ -22,6 +22,7 @@ interface BlastRadiusDrawerProps {
   onOpenWarRoom: () => void;
   scenarioName: string;
   result: SimulationResult;
+  currency: string;
 }
 
 export function BlastRadiusDrawer({
@@ -30,6 +31,7 @@ export function BlastRadiusDrawer({
   onOpenWarRoom,
   scenarioName,
   result,
+  currency,
 }: BlastRadiusDrawerProps) {
   const [revealedSteps, setRevealedSteps] = useState(0);
   const [revealedNodes, setRevealedNodes] = useState<Set<string>>(new Set());
@@ -237,7 +239,7 @@ export function BlastRadiusDrawer({
             <MetricCard
               icon={DollarSign}
               label="Cout estime du downtime"
-              value={formatCurrency(result.financialLoss ?? 0)}
+              value={formatCurrency(result.financialLoss ?? 0, currency)}
               color="text-severity-high"
               revealed={animationDone}
             />

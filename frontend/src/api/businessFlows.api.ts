@@ -10,6 +10,7 @@ export interface FlowCost {
   peakCostPerHour: number;
   method: string;
   confidence: FlowCostConfidence;
+  currency: string;
 }
 
 export interface BusinessFlowNode {
@@ -61,6 +62,7 @@ export interface BusinessFlow {
   validatedAt: string | null;
   mutualExclusionGroup: string | null;
   precisionBadge?: string;
+  currency?: string;
   computedCost: FlowCost | null;
   flowNodes: BusinessFlowNode[];
   createdAt: string;

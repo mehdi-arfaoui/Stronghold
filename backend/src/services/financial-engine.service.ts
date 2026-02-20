@@ -4,13 +4,18 @@ import {
   NODE_TYPE_COST_MULTIPLIERS,
   ORG_SIZE_MULTIPLIERS,
   RECOVERY_STRATEGY_COSTS,
-  STRATEGY_RISK_REDUCTION,
   SUPPORTED_CURRENCIES,
   type OrganizationSizeCategory,
   type RecoveryStrategyKey,
   type SupportedCurrency,
   type VerticalSectorKey,
 } from '../constants/market-financial-data.js';
+import { CurrencyService } from './currency.service.js';
+import {
+  calculateRecommendationRoi,
+  resolveIncidentProbabilityForNodeType,
+  strategyTargetRtoMinutes,
+} from './company-financial-profile.service.js';
 
 export type FinancialConfidence = 'user_defined' | 'estimated' | 'low_confidence';
 
@@ -64,6 +69,11 @@ export type RecommendationInput = {
   priority?: string;
   annualCost?: number;
   monthlyCost?: number;
+  currentRtoMinutes?: number;
+  targetRtoMinutes?: number;
+  targetRpoMinutes?: number;
+  incidentProbabilityAnnual?: number;
+  incidentType?: string;
 };
 
 export type NodeFinancialOverrideInput = {
@@ -85,6 +95,9 @@ export type FinancialOrganizationProfileInput = {
   sizeCategory?: string | null;
   verticalSector?: string | null;
   customDowntimeCostPerHour?: number | null;
+  hourlyDowntimeCost?: number | null;
+  annualITBudget?: number | null;
+  drBudgetPercent?: number | null;
   customCurrency?: string | null;
   strongholdPlanId?: string | null;
   strongholdMonthlyCost?: number | null;
@@ -144,16 +157,33 @@ export type ROIResult = {
   riskReductionAmount: number;
   annualRemediationCost: number;
   netAnnualSavings: number;
-  roiPercent: number;
-  paybackMonths: number;
+  roiPercent: number | null;
+  roiStatus: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable';
+  roiMessage: string;
+  paybackMonths: number | null;
+  paybackLabel: string;
   strongholdSubscriptionAnnual: number;
   breakdownByRecommendation: Array<{
     recommendationId: string;
     strategy: string;
     targetNodes: string[];
     annualCost: number;
+    currentALE: number;
+    projectedALE: number;
     riskReduction: number;
-    individualROI: number;
+    individualROI: number | null;
+    roiStatus: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable';
+    roiMessage: string;
+    paybackMonths: number | null;
+    paybackLabel: string;
+    formula: string;
+    calculationInputs: {
+      hourlyDowntimeCost: number;
+      currentRtoHours: number;
+      targetRtoHours: number;
+      incidentProbabilityAnnual: number;
+      monthlyDrCost: number;
+    };
   }>;
   methodology: string;
   sources: string[];
@@ -188,13 +218,6 @@ type InternalNodeLoss = {
   costMethod: string;
   costConfidence: string;
   fallbackEstimate: number | null;
-};
-
-const FX_USD_TO_TARGET: Record<SupportedCurrency, number> = {
-  USD: 1,
-  EUR: 0.92,
-  GBP: 0.79,
-  CHF: 0.88,
 };
 
 const STRONGHOLD_PLAN_MONTHLY_COST: Record<string, number> = {
@@ -232,8 +255,14 @@ function normalizeCurrency(rawCurrency: string | null | undefined): SupportedCur
   return 'EUR';
 }
 
-function normalizeRecoveryStrategy(rawStrategy: string | undefined, fallback: RecoveryStrategyKey): RecoveryStrategyKey {
+type ExtendedRecoveryStrategyKey = RecoveryStrategyKey | 'hot_standby';
+
+function normalizeRecoveryStrategy(
+  rawStrategy: string | undefined,
+  fallback: ExtendedRecoveryStrategyKey,
+): ExtendedRecoveryStrategyKey {
   const normalized = (rawStrategy || '').toLowerCase().replace(/[-\s]/g, '_');
+  if (normalized === 'hot_standby') return 'hot_standby';
   if (normalized in RECOVERY_STRATEGY_COSTS) {
     return normalized as RecoveryStrategyKey;
   }
@@ -327,7 +356,8 @@ function buildNodeSourceStrings(
 }
 
 function resolveFxMultiplier(currency: SupportedCurrency): number {
-  return FX_USD_TO_TARGET[currency] ?? 1;
+  const rates = CurrencyService.getKnownUsdToTargetRates();
+  return rates[currency] ?? 1;
 }
 
 function resolveProbability(node: FinancialNodeInput): {
@@ -383,7 +413,7 @@ function recommendationTargetNodes(recommendation: RecommendationInput): string[
 function recommendationDefaultStrategy(
   recommendation: RecommendationInput,
   nodeLookup: Map<string, FinancialNodeInput>,
-): RecoveryStrategyKey {
+): ExtendedRecoveryStrategyKey {
   if (recommendation.strategy) {
     return normalizeRecoveryStrategy(recommendation.strategy, 'warm_standby');
   }
@@ -400,16 +430,53 @@ function recommendationDefaultStrategy(
   if (recommendation.category === 'backup') return 'backup_restore';
   if (recommendation.category === 'monitoring') return 'pilot_light';
   if (recommendation.category === 'process') return 'warm_standby';
-  if (recommendation.priority === 'P0' && hasStatefulCriticalType) return 'active_active';
+  if (recommendation.priority === 'P0' && hasStatefulCriticalType) return 'hot_standby';
   if (hasStatefulCriticalType) return 'warm_standby';
   return 'pilot_light';
 }
 
-function strategyAnnualCost(strategy: RecoveryStrategyKey, targetNodeCount: number, fxMultiplier: number): number {
+function strategyAnnualCost(
+  strategy: ExtendedRecoveryStrategyKey,
+  targetNodeCount: number,
+  fxMultiplier: number,
+): number {
+  if (strategy === 'hot_standby') {
+    const warmMonthly = RECOVERY_STRATEGY_COSTS.warm_standby.monthlyEstimateUSD;
+    const activeMonthly = RECOVERY_STRATEGY_COSTS.active_active.monthlyEstimateUSD;
+    const medianMonthly =
+      (warmMonthly.max + activeMonthly.min) / 2;
+    return roundAmount(medianMonthly * 12 * Math.max(1, targetNodeCount) * fxMultiplier);
+  }
   const monthly = RECOVERY_STRATEGY_COSTS[strategy].monthlyEstimateUSD;
   const medianMonthly = (monthly.min + monthly.max) / 2;
   const normalizedTargetCount = Math.max(1, targetNodeCount);
   return roundAmount(medianMonthly * 12 * normalizedTargetCount * fxMultiplier);
+}
+
+function classifyGlobalRoi(
+  roiPercent: number | null,
+  riskReductionAmount: number,
+  annualRemediationCost: number,
+): { status: ROIResult['roiStatus']; message: string } {
+  if (riskReductionAmount <= 0 || roiPercent == null) {
+    return { status: 'non_applicable', message: 'Non applicable' };
+  }
+  if (riskReductionAmount <= annualRemediationCost || roiPercent < 0) {
+    return {
+      status: 'cost_exceeds_avoided_risk',
+      message: 'Cout superieur au risque evite',
+    };
+  }
+  if (roiPercent > 100) {
+    return {
+      status: 'strongly_recommended',
+      message: 'Fortement recommande',
+    };
+  }
+  return {
+    status: 'rentable',
+    message: 'Rentable',
+  };
 }
 
 function ensureProfileDefaults(
@@ -693,18 +760,27 @@ export class FinancialEngineService {
     );
 
     const nodeLookup = new Map((analysisResult.nodes || []).map((node) => [node.id, node]));
-    const nodeAleMap = new Map(losses.map((loss) => [loss.nodeId, loss.ale]));
-    const nodeResidualFactor = new Map(losses.map((loss) => [loss.nodeId, 1]));
+    const processMap = new Map(
+      (biaResult.processes || []).map((process) => [process.serviceNodeId, process]),
+    );
+    const companyHourlyDowntimeCost =
+      Number(profile.customDowntimeCostPerHour) > 0
+        ? Number(profile.customDowntimeCostPerHour)
+        : Number(profile.hourlyDowntimeCost) > 0
+          ? Number(profile.hourlyDowntimeCost)
+          : losses.length > 0
+            ? losses.reduce((sum, loss) => sum + loss.costPerHour, 0) / losses.length
+            : 1_500;
 
-    const currentALE = losses.reduce((sum, loss) => sum + loss.ale, 0);
     const breakdownByRecommendation: ROIResult['breakdownByRecommendation'] = [];
 
     let remediationCostTotal = 0;
+    let currentALE = 0;
+    let projectedALE = 0;
 
     for (const recommendation of recommendations || []) {
       const targetNodes = recommendationTargetNodes(recommendation);
       const strategy = recommendationDefaultStrategy(recommendation, nodeLookup);
-      const reductionRate = STRATEGY_RISK_REDUCTION[strategy];
 
       const annualCost = roundAmount(
         recommendation.annualCost && recommendation.annualCost > 0
@@ -716,26 +792,91 @@ export class FinancialEngineService {
 
       remediationCostTotal += annualCost;
 
-      let recommendationRiskReduction = 0;
+      const targetRtoMinutes =
+        Number.isFinite(recommendation.targetRtoMinutes) && Number(recommendation.targetRtoMinutes) > 0
+          ? Number(recommendation.targetRtoMinutes)
+          : strategyTargetRtoMinutes(strategy as any);
+
+      let recommendationCurrentAle = 0;
+      let recommendationProjectedAle = 0;
+      const probabilityValues: number[] = [];
+      const currentRtoValues: number[] = [];
+
       for (const nodeId of targetNodes) {
-        const baseNodeAle = nodeAleMap.get(nodeId);
-        if (!baseNodeAle) continue;
-        const currentFactor = nodeResidualFactor.get(nodeId) ?? 1;
-        const reducedFactor = currentFactor * (1 - reductionRate);
-        nodeResidualFactor.set(nodeId, reducedFactor);
+        const node = nodeLookup.get(nodeId);
+        if (!node) continue;
 
-        const nodeReduction = baseNodeAle * (currentFactor - reducedFactor);
-        recommendationRiskReduction += nodeReduction;
+        const currentRtoMinutes =
+          Number.isFinite(recommendation.currentRtoMinutes) && Number(recommendation.currentRtoMinutes) > 0
+            ? Number(recommendation.currentRtoMinutes)
+            : Math.max(1, Math.round(getRtoHours(node, processMap) * 60));
+        const probability =
+          Number.isFinite(recommendation.incidentProbabilityAnnual) &&
+          Number(recommendation.incidentProbabilityAnnual) > 0
+            ? Number(recommendation.incidentProbabilityAnnual)
+            : resolveIncidentProbabilityForNodeType(node.type).probabilityAnnual;
+        const currentAleNode = companyHourlyDowntimeCost * (currentRtoMinutes / 60) * probability;
+        const projectedAleNode = companyHourlyDowntimeCost * (targetRtoMinutes / 60) * probability;
+
+        recommendationCurrentAle += currentAleNode;
+        recommendationProjectedAle += projectedAleNode;
+        probabilityValues.push(probability);
+        currentRtoValues.push(currentRtoMinutes / 60);
       }
 
-      if (targetNodes.length === 0 && currentALE > 0) {
-        recommendationRiskReduction += currentALE * reductionRate * 0.05;
-      }
+      const recommendationRiskReduction = recommendationCurrentAle - recommendationProjectedAle;
+      const roiCalc =
+        targetNodes.length > 0
+          ? calculateRecommendationRoi({
+              hourlyDowntimeCost: companyHourlyDowntimeCost,
+              currentRtoMinutes:
+                currentRtoValues.length > 0
+                  ? (currentRtoValues.reduce((sum, value) => sum + value, 0) /
+                      currentRtoValues.length) *
+                    60
+                  : targetRtoMinutes,
+              targetRtoMinutes,
+              incidentProbabilityAnnual:
+                probabilityValues.length > 0
+                  ? probabilityValues.reduce((sum, value) => sum + value, 0) /
+                    probabilityValues.length
+                  : resolveIncidentProbabilityForNodeType('APPLICATION').probabilityAnnual,
+              monthlyDrCost: annualCost / 12,
+            })
+          : calculateRecommendationRoi({
+              hourlyDowntimeCost: companyHourlyDowntimeCost,
+              currentRtoMinutes: 0,
+              targetRtoMinutes,
+              incidentProbabilityAnnual: 0,
+              monthlyDrCost: annualCost / 12,
+            });
+
+      currentALE += recommendationCurrentAle;
+      projectedALE += recommendationProjectedAle;
 
       const individualROI =
-        annualCost > 0
-          ? ((recommendationRiskReduction - annualCost) / annualCost) * 100
-          : 0;
+        annualCost > 0 && recommendationRiskReduction > 0
+          ? Number((((recommendationRiskReduction - annualCost) / annualCost) * 100).toFixed(2))
+          : annualCost > 0 && recommendationRiskReduction !== 0
+            ? Number((((recommendationRiskReduction - annualCost) / annualCost) * 100).toFixed(2))
+            : null;
+      const paybackMonths =
+        recommendationRiskReduction > 0 && annualCost > 0
+          ? Number((annualCost / (recommendationRiskReduction / 12)).toFixed(2))
+          : null;
+      const paybackLabel =
+        paybackMonths == null || paybackMonths <= 0 || paybackMonths > 60
+          ? 'Non rentable'
+          : paybackMonths < 6
+            ? 'Quick win'
+            : paybackMonths <= 24
+              ? 'Rentable a moyen terme'
+              : 'Investissement long terme';
+      const classification = classifyGlobalRoi(
+        individualROI,
+        recommendationRiskReduction,
+        annualCost,
+      );
 
       breakdownByRecommendation.push({
         recommendationId:
@@ -743,15 +884,19 @@ export class FinancialEngineService {
         strategy,
         targetNodes,
         annualCost: roundAmount(annualCost),
+        currentALE: roundAmount(recommendationCurrentAle),
+        projectedALE: roundAmount(recommendationProjectedAle),
         riskReduction: roundAmount(recommendationRiskReduction),
-        individualROI: Number(individualROI.toFixed(2)),
+        individualROI,
+        roiStatus: classification.status,
+        roiMessage: classification.message,
+        paybackMonths,
+        paybackLabel,
+        formula:
+          'ALE = hourlyDowntimeCost x RTO(hours) x annualIncidentProbability; ROI = ((riskAvoided - annualDrCost) / annualDrCost) x 100',
+        calculationInputs: roiCalc.inputs,
       });
     }
-
-    const projectedALE = losses.reduce((sum, loss) => {
-      const residualFactor = nodeResidualFactor.get(loss.nodeId) ?? 1;
-      return sum + loss.ale * residualFactor;
-    }, 0);
 
     const strongholdSubscriptionAnnual = roundAmount(
       profile.strongholdMonthlyCost && profile.strongholdMonthlyCost > 0
@@ -761,17 +906,34 @@ export class FinancialEngineService {
             800) * 12,
     );
 
-    const annualRemediationCost = roundAmount(remediationCostTotal + strongholdSubscriptionAnnual);
-    const riskReductionAmount = Math.max(0, currentALE - projectedALE);
+    const annualRemediationCost = roundAmount(remediationCostTotal);
+    const riskReductionAmount = roundAmount(currentALE - projectedALE);
     const riskReduction = currentALE > 0 ? (riskReductionAmount / currentALE) * 100 : 0;
     const netAnnualSavings = riskReductionAmount - annualRemediationCost;
     const roiPercent =
-      annualRemediationCost > 0 ? (netAnnualSavings / annualRemediationCost) * 100 : 0;
+      annualRemediationCost > 0 && riskReductionAmount > 0
+        ? Number((((riskReductionAmount - annualRemediationCost) / annualRemediationCost) * 100).toFixed(2))
+        : annualRemediationCost > 0 && riskReductionAmount !== 0
+          ? Number((((riskReductionAmount - annualRemediationCost) / annualRemediationCost) * 100).toFixed(2))
+          : null;
 
     const paybackMonths =
-      netAnnualSavings > 0
-        ? Number((annualRemediationCost / (netAnnualSavings / 12)).toFixed(2))
-        : -1;
+      annualRemediationCost > 0 && riskReductionAmount > 0
+        ? Number((annualRemediationCost / (riskReductionAmount / 12)).toFixed(2))
+        : null;
+    const paybackLabel =
+      paybackMonths == null || paybackMonths <= 0 || paybackMonths > 60
+        ? 'Non rentable'
+        : paybackMonths < 6
+          ? 'Quick win'
+          : paybackMonths <= 24
+            ? 'Rentable a moyen terme'
+            : 'Investissement long terme';
+    const globalClassification = classifyGlobalRoi(
+      roiPercent,
+      riskReductionAmount,
+      annualRemediationCost,
+    );
 
     return {
       currentALE: roundAmount(currentALE),
@@ -780,14 +942,17 @@ export class FinancialEngineService {
       riskReductionAmount: roundAmount(riskReductionAmount),
       annualRemediationCost,
       netAnnualSavings: roundAmount(netAnnualSavings),
-      roiPercent: Number(roiPercent.toFixed(2)),
+      roiPercent,
+      roiStatus: globalClassification.status,
+      roiMessage: globalClassification.message,
       paybackMonths,
+      paybackLabel,
       strongholdSubscriptionAnnual,
       breakdownByRecommendation,
       methodology:
-        'ROI = ((ALE_without_controls - ALE_with_controls - annual_remediation_cost) / annual_remediation_cost) x 100. Strategy reduction factors: Active-Active 95%, Warm Standby 80%, Pilot Light 60%, Backup & Restore 40%.',
+        'ALE_current = hourlyDowntimeCost x RTO_current(h) x annualIncidentProbability; ALE_after = hourlyDowntimeCost x RTO_after(h) x annualIncidentProbability; ROI = ((riskAvoided - annualDrCost) / annualDrCost) x 100.',
       sources: dedupeSources(sources, [
-        'Stronghold strategy reduction assumptions (conservative defaults)',
+        'Probabilites estimees a partir des rapports Uptime Institute 2024, ITIC 2024, et IBM Cost of Data Breach 2024',
         RECOVERY_STRATEGY_COSTS.active_active.source,
         DOWNTIME_COST_BENCHMARKS.globalStats.uptimeSource,
       ]),

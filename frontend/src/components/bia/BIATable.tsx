@@ -7,12 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
-import { formatDuration } from '@/lib/formatters';
+import { formatCurrency, formatDuration } from '@/lib/formatters';
 import type { BIAEntry } from '@/types/bia.types';
 
 interface BIATableProps {
   entries: BIAEntry[];
-  currencySymbol?: string;
+  currency?: string;
   onUpdateEntry?: (id: string, field: string, value: number) => void;
   onValidateEntry?: (id: string) => void;
   onUpsertFinancialOverride?: (nodeId: string, payload: { customCostPerHour: number; justification?: string }) => Promise<unknown> | void;
@@ -22,11 +22,8 @@ interface BIATableProps {
 type EditableField = 'validatedRTO' | 'validatedRPO' | 'validatedMTPD';
 type SuggestionMetric = 'rto' | 'rpo' | 'mtpd';
 
-function formatHourlyCost(amount: number, currencySymbol: string): string {
-  if (!Number.isFinite(amount) || amount <= 0) return `${currencySymbol}0/h`;
-  if (amount >= 1_000_000) return `${currencySymbol}${(amount / 1_000_000).toFixed(1)}M/h`;
-  if (amount >= 1_000) return `${currencySymbol}${Math.round(amount / 1_000)}K/h`;
-  return `${currencySymbol}${Math.round(amount)}/h`;
+function formatHourlyCost(amount: number, currency: string): string {
+  return `${formatCurrency(amount, currency)}/h`;
 }
 
 function precisionBadgeModel(entry: BIAEntry): {
@@ -70,7 +67,7 @@ function precisionBadgeModel(entry: BIAEntry): {
 
 export function BIATable({
   entries,
-  currencySymbol = '\u20AC',
+  currency = 'EUR',
   onUpdateEntry,
   onValidateEntry,
   onUpsertFinancialOverride,
@@ -228,7 +225,7 @@ export function BIATable({
                           className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
                           onClick={() => openOverridePopover(entry)}
                         >
-                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currencySymbol)}</span>
+                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currency)}</span>
                           {entry.financialIsOverride ? (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -275,7 +272,7 @@ export function BIATable({
                         </p>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-sm font-medium">Montant ({currencySymbol}/h)</label>
+                        <label className="text-sm font-medium">Montant ({currency}/h)</label>
                         <Input
                           type="number"
                           min={1}

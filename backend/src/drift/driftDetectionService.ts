@@ -340,7 +340,13 @@ export async function calculateResilienceScore(prisma: PrismaClient, tenantId: s
   score -= spofCount * 10;
 
   const criticalNodes = await prisma.infraNode.findMany({
-    where: { tenantId, criticalityScore: { gt: 0.8 }, redundancyScore: { lt: 0.3 } },
+    where: {
+      tenantId,
+      OR: [
+        { criticalityScore: { gt: 80 }, redundancyScore: { lt: 30 } },
+        { criticalityScore: { gt: 0.8, lte: 1 }, redundancyScore: { lt: 0.3 } },
+      ],
+    },
   });
   score -= criticalNodes.length * 3;
 

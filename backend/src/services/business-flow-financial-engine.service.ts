@@ -11,6 +11,11 @@ import {
   type FinancialOrganizationProfileInput,
   type NodeFinancialOverrideInput,
 } from './financial-engine.service.js';
+import {
+  SUPPORTED_CURRENCIES,
+  type SupportedCurrency,
+} from '../constants/market-financial-data.js';
+import { CurrencyService } from './currency.service.js';
 
 export type FlowCostConfidence = 'high' | 'medium' | 'low';
 
@@ -22,6 +27,7 @@ export type FlowCost = {
   peakCostPerHour: number;
   method: string;
   confidence: FlowCostConfidence;
+  currency: SupportedCurrency;
 };
 
 export type NodeFlowImpact = {
@@ -41,6 +47,7 @@ export type NodeFlowCost = {
   fallbackEstimate: number | null;
   method: NodeCostMethod;
   confidence: FlowCostConfidence;
+  currency: SupportedCurrency;
 };
 
 export type NodeFlowCostInput = {
@@ -51,6 +58,7 @@ export type NodeFlowCostInput = {
   override?: NodeFinancialOverrideInput | null;
   includeUnvalidatedFlows?: boolean;
   applyCloudCostFactor?: boolean;
+  sourceCurrency?: SupportedCurrency;
 };
 
 export type FinancialCoverageResult = {
@@ -92,6 +100,26 @@ function toPositive(value: number | null | undefined): number | null {
   if (!Number.isFinite(value as number)) return null;
   const parsed = Number(value);
   return parsed > 0 ? parsed : null;
+}
+
+function normalizeCurrency(rawCurrency: unknown): SupportedCurrency {
+  if (typeof rawCurrency === 'string') {
+    const normalized = rawCurrency.toUpperCase();
+    if ((SUPPORTED_CURRENCIES as readonly string[]).includes(normalized)) {
+      return normalized as SupportedCurrency;
+    }
+  }
+  return 'EUR';
+}
+
+function convertCurrency(
+  value: number,
+  fromCurrency: SupportedCurrency,
+  toCurrency: SupportedCurrency,
+): number {
+  return roundMoney(
+    CurrencyService.convertAmount(value, fromCurrency, toCurrency),
+  );
 }
 
 function inferFlowConfidence(flow: BusinessFlow, method: string): FlowCostConfidence {
@@ -140,7 +168,11 @@ export class BusinessFlowFinancialEngineService {
     this.prismaClient = prismaClient;
   }
 
-  static calculateFlowCostPerHour(flow: BusinessFlow): FlowCost | null {
+  static calculateFlowCostPerHour(
+    flow: BusinessFlow,
+    currency: SupportedCurrency = 'EUR',
+    sourceCurrency: SupportedCurrency = 'EUR',
+  ): FlowCost | null {
     const directEstimate = toPositive(flow.estimatedCostPerHour);
     const annualRevenue = toPositive(flow.annualRevenue);
     const transactionsPerHour = toPositive(flow.transactionsPerHour);
@@ -175,19 +207,22 @@ export class BusinessFlowFinancialEngineService {
     const confidence = inferFlowConfidence(flow, method);
 
     return {
-      directCostPerHour: roundMoney(directCostPerHour),
-      slaPenaltyPerHour: roundMoney(slaPenaltyPerHour),
-      indirectCostPerHour: roundMoney(indirectCostPerHour),
-      totalCostPerHour: roundMoney(totalCostPerHour),
-      peakCostPerHour: roundMoney(peakCostPerHour),
+      directCostPerHour: convertCurrency(directCostPerHour, sourceCurrency, currency),
+      slaPenaltyPerHour: convertCurrency(slaPenaltyPerHour, sourceCurrency, currency),
+      indirectCostPerHour: convertCurrency(indirectCostPerHour, sourceCurrency, currency),
+      totalCostPerHour: convertCurrency(totalCostPerHour, sourceCurrency, currency),
+      peakCostPerHour: convertCurrency(peakCostPerHour, sourceCurrency, currency),
       method,
       confidence,
+      currency,
     };
   }
 
   async calculateNodeCostFromFlows(input: NodeFlowCostInput): Promise<NodeFlowCost> {
     const includeUnvalidatedFlows = input.includeUnvalidatedFlows !== false;
     const applyCloudCostFactor = input.applyCloudCostFactor === true;
+    const profileCurrency = normalizeCurrency(input.orgProfile?.customCurrency);
+    const sourceCurrency = input.sourceCurrency ?? 'EUR';
 
     const links = await this.prismaClient.businessFlowNode.findMany({
       where: {
@@ -220,7 +255,11 @@ export class BusinessFlowFinancialEngineService {
 
     const contributions: FlowContribution[] = [];
     for (const link of links) {
-      const flowCost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(link.businessFlow);
+      const flowCost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(
+        link.businessFlow,
+        profileCurrency,
+        sourceCurrency,
+      );
       if (!flowCost) continue;
 
       const impact = resolveFlowImpact(link);
@@ -284,6 +323,7 @@ export class BusinessFlowFinancialEngineService {
       fallbackEstimate: finalFallback,
       method,
       confidence,
+      currency: profileCurrency,
     };
   }
 
@@ -291,7 +331,7 @@ export class BusinessFlowFinancialEngineService {
     const criticalNodes = await this.prismaClient.infraNode.findMany({
       where: {
         tenantId,
-        OR: [{ isSPOF: true }, { criticalityScore: { gte: 0.7 } }],
+        OR: [{ isSPOF: true }, { criticalityScore: { gte: 70 } }],
       },
       select: { id: true },
     });
@@ -340,12 +380,19 @@ export class BusinessFlowFinancialEngineService {
     tenantId: string,
     flowId: string,
   ): Promise<BusinessFlow | null> {
-    const flow = await this.prismaClient.businessFlow.findFirst({
-      where: { id: flowId, tenantId },
-    });
+    const [flow, profile] = await Promise.all([
+      this.prismaClient.businessFlow.findFirst({
+        where: { id: flowId, tenantId },
+      }),
+      this.prismaClient.organizationProfile.findUnique({
+        where: { tenantId },
+        select: { customCurrency: true },
+      }),
+    ]);
     if (!flow) return null;
 
-    const cost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow);
+    const currency = normalizeCurrency(profile?.customCurrency);
+    const cost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow, currency, 'EUR');
     const updated = await this.prismaClient.businessFlow.update({
       where: { id: flow.id },
       data: {

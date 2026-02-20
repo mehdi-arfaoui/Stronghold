@@ -17,6 +17,7 @@ import {
   type ResolvedNodeFinancialCostInput,
 } from './financial-engine.service.js';
 import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
+import { CurrencyService } from './currency.service.js';
 
 type InfraNodeWithEdges = Prisma.InfraNodeGetPayload<{
   include: {
@@ -95,8 +96,8 @@ export type FinancialSummaryPayload = {
   metrics: {
     annualRisk: number;
     potentialSavings: number;
-    roiPercent: number;
-    paybackMonths: number;
+    roiPercent: number | null;
+    paybackMonths: number | null;
   };
   totals: {
     totalSPOFs: number;
@@ -178,13 +179,6 @@ const NIS2_IMPORTANT_SECTORS = new Set([
   'retail',
   'retail_ecommerce',
 ]);
-
-const FX_USD_TO_TARGET: Record<SupportedCurrency, number> = {
-  USD: 1,
-  EUR: 0.92,
-  GBP: 0.79,
-  CHF: 0.88,
-};
 
 const DEFAULT_DASHBOARD_DISCLAIMER =
   'Estimated values based on public market data and outage assumptions. Update organization profile and node overrides for higher confidence.';
@@ -775,6 +769,8 @@ export async function buildFinancialSummaryPayload(
     currency?: unknown;
   },
 ): Promise<FinancialSummaryPayload> {
+  await CurrencyService.getRates('USD');
+
   const context = await loadFinancialContext(prismaClient, tenantId);
   const recommendations = await buildFinancialRecommendations(prismaClient, tenantId);
   const preferredCurrency = parseCurrency(options?.currency);
@@ -876,6 +872,8 @@ export async function buildFinancialTrendPayload(
     months?: number;
   },
 ): Promise<FinancialTrendPayload> {
+  await CurrencyService.getRates('USD');
+
   const lookbackMonths = clamp(Number(options?.months || 6), 1, 24);
   const since = monthsAgo(lookbackMonths);
   const preferredCurrency = parseCurrency(options?.currency);
@@ -1044,6 +1042,7 @@ export async function buildFinancialTrendPayload(
 }
 
 export function estimateCurrencyFxMultiplier(currency: SupportedCurrency): number {
-  return FX_USD_TO_TARGET[currency] || 1;
+  const rates = CurrencyService.getKnownUsdToTargetRates();
+  return rates[currency] || 1;
 }
 

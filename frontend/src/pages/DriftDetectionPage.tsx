@@ -28,6 +28,7 @@ import { cn } from '@/lib/utils';
 import { driftApi, type DriftEvent } from '@/api/drift.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { formatCurrency } from '@/lib/formatters';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 
 const SEVERITY_CONFIG: Record<string, { color: string; icon: typeof AlertTriangle; label: string }> = {
   critical: { color: 'bg-red-500/10 text-red-700 border-red-500/20', icon: XCircle, label: 'Critique' },
@@ -55,27 +56,28 @@ function formatDate(dateStr: string | null): string {
 }
 
 function DriftPageInner() {
+  const tenantScope = getCredentialScopeKey();
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>('open');
   const [showScheduleConfig, setShowScheduleConfig] = useState(false);
 
   const scoreQuery = useQuery({
-    queryKey: ['drift-score'],
+    queryKey: ['drift-score', tenantScope],
     queryFn: async () => (await driftApi.getScore()).data,
   });
 
   const eventsQuery = useQuery({
-    queryKey: ['drift-events', statusFilter],
+    queryKey: ['drift-events', tenantScope, statusFilter],
     queryFn: async () => (await driftApi.getEvents({ status: statusFilter || undefined })).data,
   });
 
   const snapshotsQuery = useQuery({
-    queryKey: ['drift-snapshots'],
+    queryKey: ['drift-snapshots', tenantScope],
     queryFn: async () => (await driftApi.getSnapshots(10)).data,
   });
 
   const scheduleQuery = useQuery({
-    queryKey: ['drift-schedule'],
+    queryKey: ['drift-schedule', tenantScope],
     queryFn: async () => (await driftApi.getSchedule()).data,
   });
 
@@ -279,7 +281,7 @@ function DriftPageInner() {
                       {event.affectsRTO && <Badge variant="outline">RTO</Badge>}
                       {additionalRisk > 0 && (
                         <Badge className="bg-red-500/10 text-red-700 border-red-500/20">
-                          {`\uD83D\uDCB0 +${formatCurrency(additionalRisk)}/an de risque`}
+                          {`\uD83D\uDCB0 +${formatCurrency(additionalRisk, event.financialImpact?.currency || 'EUR')}/an de risque`}
                         </Badge>
                       )}
                     </div>

@@ -23,6 +23,7 @@ interface WarRoomProps {
   scenarioName: string;
   scenarioType: string;
   result: SimulationResult;
+  currency: string;
   onGenerateReport?: () => void;
 }
 
@@ -81,6 +82,7 @@ export function WarRoom({
   scenarioName,
   scenarioType: _scenarioType,
   result,
+  currency,
   onGenerateReport,
 }: WarRoomProps) {
   const [phase, setPhase] = useState<AnimationPhase>('idle');
@@ -258,7 +260,7 @@ export function WarRoom({
             <span>Services down: {downNodes}/{Math.max(totalNodes, 1)}</span>
             <span>Temps: {Math.floor(elapsedSeconds / 60)}min</span>
             <span className="font-semibold text-severity-critical">
-              {'\uD83D\uDCB0'} Perte cumulee: {formatCurrency(cumulativeBusinessLoss)}
+              {'\uD83D\uDCB0'} Perte cumulee: {formatCurrency(cumulativeBusinessLoss, currency)}
             </span>
           </div>
 
@@ -319,12 +321,12 @@ export function WarRoom({
           ))}
 
           <div className="space-y-3 pt-2">
-            <ImpactCard icon={Activity} label="Impactes" value={downNodes} total={totalNodes} color="text-severity-critical" animated={phase === 'propagating'} />
-            <ImpactCard icon={DollarSign} label="Cout/heure" value={hourlyLoss ?? 0} format="currency" color="text-severity-medium" animated={phase === 'propagating'} />
-            <ImpactCard icon={DollarSign} label="Perte cumulee" value={cumulativeBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} />
-            <ImpactCard icon={DollarSign} label="Cout recovery estime" value={recoveryCostEstimate ?? 0} format="currency" color="text-severity-high" animated={phase === 'propagating'} />
-            <ImpactCard icon={DollarSign} label="Perte business finale" value={projectedBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} />
-            <ImpactCard icon={Clock} label="Utilisateurs impactes" value={estimatedUsers ?? 0} color="text-severity-high" animated={phase === 'propagating'} />
+            <ImpactCard icon={Activity} label="Impactes" value={downNodes} total={totalNodes} color="text-severity-critical" animated={phase === 'propagating'} currency={currency} />
+            <ImpactCard icon={DollarSign} label="Cout/heure" value={hourlyLoss ?? 0} format="currency" color="text-severity-medium" animated={phase === 'propagating'} currency={currency} />
+            <ImpactCard icon={DollarSign} label="Perte cumulee" value={cumulativeBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} currency={currency} />
+            <ImpactCard icon={DollarSign} label="Cout recovery estime" value={recoveryCostEstimate ?? 0} format="currency" color="text-severity-high" animated={phase === 'propagating'} currency={currency} />
+            <ImpactCard icon={DollarSign} label="Perte business finale" value={projectedBusinessLoss ?? 0} format="currency" color="text-severity-critical" animated={phase === 'propagating'} currency={currency} />
+            <ImpactCard icon={Clock} label="Utilisateurs impactes" value={estimatedUsers ?? 0} color="text-severity-high" animated={phase === 'propagating'} currency={currency} />
           </div>
 
           {(result.warRoomFinancial?.nodeCostBreakdown?.length ?? 0) > 0 && (
@@ -334,7 +336,7 @@ export function WarRoom({
                 <div key={node.nodeId} className="rounded-md border bg-background px-2 py-1.5 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span className="truncate font-medium">{node.nodeName}</span>
-                    <span className="font-mono">{formatCurrency(node.costPerHour)}/h</span>
+                    <span className="font-mono">{formatCurrency(node.costPerHour, currency)}/h</span>
                   </div>
                   <div className="mt-1 flex items-center justify-between text-muted-foreground">
                     <span>{node.nodeType}</span>
@@ -402,6 +404,7 @@ function ImpactCard({
   format,
   color,
   animated,
+  currency,
 }: {
   icon: typeof Activity;
   label: string;
@@ -410,6 +413,7 @@ function ImpactCard({
   format?: 'currency';
   color: string;
   animated?: boolean;
+  currency: string;
 }) {
   return (
     <div className="rounded-lg border bg-background p-3">
@@ -418,7 +422,7 @@ function ImpactCard({
         {label}
       </div>
       <p className={cn('text-xl font-bold tabular-nums', color, animated && 'animate-pulse')}>
-        {format === 'currency' ? formatCurrency(value ?? 0) : value ?? 0}
+        {format === 'currency' ? formatCurrency(value ?? 0, currency) : value ?? 0}
         {total !== undefined && <span className="text-sm font-normal text-muted-foreground">/{total ?? 0}</span>}
       </p>
     </div>

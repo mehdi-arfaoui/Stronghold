@@ -7,15 +7,16 @@ import type { SimulationResult as SimResult } from '@/types/simulation.types';
 
 interface SimulationResultProps {
   result: SimResult;
+  currency: string;
 }
 
-export function SimulationResult({ result }: SimulationResultProps) {
+export function SimulationResult({ result, currency }: SimulationResultProps) {
   return (
     <div className="space-y-6">
       <Card className="border-severity-critical/30 bg-severity-critical/5">
         <CardContent className="p-6">
           <p className="text-xs uppercase tracking-wide text-muted-foreground">Cout total estime du scenario</p>
-          <p className="mt-2 text-3xl font-bold text-severity-critical">{formatCurrency(result.financialLoss ?? 0)}</p>
+          <p className="mt-2 text-3xl font-bold text-severity-critical">{formatCurrency(result.financialLoss ?? 0, currency)}</p>
           <p className="mt-1 text-sm text-muted-foreground">
             Somme des noeuds impactes x cout/h x duree estimee de l incident.
           </p>
@@ -28,7 +29,7 @@ export function SimulationResult({ result }: SimulationResultProps) {
         <MetricCard label="Degrades" value={result.nodesDegraded ?? 0} variant="warning" />
         <MetricCard label="% infra" value={`${Math.round(result.infrastructureImpact ?? 0)}%`} />
         <MetricCard label="Downtime" value={formatDuration(result.estimatedDowntime ?? 0)} />
-        <MetricCard label="Perte financiere" value={formatCurrency(result.financialLoss ?? 0)} variant="critical" />
+        <MetricCard label="Perte financiere" value={formatCurrency(result.financialLoss ?? 0, currency)} variant="critical" />
         <div className="flex items-center justify-center">
           <div className="text-center">
             <p className="text-xs text-muted-foreground">Score</p>

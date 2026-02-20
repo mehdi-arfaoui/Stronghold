@@ -4,6 +4,10 @@ import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import { requireRole } from '../middleware/tenantMiddleware.js';
 import { appLogger } from '../utils/logger.js';
 import {
+  SUPPORTED_CURRENCIES,
+  type SupportedCurrency,
+} from '../constants/market-financial-data.js';
+import {
   buildValidationError,
   parseOptionalBoolean,
   parseOptionalNumber,
@@ -16,6 +20,7 @@ import {
 } from '../services/business-flow-financial-engine.service.js';
 import { CloudEnrichmentService } from '../services/cloud-enrichment.service.js';
 import { AIFlowSuggesterService } from '../services/ai-flow-suggester.service.js';
+import { CurrencyService } from '../services/currency.service.js';
 
 const router = Router();
 const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
@@ -302,13 +307,28 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
 
 async function serializeFlow(
   flow: Awaited<ReturnType<typeof prisma.businessFlow.findFirstOrThrow>>,
+  currency: SupportedCurrency,
 ) {
-  const computed = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow);
+  const computed = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow, currency);
   return {
     ...flow,
     computedCost: computed,
+    currency,
     precisionBadge: flow.validatedByUser ? 'business_flow_validated' : 'business_flow_not_validated',
   };
+}
+
+async function resolveTenantCurrency(tenantId: string): Promise<SupportedCurrency> {
+  await CurrencyService.getRates('USD');
+  const profile = await prisma.organizationProfile.findUnique({
+    where: { tenantId },
+    select: { customCurrency: true },
+  });
+  const normalized = String(profile?.customCurrency ?? 'EUR').toUpperCase();
+  if ((SUPPORTED_CURRENCIES as readonly string[]).includes(normalized)) {
+    return normalized as SupportedCurrency;
+  }
+  return 'EUR';
 }
 
 router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
@@ -329,14 +349,17 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
       });
     }
 
-    const suggestions = await aiFlowSuggesterService.suggestBusinessFlows(tenantId);
+    const [suggestions, currency] = await Promise.all([
+      aiFlowSuggesterService.suggestBusinessFlows(tenantId),
+      resolveTenantCurrency(tenantId),
+    ]);
     const flows = await Promise.all(
       suggestions.map(async (suggestion) => {
         const flow = await prisma.businessFlow.findFirst({
           where: { id: suggestion.flowId, tenantId },
           include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
         });
-        return flow ? serializeFlow(flow) : null;
+        return flow ? serializeFlow(flow, currency) : null;
       }),
     );
 
@@ -366,6 +389,7 @@ router.post('/', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
 
     const payload = (req.body || {}) as Record<string, unknown>;
     const { issues, data } = parseFlowInput(payload, false);
@@ -426,7 +450,7 @@ router.post('/', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
       include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
     });
 
-    return res.status(201).json(await serializeFlow(persisted));
+    return res.status(201).json(await serializeFlow(persisted, currency));
   } catch (error) {
     appLogger.error('Error creating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -437,6 +461,7 @@ router.get('/', requireRole('READER'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
 
     const flows = await prisma.businessFlow.findMany({
       where: { tenantId },
@@ -448,7 +473,7 @@ router.get('/', requireRole('READER'), async (req: TenantRequest, res) => {
       orderBy: { updatedAt: 'desc' },
     });
 
-    const result = await Promise.all(flows.map((flow) => serializeFlow(flow)));
+    const result = await Promise.all(flows.map((flow) => serializeFlow(flow, currency)));
     return res.json(result);
   } catch (error) {
     appLogger.error('Error listing business flows', error);
@@ -460,6 +485,7 @@ router.get('/:id', requireRole('READER'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
     const flowId = req.params.id;
     if (!flowId) return res.status(400).json({ error: 'id is required' });
 
@@ -486,7 +512,7 @@ router.get('/:id', requireRole('READER'), async (req: TenantRequest, res) => {
     });
 
     if (!flow) return res.status(404).json({ error: 'Business flow not found' });
-    return res.json(await serializeFlow(flow));
+    return res.json(await serializeFlow(flow, currency));
   } catch (error) {
     appLogger.error('Error fetching business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -497,6 +523,7 @@ router.patch('/:id', requireRole('OPERATOR'), async (req: TenantRequest, res) =>
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
     const flowId = req.params.id;
     if (!flowId) return res.status(400).json({ error: 'id is required' });
 
@@ -536,7 +563,7 @@ router.patch('/:id', requireRole('OPERATOR'), async (req: TenantRequest, res) =>
       include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
     });
 
-    return res.json(await serializeFlow(refreshed));
+    return res.json(await serializeFlow(refreshed, currency));
   } catch (error) {
     appLogger.error('Error updating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -565,6 +592,7 @@ router.post('/:id/validate', requireRole('OPERATOR'), async (req: TenantRequest,
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
     const flowId = req.params.id;
     if (!flowId) return res.status(400).json({ error: 'id is required' });
 
@@ -585,7 +613,7 @@ router.post('/:id/validate', requireRole('OPERATOR'), async (req: TenantRequest,
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.json(await serializeFlow(updated));
+    return res.json(await serializeFlow(updated, currency));
   } catch (error) {
     appLogger.error('Error validating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -596,6 +624,7 @@ router.post('/:id/nodes', requireRole('OPERATOR'), async (req: TenantRequest, re
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
     const flowId = req.params.id;
     if (!flowId) return res.status(400).json({ error: 'id is required' });
 
@@ -725,7 +754,7 @@ router.post('/:id/nodes', requireRole('OPERATOR'), async (req: TenantRequest, re
     });
     if (!updatedFlow) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.status(201).json(await serializeFlow(updatedFlow));
+    return res.status(201).json(await serializeFlow(updatedFlow, currency));
   } catch (error) {
     appLogger.error('Error adding nodes to business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -736,6 +765,7 @@ router.delete('/:id/nodes/:nodeId', requireRole('OPERATOR'), async (req: TenantR
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const currency = await resolveTenantCurrency(tenantId);
     const flowId = req.params.id;
     const nodeId = req.params.nodeId;
     if (!flowId || !nodeId) return res.status(400).json({ error: 'id and nodeId are required' });
@@ -757,7 +787,7 @@ router.delete('/:id/nodes/:nodeId', requireRole('OPERATOR'), async (req: TenantR
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.json(await serializeFlow(updated));
+    return res.json(await serializeFlow(updated, currency));
   } catch (error) {
     appLogger.error('Error removing node from business flow', error);
     return res.status(500).json({ error: 'Internal server error' });

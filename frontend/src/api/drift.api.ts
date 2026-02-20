@@ -24,6 +24,7 @@ export interface DriftEvent {
       rpoDelta: number;
       explanation: string;
     };
+    currency: string;
     severity: 'critical' | 'high' | 'medium' | 'low';
     source: string;
   };

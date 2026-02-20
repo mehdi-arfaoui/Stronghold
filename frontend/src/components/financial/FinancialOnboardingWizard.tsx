@@ -67,6 +67,8 @@ type RatesResponse = {
   rates: Record<string, number>;
   source: string;
   cachedAt: string;
+  ratesDate?: string;
+  stale?: boolean;
 };
 
 interface FinancialOnboardingWizardProps {
@@ -77,20 +79,14 @@ interface FinancialOnboardingWizardProps {
 }
 
 function formatMoneyCompact(value: number, currency: string): string {
-  const suffix = currency === 'EUR' ? '€' : currency === 'USD' ? '$' : currency === 'GBP' ? '£' : 'CHF';
-  if (!Number.isFinite(value)) return new Intl.NumberFormat('fr-FR', { style: 'currency', currency, maximumFractionDigits: 0 }).format(0);
-  const absValue = Math.abs(value);
-  if (absValue >= 1_000_000) {
-    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }).format(value / 1_000_000)}M${suffix}`;
-  }
-  if (absValue >= 1_000) {
-    return `${new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }).format(value / 1_000)}K${suffix}`;
-  }
+  const safeValue = Number.isFinite(value) ? value : 0;
+  const compact = Math.abs(safeValue) >= 1_000;
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency,
-    maximumFractionDigits: 0,
-  }).format(value);
+    maximumFractionDigits: compact ? 1 : 0,
+    ...(compact ? { notation: 'compact', compactDisplay: 'short' } : {}),
+  }).format(safeValue);
 }
 
 function mapSizeToBenchmarkKey(sizeCategory: string): 'enterprise' | 'midMarket' | 'smb' {
@@ -152,6 +148,13 @@ export function FinancialOnboardingWizard({
   });
 
   const ratesMap = useMemo(() => resolveRatesMap(usdRatesQuery.data), [usdRatesQuery.data]);
+  const ratesDateLabel = useMemo(() => {
+    const rawDate = usdRatesQuery.data?.ratesDate || usdRatesQuery.data?.cachedAt;
+    if (!rawDate) return null;
+    const parsed = new Date(rawDate);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return parsed.toLocaleDateString('fr-FR');
+  }, [usdRatesQuery.data?.cachedAt, usdRatesQuery.data?.ratesDate]);
   const toDisplayCurrency = (usdAmount: number) => usdAmount * (ratesMap[currency] ?? 1);
   const toUSD = (displayAmount: number) => {
     const rate = ratesMap[currency] ?? 1;
@@ -162,16 +165,23 @@ export function FinancialOnboardingWizard({
   useEffect(() => {
     if (!open) return;
     const effectiveCurrency = initialProfile?.customCurrency || 'EUR';
-    const effectiveDowntimeUSD = initialProfile?.customDowntimeCostPerHour ?? null;
+    const effectiveDowntimeUSD =
+      initialProfile?.customDowntimeCostPerHour ??
+      initialProfile?.hourlyDowntimeCost ??
+      null;
 
     setStep(1);
     setSizeCategory(initialProfile?.sizeCategory || 'midMarket');
-    setVerticalSector(initialProfile?.verticalSector || '');
+    setVerticalSector(initialProfile?.verticalSector || initialProfile?.industrySector || '');
     setEmployeeCount(initialProfile?.employeeCount != null ? String(initialProfile.employeeCount) : '');
     setAnnualRevenueDisplay(
-      initialProfile?.annualRevenueUSD != null ? String(Math.round(initialProfile.annualRevenueUSD)) : '',
+      initialProfile?.annualRevenue != null
+        ? String(Math.round(initialProfile.annualRevenue))
+        : initialProfile?.annualRevenueUSD != null
+          ? String(Math.round(initialProfile.annualRevenueUSD))
+          : '',
     );
-    setPersistRevenue(initialProfile?.annualRevenueUSD != null);
+    setPersistRevenue(initialProfile?.annualRevenueUSD != null || initialProfile?.annualRevenue != null);
     setCurrency(effectiveCurrency);
 
     if (effectiveDowntimeUSD && effectiveDowntimeUSD > 0) {
@@ -224,17 +234,32 @@ export function FinancialOnboardingWizard({
       const knownDowntimeUSD = knownDisplayAmount > 0 ? toUSD(knownDisplayAmount) : null;
       const estimatedDowntimeUSD = benchmarkPreview.recommendedUSD;
       const annualRevenueInput = Number(annualRevenueDisplay || 0);
+      const annualRevenueSelectedCurrency =
+        persistRevenue && annualRevenueInput > 0 ? annualRevenueInput : null;
+      const annualRevenueUsd =
+        persistRevenue && annualRevenueInput > 0 ? Math.round(toUSD(annualRevenueInput)) : null;
+      const selectedDowntimeDisplay =
+        downtimeMode === 'known' && knownDisplayAmount > 0
+          ? knownDisplayAmount
+          : toDisplayCurrency(benchmarkPreview.recommendedUSD);
+      const annualItBudgetEstimate =
+        annualRevenueSelectedCurrency != null ? Math.round(annualRevenueSelectedCurrency * 0.05) : null;
 
       const payload = {
         sizeCategory,
         verticalSector: !verticalSector || verticalSector === 'other' ? null : verticalSector,
+        industrySector: !verticalSector || verticalSector === 'other' ? null : verticalSector,
         employeeCount: employeeCount ? Number(employeeCount) : null,
-        annualRevenueUSD:
-          persistRevenue && annualRevenueInput > 0 ? Math.round(toUSD(annualRevenueInput)) : null,
+        annualRevenueUSD: annualRevenueUsd,
+        annualRevenue: annualRevenueSelectedCurrency,
+        annualITBudget: annualItBudgetEstimate,
+        drBudgetPercent: 4,
+        hourlyDowntimeCost: Math.round(selectedDowntimeDisplay),
         customDowntimeCostPerHour:
           downtimeMode === 'known' && knownDowntimeUSD && knownDowntimeUSD > 0
             ? knownDowntimeUSD
             : estimatedDowntimeUSD,
+        profileSource: 'user_input',
         customCurrency: currency,
       };
 
@@ -414,6 +439,7 @@ export function FinancialOnboardingWizard({
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
                 Les conversions sont basees sur les taux de change en vigueur.
+                {ratesDateLabel ? ` Taux du ${ratesDateLabel}${usdRatesQuery.data?.stale ? ' (cache)' : ''}.` : ''}
               </p>
             </div>
 

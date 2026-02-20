@@ -12,9 +12,11 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM deps AS build
 WORKDIR /app
 ARG VITE_API_URL
+ARG VITE_API_KEY
 ARG VITE_APP_VERSION
 ARG VITE_ENV
 ENV VITE_API_URL=${VITE_API_URL}
+ENV VITE_API_KEY=${VITE_API_KEY}
 ENV VITE_APP_VERSION=${VITE_APP_VERSION}
 ENV VITE_ENV=${VITE_ENV}
 # Fichiers de configuration (changent rarement)

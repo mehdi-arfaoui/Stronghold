@@ -11,6 +11,7 @@ import {
   calculateResilienceScore,
 } from '../drift/driftDetectionService.js';
 import { FinancialEngineService } from '../services/financial-engine.service.js';
+import { CurrencyService } from '../services/currency.service.js';
 
 const router = Router();
 
@@ -160,6 +161,7 @@ router.get('/events', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    await CurrencyService.getRates('USD');
 
     const status = req.query.status as string | undefined;
     const severity = req.query.severity as string | undefined;
@@ -196,6 +198,7 @@ router.get('/events', async (req: TenantRequest, res) => {
 
     const enrichedEvents = events.map((event) => {
       let costPerHour = 500;
+      let eventCurrency = String(profile?.customCurrency || 'EUR').toUpperCase();
       if (event.nodeId) {
         const node = nodeById.get(event.nodeId);
         if (node) {
@@ -225,6 +228,7 @@ router.get('/events', async (req: TenantRequest, res) => {
             override ? { customCostPerHour: override.customCostPerHour } : undefined,
           );
           costPerHour = impact.estimatedCostPerHour;
+          eventCurrency = impact.breakdown.currency;
         }
       }
 
@@ -256,7 +260,10 @@ router.get('/events', async (req: TenantRequest, res) => {
 
       return {
         ...event,
-        financialImpact,
+        financialImpact: {
+          ...financialImpact,
+          currency: eventCurrency,
+        },
       };
     });
 

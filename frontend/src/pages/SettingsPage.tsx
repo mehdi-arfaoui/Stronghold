@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+﻿import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Building2, Settings } from 'lucide-react';
@@ -25,6 +25,7 @@ const SIZE_OPTIONS = [
 ];
 
 const VERTICAL_OPTIONS = [
+  { value: '', label: 'Non precise' },
   { value: 'banking_finance', label: 'Banque / Finance' },
   { value: 'healthcare', label: 'Sante' },
   { value: 'manufacturing', label: 'Manufacturing' },
@@ -49,6 +50,11 @@ export function SettingsPage() {
   const [verticalSector, setVerticalSector] = useState('technology_saas');
   const [employeeCount, setEmployeeCount] = useState('');
   const [annualRevenueUSD, setAnnualRevenueUSD] = useState('');
+  const [annualRevenue, setAnnualRevenue] = useState('');
+  const [annualITBudget, setAnnualITBudget] = useState('');
+  const [drBudgetPercent, setDrBudgetPercent] = useState('');
+  const [hourlyDowntimeCost, setHourlyDowntimeCost] = useState('');
+  const [industrySector, setIndustrySector] = useState('');
   const [customDowntimeCostPerHour, setCustomDowntimeCostPerHour] = useState('');
   const [customCurrency, setCustomCurrency] = useState('EUR');
 
@@ -59,6 +65,11 @@ export function SettingsPage() {
     setVerticalSector(profile.verticalSector || 'technology_saas');
     setEmployeeCount(profile.employeeCount ? String(profile.employeeCount) : '');
     setAnnualRevenueUSD(profile.annualRevenueUSD ? String(profile.annualRevenueUSD) : '');
+    setAnnualRevenue(profile.annualRevenue ? String(profile.annualRevenue) : '');
+    setAnnualITBudget(profile.annualITBudget ? String(profile.annualITBudget) : '');
+    setDrBudgetPercent(profile.drBudgetPercent ? String(profile.drBudgetPercent) : '');
+    setHourlyDowntimeCost(profile.hourlyDowntimeCost ? String(profile.hourlyDowntimeCost) : '');
+    setIndustrySector(profile.industrySector || '');
     setCustomDowntimeCostPerHour(
       profile.customDowntimeCostPerHour ? String(profile.customDowntimeCostPerHour) : '',
     );
@@ -70,11 +81,17 @@ export function SettingsPage() {
       financialApi.updateOrgProfile({
         sizeCategory,
         verticalSector,
+        industrySector: industrySector || null,
         employeeCount: employeeCount ? Number(employeeCount) : null,
         annualRevenueUSD: annualRevenueUSD ? Number(annualRevenueUSD) : null,
+        annualRevenue: annualRevenue ? Number(annualRevenue) : null,
+        annualITBudget: annualITBudget ? Number(annualITBudget) : null,
+        drBudgetPercent: drBudgetPercent ? Number(drBudgetPercent) : null,
+        hourlyDowntimeCost: hourlyDowntimeCost ? Number(hourlyDowntimeCost) : null,
         customDowntimeCostPerHour: customDowntimeCostPerHour
           ? Number(customDowntimeCostPerHour)
           : null,
+        profileSource: 'user_input',
         customCurrency,
       }),
     onSuccess: async () => {
@@ -148,6 +165,19 @@ export function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
+                {profileQuery.data?.inferenceBanner && (
+                  <div className="md:col-span-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                    {profileQuery.data.inferenceBanner}
+                  </div>
+                )}
+                <div className="md:col-span-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span>Source profil: {profileQuery.data?.profileSource || 'inferred'}</span>
+                  <span>
+                    Confiance: {profileQuery.data?.profileConfidence != null
+                      ? `${Math.round(profileQuery.data.profileConfidence * 100)}%`
+                      : 'N/A'}
+                  </span>
+                </div>
                 <div className="space-y-2">
                   <Label htmlFor="sizeCategory">Taille</Label>
                   <select
@@ -181,6 +211,22 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
+                  <Label htmlFor="industrySector">Secteur financier</Label>
+                  <select
+                    id="industrySector"
+                    value={industrySector}
+                    onChange={(event) => setIndustrySector(event.target.value)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    {VERTICAL_OPTIONS.map((option) => (
+                      <option key={`industry-${option.value || 'none'}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
                   <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
                   <Input
                     id="employeeCount"
@@ -201,6 +247,56 @@ export function SettingsPage() {
                     value={annualRevenueUSD}
                     onChange={(event) => setAnnualRevenueUSD(event.target.value)}
                     placeholder="Ex: 125000000"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="annualRevenue">CA annuel ({customCurrency})</Label>
+                  <Input
+                    id="annualRevenue"
+                    type="number"
+                    min={0}
+                    value={annualRevenue}
+                    onChange={(event) => setAnnualRevenue(event.target.value)}
+                    placeholder="Ex: 30000000"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="annualITBudget">Budget IT annuel ({customCurrency})</Label>
+                  <Input
+                    id="annualITBudget"
+                    type="number"
+                    min={0}
+                    value={annualITBudget}
+                    onChange={(event) => setAnnualITBudget(event.target.value)}
+                    placeholder="Ex: 1500000"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
+                  <Input
+                    id="drBudgetPercent"
+                    type="number"
+                    min={0}
+                    max={100}
+                    step="0.1"
+                    value={drBudgetPercent}
+                    onChange={(event) => setDrBudgetPercent(event.target.value)}
+                    placeholder="Ex: 4"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
+                  <Input
+                    id="hourlyDowntimeCost"
+                    type="number"
+                    min={0}
+                    value={hourlyDowntimeCost}
+                    onChange={(event) => setHourlyDowntimeCost(event.target.value)}
+                    placeholder="Ex: 25000"
                   />
                 </div>
 
@@ -233,8 +329,18 @@ export function SettingsPage() {
 
                 <div className="md:col-span-2">
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Estimation basee sur donnees marche publiques. Ajustez ces valeurs avec la finance pour refléter votre contexte.
+                    Estimation basee sur donnees marche publiques. Ajustez ces valeurs avec la finance pour refleter votre contexte.
                   </p>
+                  {profileQuery.data?.fieldSources && (
+                    <div className="mb-3 rounded-md border bg-muted/20 p-3 text-xs">
+                      <p className="mb-1 font-medium">Traceabilite des valeurs</p>
+                      {Object.entries(profileQuery.data.fieldSources).map(([field, trace]) => (
+                        <p key={field}>
+                          {field}: {trace.source} ({Math.round(trace.confidence * 100)}%) - {trace.note}
+                        </p>
+                      ))}
+                    </div>
+                  )}
                   <div className="mb-3">
                     <Button variant="secondary" onClick={() => setWizardOpen(true)}>
                       Ouvrir l assistant onboarding financier
@@ -268,4 +374,5 @@ export function SettingsPage() {
     </div>
   );
 }
+
 

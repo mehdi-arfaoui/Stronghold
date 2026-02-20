@@ -5,9 +5,22 @@ export interface Recommendation {
   nodeId?: string;
   serviceName?: string;
   tier?: number;
-  strategy?: 'active-active' | 'warm-standby' | 'pilot-light' | 'backup';
+  strategy?:
+    | 'backup-restore'
+    | 'pilot-light'
+    | 'warm-standby'
+    | 'hot-standby'
+    | 'active-active';
   estimatedCost?: number;
-  roi?: number;
+  estimatedAnnualCost?: number;
+  estimatedProductionMonthlyCost?: number;
+  costSource?: 'cloud_type_reference' | 'criticality_fallback' | 'user_override' | string;
+  costConfidence?: number;
+  roi?: number | null;
+  roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable' | string;
+  roiMessage?: string;
+  paybackMonths?: number | null;
+  paybackLabel?: string;
   accepted?: boolean | null;
   status?: 'pending' | 'validated' | 'rejected';
   statusUpdatedAt?: string | null;
@@ -28,12 +41,42 @@ export interface Recommendation {
   confidence?: 'high' | 'medium' | 'low';
   normativeReference?: string;
   effort?: 'low' | 'medium' | 'high';
+  budgetWarning?: string | null;
+  calculation?: {
+    aleCurrent: number;
+    aleAfter: number;
+    riskAvoidedAnnual: number;
+    annualDrCost: number;
+    formula: string;
+    inputs: {
+      hourlyDowntimeCost: number;
+      currentRtoHours: number;
+      targetRtoHours: number;
+      incidentProbabilityAnnual: number;
+      monthlyDrCost: number;
+    };
+  };
+  sources?: string[];
 }
 
 export interface RecommendationsSummary {
   totalCost: number;
+  totalAnnualCost?: number;
   byStrategy: Record<string, number>;
+  annualCostByStrategy?: Record<string, number>;
+  costSharePercentByStrategy?: Record<string, number>;
   totalRecommendations: number;
+  riskAvoidedAnnual?: number;
+  roiPercent?: number | null;
+  paybackMonths?: number | null;
+  currency?: string;
+  budgetAnnual?: number | null;
+  financialDisclaimers?: {
+    profile?: string;
+    strategy?: string;
+    probability?: string;
+    serviceCost?: string;
+  };
 }
 
 export const recommendationsApi = {

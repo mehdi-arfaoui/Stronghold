@@ -21,6 +21,8 @@ import { useSimulation } from '@/hooks/useSimulation';
 import { useGraph } from '@/hooks/useGraph';
 import { discoveryApi } from '@/api/discovery.api';
 import { simulationsApi } from '@/api/simulations.api';
+import { financialApi } from '@/api/financial.api';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
 import type { ScenarioTemplate, SimulationConfig } from '@/types/simulation.types';
@@ -54,6 +56,7 @@ function mapScenarioToEngine(template: ScenarioTemplate, customParams: Record<st
 }
 
 export function SimulationPage() {
+  const tenantScope = getCredentialScopeKey();
   const [activeSimId, setActiveSimId] = useState<string | undefined>();
   const [activeView, setActiveView] = useState<SimulationSubView>('library');
   const [warRoomOpen, setWarRoomOpen] = useState(false);
@@ -80,6 +83,13 @@ export function SimulationPage() {
     queryKey: ['recovery-priorities'],
     queryFn: async () => (await simulationsApi.getRecoveryPriorities()).data.priorities ?? [],
   });
+
+  const orgProfileQuery = useQuery({
+    queryKey: ['financial-org-profile', tenantScope],
+    queryFn: async () => (await financialApi.getOrgProfile()).data,
+    staleTime: 60_000,
+  });
+  const activeCurrency = String(orgProfileQuery.data?.customCurrency ?? 'EUR').toUpperCase();
 
   const setScenarioParam = (key: string, value: unknown) => {
     setSelectedParams((prev) => ({ ...prev, [key]: value }));
@@ -165,7 +175,7 @@ export function SimulationPage() {
                 </Button>
               </div>
 
-              <SimulationResult result={simulation.result} />
+              <SimulationResult result={simulation.result} currency={activeCurrency} />
 
               {simulation.result.cascadeSteps?.length > 0 && (
                 <Card>
@@ -364,6 +374,7 @@ export function SimulationPage() {
           }}
           scenarioName={simulation.name}
           result={simulation.result}
+          currency={activeCurrency}
         />
       )}
 
@@ -374,6 +385,7 @@ export function SimulationPage() {
           scenarioName={simulation.name}
           scenarioType={simulation.scenarioType}
           result={simulation.result}
+          currency={activeCurrency}
         />
       )}
     </div>

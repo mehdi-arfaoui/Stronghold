@@ -97,7 +97,6 @@ export function AnalysisPage() {
       ? ((biaRaw as Record<string, unknown>).entries as unknown[])
       : []) as BIAEntry[];
   const currencyCode = String(orgProfileQuery.data?.customCurrency ?? 'EUR').toUpperCase();
-  const currencySymbol = currencyCode === 'USD' ? '$' : currencyCode === 'GBP' ? '\u00A3' : currencyCode === 'CHF' ? 'CHF ' : '\u20AC';
   const summary = biaSummaryQuery.data;
   const risks: Risk[] = Array.isArray(risksQuery.data) ? risksQuery.data : [];
   const redundancy = redundancyQuery.data ?? [];
@@ -150,7 +149,7 @@ export function AnalysisPage() {
             <CardContent className="p-0">
               <BIATable
                 entries={entries}
-                currencySymbol={currencySymbol}
+                currency={currencyCode}
                 onUpdateEntry={(id, field, value) => updateEntryMutation.mutate({ id, field, value })}
                 onValidateEntry={(id) => validateEntryMutation.mutate(id)}
                 onUpsertFinancialOverride={(nodeId, payload) =>
@@ -175,6 +174,7 @@ export function AnalysisPage() {
                   rtoRange={tier.maxRTO}
                   serviceCount={tier.serviceCount}
                   financialImpact={tier.totalFinancialImpact}
+                  currency={currencyCode}
                 />
               ))}
             </div>

@@ -10,6 +10,17 @@ import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { generateLandingZoneRecommendations } from '../graph/landingZoneService.js';
+import {
+  buildFinancialDisclaimers,
+  calculateRecommendationRoi,
+  estimateServiceMonthlyProductionCost,
+  resolveCompanyFinancialProfile,
+  resolveIncidentProbabilityForNodeType,
+  selectDrStrategyForService,
+  strategyKeyToLegacySlug,
+  strategyTargetRpoMinutes,
+  strategyTargetRtoMinutes,
+} from '../services/company-financial-profile.service.js';
 
 const router = Router();
 
@@ -97,73 +108,377 @@ function resolveNextStatus(override: Record<string, unknown>): LandingZoneRecomm
   return 'pending';
 }
 
-// ─── GET /recommendations/landing-zone — Generate landing zone recommendations ──────────
-router.get('/', async (req: TenantRequest, res) => {
-  try {
-    const tenantId = req.tenantId;
-    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+function normalizeCriticality(
+  recoveryTier: number | null | undefined,
+  criticalityScore: number | null | undefined,
+  impactCategory: string | null | undefined,
+): 'critical' | 'high' | 'medium' | 'low' {
+  const impact = String(impactCategory || '').toLowerCase();
+  if (impact.includes('tier1') || impact.includes('critical') || recoveryTier === 1) return 'critical';
+  if (impact.includes('tier2') || impact.includes('high') || recoveryTier === 2) return 'high';
+  if (impact.includes('tier3') || impact.includes('medium') || recoveryTier === 3) return 'medium';
+  if (impact.includes('tier4') || recoveryTier === 4) return 'low';
 
-    const graph = await GraphService.getGraph(prisma, tenantId);
+  const score = Number(criticalityScore);
+  if (Number.isFinite(score)) {
+    const normalized = score > 1 ? score / 100 : score;
+    if (normalized >= 0.85) return 'critical';
+    if (normalized >= 0.65) return 'high';
+    if (normalized >= 0.45) return 'medium';
+  }
+  return 'low';
+}
 
-    if (graph.order === 0) {
-      return res.status(400).json({ error: 'Graph is empty. Run a discovery scan first.' });
-    }
+function resolveStrategyOverride(metadata: unknown): string | null {
+  if (!isRecord(metadata)) return null;
+  const recommendationBlock = isRecord(metadata.landingZoneRecommendation)
+    ? metadata.landingZoneRecommendation
+    : null;
+  if (typeof recommendationBlock?.strategyOverride === 'string') {
+    return recommendationBlock.strategyOverride;
+  }
+  if (typeof metadata.recoveryStrategy === 'string') {
+    return metadata.recoveryStrategy;
+  }
+  return null;
+}
 
-    const analysis = await analyzeFullGraph(graph);
-    const bia = generateBIA(graph, analysis);
-    const report = generateLandingZoneRecommendations(bia, analysis);
-    const serviceIds = report.recommendations.map((rec) => rec.serviceId);
-    const nodeSnapshots = serviceIds.length
-      ? await prisma.infraNode.findMany({
+type BuiltRecommendation = {
+  id: string;
+  nodeId: string;
+  serviceName: string;
+  tier: number;
+  strategy: string;
+  estimatedCost: number;
+  estimatedAnnualCost: number;
+  estimatedProductionMonthlyCost: number;
+  costSource: string;
+  costConfidence: number;
+  roi: number | null;
+  roiStatus: string;
+  roiMessage: string;
+  paybackMonths: number | null;
+  paybackLabel: string;
+  accepted: boolean | null;
+  status: LandingZoneRecommendationStatus;
+  statusUpdatedAt: string | null;
+  statusHistory: RecommendationStatusHistoryEntry[];
+  description: string;
+  priority: number;
+  notes: string | null;
+  budgetWarning: string | null;
+  calculation: {
+    aleCurrent: number;
+    aleAfter: number;
+    riskAvoidedAnnual: number;
+    annualDrCost: number;
+    formula: string;
+    inputs: {
+      hourlyDowntimeCost: number;
+      currentRtoHours: number;
+      targetRtoHours: number;
+      incidentProbabilityAnnual: number;
+      monthlyDrCost: number;
+    };
+  };
+  sources: string[];
+};
+
+type BuiltRecommendationContext = {
+  recommendations: BuiltRecommendation[];
+  summary: {
+    totalCostMonthly: number;
+    totalCostAnnual: number;
+    byStrategy: Record<string, number>;
+    annualCostByStrategy: Record<string, number>;
+    costSharePercentByStrategy: Record<string, number>;
+    totalRecommendations: number;
+    riskAvoidedAnnual: number;
+    roiPercent: number | null;
+    paybackMonths: number | null;
+  };
+  profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>;
+  financialDisclaimers: ReturnType<typeof buildFinancialDisclaimers>;
+};
+
+async function buildLandingZoneRecommendationContext(
+  tenantId: string,
+): Promise<BuiltRecommendationContext> {
+  const graph = await GraphService.getGraph(prisma, tenantId);
+  if (graph.order === 0) {
+    return {
+      recommendations: [],
+      summary: {
+        totalCostMonthly: 0,
+        totalCostAnnual: 0,
+        byStrategy: {},
+        annualCostByStrategy: {},
+        costSharePercentByStrategy: {},
+        totalRecommendations: 0,
+        riskAvoidedAnnual: 0,
+        roiPercent: null,
+        paybackMonths: null,
+      },
+      profile: await resolveCompanyFinancialProfile(prisma, tenantId),
+      financialDisclaimers: buildFinancialDisclaimers(),
+    };
+  }
+
+  const [analysis, latestValidatedBia, profile] = await Promise.all([
+    analyzeFullGraph(graph),
+    prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        processes: {
+          where: {
+            validationStatus: 'validated',
+          },
+          select: {
+            serviceNodeId: true,
+            recoveryTier: true,
+            impactCategory: true,
+            criticalityScore: true,
+            suggestedRTO: true,
+            validatedRTO: true,
+            suggestedRPO: true,
+            validatedRPO: true,
+          },
+        },
+      },
+    }),
+    resolveCompanyFinancialProfile(prisma, tenantId),
+  ]);
+
+  const bia = generateBIA(graph, analysis);
+  const report = generateLandingZoneRecommendations(bia, analysis);
+  const serviceIds = report.recommendations.map((rec) => rec.serviceId);
+  const [nodeSnapshots] = await Promise.all([
+    serviceIds.length
+      ? prisma.infraNode.findMany({
           where: {
             tenantId,
             id: { in: serviceIds },
           },
           select: {
             id: true,
+            type: true,
+            provider: true,
             metadata: true,
+            criticalityScore: true,
+            impactCategory: true,
+            suggestedRTO: true,
+            validatedRTO: true,
+            suggestedRPO: true,
+            validatedRPO: true,
           },
         })
-      : [];
-    const recommendationStateByServiceId = new Map(
-      nodeSnapshots.map((snapshot) => [snapshot.id, parsePersistedRecommendationState(snapshot.metadata)]),
+      : Promise.resolve([]),
+  ]);
+
+  const recommendationStateByServiceId = new Map(
+    nodeSnapshots.map((snapshot) => [snapshot.id, parsePersistedRecommendationState(snapshot.metadata)]),
+  );
+  const validatedBiaByServiceId = new Map(
+    (latestValidatedBia?.processes || []).map((process) => [process.serviceNodeId, process]),
+  );
+  const nodeByServiceId = new Map(nodeSnapshots.map((node) => [node.id, node]));
+
+  let budgetRemainingMonthly =
+    profile.estimatedDrBudgetAnnual && profile.estimatedDrBudgetAnnual > 0
+      ? profile.estimatedDrBudgetAnnual / 12
+      : null;
+
+  const sortedRecommendations = [...report.recommendations].sort(
+    (left, right) => right.priorityScore - left.priorityScore,
+  );
+
+  const built: BuiltRecommendation[] = [];
+  for (const recommendation of sortedRecommendations) {
+    const node = nodeByServiceId.get(recommendation.serviceId);
+    const validatedProcess = validatedBiaByServiceId.get(recommendation.serviceId);
+    const state = recommendationStateByServiceId.get(recommendation.serviceId) ?? {
+      status: 'pending',
+      notes: null,
+      updatedAt: null,
+      history: [],
+    };
+
+    const monthlyCostEstimate = estimateServiceMonthlyProductionCost(
+      {
+        type: node?.type || 'APPLICATION',
+        provider: node?.provider || 'unknown',
+        metadata: node?.metadata || {},
+        criticalityScore: node?.criticalityScore ?? validatedProcess?.criticalityScore ?? null,
+        impactCategory: node?.impactCategory ?? validatedProcess?.impactCategory ?? null,
+      },
+      profile.currency,
     );
 
-    // Transform to frontend Recommendation[] format
-    const recommendations = report.recommendations.map(rec => {
-      const strategyMap: Record<string, string> = {
-        active_active: 'active-active',
-        warm_standby: 'warm-standby',
-        pilot_light: 'pilot-light',
-        backup_restore: 'backup',
-      };
-      const state = recommendationStateByServiceId.get(rec.serviceId) ?? {
-        status: 'pending',
-        notes: null,
-        updatedAt: null,
-        history: [],
-      };
-      return {
-        id: rec.serviceId,
-        nodeId: rec.serviceId,
-        serviceName: rec.serviceName,
-        tier: rec.recoveryTier,
-        strategy: strategyMap[rec.strategy.type] || rec.strategy.type,
-        estimatedCost: rec.estimatedCost,
-        roi: rec.estimatedCost > 0
-          ? Math.round((rec.riskOfInaction * 720 / rec.estimatedCost) * 10) / 10
-          : 0,
-        accepted: acceptedFromStatus(state.status),
-        status: state.status,
-        statusUpdatedAt: state.updatedAt,
-        statusHistory: state.history,
-        description: rec.strategy.description,
-        priority: rec.priorityScore,
-        notes: state.notes,
-      };
+    const criticality = normalizeCriticality(
+      validatedProcess?.recoveryTier ?? recommendation.recoveryTier,
+      validatedProcess?.criticalityScore ?? node?.criticalityScore ?? null,
+      validatedProcess?.impactCategory ?? node?.impactCategory ?? null,
+    );
+
+    const targetRtoMinutes =
+      validatedProcess?.validatedRTO ??
+      validatedProcess?.suggestedRTO ??
+      node?.validatedRTO ??
+      node?.suggestedRTO ??
+      recommendation.strategy.targetRTO ??
+      240;
+    const targetRpoMinutes =
+      validatedProcess?.validatedRPO ??
+      validatedProcess?.suggestedRPO ??
+      node?.validatedRPO ??
+      node?.suggestedRPO ??
+      recommendation.strategy.targetRPO ??
+      60;
+
+    const selected = selectDrStrategyForService({
+      targetRtoMinutes,
+      targetRpoMinutes,
+      criticality,
+      monthlyProductionCost: monthlyCostEstimate.estimatedMonthlyCost,
+      budgetRemainingMonthly,
+      overrideStrategy: resolveStrategyOverride(node?.metadata),
     });
 
-    return res.json(recommendations);
+    if (budgetRemainingMonthly && selected.monthlyDrCost > 0) {
+      budgetRemainingMonthly = Math.max(0, budgetRemainingMonthly - selected.monthlyDrCost);
+    }
+
+    const currentRtoMinutes =
+      validatedProcess?.validatedRTO ??
+      validatedProcess?.suggestedRTO ??
+      node?.validatedRTO ??
+      node?.suggestedRTO ??
+      240;
+    const probability = resolveIncidentProbabilityForNodeType(node?.type || recommendation.serviceName);
+    const roi = calculateRecommendationRoi({
+      hourlyDowntimeCost: profile.hourlyDowntimeCost,
+      currentRtoMinutes,
+      targetRtoMinutes: strategyTargetRtoMinutes(selected.strategy),
+      incidentProbabilityAnnual: probability.probabilityAnnual,
+      monthlyDrCost: selected.monthlyDrCost,
+    });
+
+    built.push({
+      id: recommendation.serviceId,
+      nodeId: recommendation.serviceId,
+      serviceName: recommendation.serviceName,
+      tier: recommendation.recoveryTier,
+      strategy: strategyKeyToLegacySlug(selected.strategy),
+      estimatedCost: selected.monthlyDrCost,
+      estimatedAnnualCost: selected.annualDrCost,
+      estimatedProductionMonthlyCost: monthlyCostEstimate.estimatedMonthlyCost,
+      costSource: monthlyCostEstimate.costSource,
+      costConfidence: monthlyCostEstimate.confidence,
+      roi: roi.roiPercent,
+      roiStatus: roi.roiStatus,
+      roiMessage: roi.roiMessage,
+      paybackMonths: roi.paybackMonths,
+      paybackLabel: roi.paybackLabel,
+      accepted: acceptedFromStatus(state.status),
+      status: state.status,
+      statusUpdatedAt: state.updatedAt,
+      statusHistory: state.history,
+      description: recommendation.strategy.description,
+      priority: recommendation.priorityScore,
+      notes: state.notes,
+      budgetWarning: selected.budgetWarning,
+      calculation: {
+        aleCurrent: roi.aleCurrent,
+        aleAfter: roi.aleAfter,
+        riskAvoidedAnnual: roi.riskAvoidedAnnual,
+        annualDrCost: roi.annualDrCost,
+        formula: roi.formula,
+        inputs: roi.inputs,
+      },
+      sources: [
+        monthlyCostEstimate.sourceReference,
+        probability.source,
+      ],
+    });
+  }
+
+  await Promise.all(
+    built.map((entry) =>
+      prisma.infraNode.updateMany({
+        where: { id: entry.id, tenantId },
+        data: {
+          estimatedMonthlyCost: entry.estimatedProductionMonthlyCost,
+          estimatedMonthlyCostCurrency: profile.currency,
+          estimatedMonthlyCostSource: entry.costSource,
+          estimatedMonthlyCostConfidence: entry.costConfidence,
+          estimatedMonthlyCostUpdatedAt: new Date(),
+        },
+      }),
+    ),
+  );
+
+  const byStrategy: Record<string, number> = {};
+  const annualCostByStrategy: Record<string, number> = {};
+  let totalCostMonthly = 0;
+  let totalCostAnnual = 0;
+  let totalRiskAvoidedAnnual = 0;
+
+  for (const recommendation of built) {
+    byStrategy[recommendation.strategy] = (byStrategy[recommendation.strategy] || 0) + 1;
+    annualCostByStrategy[recommendation.strategy] =
+      (annualCostByStrategy[recommendation.strategy] || 0) + recommendation.estimatedAnnualCost;
+    totalCostMonthly += recommendation.estimatedCost;
+    totalCostAnnual += recommendation.estimatedAnnualCost;
+    totalRiskAvoidedAnnual += recommendation.calculation.riskAvoidedAnnual;
+  }
+
+  const costSharePercentByStrategy = Object.fromEntries(
+    Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => [
+      strategy,
+      totalCostAnnual > 0 ? Math.round((annualCost / totalCostAnnual) * 10_000) / 100 : 0,
+    ]),
+  );
+
+  const roiPercent =
+    totalCostAnnual > 0 && totalRiskAvoidedAnnual > 0
+      ? Math.round(((totalRiskAvoidedAnnual - totalCostAnnual) / totalCostAnnual) * 10_000) / 100
+      : null;
+  const paybackMonths =
+    totalRiskAvoidedAnnual > 0 && totalCostAnnual > 0
+      ? Math.round((totalCostAnnual / (totalRiskAvoidedAnnual / 12)) * 100) / 100
+      : null;
+
+  return {
+    recommendations: built,
+    summary: {
+      totalCostMonthly: Math.round(totalCostMonthly * 100) / 100,
+      totalCostAnnual: Math.round(totalCostAnnual * 100) / 100,
+      byStrategy,
+      annualCostByStrategy,
+      costSharePercentByStrategy,
+      totalRecommendations: built.length,
+      riskAvoidedAnnual: Math.round(totalRiskAvoidedAnnual * 100) / 100,
+      roiPercent,
+      paybackMonths,
+    },
+    profile,
+    financialDisclaimers: buildFinancialDisclaimers(),
+  };
+}
+
+// ─── GET /recommendations/landing-zone — Generate landing zone recommendations ──────────
+router.get('/', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    if (graph.order === 0) {
+      return res.status(400).json({ error: 'Graph is empty. Run a discovery scan first.' });
+    }
+
+    const context = await buildLandingZoneRecommendationContext(tenantId);
+    return res.json(context.recommendations);
   } catch (error) {
     appLogger.error('Error generating landing zone recommendations:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -194,16 +509,9 @@ router.patch('/', async (req: TenantRequest, res) => {
     }
 
     // Generate current recommendations
-    const graph = await GraphService.getGraph(prisma, tenantId);
-    if (graph.order === 0) {
-      return res.status(400).json({ error: 'Graph is empty.' });
-    }
-
-    const analysis = await analyzeFullGraph(graph);
-    const bia = generateBIA(graph, analysis);
-    const report = generateLandingZoneRecommendations(bia, analysis);
+    const recommendationContext = await buildLandingZoneRecommendationContext(tenantId);
     const recommendationByServiceId = new Map(
-      report.recommendations.map((recommendation) => [recommendation.serviceId, recommendation]),
+      recommendationContext.recommendations.map((recommendation) => [recommendation.id, recommendation]),
     );
 
     const targetServiceIds = Array.from(new Set(overrides.map((override) => override.serviceId)));
@@ -312,32 +620,24 @@ router.get('/cost-summary', async (req: TenantRequest, res) => {
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
     const graph = await GraphService.getGraph(prisma, tenantId);
-
     if (graph.order === 0) {
       return res.status(400).json({ error: 'Graph is empty. Run a discovery scan first.' });
     }
 
-    const analysis = await analyzeFullGraph(graph);
-    const bia = generateBIA(graph, analysis);
-    const report = generateLandingZoneRecommendations(bia, analysis);
-
-    const strategyMap: Record<string, string> = {
-      active_active: 'active-active',
-      warm_standby: 'warm-standby',
-      pilot_light: 'pilot-light',
-      backup_restore: 'backup',
-    };
-
-    const byStrategy: Record<string, number> = {};
-    for (const rec of report.recommendations) {
-      const key = strategyMap[rec.strategy.type] || rec.strategy.type;
-      byStrategy[key] = (byStrategy[key] || 0) + 1;
-    }
-
+    const context = await buildLandingZoneRecommendationContext(tenantId);
     return res.json({
-      totalCost: report.summary.estimatedTotalCost,
-      byStrategy,
-      totalRecommendations: report.recommendations.length,
+      totalCost: context.summary.totalCostMonthly,
+      totalAnnualCost: context.summary.totalCostAnnual,
+      byStrategy: context.summary.byStrategy,
+      annualCostByStrategy: context.summary.annualCostByStrategy,
+      costSharePercentByStrategy: context.summary.costSharePercentByStrategy,
+      totalRecommendations: context.summary.totalRecommendations,
+      riskAvoidedAnnual: context.summary.riskAvoidedAnnual,
+      roiPercent: context.summary.roiPercent,
+      paybackMonths: context.summary.paybackMonths,
+      currency: context.profile.currency,
+      budgetAnnual: context.profile.estimatedDrBudgetAnnual,
+      financialDisclaimers: context.financialDisclaimers,
     });
   } catch (error) {
     appLogger.error('Error generating cost summary:', error);

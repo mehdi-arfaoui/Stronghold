@@ -180,3 +180,50 @@ test('calculateNodeCostFromFlows aggregates flow contributions with degradation 
     'degraded',
   );
 });
+
+test('calculateFlowsCoverage applies criticality threshold on 0..100 scale boundaries', async () => {
+  const boundaryNodes = [
+    { id: 'n-0', criticalityScore: 0, isSPOF: false },
+    { id: 'n-0_7', criticalityScore: 0.7, isSPOF: false },
+    { id: 'n-1', criticalityScore: 1, isSPOF: false },
+    { id: 'n-69', criticalityScore: 69, isSPOF: false },
+    { id: 'n-70', criticalityScore: 70, isSPOF: false },
+    { id: 'n-71', criticalityScore: 71, isSPOF: false },
+    { id: 'n-100', criticalityScore: 100, isSPOF: false },
+  ];
+
+  let observedThreshold: number | null = null;
+  const service = new BusinessFlowFinancialEngineService({
+    infraNode: {
+      findMany: async ({ where }: { where?: Record<string, unknown> }) => {
+        const or = Array.isArray(where?.OR) ? where.OR : [];
+        const criticalityCondition = or.find(
+          (entry) => Boolean(entry) && typeof entry === 'object' && 'criticalityScore' in (entry as Record<string, unknown>),
+        ) as { criticalityScore?: { gte?: number } } | undefined;
+        observedThreshold = criticalityCondition?.criticalityScore?.gte ?? null;
+
+        const threshold = observedThreshold ?? 70;
+        return boundaryNodes
+          .filter((node) => node.isSPOF || node.criticalityScore >= threshold)
+          .map((node) => ({ id: node.id }));
+      },
+    },
+    businessFlowNode: {
+      findMany: async ({ where }: { where?: Record<string, unknown> }) => {
+        const nodeIds = ((where?.infraNodeId as { in?: string[] } | undefined)?.in ?? []);
+        return nodeIds
+          .filter((id) => id === 'n-70' || id === 'n-100')
+          .map((infraNodeId) => ({ infraNodeId }));
+      },
+    },
+  } as any);
+
+  const coverage = await service.calculateFlowsCoverage('tenant-1');
+
+  assert.equal(observedThreshold, 70);
+  assert.equal(coverage.totalCriticalNodes, 3);
+  assert.equal(coverage.coveredCriticalNodes, 2);
+  assert.equal(coverage.uncoveredCriticalNodes, 1);
+  assert.deepEqual(coverage.uncoveredNodeIds, ['n-71']);
+  assert.equal(coverage.coveragePercent, 66.67);
+});

@@ -7,16 +7,33 @@ export interface FinancialROIResult {
   riskReductionAmount: number;
   annualRemediationCost: number;
   netAnnualSavings: number;
-  roiPercent: number;
-  paybackMonths: number;
+  roiPercent: number | null;
+  roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable';
+  roiMessage?: string;
+  paybackMonths: number | null;
+  paybackLabel?: string;
   strongholdSubscriptionAnnual: number;
   breakdownByRecommendation: Array<{
     recommendationId: string;
     strategy: string;
     targetNodes: string[];
     annualCost: number;
+    currentALE?: number;
+    projectedALE?: number;
     riskReduction: number;
-    individualROI: number;
+    individualROI: number | null;
+    roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable';
+    roiMessage?: string;
+    paybackMonths?: number | null;
+    paybackLabel?: string;
+    formula?: string;
+    calculationInputs?: {
+      hourlyDowntimeCost: number;
+      currentRtoHours: number;
+      targetRtoHours: number;
+      incidentProbabilityAnnual: number;
+      monthlyDrCost: number;
+    };
   }>;
   methodology: string;
   sources: string[];
@@ -57,6 +74,7 @@ export interface DriftFinancialImpactResponse {
     rpoDelta: number;
     explanation: string;
   };
+  currency: string;
   severity: 'critical' | 'high' | 'medium' | 'low';
   source: string;
 }
@@ -72,6 +90,7 @@ export interface NodeFlowImpactResponse {
     nodeId: string;
     totalCostPerHour: number;
     totalPeakCostPerHour: number;
+    currency: string;
     impactedFlows: Array<{
       flowId: string;
       flowName: string;
@@ -82,6 +101,7 @@ export interface NodeFlowImpactResponse {
     method: 'business_flows' | 'fallback_estimate' | 'user_override';
     confidence: 'high' | 'medium' | 'low';
   };
+  currency: string;
   precisionBadge: string;
 }
 
@@ -102,10 +122,28 @@ export interface OrganizationFinancialProfile {
   verticalSector?: string | null;
   employeeCount?: number | null;
   annualRevenueUSD?: number | null;
+  annualRevenue?: number | null;
+  industrySector?: string | null;
+  annualITBudget?: number | null;
+  drBudgetPercent?: number | null;
+  hourlyDowntimeCost?: number | null;
   customDowntimeCostPerHour?: number | null;
   customCurrency?: string;
   strongholdPlanId?: string | null;
   strongholdMonthlyCost?: number | null;
+  profileSource?: 'user_input' | 'inferred' | 'hybrid' | string;
+  profileConfidence?: number;
+  sourceDisclaimer?: string;
+  inferenceBanner?: string | null;
+  fieldSources?: Record<
+    string,
+    {
+      source: string;
+      confidence: number;
+      note: string;
+    }
+  >;
+  estimatedDrBudgetAnnual?: number | null;
   isConfigured?: boolean;
 }
 
@@ -113,8 +151,8 @@ export interface FinancialSummary {
   metrics: {
     annualRisk: number;
     potentialSavings: number;
-    roiPercent: number;
-    paybackMonths: number;
+    roiPercent: number | null;
+    paybackMonths: number | null;
   };
   totals: {
     totalSPOFs: number;
@@ -143,8 +181,11 @@ export interface FinancialSummary {
     riskReduction: number;
     riskReductionAmount: number;
     netAnnualSavings?: number;
-    roiPercent: number;
-    paybackMonths: number;
+    roiPercent: number | null;
+    roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable';
+    roiMessage?: string;
+    paybackMonths: number | null;
+    paybackLabel?: string;
     breakdownByRecommendation?: Array<{
       recommendationId: string;
       strategy: string;
