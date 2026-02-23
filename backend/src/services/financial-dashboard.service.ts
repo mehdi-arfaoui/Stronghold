@@ -1,6 +1,4 @@
 import type { PrismaClient, Prisma } from '@prisma/client';
-import * as GraphService from '../graph/graphService.js';
-import { generateHybridRecommendations } from '../recommendations/services/recommendation-engine.service.js';
 import {
   DOWNTIME_COST_BENCHMARKS,
   REGULATORY_PENALTY_BENCHMARKS,
@@ -13,11 +11,9 @@ import {
   type BIAResultInput,
   type FinancialOrganizationProfileInput,
   type NodeFinancialOverrideInput,
-  type RecommendationInput,
-  type ResolvedNodeFinancialCostInput,
 } from './financial-engine.service.js';
-import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 import { CurrencyService } from './currency.service.js';
+import { buildLandingZoneFinancialContext } from './landing-zone-financial.service.js';
 
 type InfraNodeWithEdges = Prisma.InfraNodeGetPayload<{
   include: {
@@ -459,22 +455,6 @@ export async function loadFinancialContext(prismaClient: PrismaClient, tenantId:
   };
 }
 
-export async function buildFinancialRecommendations(
-  prismaClient: PrismaClient,
-  tenantId: string,
-): Promise<RecommendationInput[]> {
-  const graph = await GraphService.getGraph(prismaClient, tenantId);
-  if (graph.order === 0) return [];
-
-  const generated = generateHybridRecommendations(graph);
-  return generated.map((recommendation) => ({
-    recommendationId: recommendation.id,
-    targetNodes: recommendation.affectedNodeIds,
-    category: recommendation.category,
-    priority: recommendation.priority,
-  }));
-}
-
 export async function computeFinancialModuleSignals(
   prismaClient: PrismaClient,
   tenantId: string,
@@ -620,76 +600,6 @@ export async function buildRegulatoryExposureSummary(
   };
 }
 
-type NodeCostMethodMeta = {
-  method: string;
-  confidence: string;
-};
-
-async function resolveNodeCostsFromBusinessFlows(
-  prismaClient: PrismaClient,
-  tenantId: string,
-  analysisResult: AnalysisResultInput,
-  profile: FinancialOrganizationProfileInput,
-  overridesByNodeId: Record<string, NodeFinancialOverrideInput | undefined>,
-): Promise<{
-  hasBusinessFlows: boolean;
-  resolvedNodeCostsByNodeId: Record<string, ResolvedNodeFinancialCostInput>;
-  nodeMethodById: Record<string, NodeCostMethodMeta>;
-}> {
-  const businessFlowCount = await prismaClient.businessFlow.count({ where: { tenantId } });
-  if (businessFlowCount === 0) {
-    return {
-      hasBusinessFlows: false,
-      resolvedNodeCostsByNodeId: {},
-      nodeMethodById: {},
-    };
-  }
-
-  const flowEngine = new BusinessFlowFinancialEngineService(prismaClient);
-  const pairs = await Promise.all(
-    analysisResult.nodes.map(async (node) => {
-      const override = overridesByNodeId[node.id] ?? null;
-      const flowCost = await flowEngine.calculateNodeCostFromFlows({
-        tenantId,
-        nodeId: node.id,
-        node,
-        orgProfile: profile,
-        ...(override ? { override } : {}),
-        includeUnvalidatedFlows: true,
-        applyCloudCostFactor: true,
-      });
-
-      const resolved = {
-        costPerHour: flowCost.totalCostPerHour,
-        method: flowCost.method,
-        confidence: flowCost.confidence,
-        fallbackEstimate: flowCost.fallbackEstimate,
-        sources:
-          flowCost.method === 'business_flows'
-            ? ['Business flow financial model']
-            : flowCost.method === 'user_override'
-              ? ['User financial override']
-              : ['Legacy financial fallback estimate'],
-      } satisfies ResolvedNodeFinancialCostInput;
-
-      return [
-        node.id,
-        resolved,
-        {
-          method: flowCost.method,
-          confidence: flowCost.confidence,
-        } satisfies NodeCostMethodMeta,
-      ] as const;
-    }),
-  );
-
-  return {
-    hasBusinessFlows: true,
-    resolvedNodeCostsByNodeId: Object.fromEntries(pairs.map((entry) => [entry[0], entry[1]])),
-    nodeMethodById: Object.fromEntries(pairs.map((entry) => [entry[0], entry[2]])),
-  };
-}
-
 function hasCloudCostMetadata(rawMetadata: unknown): boolean {
   if (!isPlainObject(rawMetadata)) return false;
   const cloudCost = rawMetadata.cloudCost;
@@ -771,38 +681,19 @@ export async function buildFinancialSummaryPayload(
 ): Promise<FinancialSummaryPayload> {
   await CurrencyService.getRates('USD');
 
-  const context = await loadFinancialContext(prismaClient, tenantId);
-  const recommendations = await buildFinancialRecommendations(prismaClient, tenantId);
   const preferredCurrency = parseCurrency(options?.currency);
-  const profile = resolveProfile(context.profile, preferredCurrency);
-  const resolvedNodeCosts = await resolveNodeCostsFromBusinessFlows(
-    prismaClient,
-    tenantId,
-    context.analysisResult,
-    profile,
-    context.overridesByNodeId,
-  );
+  const [context, recommendationContext] = await Promise.all([
+    loadFinancialContext(prismaClient, tenantId),
+    buildLandingZoneFinancialContext(prismaClient, tenantId, {
+      preferredCurrency,
+    }),
+  ]);
 
-  const [ale, roi, regulatoryExposure, tenant] = await Promise.all([
-    Promise.resolve(
-      FinancialEngineService.calculateAnnualExpectedLoss(
-        context.analysisResult,
-        context.biaResult,
-        profile,
-        context.overridesByNodeId,
-        resolvedNodeCosts.resolvedNodeCostsByNodeId,
-      ),
-    ),
-    Promise.resolve(
-      FinancialEngineService.calculateROI(
-        context.analysisResult,
-        context.biaResult,
-        recommendations,
-        profile,
-        context.overridesByNodeId,
-        resolvedNodeCosts.resolvedNodeCostsByNodeId,
-      ),
-    ),
+  const profile = recommendationContext.financialProfileInput;
+  const ale = recommendationContext.ale;
+  const roi = recommendationContext.roi;
+
+  const [regulatoryExposure, tenant] = await Promise.all([
     buildRegulatoryExposureSummary(prismaClient, tenantId, profile.verticalSector),
     prismaClient.tenant.findUnique({
       where: { id: tenantId },
@@ -839,7 +730,7 @@ export async function buildFinancialSummaryPayload(
     disclaimer: DEFAULT_DASHBOARD_DISCLAIMER,
     sources: dedupeSources(ale.sources, roi.sources),
     currency: ale.currency,
-    validationScope: context.biaValidationScope,
+    validationScope: recommendationContext.validationScope,
     generatedAt: new Date().toISOString(),
   };
 }

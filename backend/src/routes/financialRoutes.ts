@@ -81,6 +81,26 @@ function parseCurrency(rawCurrency: unknown): SupportedCurrency | undefined {
   return undefined;
 }
 
+async function resolveFinancialProfileInput(
+  tenantId: string,
+  preferredCurrency: SupportedCurrency | undefined,
+): Promise<FinancialOrganizationProfileInput> {
+  const resolved = await resolveCompanyFinancialProfile(prisma, tenantId, {
+    preferredCurrency,
+  });
+  return {
+    sizeCategory: resolved.sizeCategory,
+    verticalSector: resolved.verticalSector,
+    customDowntimeCostPerHour: resolved.customDowntimeCostPerHour,
+    hourlyDowntimeCost: resolved.hourlyDowntimeCost,
+    annualITBudget: resolved.annualITBudget,
+    drBudgetPercent: resolved.drBudgetPercent,
+    customCurrency: resolved.currency,
+    strongholdPlanId: resolved.strongholdPlanId,
+    strongholdMonthlyCost: resolved.strongholdMonthlyCost,
+  };
+}
+
 function parseNullableNumber(
   value: unknown,
   options?: { min?: number; max?: number },
@@ -395,12 +415,11 @@ router.post('/calculate-ale', requireCalcRateLimit, async (req: TenantRequest, r
       return res.json({ ...cached, cached: true });
     }
 
-    const context = await loadFinancialContext(tenantId);
-
     const preferredCurrency = parseCurrency(req.body?.currency);
-    const profile = preferredCurrency
-      ? { ...(context.profile || {}), customCurrency: preferredCurrency }
-      : context.profile;
+    const [context, profile] = await Promise.all([
+      loadFinancialContext(tenantId),
+      resolveFinancialProfileInput(tenantId, preferredCurrency),
+    ]);
 
     const resolved = await buildResolvedNodeCostsFromFlows(
       tenantId,
@@ -475,11 +494,11 @@ router.post('/calculate-roi', requireCalcRateLimit, async (req: TenantRequest, r
       return res.json({ ...cached, cached: true });
     }
 
-    const context = await loadFinancialContext(tenantId);
     const preferredCurrency = parseCurrency(req.body?.currency);
-    const profile = preferredCurrency
-      ? { ...(context.profile || {}), customCurrency: preferredCurrency }
-      : context.profile;
+    const [context, profile] = await Promise.all([
+      loadFinancialContext(tenantId),
+      resolveFinancialProfileInput(tenantId, preferredCurrency),
+    ]);
 
     const recommendations = Array.isArray(req.body?.recommendations)
       ? (req.body.recommendations as RecommendationInput[])

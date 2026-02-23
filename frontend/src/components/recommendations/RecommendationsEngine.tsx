@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -22,6 +22,8 @@ import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatCurrency } from '@/lib/formatters';
 
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'] as const;
+const ROI_DISPLAY_CAP_ABS = 5_000;
+const ROI_DISPLAY_HIGH_THRESHOLD = 1_000;
 
 const STRATEGY_LABELS: Record<string, string> = {
   'backup-restore': 'Backup & Restore',
@@ -56,9 +58,24 @@ function formatPaybackMonths(paybackMonths: number | null | undefined, paybackLa
   return `${paybackMonths.toFixed(1)} mois`;
 }
 
-function formatRoiPercent(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'Non applicable';
-  return `${value.toFixed(1)}%`;
+function formatRoiPercent(value: number | null | undefined): { label: string; tooltip?: string } {
+  if (value == null || !Number.isFinite(value)) return { label: 'Non applicable' };
+  if (value > ROI_DISPLAY_HIGH_THRESHOLD) {
+    return {
+      label: '> 1000%',
+      tooltip: 'Gain tres eleve par rapport au cout annuel DR estime.',
+    };
+  }
+  if (value < -ROI_DISPLAY_CAP_ABS) {
+    return {
+      label: '< -5000%',
+      tooltip: 'Affichage borne pour eviter une valeur extreme peu exploitable.',
+    };
+  }
+  const bounded = Math.max(-ROI_DISPLAY_CAP_ABS, Math.min(ROI_DISPLAY_CAP_ABS, value));
+  return {
+    label: `${bounded.toFixed(1)}%`,
+  };
 }
 
 function mapCostSourceLabel(costSource: string | undefined): string {
@@ -200,6 +217,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     recommendationsSummaryQuery.data?.paybackMonths ?? roiQuery.data?.paybackMonths ?? null;
   const summaryTotalRecommendations =
     recommendationsSummaryQuery.data?.totalRecommendations ?? recommendations.length;
+  const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
+  const summaryRiskAvoidedDisplay =
+    summaryRiskAvoided < 0 ? 'Aucun gain - service deja protege' : money(summaryRiskAvoided, currency);
 
   const setRecommendationStatus = (recommendation: Recommendation, status: RecommendationStatus) => {
     setLocalStatuses((previous) => ({ ...previous, [recommendation.id]: status }));
@@ -254,8 +274,8 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <Metric
                 label="Risque annuel evite"
-                value={money(summaryRiskAvoided, currency)}
-                color="text-green-600"
+                value={summaryRiskAvoidedDisplay}
+                color={summaryRiskAvoided < 0 ? 'text-amber-700' : 'text-green-600'}
               />
               <Metric
                 label="Cout annuel DR"
@@ -263,7 +283,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               />
               <Metric
                 label="ROI global"
-                value={formatRoiPercent(summaryRoiPercent)}
+                value={
+                  <span title={summaryRoiDisplay.tooltip}>
+                    {summaryRoiDisplay.label}
+                  </span>
+                }
                 color={roiToneClass(undefined, summaryRoiPercent)}
               />
               <Metric
@@ -322,6 +346,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
           const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
           const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
+          const individualRoiDisplay = formatRoiPercent(individualROI);
           const roiStatus = recommendation.roiStatus ?? breakdown?.roiStatus;
           const roiMessage = recommendation.roiMessage ?? breakdown?.roiMessage;
           const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
@@ -369,11 +394,19 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 <div className="grid gap-3 sm:grid-cols-4">
                   <MiniMetric icon={DollarSign} label="Cout estime" value={`${money(monthlyCost, currency)}/mois`} />
                   <MiniMetric icon={DollarSign} label="Cout annuel DR" value={money(annualCost, currency)} />
-                  <MiniMetric icon={TrendingUp} label={annualSavings >= 0 ? 'Economie annuelle estimee' : 'Cout annuel estime'} value={money(annualSavings, currency)} />
+                  <MiniMetric
+                    icon={TrendingUp}
+                    label="Economie annuelle estimee"
+                    value={annualSavings < 0 ? 'Aucun gain - service deja protege' : money(annualSavings, currency)}
+                  />
                   <MiniMetric
                     icon={Clock}
                     label={individualROI == null ? 'ROI individuel' : individualROI >= 0 ? 'ROI individuel' : 'ROI negatif'}
-                    value={formatRoiPercent(individualROI)}
+                    value={
+                      <span title={individualRoiDisplay.tooltip}>
+                        {individualRoiDisplay.label}
+                      </span>
+                    }
                   />
                 </div>
                 <div className="text-xs text-muted-foreground">
@@ -461,7 +494,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                       <p>{recommendation.calculation.formula}</p>
                       <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
                       <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
-                      <p>Risque evite annuel: {money(recommendation.calculation.riskAvoidedAnnual, currency)}</p>
+                      <p>
+                        Risque evite annuel:{' '}
+                        {recommendation.calculation.riskAvoidedAnnual < 0
+                          ? 'Aucun gain - service deja protege'
+                          : money(recommendation.calculation.riskAvoidedAnnual, currency)}
+                      </p>
                       <p>Cout annuel DR: {money(recommendation.calculation.annualDrCost, currency)}</p>
                       <p>
                         Inputs: cout downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
@@ -481,7 +519,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   );
 }
 
-function Metric({ label, value, color }: { label: string; value: string; color?: string }) {
+function Metric({ label, value, color }: { label: string; value: ReactNode; color?: string }) {
   return (
     <div className="rounded-lg border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
@@ -497,7 +535,7 @@ function MiniMetric({
 }: {
   icon: typeof DollarSign;
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
     <div className="rounded-md border bg-muted/20 p-2">

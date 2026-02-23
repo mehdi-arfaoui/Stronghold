@@ -738,7 +738,7 @@ const demoBusinessFlows: DemoBusinessFlowDef[] = [
     operatingDaysPerWeek: 7,
     operatingHoursPerDay: 24,
     source: 'cloud_tags',
-    validatedByUser: false,
+    validatedByUser: true,
     nodes: [
       { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
       { infraNodeId: 'svc-order', role: 'processing', isCritical: true },
@@ -746,6 +746,40 @@ const demoBusinessFlows: DemoBusinessFlowDef[] = [
       { infraNodeId: 'sqs-notifications', role: 'notification', isCritical: false },
       { infraNodeId: 'svc-notification', role: 'processing', isCritical: false },
       { infraNodeId: 'sendgrid-api', role: 'external_dependency', isCritical: false },
+    ],
+  },
+  {
+    name: 'Parcours d achat client',
+    description: 'Parcours complet du client, de la navigation au paiement et a la notification',
+    category: 'revenue',
+    estimatedCostPerHour: 2600,
+    peakHoursMultiplier: 1.6,
+    operatingDaysPerWeek: 7,
+    operatingHoursPerDay: 18,
+    source: 'manual',
+    validatedByUser: true,
+    nodes: [
+      { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'svc-catalog', role: 'processing', isCritical: true },
+      { infraNodeId: 'svc-order', role: 'processing', isCritical: true },
+      { infraNodeId: 'svc-payment', role: 'processing', isCritical: true },
+      { infraNodeId: 'svc-notification', role: 'notification', isCritical: false },
+    ],
+  },
+  {
+    name: 'Gestion des comptes',
+    description: 'Gestion des comptes clients et operations administratives',
+    category: 'operations',
+    estimatedCostPerHour: 1100,
+    peakHoursMultiplier: 1.3,
+    operatingDaysPerWeek: 7,
+    operatingHoursPerDay: 16,
+    source: 'manual',
+    validatedByUser: true,
+    nodes: [
+      { infraNodeId: 'svc-api-gateway', role: 'entry_point', isCritical: true },
+      { infraNodeId: 'svc-user', role: 'processing', isCritical: true },
+      { infraNodeId: 'svc-admin', role: 'processing', isCritical: false },
     ],
   },
   {
@@ -758,7 +792,7 @@ const demoBusinessFlows: DemoBusinessFlowDef[] = [
     operatingHoursPerDay: 10,
     source: 'ai_suggested',
     aiConfidence: 0.72,
-    validatedByUser: false,
+    validatedByUser: true,
     nodes: [
       { infraNodeId: 'svc-admin', role: 'entry_point', isCritical: true },
       { infraNodeId: 'db-admin', role: 'data_store', isCritical: true },
@@ -766,6 +800,75 @@ const demoBusinessFlows: DemoBusinessFlowDef[] = [
     ],
   },
 ];
+
+const validatedBiaServiceOverrides: Record<
+  string,
+  {
+    validatedRTO: number;
+    validatedRPO: number;
+    validatedMTPD: number;
+    recoveryTier: number;
+    impactCategory: 'critical' | 'high' | 'medium' | 'low';
+    financialImpactPerHour: number;
+  }
+> = {
+  'svc-payment': {
+    validatedRTO: 4,
+    validatedRPO: 1,
+    validatedMTPD: 30,
+    recoveryTier: 1,
+    impactCategory: 'critical',
+    financialImpactPerHour: 15_000,
+  },
+  'svc-api-gateway': {
+    validatedRTO: 10,
+    validatedRPO: 3,
+    validatedMTPD: 60,
+    recoveryTier: 1,
+    impactCategory: 'critical',
+    financialImpactPerHour: 12_000,
+  },
+  'svc-order': {
+    validatedRTO: 30,
+    validatedRPO: 10,
+    validatedMTPD: 120,
+    recoveryTier: 2,
+    impactCategory: 'high',
+    financialImpactPerHour: 8_000,
+  },
+  'svc-user': {
+    validatedRTO: 90,
+    validatedRPO: 45,
+    validatedMTPD: 240,
+    recoveryTier: 2,
+    impactCategory: 'high',
+    financialImpactPerHour: 5_000,
+  },
+  'svc-catalog': {
+    validatedRTO: 360,
+    validatedRPO: 120,
+    validatedMTPD: 720,
+    recoveryTier: 3,
+    impactCategory: 'medium',
+    financialImpactPerHour: 3_000,
+  },
+  'svc-notification': {
+    validatedRTO: 480,
+    validatedRPO: 180,
+    validatedMTPD: 960,
+    recoveryTier: 3,
+    impactCategory: 'medium',
+    financialImpactPerHour: 900,
+  },
+  'svc-admin': {
+    validatedRTO: 720,
+    validatedRPO: 240,
+    validatedMTPD: 1_440,
+    recoveryTier: 4,
+    impactCategory: 'low',
+    financialImpactPerHour: 400,
+  },
+};
 
 async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) {
   await prisma.organizationProfile.upsert({
@@ -1094,11 +1197,27 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
           tenantId,
           processes: {
             create: biaReport.processes.map((processItem) => {
-              const isValidated =
-                (processItem.recoveryTier ?? 4) <= 2 ||
-                ['db-payment', 'redis-main', 'svc-api-gateway', 'erp-server'].includes(
-                  processItem.serviceNodeId,
-                );
+              const override = validatedBiaServiceOverrides[processItem.serviceNodeId];
+              const isValidated = Boolean(override);
+              const financialImpact = {
+                ...processItem.financialImpact,
+                ...(override
+                  ? {
+                      estimatedCostPerHour: override.financialImpactPerHour,
+                      confidence: 'high',
+                      note: 'Validated financial estimate seeded for ShopMax demo',
+                    }
+                  : {}),
+              };
+              const validatedRTO = isValidated
+                ? override?.validatedRTO ?? processItem.suggestedRTO
+                : null;
+              const validatedRPO = isValidated
+                ? override?.validatedRPO ?? processItem.suggestedRPO
+                : null;
+              const validatedMTPD = isValidated
+                ? override?.validatedMTPD ?? processItem.suggestedMTPD
+                : null;
 
               return {
                 serviceNodeId: processItem.serviceNodeId,
@@ -1109,15 +1228,15 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
                 suggestedRTO: processItem.suggestedRTO,
                 suggestedRPO: processItem.suggestedRPO,
                 suggestedMBCO: processItem.suggestedMBCO,
-                impactCategory: processItem.impactCategory,
+                impactCategory: override?.impactCategory ?? processItem.impactCategory,
                 criticalityScore: processItem.criticalityScore,
-                recoveryTier: processItem.recoveryTier,
+                recoveryTier: override?.recoveryTier ?? processItem.recoveryTier,
                 dependencyChain: processItem.dependencyChain as unknown as Prisma.InputJsonValue,
                 weakPoints: processItem.weakPoints as unknown as Prisma.InputJsonValue,
-                financialImpact: processItem.financialImpact as unknown as Prisma.InputJsonValue,
-                validatedRTO: isValidated ? processItem.suggestedRTO : null,
-                validatedRPO: isValidated ? processItem.suggestedRPO : null,
-                validatedMTPD: isValidated ? processItem.suggestedMTPD : null,
+                financialImpact: financialImpact as unknown as Prisma.InputJsonValue,
+                validatedRTO,
+                validatedRPO,
+                validatedMTPD,
                 validationStatus: isValidated ? 'validated' : 'pending',
                 tenantId,
               };
@@ -1127,18 +1246,23 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
       });
 
       await Promise.all(
-        biaReport.processes.map((processItem) =>
-          prisma.infraNode.updateMany({
+        biaReport.processes.map((processItem) => {
+          const override = validatedBiaServiceOverrides[processItem.serviceNodeId];
+          return prisma.infraNode.updateMany({
             where: { id: processItem.serviceNodeId, tenantId },
             data: {
               suggestedRTO: processItem.suggestedRTO,
+              validatedRTO: override?.validatedRTO ?? null,
               suggestedRPO: processItem.suggestedRPO,
+              validatedRPO: override?.validatedRPO ?? null,
               suggestedMTPD: processItem.suggestedMTPD,
-              impactCategory: processItem.impactCategory,
-              financialImpactPerHour: processItem.financialImpact.estimatedCostPerHour,
+              validatedMTPD: override?.validatedMTPD ?? null,
+              impactCategory: override?.impactCategory ?? processItem.impactCategory,
+              financialImpactPerHour:
+                override?.financialImpactPerHour ?? processItem.financialImpact.estimatedCostPerHour,
             },
-          })
-        )
+          });
+        })
       );
 
       biaProcessCount = biaReport.processes.length;

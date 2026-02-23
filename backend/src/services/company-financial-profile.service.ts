@@ -729,6 +729,62 @@ function getDefaultStrategyFromCriticality(
   return 'backup_restore';
 }
 
+function strategyOrder(strategy: DrStrategyKey): number {
+  return DR_STRATEGY_PROFILES[strategy].order;
+}
+
+function orderedStrategies(): DrStrategyKey[] {
+  return (Object.keys(DR_STRATEGY_PROFILES) as DrStrategyKey[]).sort(
+    (left, right) => DR_STRATEGY_PROFILES[left].order - DR_STRATEGY_PROFILES[right].order,
+  );
+}
+
+export function estimateStrategyMonthlyDrCost(
+  monthlyProductionCost: number,
+  strategy: DrStrategyKey,
+): number {
+  const profile = DR_STRATEGY_PROFILES[strategy];
+  const multiplierCost = Math.max(0, monthlyProductionCost) * profile.productionCostMultiplier;
+  return roundMoney(
+    Math.max(multiplierCost, profile.monthlyCostFloor),
+  );
+}
+
+export function findNextImprovingStrategy(
+  strategy: DrStrategyKey,
+  currentRtoMinutes?: number | null,
+): DrStrategyKey | null {
+  const parsedCurrentRto = Number(currentRtoMinutes);
+  if (!Number.isFinite(parsedCurrentRto) || parsedCurrentRto < 0) return strategy;
+
+  const sorted = orderedStrategies();
+  const currentIndex = sorted.indexOf(strategy);
+  if (currentIndex === -1) return strategy;
+
+  for (let index = currentIndex; index < sorted.length; index += 1) {
+    const candidate = sorted[index] as DrStrategyKey;
+    if (DR_STRATEGY_PROFILES[candidate].rtoTypicalMinutes < parsedCurrentRto) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+function pickLeastCostStrategyForTargets(
+  targetRtoMinutes: number,
+  targetRpoMinutes: number,
+): DrStrategyKey {
+  const rto = Math.max(0, targetRtoMinutes);
+  const rpo = Math.max(0, targetRpoMinutes);
+
+  if (rto < 5 && rpo <= 1) return 'active_active';
+  if (rto <= 15 && rpo < 5) return 'hot_standby';
+  if (rto <= 30 && rpo < 15) return 'warm_standby';
+  if (rto <= 240 && rpo < 60) return 'pilot_light';
+  return 'backup_restore';
+}
+
 export function selectDrStrategyForService(options: {
   targetRtoMinutes?: number | null;
   targetRpoMinutes?: number | null;
@@ -740,9 +796,7 @@ export function selectDrStrategyForService(options: {
   const overrideKey = String(options.overrideStrategy || '').toLowerCase().replace(/[-\s]/g, '_');
   if (overrideKey in DR_STRATEGY_PROFILES) {
     const strategy = overrideKey as DrStrategyKey;
-    const monthlyDrCost = roundMoney(
-      options.monthlyProductionCost * DR_STRATEGY_PROFILES[strategy].productionCostMultiplier,
-    );
+    const monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, strategy);
     return {
       strategy,
       monthlyDrCost,
@@ -753,9 +807,7 @@ export function selectDrStrategyForService(options: {
     };
   }
 
-  const sorted = (Object.keys(DR_STRATEGY_PROFILES) as DrStrategyKey[]).sort(
-    (left, right) => DR_STRATEGY_PROFILES[left].order - DR_STRATEGY_PROFILES[right].order,
-  );
+  const sorted = orderedStrategies();
 
   const targetRto = toPositiveNumber(options.targetRtoMinutes);
   const targetRpo = toPositiveNumber(options.targetRpoMinutes);
@@ -764,14 +816,16 @@ export function selectDrStrategyForService(options: {
   const rationale: string[] = [];
 
   if (targetRto && targetRpo) {
+    const targetBased = pickLeastCostStrategyForTargets(targetRto, targetRpo);
+    const floorByCriticality = getDefaultStrategyFromCriticality(options.criticality);
     selected =
-      sorted.find((strategy) => {
-        const profile = DR_STRATEGY_PROFILES[strategy];
-        return profile.rtoMaxMinutes <= targetRto && profile.rpoMaxMinutes <= targetRpo;
-      }) || null;
-    if (selected) {
-      rationale.push(`Cible RTO/RPO ${targetRto}min/${targetRpo}min`);
-    }
+      strategyOrder(targetBased) >= strategyOrder(floorByCriticality)
+        ? targetBased
+        : floorByCriticality;
+    rationale.push(
+      `Cible RTO/RPO ${targetRto}min/${targetRpo}min -> ${targetBased}`,
+      `Contrainte criticite ${options.criticality} -> minimum ${floorByCriticality}`,
+    );
   }
 
   if (!selected) {
@@ -779,10 +833,7 @@ export function selectDrStrategyForService(options: {
     rationale.push(`Fallback criticite ${options.criticality}`);
   }
 
-  const selectedProfile = DR_STRATEGY_PROFILES[selected];
-  let monthlyDrCost = roundMoney(
-    options.monthlyProductionCost * selectedProfile.productionCostMultiplier,
-  );
+  let monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, selected);
   let strategySource: StrategySelectionResult['strategySource'] = 'recommended';
   let budgetWarning: string | null = null;
 
@@ -793,10 +844,7 @@ export function selectDrStrategyForService(options: {
       const downgraded = sorted[selectedIndex - 1] as DrStrategyKey;
       selected = downgraded;
       strategySource = 'budget_adjusted';
-      const downgradedProfile = DR_STRATEGY_PROFILES[selected];
-      monthlyDrCost = roundMoney(
-        options.monthlyProductionCost * downgradedProfile.productionCostMultiplier,
-      );
+      monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, selected);
       budgetWarning =
         'Budget depasse: strategie ajustee au niveau inferieur pour respecter le budget DR estime';
       rationale.push('Ajustement budget');
@@ -896,7 +944,7 @@ export function strategyKeyToLegacySlug(strategy: DrStrategyKey): string {
 }
 
 export function strategyTargetRtoMinutes(strategy: DrStrategyKey): number {
-  return DR_STRATEGY_PROFILES[strategy].rtoMaxMinutes;
+  return DR_STRATEGY_PROFILES[strategy].rtoTypicalMinutes;
 }
 
 export function strategyTargetRpoMinutes(strategy: DrStrategyKey): number {

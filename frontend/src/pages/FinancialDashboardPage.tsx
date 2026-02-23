@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { ComponentType } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
@@ -58,9 +58,25 @@ function formatCompactMoney(value: number, currency: string): string {
   }).format(value);
 }
 
-function formatPercentNullable(value: number | null | undefined): string {
-  if (value == null || !Number.isFinite(value)) return 'Non applicable';
-  return `${value.toFixed(1)}%`;
+const ROI_DISPLAY_CAP_ABS = 5_000;
+const ROI_DISPLAY_HIGH_THRESHOLD = 1_000;
+
+function formatPercentNullable(value: number | null | undefined): { label: string; tooltip?: string } {
+  if (value == null || !Number.isFinite(value)) return { label: 'Non applicable' };
+  if (value > ROI_DISPLAY_HIGH_THRESHOLD) {
+    return {
+      label: '> 1000%',
+      tooltip: 'Gain tres eleve par rapport au cout annuel DR estime.',
+    };
+  }
+  if (value < -ROI_DISPLAY_CAP_ABS) {
+    return {
+      label: '< -5000%',
+      tooltip: 'Affichage borne pour eviter une valeur extreme peu exploitable.',
+    };
+  }
+  const bounded = Math.max(-ROI_DISPLAY_CAP_ABS, Math.min(ROI_DISPLAY_CAP_ABS, value));
+  return { label: `${bounded.toFixed(1)}%` };
 }
 
 function formatDate(dateString: string): string {
@@ -73,7 +89,7 @@ function formatDate(dateString: string): string {
 
 function KpiCard(props: {
   title: string;
-  value: string;
+  value: ReactNode;
   subtitle: string;
   icon: ComponentType<{ className?: string }>;
   tone: 'risk' | 'savings' | 'roi' | 'payback';
@@ -161,6 +177,11 @@ function FinancialDashboardInner() {
   const financialPrecision = summary?.financialPrecision;
   const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
   const paybackMonths = summary?.metrics.paybackMonths ?? null;
+  const roiDisplay = formatPercentNullable(summary?.metrics.roiPercent ?? null);
+  const potentialSavingsDisplay =
+    (summary?.metrics.potentialSavings ?? 0) < 0
+      ? 'Aucun gain - service deja protege'
+      : formatMoney(summary?.metrics.potentialSavings ?? 0, currency);
   const paybackValue =
     paybackMonths != null && paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
   const paybackSubtitle =
@@ -439,14 +460,14 @@ function FinancialDashboardInner() {
         />
         <KpiCard
           title="Economies potentielles"
-          value={formatMoney(summary.metrics.potentialSavings, currency)}
+          value={potentialSavingsDisplay}
           subtitle="Si les recommandations sont appliquees"
           icon={PiggyBank}
-          tone="savings"
+          tone={summary.metrics.potentialSavings < 0 ? 'payback' : 'savings'}
         />
         <KpiCard
           title="ROI estime"
-          value={formatPercentNullable(summary.metrics.roiPercent)}
+          value={<span title={roiDisplay.tooltip}>{roiDisplay.label}</span>}
           subtitle="Retour sur investissement annuel net"
           icon={TrendingUp}
           tone="roi"

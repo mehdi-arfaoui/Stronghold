@@ -34,9 +34,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: number;
     rtoMinMinutes: number;
     rtoMaxMinutes: number;
+    rtoTypicalMinutes: number;
     rpoMinMinutes: number;
     rpoMaxMinutes: number;
     productionCostMultiplier: number;
+    monthlyCostFloor: number;
     source: string;
   }
 > = {
@@ -45,9 +47,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: 1,
     rtoMinMinutes: 120,
     rtoMaxMinutes: 1_440,
+    rtoTypicalMinutes: 240,
     rpoMinMinutes: 60,
     rpoMaxMinutes: 1_440,
     productionCostMultiplier: 0.05,
+    monthlyCostFloor: 20,
     source:
       'AWS Architecture Blog (2024) and public cloud pricing benchmarks (AWS/Azure/GCP, 2025)',
   },
@@ -56,9 +60,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: 2,
     rtoMinMinutes: 10,
     rtoMaxMinutes: 30,
+    rtoTypicalMinutes: 20,
     rpoMinMinutes: 5,
     rpoMaxMinutes: 60,
     productionCostMultiplier: 0.15,
+    monthlyCostFloor: 100,
     source:
       'AWS Architecture Blog (2024) and public cloud pricing benchmarks (AWS/Azure/GCP, 2025)',
   },
@@ -67,9 +73,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: 3,
     rtoMinMinutes: 5,
     rtoMaxMinutes: 10,
+    rtoTypicalMinutes: 7.5,
     rpoMinMinutes: 1,
     rpoMaxMinutes: 5,
     productionCostMultiplier: 0.4,
+    monthlyCostFloor: 400,
     source:
       'AWS Architecture Blog (2024) and public cloud pricing benchmarks (AWS/Azure/GCP, 2025)',
   },
@@ -78,9 +86,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: 4,
     rtoMinMinutes: 1,
     rtoMaxMinutes: 5,
+    rtoTypicalMinutes: 3,
     rpoMinMinutes: 0,
     rpoMaxMinutes: 1,
     productionCostMultiplier: 0.7,
+    monthlyCostFloor: 700,
     source:
       'AWS Architecture Blog (2024) and public cloud pricing benchmarks (AWS/Azure/GCP, 2025)',
   },
@@ -89,9 +99,11 @@ export const DR_STRATEGY_PROFILES: Record<
     order: 5,
     rtoMinMinutes: 0,
     rtoMaxMinutes: 1,
+    rtoTypicalMinutes: 0.5,
     rpoMinMinutes: 0,
     rpoMaxMinutes: 1,
     productionCostMultiplier: 1.05,
+    monthlyCostFloor: 1_050,
     source:
       'AWS Architecture Blog (2024) and public cloud pricing benchmarks (AWS/Azure/GCP, 2025)',
   },

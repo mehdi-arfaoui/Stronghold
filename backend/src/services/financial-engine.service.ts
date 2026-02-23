@@ -1,4 +1,5 @@
 ﻿import type { DriftEvent, OrganizationProfile } from '@prisma/client';
+import { appLogger } from '../utils/logger.js';
 import {
   DOWNTIME_COST_BENCHMARKS,
   NODE_TYPE_COST_MULTIPLIERS,
@@ -790,8 +791,6 @@ export class FinancialEngineService {
             : strategyAnnualCost(strategy, targetNodes.length || 1, fxMultiplier),
       );
 
-      remediationCostTotal += annualCost;
-
       const targetRtoMinutes =
         Number.isFinite(recommendation.targetRtoMinutes) && Number(recommendation.targetRtoMinutes) > 0
           ? Number(recommendation.targetRtoMinutes)
@@ -825,6 +824,22 @@ export class FinancialEngineService {
       }
 
       const recommendationRiskReduction = recommendationCurrentAle - recommendationProjectedAle;
+      if (recommendationProjectedAle >= recommendationCurrentAle || recommendationRiskReduction <= 0) {
+        appLogger.warn('financial.roi.recommendation_skipped_non_improving', {
+          recommendationId:
+            recommendation.recommendationId ||
+            recommendation.id ||
+            `rec-${breakdownByRecommendation.length + 1}`,
+          strategy,
+          targetNodes,
+          aleBefore: roundAmount(recommendationCurrentAle),
+          aleAfter: roundAmount(recommendationProjectedAle),
+          riskAvoided: roundAmount(recommendationRiskReduction),
+        });
+        continue;
+      }
+
+      remediationCostTotal += annualCost;
       const roiCalc =
         targetNodes.length > 0
           ? calculateRecommendationRoi({

@@ -180,3 +180,102 @@ test('calculateDriftFinancialImpact estimates positive delta for redundancy loss
   assert.ok(driftImpact.financialImpact.rtoDelta > 0);
 });
 
+test('calculateROI marks negative recommendation ROI as cost exceeding avoided risk', () => {
+  const roi = FinancialEngineService.calculateROI(
+    {
+      nodes: [
+        {
+          id: 'node-negative-roi',
+          name: 'admin-service',
+          type: 'APPLICATION',
+          isSPOF: true,
+          criticalityScore: 0.5,
+          redundancyScore: 0,
+          dependentsCount: 1,
+          suggestedRTO: 600,
+        },
+      ],
+    },
+    {
+      processes: [
+        {
+          serviceNodeId: 'node-negative-roi',
+          recoveryTier: 3,
+          suggestedRTO: 600,
+          validatedRTO: 600,
+        },
+      ],
+    },
+    [
+      {
+        recommendationId: 'rec-negative',
+        strategy: 'hot-standby',
+        targetNodes: ['node-negative-roi'],
+        annualCost: 150_000,
+      },
+    ],
+    {
+      customDowntimeCostPerHour: 1_500,
+      hourlyDowntimeCost: 1_500,
+      customCurrency: 'EUR',
+    },
+  );
+
+  assert.equal(roi.breakdownByRecommendation.length, 1);
+  assert.equal(roi.breakdownByRecommendation[0]?.roiStatus, 'cost_exceeds_avoided_risk');
+  assert.equal(roi.breakdownByRecommendation[0]?.roiMessage, 'Cout superieur au risque evite');
+  assert.ok((roi.breakdownByRecommendation[0]?.paybackMonths ?? 0) > 60);
+  assert.ok((roi.breakdownByRecommendation[0]?.paybackMonths ?? 0) < 1_000);
+  assert.equal(roi.breakdownByRecommendation[0]?.paybackLabel, 'Non rentable');
+});
+
+test('calculateROI filters recommendations that do not reduce ALE', () => {
+  const roi = FinancialEngineService.calculateROI(
+    {
+      nodes: [
+        {
+          id: 'node-no-gain',
+          name: 'legacy-service',
+          type: 'APPLICATION',
+          isSPOF: true,
+          criticalityScore: 0.4,
+          redundancyScore: 0,
+          dependentsCount: 1,
+          suggestedRTO: 30,
+        },
+      ],
+    },
+    {
+      processes: [
+        {
+          serviceNodeId: 'node-no-gain',
+          recoveryTier: 4,
+          suggestedRTO: 30,
+          validatedRTO: 30,
+        },
+      ],
+    },
+    [
+      {
+        recommendationId: 'rec-no-gain',
+        strategy: 'backup-restore',
+        targetNodes: ['node-no-gain'],
+        targetRtoMinutes: 240,
+        annualCost: 2_000,
+      },
+    ],
+    {
+      customDowntimeCostPerHour: 1_500,
+      hourlyDowntimeCost: 1_500,
+      customCurrency: 'EUR',
+    },
+  );
+
+  assert.equal(roi.breakdownByRecommendation.length, 0);
+  assert.equal(roi.currentALE, 0);
+  assert.equal(roi.projectedALE, 0);
+  assert.equal(roi.riskReductionAmount, 0);
+  assert.equal(roi.annualRemediationCost, 0);
+  assert.equal(roi.roiStatus, 'non_applicable');
+});
+
