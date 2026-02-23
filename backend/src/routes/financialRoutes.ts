@@ -32,6 +32,7 @@ import {
 } from '../services/financial-dashboard.service.js';
 import { CurrencyService } from '../services/currency.service.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
+import { toPrismaJson } from '../utils/prismaJson.js';
 
 const router = Router();
 
@@ -123,6 +124,55 @@ function normalizeProfileSource(
     return normalized;
   }
   return undefined;
+}
+
+type ProfileFieldSource = 'user_input' | 'suggested' | 'inferred';
+
+const TRACKED_PROFILE_FIELDS = [
+  'employeeCount',
+  'annualRevenueUSD',
+  'annualRevenue',
+  'annualITBudget',
+  'drBudgetPercent',
+  'hourlyDowntimeCost',
+  'customDowntimeCostPerHour',
+  'industrySector',
+  'verticalSector',
+] as const;
+
+type TrackedProfileField = (typeof TRACKED_PROFILE_FIELDS)[number];
+
+function normalizeFieldSource(value: unknown): ProfileFieldSource | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === 'user_input' || normalized === 'suggested' || normalized === 'inferred') {
+    return normalized;
+  }
+  return undefined;
+}
+
+function parseIncomingFieldSources(rawFieldSources: unknown): Partial<Record<TrackedProfileField, ProfileFieldSource>> {
+  if (!rawFieldSources || typeof rawFieldSources !== 'object' || Array.isArray(rawFieldSources)) {
+    return {};
+  }
+  const parsed: Partial<Record<TrackedProfileField, ProfileFieldSource>> = {};
+  for (const field of TRACKED_PROFILE_FIELDS) {
+    const normalized = normalizeFieldSource((rawFieldSources as Record<string, unknown>)[field]);
+    if (normalized) {
+      parsed[field] = normalized;
+    }
+  }
+  return parsed;
+}
+
+function readStoredFieldSources(
+  profileMetadata: unknown,
+): Partial<Record<TrackedProfileField, ProfileFieldSource>> {
+  if (!profileMetadata || typeof profileMetadata !== 'object' || Array.isArray(profileMetadata)) {
+    return {};
+  }
+  const fieldSources = (profileMetadata as Record<string, unknown>).fieldSources;
+  return parseIncomingFieldSources(fieldSources);
 }
 
 function buildPayloadHash(payload: unknown): string {
@@ -951,6 +1001,26 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
     const legacyDowntimeInput = parseNullableNumber(req.body?.customDowntimeCostPerHour, { min: 0 });
     const strongholdMonthlyCostInput = parseNullableNumber(req.body?.strongholdMonthlyCost, { min: 0 });
     const profileConfidenceInput = parseNullableNumber(req.body?.profileConfidence, { min: 0, max: 1 });
+    const incomingFieldSources = parseIncomingFieldSources(req.body?.fieldSources);
+    const existingFieldSources = readStoredFieldSources(existingProfile?.profileMetadata);
+    const existingNormalizedProfileSource = normalizeProfileSource(existingProfile?.profileSource) ?? 'inferred';
+    if (
+      Object.keys(existingFieldSources).length === 0 &&
+      existingProfile &&
+      (existingNormalizedProfileSource === 'user_input' || existingNormalizedProfileSource === 'hybrid')
+    ) {
+      if (existingProfile.employeeCount != null) existingFieldSources.employeeCount = 'user_input';
+      if (existingProfile.annualRevenueUSD != null) existingFieldSources.annualRevenueUSD = 'user_input';
+      if (existingProfile.annualRevenue != null) existingFieldSources.annualRevenue = 'user_input';
+      if (existingProfile.annualITBudget != null) existingFieldSources.annualITBudget = 'user_input';
+      if (existingProfile.drBudgetPercent != null) existingFieldSources.drBudgetPercent = 'user_input';
+      if (existingProfile.hourlyDowntimeCost != null) existingFieldSources.hourlyDowntimeCost = 'user_input';
+      if (existingProfile.customDowntimeCostPerHour != null) {
+        existingFieldSources.customDowntimeCostPerHour = 'user_input';
+      }
+      if (existingProfile.industrySector) existingFieldSources.industrySector = 'user_input';
+      if (existingProfile.verticalSector) existingFieldSources.verticalSector = 'user_input';
+    }
 
     const revenueFromAnnual =
       annualRevenueInput != null
@@ -976,28 +1046,94 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
           ? req.body.industrySector
           : undefined;
     const profileSourceInput = normalizeProfileSource(req.body?.profileSource);
+    const defaultIncomingFieldSource: ProfileFieldSource =
+      profileSourceInput === 'inferred' ? 'inferred' : 'user_input';
+    const hourlyDowntimeCostResolvedInput =
+      hourlyDowntimeCostInput !== undefined
+        ? hourlyDowntimeCostInput
+        : legacyDowntimeInput !== undefined
+          ? legacyDowntimeInput
+          : undefined;
+    const customDowntimeResolvedInput =
+      legacyDowntimeInput !== undefined
+        ? legacyDowntimeInput
+        : hourlyDowntimeCostInput !== undefined
+          ? hourlyDowntimeCostInput
+          : undefined;
 
-    const userProvidedFinancialFields = [
-      employeeCountInput,
-      annualRevenueUsdInput,
-      annualRevenueInput,
-      annualItBudgetInput,
-      drBudgetPercentInput,
-      hourlyDowntimeCostInput,
-      legacyDowntimeInput,
-      industrySectorInput,
-      verticalSectorInput,
-    ].some((value) => value !== undefined);
+    const appliedFieldValues: Partial<Record<TrackedProfileField, unknown>> = {};
+    const mergedFieldSources: Partial<Record<TrackedProfileField, ProfileFieldSource>> = {
+      ...existingFieldSources,
+    };
+    const appliedUserInputFields: TrackedProfileField[] = [];
+    const appliedSuggestedOrInferredFields: TrackedProfileField[] = [];
+    const blockedSuggestedUpdates: TrackedProfileField[] = [];
+
+    const applyTrackedField = (field: TrackedProfileField, value: unknown) => {
+      if (value === undefined) return;
+      const incomingSource = incomingFieldSources[field] ?? defaultIncomingFieldSource;
+      const existingSource = existingFieldSources[field];
+      if (existingSource === 'user_input' && incomingSource !== 'user_input') {
+        blockedSuggestedUpdates.push(field);
+        return;
+      }
+      appliedFieldValues[field] = value;
+      mergedFieldSources[field] = incomingSource;
+      if (incomingSource === 'user_input') {
+        appliedUserInputFields.push(field);
+      } else {
+        appliedSuggestedOrInferredFields.push(field);
+      }
+    };
+
+    applyTrackedField('employeeCount', employeeCountInput);
+    applyTrackedField('annualRevenueUSD', annualRevenueUsdResolved);
+    applyTrackedField('annualRevenue', annualRevenueInput);
+    applyTrackedField('annualITBudget', annualItBudgetInput);
+    applyTrackedField('drBudgetPercent', drBudgetPercentInput);
+    applyTrackedField('hourlyDowntimeCost', hourlyDowntimeCostResolvedInput);
+    applyTrackedField('customDowntimeCostPerHour', customDowntimeResolvedInput);
+    applyTrackedField('industrySector', industrySectorInput);
+    applyTrackedField('verticalSector', verticalSectorInput);
+
+    const userProvidedFinancialFields = appliedUserInputFields.length > 0;
+    const hasNonUserFieldUpdates = appliedSuggestedOrInferredFields.length > 0;
+
     const resolvedProfileSource =
       profileSourceInput ??
       (userProvidedFinancialFields
-        ? existingProfile?.profileSource === 'inferred'
+        ? existingNormalizedProfileSource === 'inferred'
           ? 'hybrid'
           : 'user_input'
-        : undefined);
+        : hasNonUserFieldUpdates
+          ? existingNormalizedProfileSource === 'user_input'
+            ? 'hybrid'
+            : 'inferred'
+          : undefined);
     const resolvedProfileConfidence =
       profileConfidenceInput ??
-      (userProvidedFinancialFields ? 0.85 : undefined);
+      (userProvidedFinancialFields ? 0.85 : hasNonUserFieldUpdates ? 0.65 : undefined);
+
+    const existingMetadata =
+      existingProfile?.profileMetadata &&
+      typeof existingProfile.profileMetadata === 'object' &&
+      !Array.isArray(existingProfile.profileMetadata)
+        ? (existingProfile.profileMetadata as Record<string, unknown>)
+        : {};
+    const nowIso = new Date().toISOString();
+    const mergedMetadata: Record<string, unknown> = {
+      ...existingMetadata,
+      fieldSources: mergedFieldSources,
+      lastProfileUpdateAt: nowIso,
+      hasUserOverrides: userProvidedFinancialFields || Boolean(existingMetadata.hasUserOverrides),
+    };
+    if (userProvidedFinancialFields) {
+      mergedMetadata.lastManualUpdateAt = nowIso;
+    }
+    if (blockedSuggestedUpdates.length > 0) {
+      mergedMetadata.lastBlockedSuggestionFields = Array.from(new Set(blockedSuggestedUpdates));
+    }
+    const mergedMetadataJson = toPrismaJson(mergedMetadata);
 
     const profile = await prisma.organizationProfile.upsert({
       where: { tenantId },
@@ -1005,43 +1141,45 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
         tenantId,
         sizeCategory: sizeCategory || 'midMarket',
         verticalSector:
-          typeof req.body?.verticalSector === 'string'
-            ? req.body.verticalSector
+          appliedFieldValues.verticalSector !== undefined
+            ? (appliedFieldValues.verticalSector as string | null)
             : null,
         employeeCount:
-          employeeCountInput !== undefined ? employeeCountInput : null,
+          appliedFieldValues.employeeCount !== undefined
+            ? (appliedFieldValues.employeeCount as number | null)
+            : null,
         annualRevenueUSD:
-          annualRevenueUsdResolved !== undefined ? annualRevenueUsdResolved : null,
+          appliedFieldValues.annualRevenueUSD !== undefined
+            ? (appliedFieldValues.annualRevenueUSD as number | null)
+            : null,
         annualRevenue:
-          annualRevenueInput !== undefined ? annualRevenueInput : null,
-        industrySector: industrySectorInput !== undefined ? industrySectorInput : null,
+          appliedFieldValues.annualRevenue !== undefined
+            ? (appliedFieldValues.annualRevenue as number | null)
+            : null,
+        industrySector:
+          appliedFieldValues.industrySector !== undefined
+            ? (appliedFieldValues.industrySector as string | null)
+            : null,
         annualITBudget:
-          annualItBudgetInput !== undefined ? annualItBudgetInput : null,
+          appliedFieldValues.annualITBudget !== undefined
+            ? (appliedFieldValues.annualITBudget as number | null)
+            : null,
         drBudgetPercent:
-          drBudgetPercentInput !== undefined ? drBudgetPercentInput : null,
+          appliedFieldValues.drBudgetPercent !== undefined
+            ? (appliedFieldValues.drBudgetPercent as number | null)
+            : null,
         hourlyDowntimeCost:
-          hourlyDowntimeCostInput !== undefined
-            ? hourlyDowntimeCostInput
-            : legacyDowntimeInput !== undefined
-              ? legacyDowntimeInput
-              : null,
+          appliedFieldValues.hourlyDowntimeCost !== undefined
+            ? (appliedFieldValues.hourlyDowntimeCost as number | null)
+            : null,
         customDowntimeCostPerHour:
-          legacyDowntimeInput !== undefined
-            ? legacyDowntimeInput
-            : hourlyDowntimeCostInput !== undefined
-              ? hourlyDowntimeCostInput
-              : null,
+          appliedFieldValues.customDowntimeCostPerHour !== undefined
+            ? (appliedFieldValues.customDowntimeCostPerHour as number | null)
+            : null,
         customCurrency: currency,
         profileSource: resolvedProfileSource ?? 'inferred',
         profileConfidence: resolvedProfileConfidence ?? 0.4,
-        ...(userProvidedFinancialFields || resolvedProfileSource
-          ? {
-              profileMetadata: {
-                lastManualUpdateAt: new Date().toISOString(),
-                hasUserOverrides: Boolean(userProvidedFinancialFields),
-              },
-            }
-          : {}),
+        profileMetadata: mergedMetadataJson,
         strongholdPlanId:
           typeof req.body?.strongholdPlanId === 'string'
             ? req.body.strongholdPlanId
@@ -1050,43 +1188,44 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
       },
       update: {
         ...(sizeCategory ? { sizeCategory } : {}),
-        ...(verticalSectorInput !== undefined
-          ? { verticalSector: verticalSectorInput }
+        ...(appliedFieldValues.verticalSector !== undefined
+          ? { verticalSector: appliedFieldValues.verticalSector as string | null }
           : {}),
-        ...(employeeCountInput !== undefined
-          ? { employeeCount: employeeCountInput }
+        ...(appliedFieldValues.employeeCount !== undefined
+          ? { employeeCount: appliedFieldValues.employeeCount as number | null }
           : {}),
-        ...(annualRevenueUsdResolved !== undefined
-          ? { annualRevenueUSD: annualRevenueUsdResolved }
+        ...(appliedFieldValues.annualRevenueUSD !== undefined
+          ? { annualRevenueUSD: appliedFieldValues.annualRevenueUSD as number | null }
           : {}),
-        ...(annualRevenueInput !== undefined ? { annualRevenue: annualRevenueInput } : {}),
-        ...(industrySectorInput !== undefined ? { industrySector: industrySectorInput } : {}),
-        ...(annualItBudgetInput !== undefined ? { annualITBudget: annualItBudgetInput } : {}),
-        ...(drBudgetPercentInput !== undefined ? { drBudgetPercent: drBudgetPercentInput } : {}),
-        ...(hourlyDowntimeCostInput !== undefined
-          ? { hourlyDowntimeCost: hourlyDowntimeCostInput }
+        ...(appliedFieldValues.annualRevenue !== undefined
+          ? { annualRevenue: appliedFieldValues.annualRevenue as number | null }
           : {}),
-        ...(legacyDowntimeInput !== undefined
-          ? { customDowntimeCostPerHour: legacyDowntimeInput }
-          : hourlyDowntimeCostInput !== undefined
-            ? { customDowntimeCostPerHour: hourlyDowntimeCostInput }
+        ...(appliedFieldValues.industrySector !== undefined
+          ? { industrySector: appliedFieldValues.industrySector as string | null }
+          : {}),
+        ...(appliedFieldValues.annualITBudget !== undefined
+          ? { annualITBudget: appliedFieldValues.annualITBudget as number | null }
+          : {}),
+        ...(appliedFieldValues.drBudgetPercent !== undefined
+          ? { drBudgetPercent: appliedFieldValues.drBudgetPercent as number | null }
+          : {}),
+        ...(appliedFieldValues.hourlyDowntimeCost !== undefined
+          ? { hourlyDowntimeCost: appliedFieldValues.hourlyDowntimeCost as number | null }
+          : {}),
+        ...(appliedFieldValues.customDowntimeCostPerHour !== undefined
+          ? {
+              customDowntimeCostPerHour:
+                appliedFieldValues.customDowntimeCostPerHour as number | null,
+            }
             : {}),
         ...(currency ? { customCurrency: currency } : {}),
         ...(resolvedProfileSource ? { profileSource: resolvedProfileSource } : {}),
         ...(resolvedProfileConfidence != null
           ? { profileConfidence: resolvedProfileConfidence }
           : {}),
-        ...(userProvidedFinancialFields || resolvedProfileSource
+        ...(Object.keys(appliedFieldValues).length > 0 || resolvedProfileSource
           ? {
-              profileMetadata: {
-                ...(typeof existingProfile?.profileMetadata === 'object' &&
-                existingProfile?.profileMetadata &&
-                !Array.isArray(existingProfile.profileMetadata)
-                  ? (existingProfile.profileMetadata as Record<string, unknown>)
-                  : {}),
-                lastManualUpdateAt: new Date().toISOString(),
-                hasUserOverrides: true,
-              },
+              profileMetadata: mergedMetadataJson,
             }
           : {}),
         ...(typeof req.body?.strongholdPlanId === 'string'

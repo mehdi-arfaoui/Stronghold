@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Cloud, Pencil, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
-import { businessFlowsApi } from '@/api/businessFlows.api';
+import { businessFlowsApi, type FlowSuggestionResponse } from '@/api/businessFlows.api';
 import { BusinessFlowDetailEditor } from '@/components/business-flows/BusinessFlowDetailEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -43,6 +43,9 @@ export function BusinessFlowsPage() {
   const [annualRevenue, setAnnualRevenue] = useState('');
   const [transactionsPerHour, setTransactionsPerHour] = useState('');
   const [revenuePerTransaction, setRevenuePerTransaction] = useState('');
+  const [latestSuggestionInsights, setLatestSuggestionInsights] = useState<
+    FlowSuggestionResponse['suggestionInsights']
+  >([]);
 
   const flowsQuery = useQuery({
     queryKey: ['business-flows', tenantScope],
@@ -98,7 +101,10 @@ export function BusinessFlowsPage() {
   const suggestMutation = useMutation({
     mutationFn: () => businessFlowsApi.suggestAI(),
     onSuccess: async (result) => {
-      toast.success(`${result.data.suggestionsCreated} AI suggestion(s) created`);
+      setLatestSuggestionInsights(result.data.suggestionInsights ?? []);
+      toast.success(
+        `${result.data.suggestionsCreated} suggestion(s) generee(s), ${result.data.suggestionInsights?.length || 0} exploitable(s)`,
+      );
       await refreshFlows();
     },
     onError: () => toast.error('AI suggestions unavailable'),
@@ -108,7 +114,13 @@ export function BusinessFlowsPage() {
     mutationFn: () => businessFlowsApi.enrichFromCloud(),
     onSuccess: async (result) => {
       const data = result.data;
-      toast.success(`${data.createdSuggestions} created, ${data.updatedSuggestions} updated`);
+      if (data.enrichedFlows === 0) {
+        toast(data.message || 'Aucun flux enrichi automatiquement');
+      } else {
+        toast.success(
+          `${data.enrichedFlows} flux enrichis, ${data.servicesAdded} services ajoutes, ${data.ignoredEmptyFlows} ignores`,
+        );
+      }
       await refreshFlows();
     },
     onError: () => toast.error('Cloud enrichment unavailable'),
@@ -213,6 +225,58 @@ export function BusinessFlowsPage() {
           )}
         </CardContent>
       </Card>
+
+      {latestSuggestionInsights.length > 0 && (
+        <Card className="border-muted/60">
+          <CardHeader>
+            <CardTitle className="text-base">AI Suggestions (actionnables)</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {latestSuggestionInsights.map((insight) => (
+              <div key={insight.flowId} className="space-y-2 rounded-lg border p-3">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold">{insight.label}</p>
+                  <Badge variant="secondary">Suggestion</Badge>
+                </div>
+                <p className="text-sm text-muted-foreground">{insight.proposedAction}</p>
+                <p className="text-xs text-muted-foreground">{insight.rationale}</p>
+                {insight.suggestedServicesToAdd.length > 0 && (
+                  <p className="text-xs">
+                    Services a ajouter: {insight.suggestedServicesToAdd.map((entry) => entry.nodeName).join(', ')}
+                  </p>
+                )}
+                {insight.optimizationHints.length > 0 && (
+                  <p className="text-xs">
+                    Optimisations: {insight.optimizationHints.join(' | ')}
+                  </p>
+                )}
+                {insight.spofAlerts.length > 0 && (
+                  <p className="text-xs text-severity-critical">
+                    Alertes SPOF: {insight.spofAlerts.join(' | ')}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    onClick={() => validateMutation.mutate(insight.flowId)}
+                    disabled={validateMutation.isPending}
+                  >
+                    Appliquer
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => deleteMutation.mutate(insight.flowId)}
+                    disabled={deleteMutation.isPending}
+                  >
+                    Rejeter
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       <div className="space-y-3">
         {sortedFlows.map((flow) => {

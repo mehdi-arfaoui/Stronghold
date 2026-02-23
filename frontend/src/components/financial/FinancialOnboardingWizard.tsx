@@ -6,6 +6,7 @@ import { api } from '@/api/client';
 import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -15,6 +16,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+  applySizeSuggestions,
+  getSizeSuggestions,
+  mapApiSourceToEditableSource,
+  type FinancialFieldSource,
+} from '@/lib/financialProfileSuggestions';
 
 type WizardStep = 1 | 2 | 3;
 type DowntimeMode = 'estimate_market' | 'known' | 'later';
@@ -134,6 +141,15 @@ export function FinancialOnboardingWizard({
   const [downtimeMode, setDowntimeMode] = useState<DowntimeMode>('estimate_market');
   const [knownDowntimeDisplay, setKnownDowntimeDisplay] = useState('');
   const [currency, setCurrency] = useState<string>('EUR');
+  const [fieldSources, setFieldSources] = useState<{
+    employeeCount: FinancialFieldSource;
+    annualRevenue: FinancialFieldSource;
+    hourlyDowntimeCost: FinancialFieldSource;
+  }>({
+    employeeCount: 'inferred',
+    annualRevenue: 'inferred',
+    hourlyDowntimeCost: 'inferred',
+  });
 
   const benchmarksQuery = useQuery({
     queryKey: ['financial-benchmarks'],
@@ -183,6 +199,11 @@ export function FinancialOnboardingWizard({
     );
     setPersistRevenue(initialProfile?.annualRevenueUSD != null || initialProfile?.annualRevenue != null);
     setCurrency(effectiveCurrency);
+    setFieldSources({
+      employeeCount: mapApiSourceToEditableSource(initialProfile?.fieldSources?.employeeCount?.source),
+      annualRevenue: mapApiSourceToEditableSource(initialProfile?.fieldSources?.annualRevenue?.source),
+      hourlyDowntimeCost: mapApiSourceToEditableSource(initialProfile?.fieldSources?.hourlyDowntimeCost?.source),
+    });
 
     if (effectiveDowntimeUSD && effectiveDowntimeUSD > 0) {
       setDowntimeMode('known');
@@ -232,7 +253,9 @@ export function FinancialOnboardingWizard({
     mutationFn: async () => {
       const knownDisplayAmount = Number(knownDowntimeDisplay || 0);
       const knownDowntimeUSD = knownDisplayAmount > 0 ? toUSD(knownDisplayAmount) : null;
-      const estimatedDowntimeUSD = benchmarkPreview.recommendedUSD;
+      const sizeSuggestions = getSizeSuggestions(sizeCategory, currency);
+      const estimatedDowntimeDisplay = sizeSuggestions.hourlyDowntimeCost;
+      const estimatedDowntimeUSD = toUSD(estimatedDowntimeDisplay);
       const annualRevenueInput = Number(annualRevenueDisplay || 0);
       const annualRevenueSelectedCurrency =
         persistRevenue && annualRevenueInput > 0 ? annualRevenueInput : null;
@@ -241,9 +264,9 @@ export function FinancialOnboardingWizard({
       const selectedDowntimeDisplay =
         downtimeMode === 'known' && knownDisplayAmount > 0
           ? knownDisplayAmount
-          : toDisplayCurrency(benchmarkPreview.recommendedUSD);
-      const annualItBudgetEstimate =
-        annualRevenueSelectedCurrency != null ? Math.round(annualRevenueSelectedCurrency * 0.05) : null;
+          : estimatedDowntimeDisplay;
+      const annualItBudgetEstimate = Math.round(sizeSuggestions.annualITBudget);
+      const drBudgetPercent = sizeSuggestions.drBudgetPercent;
 
       const payload = {
         sizeCategory,
@@ -253,14 +276,32 @@ export function FinancialOnboardingWizard({
         annualRevenueUSD: annualRevenueUsd,
         annualRevenue: annualRevenueSelectedCurrency,
         annualITBudget: annualItBudgetEstimate,
-        drBudgetPercent: 4,
+        drBudgetPercent,
         hourlyDowntimeCost: Math.round(selectedDowntimeDisplay),
         customDowntimeCostPerHour:
           downtimeMode === 'known' && knownDowntimeUSD && knownDowntimeUSD > 0
             ? knownDowntimeUSD
             : estimatedDowntimeUSD,
-        profileSource: 'user_input',
         customCurrency: currency,
+        fieldSources: {
+          employeeCount: employeeCount ? fieldSources.employeeCount : 'inferred',
+          annualRevenue:
+            persistRevenue && annualRevenueSelectedCurrency != null ? fieldSources.annualRevenue : 'inferred',
+          annualRevenueUSD:
+            persistRevenue && annualRevenueSelectedCurrency != null ? fieldSources.annualRevenue : 'inferred',
+          annualITBudget: 'suggested',
+          drBudgetPercent: 'suggested',
+          hourlyDowntimeCost:
+            downtimeMode === 'known' && knownDowntimeUSD && knownDowntimeUSD > 0
+              ? fieldSources.hourlyDowntimeCost
+              : 'suggested',
+          customDowntimeCostPerHour:
+            downtimeMode === 'known' && knownDowntimeUSD && knownDowntimeUSD > 0
+              ? fieldSources.hourlyDowntimeCost
+              : 'suggested',
+          industrySector: verticalSector ? 'user_input' : 'inferred',
+          verticalSector: verticalSector ? 'user_input' : 'inferred',
+        },
       };
 
       return financialApi.updateOrgProfile(payload);
@@ -275,6 +316,46 @@ export function FinancialOnboardingWizard({
       toast.error('Impossible de sauvegarder le profil financier');
     },
   });
+
+  const renderFieldSourceBadge = (source: FinancialFieldSource) => {
+    if (source === 'user_input') {
+      return <Badge variant="secondary">Valeur personnalisee</Badge>;
+    }
+    if (source === 'suggested') {
+      return <Badge variant="outline">Suggestion</Badge>;
+    }
+    return null;
+  };
+
+  const applyWizardSizeSuggestions = (nextSizeCategory: string) => {
+    const next = applySizeSuggestions({
+      sizeCategory: nextSizeCategory,
+      currency,
+      values: {
+        employeeCount,
+        annualRevenue: annualRevenueDisplay,
+        annualITBudget: '',
+        drBudgetPercent: '',
+        hourlyDowntimeCost: knownDowntimeDisplay,
+      },
+      sources: {
+        employeeCount: fieldSources.employeeCount,
+        annualRevenue: fieldSources.annualRevenue,
+        hourlyDowntimeCost: fieldSources.hourlyDowntimeCost,
+      },
+    });
+    setEmployeeCount(next.values.employeeCount);
+    setAnnualRevenueDisplay(next.values.annualRevenue);
+    if (downtimeMode !== 'known' || fieldSources.hourlyDowntimeCost !== 'user_input') {
+      setKnownDowntimeDisplay(next.values.hourlyDowntimeCost);
+    }
+    setFieldSources((prev) => ({
+      ...prev,
+      employeeCount: next.sources.employeeCount || prev.employeeCount,
+      annualRevenue: next.sources.annualRevenue || prev.annualRevenue,
+      hourlyDowntimeCost: next.sources.hourlyDowntimeCost || prev.hourlyDowntimeCost,
+    }));
+  };
 
   const canGoNextStep1 = Boolean(sizeCategory);
   const canGoNextStep2 = downtimeMode !== 'known' || Number(knownDowntimeDisplay) > 0;
@@ -304,7 +385,11 @@ export function FinancialOnboardingWizard({
                 <label className="text-sm font-medium">Taille</label>
                 <select
                   value={sizeCategory}
-                  onChange={(event) => setSizeCategory(event.target.value)}
+                  onChange={(event) => {
+                    const nextSize = event.target.value;
+                    setSizeCategory(nextSize);
+                    applyWizardSizeSuggestions(nextSize);
+                  }}
                   className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                 >
                   {SIZE_OPTIONS.map((option) => (
@@ -327,25 +412,39 @@ export function FinancialOnboardingWizard({
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm font-medium">Nombre d employes (optionnel)</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium">Nombre d employes (optionnel)</label>
+                  {renderFieldSourceBadge(fieldSources.employeeCount)}
+                </div>
                 <Input
                   type="number"
                   min={0}
                   value={employeeCount}
-                  onChange={(event) => setEmployeeCount(event.target.value)}
+                  onChange={(event) => {
+                    setEmployeeCount(event.target.value);
+                    setFieldSources((prev) => ({ ...prev, employeeCount: 'user_input' }));
+                  }}
+                  className={fieldSources.employeeCount === 'suggested' ? 'text-muted-foreground' : undefined}
                   placeholder="Ex: 450"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-sm font-medium">
-                  CA annuel ({currency}) (optionnel)
-                </label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium">
+                    CA annuel ({currency}) (optionnel)
+                  </label>
+                  {renderFieldSourceBadge(fieldSources.annualRevenue)}
+                </div>
                 <Input
                   type="number"
                   min={0}
                   value={annualRevenueDisplay}
-                  onChange={(event) => setAnnualRevenueDisplay(event.target.value)}
+                  onChange={(event) => {
+                    setAnnualRevenueDisplay(event.target.value);
+                    setFieldSources((prev) => ({ ...prev, annualRevenue: 'user_input' }));
+                  }}
+                  className={fieldSources.annualRevenue === 'suggested' ? 'text-muted-foreground' : undefined}
                   placeholder="Ex: 80000000"
                 />
               </div>
@@ -411,12 +510,19 @@ export function FinancialOnboardingWizard({
 
             {downtimeMode === 'known' && (
               <div className="space-y-1">
-                <label className="text-sm font-medium">Cout horaire connu ({currency}/h)</label>
+                <div className="flex items-center justify-between gap-2">
+                  <label className="text-sm font-medium">Cout horaire connu ({currency}/h)</label>
+                  {renderFieldSourceBadge(fieldSources.hourlyDowntimeCost)}
+                </div>
                 <Input
                   type="number"
                   min={0}
                   value={knownDowntimeDisplay}
-                  onChange={(event) => setKnownDowntimeDisplay(event.target.value)}
+                  onChange={(event) => {
+                    setKnownDowntimeDisplay(event.target.value);
+                    setFieldSources((prev) => ({ ...prev, hourlyDowntimeCost: 'user_input' }));
+                  }}
+                  className={fieldSources.hourlyDowntimeCost === 'suggested' ? 'text-muted-foreground' : undefined}
                   placeholder="Ex: 350000"
                 />
               </div>

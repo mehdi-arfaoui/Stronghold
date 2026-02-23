@@ -19,7 +19,7 @@ import {
   BusinessFlowFinancialEngineService,
 } from '../services/business-flow-financial-engine.service.js';
 import { CloudEnrichmentService } from '../services/cloud-enrichment.service.js';
-import { AIFlowSuggesterService } from '../services/ai-flow-suggester.service.js';
+import { AIFlowSuggesterService, type FlowSuggestion } from '../services/ai-flow-suggester.service.js';
 import { CurrencyService } from '../services/currency.service.js';
 
 const router = Router();
@@ -30,6 +30,20 @@ const aiFlowSuggesterService = new AIFlowSuggesterService(prisma);
 const AI_SUGGESTION_MAX_PER_HOUR = 5;
 const AI_SUGGESTION_WINDOW_MS = 60 * 60 * 1000;
 const aiSuggestionBuckets = new Map<string, { count: number; resetAt: number }>();
+
+type AISuggestionInsight = {
+  flowId: string;
+  label: string;
+  proposedAction: string;
+  rationale: string;
+  suggestedServicesToAdd: Array<{
+    nodeId: string;
+    nodeName: string;
+    reason: string;
+  }>;
+  optimizationHints: string[];
+  spofAlerts: string[];
+};
 
 function isAllowedAICategory(value: string): boolean {
   return ['revenue', 'operations', 'compliance', 'internal'].includes(value);
@@ -48,6 +62,95 @@ function checkAISuggestionRateLimit(tenantId: string): boolean {
   if (bucket.count >= AI_SUGGESTION_MAX_PER_HOUR) return false;
   bucket.count += 1;
   return true;
+}
+
+function buildAISuggestionInsights(input: {
+  suggestions: FlowSuggestion[];
+  nodes: Array<{
+    id: string;
+    name: string;
+    type: string;
+    isSPOF: boolean;
+    criticalityScore: number | null;
+    redundancyScore: number | null;
+  }>;
+  edges: Array<{ sourceId: string; targetId: string }>;
+}): AISuggestionInsight[] {
+  const nodeById = new Map(input.nodes.map((node) => [node.id, node]));
+  return input.suggestions.map((suggestion) => {
+    const suggestionNodeIds = new Set(suggestion.nodes.map((node) => node.nodeId));
+    const addCandidates = new Map<string, { nodeId: string; nodeName: string; reason: string }>();
+
+    for (const edge of input.edges) {
+      const sourceInFlow = suggestionNodeIds.has(edge.sourceId);
+      const targetInFlow = suggestionNodeIds.has(edge.targetId);
+      if (sourceInFlow === targetInFlow) continue;
+
+      const candidateId = sourceInFlow ? edge.targetId : edge.sourceId;
+      if (suggestionNodeIds.has(candidateId)) continue;
+      const candidateNode = nodeById.get(candidateId);
+      if (!candidateNode) continue;
+      const reason = sourceInFlow
+        ? `Dependance detectee depuis un service du flux (${edge.sourceId} -> ${edge.targetId})`
+        : `Service amont detecte dans le graphe (${edge.sourceId} -> ${edge.targetId})`;
+      addCandidates.set(candidateId, {
+        nodeId: candidateId,
+        nodeName: candidateNode.name,
+        reason,
+      });
+    }
+
+    const suggestedServicesToAdd = Array.from(addCandidates.values())
+      .sort((left, right) => {
+        const leftNode = nodeById.get(left.nodeId);
+        const rightNode = nodeById.get(right.nodeId);
+        const leftSpof = leftNode?.isSPOF ? 1 : 0;
+        const rightSpof = rightNode?.isSPOF ? 1 : 0;
+        if (leftSpof !== rightSpof) return rightSpof - leftSpof;
+        const leftScore = Number(leftNode?.criticalityScore || 0);
+        const rightScore = Number(rightNode?.criticalityScore || 0);
+        if (leftScore !== rightScore) return rightScore - leftScore;
+        return left.nodeName.localeCompare(right.nodeName);
+      })
+      .slice(0, 4);
+
+    const spofAlerts = suggestion.nodes
+      .map((node) => nodeById.get(node.nodeId))
+      .filter((node): node is NonNullable<typeof node> => Boolean(node && node.isSPOF))
+      .map((node) => `${node.name} est un SPOF dans ce flux`);
+
+    const lowRedundancyCount = suggestion.nodes
+      .map((node) => nodeById.get(node.nodeId))
+      .filter((node): node is NonNullable<typeof node> => Boolean(node))
+      .filter((node) => Number(node.redundancyScore || 0) < 0.4).length;
+
+    const optimizationHints: string[] = [];
+    if (suggestedServicesToAdd.length > 0) {
+      optimizationHints.push('Completer le flux avec les dependances detectees dans le graphe');
+    }
+    if (lowRedundancyCount > 0) {
+      optimizationHints.push('Renforcer la redondance sur les maillons critiques du chemin');
+    }
+    if (suggestion.nodes.length >= 5) {
+      optimizationHints.push('Verifier le chemin critique: flux long avec propagation potentielle');
+    }
+    if (spofAlerts.length > 0) {
+      optimizationHints.push('Prioriser le traitement des SPOF avant validation finale');
+    }
+
+    return {
+      flowId: suggestion.flowId,
+      label: suggestion.name,
+      proposedAction:
+        suggestedServicesToAdd.length > 0
+          ? 'Valider ce flux puis ajouter les services suggeres'
+          : 'Valider ou rejeter ce flux suggere',
+      rationale: suggestion.reasoning || 'Suggestion basee sur dependances detectees',
+      suggestedServicesToAdd,
+      optimizationHints,
+      spofAlerts,
+    };
+  });
 }
 
 function parseHour(value: unknown, field: string, issues: ValidationIssue[]): number | null | undefined {
@@ -336,22 +439,30 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(400).json({
-        error: 'Anthropic API key is not configured',
-        hint: 'Configurez ANTHROPIC_API_KEY pour activer les suggestions IA.',
-      });
-    }
-
     if (!checkAISuggestionRateLimit(tenantId)) {
       return res.status(429).json({
         error: 'Rate limit exceeded. Maximum 5 AI flow suggestions per hour per organization.',
       });
     }
 
-    const [suggestions, currency] = await Promise.all([
+    const [suggestions, currency, nodes, edges] = await Promise.all([
       aiFlowSuggesterService.suggestBusinessFlows(tenantId),
       resolveTenantCurrency(tenantId),
+      prisma.infraNode.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          isSPOF: true,
+          criticalityScore: true,
+          redundancyScore: true,
+        },
+      }),
+      prisma.infraEdge.findMany({
+        where: { tenantId },
+        select: { sourceId: true, targetId: true },
+      }),
     ]);
     const flows = await Promise.all(
       suggestions.map(async (suggestion) => {
@@ -362,10 +473,16 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
         return flow ? serializeFlow(flow, currency) : null;
       }),
     );
+    const suggestionInsights = buildAISuggestionInsights({
+      suggestions,
+      nodes,
+      edges,
+    });
 
     return res.json({
       suggestionsCreated: suggestions.length,
       suggestions: flows.filter((flow): flow is NonNullable<typeof flow> => Boolean(flow)),
+      suggestionInsights,
     });
   } catch (error) {
     appLogger.error('Error suggesting business flows from AI', error);

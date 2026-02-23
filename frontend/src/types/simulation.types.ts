@@ -82,6 +82,10 @@ export interface WarRoomFinancial {
     costPerHour: number;
     recoveryCost: number;
     rtoMinutes: number;
+    costSource?: 'business_flow' | 'bia_validated' | 'resource_estimate';
+    recoveryStrategy?: string;
+    monthlyDrCost?: number;
+    recoveryActivationFactor?: number;
   }>;
 }
 

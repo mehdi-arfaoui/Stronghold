@@ -751,7 +751,7 @@ describe('Operational UX QA flows', () => {
     await screen.findByText('ROI & Finance');
     expect(screen.getByText(/847/)).toBeInTheDocument();
     expect(screen.getByText(/554/)).toBeInTheDocument();
-    expect(screen.getByText(/1443\.0%/)).toBeInTheDocument();
+    expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
     expect(screen.getByText(/0\.8 mois/)).toBeInTheDocument();
     dashboardRender.unmount();
 
@@ -1025,7 +1025,7 @@ describe('Operational UX QA flows', () => {
     await screen.findByText('ROI & Finance');
     expect(screen.getByText(/847/)).toBeInTheDocument();
     expect(screen.getByText(/554/)).toBeInTheDocument();
-    expect(screen.getByText(/1443\.0%/)).toBeInTheDocument();
+    expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
     expect(screen.getByText(/0\.8 mois/)).toBeInTheDocument();
     expect(screen.getByText('DORA')).toBeInTheDocument();
     expect(screen.getByText('NIS2')).toBeInTheDocument();

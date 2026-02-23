@@ -23,6 +23,8 @@ export type CostSourceKey =
 
 export type ProfileValueSourceKey =
   | 'user_input'
+  | 'suggested'
+  | 'inferred'
   | 'bia_validated'
   | 'inferred_infrastructure'
   | 'market_reference';

@@ -83,13 +83,31 @@ export interface FinancialCoverage {
 export interface FlowSuggestionResponse {
   suggestionsCreated: number;
   suggestions: BusinessFlow[];
+  suggestionInsights: Array<{
+    flowId: string;
+    label: string;
+    proposedAction: string;
+    rationale: string;
+    suggestedServicesToAdd: Array<{
+      nodeId: string;
+      nodeName: string;
+      reason: string;
+    }>;
+    optimizationHints: string[];
+    spofAlerts: string[];
+  }>;
 }
 
 export interface CloudEnrichmentResponse {
   groupedSuggestions: number;
   createdSuggestions: number;
   updatedSuggestions: number;
+  enrichedFlows: number;
+  servicesAdded: number;
+  ignoredEmptyFlows: number;
+  cleanedEmptyFlows: number;
   skippedNodes: number;
+  message?: string;
   suggestions: Array<{
     flowId: string;
     flowName: string;

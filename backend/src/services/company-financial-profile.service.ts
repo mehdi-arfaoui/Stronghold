@@ -267,6 +267,36 @@ function listFieldSourceKinds(
   return new Set(Object.values(fieldSources).map((trace) => trace.source));
 }
 
+function readPersistedFieldSources(
+  profile: OrganizationProfile | null,
+): Record<string, ProfileValueSourceKey> {
+  if (!profile) return {};
+  const metadata = profile.profileMetadata;
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) return {};
+  const rawFieldSources = (metadata as Record<string, unknown>).fieldSources;
+  if (!rawFieldSources || typeof rawFieldSources !== 'object' || Array.isArray(rawFieldSources)) {
+    return {};
+  }
+
+  const parsed: Record<string, ProfileValueSourceKey> = {};
+  for (const [field, rawValue] of Object.entries(rawFieldSources)) {
+    if (typeof rawValue !== 'string') continue;
+    const normalized = rawValue.trim().toLowerCase();
+    if (
+      normalized === 'user_input' ||
+      normalized === 'suggested' ||
+      normalized === 'inferred' ||
+      normalized === 'bia_validated' ||
+      normalized === 'inferred_infrastructure' ||
+      normalized === 'market_reference'
+    ) {
+      parsed[field] = normalized;
+    }
+  }
+
+  return parsed;
+}
+
 function isExplicitlyConfigured(profile: OrganizationProfile | null): boolean {
   if (!profile) return false;
   return Boolean(
@@ -312,35 +342,63 @@ export async function resolveCompanyFinancialProfile(
   const currency = normalizeCurrency(options?.preferredCurrency ?? profile?.customCurrency ?? DEFAULT_CURRENCY);
   const infraHeuristic = pickInfraHeuristic(nodeCount);
   const fieldSources: Record<string, FinancialFieldTrace> = {};
+  const persistedFieldSources = readPersistedFieldSources(profile);
 
-  const annualRevenueUser =
+  const annualRevenueStored =
     toPositiveNumber(profile?.annualRevenue) ??
     (toPositiveNumber(profile?.annualRevenueUSD)
       ? CurrencyService.convertAmount(profile?.annualRevenueUSD as number, 'USD', currency)
       : null);
-  const annualRevenue = annualRevenueUser
-    ? roundMoney(annualRevenueUser)
+  const annualRevenueSourceHint =
+    persistedFieldSources.annualRevenue ?? persistedFieldSources.annualRevenueUSD;
+  const annualRevenue = annualRevenueStored
+    ? roundMoney(annualRevenueStored)
     : roundMoney(CurrencyService.convertAmount(infraHeuristic.inferredAnnualRevenue, 'EUR', currency));
-  fieldSources.annualRevenue = annualRevenueUser
-    ? {
-        source: 'user_input',
-        confidence: 0.95,
-        note: 'Valeur fournie manuellement',
-      }
+  fieldSources.annualRevenue = annualRevenueStored
+    ? annualRevenueSourceHint === 'suggested'
+      ? {
+          source: 'suggested',
+          confidence: 0.72,
+          note: 'Valeur suggeree par profil de taille',
+        }
+      : annualRevenueSourceHint === 'inferred'
+        ? {
+            source: 'inferred',
+            confidence: 0.6,
+            note: 'Valeur inferee automatiquement',
+          }
+        : {
+            source: 'user_input',
+            confidence: 0.95,
+            note: 'Valeur fournie manuellement',
+          }
     : {
         source: 'inferred_infrastructure',
         confidence: infraHeuristic.confidence,
         note: `Inference par taille d infrastructure (${nodeCount} noeuds detectes)`,
       };
 
-  const employeeCountUser = toPositiveNumber(profile?.employeeCount);
-  const employeeCount = employeeCountUser ? Math.round(employeeCountUser) : infraHeuristic.inferredEmployees;
-  fieldSources.employeeCount = employeeCountUser
-    ? {
-        source: 'user_input',
-        confidence: 0.95,
-        note: 'Valeur fournie manuellement',
-      }
+  const employeeCountStored = toPositiveNumber(profile?.employeeCount);
+  const employeeCountSourceHint = persistedFieldSources.employeeCount;
+  const employeeCount = employeeCountStored ? Math.round(employeeCountStored) : infraHeuristic.inferredEmployees;
+  fieldSources.employeeCount = employeeCountStored
+    ? employeeCountSourceHint === 'suggested'
+      ? {
+          source: 'suggested',
+          confidence: 0.72,
+          note: 'Valeur suggeree par profil de taille',
+        }
+      : employeeCountSourceHint === 'inferred'
+        ? {
+            source: 'inferred',
+            confidence: 0.6,
+            note: 'Valeur inferee automatiquement',
+          }
+        : {
+            source: 'user_input',
+            confidence: 0.95,
+            note: 'Valeur fournie manuellement',
+          }
     : {
         source: 'inferred_infrastructure',
         confidence: infraHeuristic.confidence,
@@ -348,49 +406,88 @@ export async function resolveCompanyFinancialProfile(
       };
 
   const industrySector = normalizeSector(profile?.industrySector ?? profile?.verticalSector) ?? null;
+  const industrySourceHint = persistedFieldSources.industrySector ?? persistedFieldSources.verticalSector;
   fieldSources.industrySector = industrySector
-    ? {
-        source: profile?.industrySector ? 'user_input' : 'inferred_infrastructure',
-        confidence: profile?.industrySector ? 0.9 : 0.5,
-        note: profile?.industrySector
-          ? 'Secteur fourni manuellement'
-          : 'Secteur derive de la configuration verticale',
-      }
+    ? industrySourceHint === 'suggested'
+      ? {
+          source: 'suggested',
+          confidence: 0.7,
+          note: 'Secteur suggere automatiquement',
+        }
+      : industrySourceHint === 'inferred'
+        ? {
+            source: 'inferred',
+            confidence: 0.55,
+            note: 'Secteur infere automatiquement',
+          }
+        : {
+            source: profile?.industrySector ? 'user_input' : 'inferred_infrastructure',
+            confidence: profile?.industrySector ? 0.9 : 0.5,
+            note: profile?.industrySector
+              ? 'Secteur fourni manuellement'
+              : 'Secteur derive de la configuration verticale',
+          }
     : {
         source: 'market_reference',
         confidence: 0.35,
         note: 'Aucun secteur explicite: hypothese generaliste',
       };
 
-  const annualItBudgetUser = toPositiveNumber(profile?.annualITBudget);
+  const annualItBudgetStored = toPositiveNumber(profile?.annualITBudget);
+  const annualITBudgetSourceHint = persistedFieldSources.annualITBudget;
   const itBudgetSectorRatio = industrySector ? IT_BUDGET_PERCENT_BY_SECTOR[industrySector] : undefined;
-  const annualITBudget = annualItBudgetUser
-    ? roundMoney(annualItBudgetUser)
+  const annualITBudget = annualItBudgetStored
+    ? roundMoney(annualItBudgetStored)
     : annualRevenue
       ? roundMoney(annualRevenue * (itBudgetSectorRatio ?? 0.05))
       : null;
-  fieldSources.annualITBudget = annualItBudgetUser
-    ? {
-        source: 'user_input',
-        confidence: 0.95,
-        note: 'Budget IT fourni manuellement',
-      }
+  fieldSources.annualITBudget = annualItBudgetStored
+    ? annualITBudgetSourceHint === 'suggested'
+      ? {
+          source: 'suggested',
+          confidence: 0.72,
+          note: 'Budget IT suggere automatiquement',
+        }
+      : annualITBudgetSourceHint === 'inferred'
+        ? {
+            source: 'inferred',
+            confidence: 0.6,
+            note: 'Budget IT infere automatiquement',
+          }
+        : {
+            source: 'user_input',
+            confidence: 0.95,
+            note: 'Budget IT fourni manuellement',
+          }
     : {
         source: 'inferred_infrastructure',
         confidence: 0.45,
         note: `Estimation a partir du CA et du secteur (${Math.round((itBudgetSectorRatio ?? 0.05) * 100)}%)`,
       };
 
-  const drBudgetPercentUser = toPositiveNumber(profile?.drBudgetPercent);
-  const drBudgetPercent = drBudgetPercentUser
-    ? roundMoney(drBudgetPercentUser)
+  const drBudgetPercentStored = toPositiveNumber(profile?.drBudgetPercent);
+  const drBudgetPercentSourceHint = persistedFieldSources.drBudgetPercent;
+  const drBudgetPercent = drBudgetPercentStored
+    ? roundMoney(drBudgetPercentStored)
     : DEFAULT_DR_BUDGET_PERCENT;
-  fieldSources.drBudgetPercent = drBudgetPercentUser
-    ? {
-        source: 'user_input',
-        confidence: 0.95,
-        note: 'Pourcentage DR fourni manuellement',
-      }
+  fieldSources.drBudgetPercent = drBudgetPercentStored
+    ? drBudgetPercentSourceHint === 'suggested'
+      ? {
+          source: 'suggested',
+          confidence: 0.72,
+          note: 'Pourcentage DR suggere automatiquement',
+        }
+      : drBudgetPercentSourceHint === 'inferred'
+        ? {
+            source: 'inferred',
+            confidence: 0.6,
+            note: 'Pourcentage DR infere automatiquement',
+          }
+        : {
+            source: 'user_input',
+            confidence: 0.95,
+            note: 'Pourcentage DR fourni manuellement',
+          }
     : {
         source: 'market_reference',
         confidence: 0.4,
@@ -402,15 +499,27 @@ export async function resolveCompanyFinancialProfile(
     .filter((value): value is number => Number.isFinite(value as number) && Number(value) > 0)
     .reduce((sum, value) => sum + value, 0);
 
-  const userHourlyDowntime =
+  const storedHourlyDowntime =
     toPositiveNumber(profile?.customDowntimeCostPerHour) ??
     toPositiveNumber(profile?.hourlyDowntimeCost);
+  const hourlySourceHint =
+    persistedFieldSources.hourlyDowntimeCost ?? persistedFieldSources.customDowntimeCostPerHour;
+  const userHourlyDowntime =
+    storedHourlyDowntime && (hourlySourceHint === 'user_input' || !hourlySourceHint)
+      ? storedHourlyDowntime
+      : null;
+  const suggestedHourlyDowntime =
+    storedHourlyDowntime && hourlySourceHint === 'suggested' ? storedHourlyDowntime : null;
+  const inferredHourlyDowntime =
+    storedHourlyDowntime && hourlySourceHint === 'inferred' ? storedHourlyDowntime : null;
   const fallbackMedianEur = inferDowntimeMedianFromEmployees(employeeCount);
   const fallbackMedian = CurrencyService.convertAmount(fallbackMedianEur, 'EUR', currency);
 
   const hourlyDowntimeCost = roundMoney(
     userHourlyDowntime ??
-      (biaHourlyDowntime > 0 ? CurrencyService.convertAmount(biaHourlyDowntime, 'EUR', currency) : fallbackMedian),
+      (biaHourlyDowntime > 0
+        ? CurrencyService.convertAmount(biaHourlyDowntime, 'EUR', currency)
+        : suggestedHourlyDowntime ?? inferredHourlyDowntime ?? fallbackMedian),
   );
 
   if (userHourlyDowntime) {
@@ -425,6 +534,18 @@ export async function resolveCompanyFinancialProfile(
       confidence: 0.85,
       note: `${latestBiaReport?.processes.length || 0} processus BIA valides agrege(s)`,
     };
+  } else if (suggestedHourlyDowntime) {
+    fieldSources.hourlyDowntimeCost = {
+      source: 'suggested',
+      confidence: 0.72,
+      note: 'Cout horaire suggere automatiquement',
+    };
+  } else if (inferredHourlyDowntime) {
+    fieldSources.hourlyDowntimeCost = {
+      source: 'inferred',
+      confidence: 0.6,
+      note: 'Cout horaire infere automatiquement',
+    };
   } else {
     fieldSources.hourlyDowntimeCost = {
       source: 'market_reference',
@@ -438,7 +559,11 @@ export async function resolveCompanyFinancialProfile(
 
   const sourceKinds = listFieldSourceKinds(fieldSources);
   const hasUser = sourceKinds.has('user_input');
-  const hasInferred = sourceKinds.has('inferred_infrastructure') || sourceKinds.has('market_reference');
+  const hasInferred =
+    sourceKinds.has('suggested') ||
+    sourceKinds.has('inferred') ||
+    sourceKinds.has('inferred_infrastructure') ||
+    sourceKinds.has('market_reference');
   const hasBia = sourceKinds.has('bia_validated');
 
   const source: CompanyFinancialProfileSource =

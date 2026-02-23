@@ -15,7 +15,12 @@ export type EnrichmentResult = {
   groupedSuggestions: number;
   createdSuggestions: number;
   updatedSuggestions: number;
+  enrichedFlows: number;
+  servicesAdded: number;
+  ignoredEmptyFlows: number;
+  cleanedEmptyFlows: number;
   skippedNodes: number;
+  message?: string;
   suggestions: CloudFlowSuggestion[];
 };
 
@@ -219,6 +224,49 @@ function sortGroupNodesByGraph(nodes: InfraNode[], edges: InfraEdgeRef[]): Infra
   return [...ordered, ...tail];
 }
 
+function findLargestConnectedComponent(nodes: InfraNode[], edges: InfraEdgeRef[]): InfraNode[] {
+  if (nodes.length <= 1) return nodes;
+  const nodeIds = new Set(nodes.map((node) => node.id));
+  const adjacency = new Map<string, Set<string>>();
+  for (const nodeId of nodeIds) {
+    adjacency.set(nodeId, new Set<string>());
+  }
+
+  for (const edge of edges) {
+    if (!nodeIds.has(edge.sourceId) || !nodeIds.has(edge.targetId)) continue;
+    adjacency.get(edge.sourceId)?.add(edge.targetId);
+    adjacency.get(edge.targetId)?.add(edge.sourceId);
+  }
+
+  const unvisited = new Set(nodeIds);
+  let bestIds: string[] = [];
+  while (unvisited.size > 0) {
+    const seed = unvisited.values().next().value as string | undefined;
+    if (!seed) break;
+    const queue = [seed];
+    unvisited.delete(seed);
+    const component: string[] = [];
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current) continue;
+      component.push(current);
+      for (const neighbor of adjacency.get(current) || []) {
+        if (!unvisited.has(neighbor)) continue;
+        unvisited.delete(neighbor);
+        queue.push(neighbor);
+      }
+    }
+
+    if (component.length > bestIds.length) {
+      bestIds = component;
+    }
+  }
+
+  const bestSet = new Set(bestIds);
+  return nodes.filter((node) => bestSet.has(node.id));
+}
+
 export class CloudEnrichmentService {
   private readonly prismaClient: PrismaClient;
 
@@ -227,7 +275,7 @@ export class CloudEnrichmentService {
   }
 
   async enrichFromCloudData(tenantId: string): Promise<EnrichmentResult> {
-    const [nodes, edges] = await Promise.all([
+    const [nodes, edges, existingCloudFlows] = await Promise.all([
       this.prismaClient.infraNode.findMany({
         where: { tenantId },
         orderBy: { updatedAt: 'desc' },
@@ -236,7 +284,28 @@ export class CloudEnrichmentService {
         where: { tenantId },
         select: { sourceId: true, targetId: true },
       }),
+      this.prismaClient.businessFlow.findMany({
+        where: { tenantId, source: 'cloud_tags' },
+        select: {
+          id: true,
+          flowNodes: {
+            select: { id: true },
+          },
+        },
+      }),
     ]);
+
+    const staleCloudFlowIds = existingCloudFlows
+      .filter((flow) => flow.flowNodes.length < 2)
+      .map((flow) => flow.id);
+    const cleanedEmptyFlows =
+      staleCloudFlowIds.length > 0
+        ? (
+            await this.prismaClient.businessFlow.deleteMany({
+              where: { tenantId, id: { in: staleCloudFlowIds } },
+            })
+          ).count
+        : 0;
 
     const groupsByTag = new Map<string, TaggedNodeGroup>();
     let skippedNodes = 0;
@@ -263,10 +332,16 @@ export class CloudEnrichmentService {
     const suggestions: CloudFlowSuggestion[] = [];
     let createdSuggestions = 0;
     let updatedSuggestions = 0;
+    let ignoredEmptyFlows = 0;
+    let servicesAdded = 0;
 
     for (const group of groupsByTag.values()) {
-      const sortedNodes = sortGroupNodesByGraph(group.nodes, edges);
-      if (sortedNodes.length === 0) continue;
+      const connectedComponent = findLargestConnectedComponent(group.nodes, edges);
+      const sortedNodes = sortGroupNodesByGraph(connectedComponent, edges);
+      if (sortedNodes.length < 2) {
+        ignoredEmptyFlows += 1;
+        continue;
+      }
 
       const flowName = buildFlowName(group.tagValue);
       const metricsHints = sortedNodes
@@ -316,6 +391,7 @@ export class CloudEnrichmentService {
       } else {
         createdSuggestions += 1;
       }
+      servicesAdded += sortedNodes.length;
 
       await this.prismaClient.$transaction([
         this.prismaClient.businessFlowNode.deleteMany({
@@ -345,11 +421,21 @@ export class CloudEnrichmentService {
       });
     }
 
+    const enrichedFlows = createdSuggestions + updatedSuggestions;
+    const message =
+      enrichedFlows === 0
+        ? 'Aucun flux métier détecté automatiquement — créez-en un manuellement'
+        : undefined;
+
     appLogger.info('cloud.enrichment.completed', {
       tenantId,
       groupedSuggestions: groupsByTag.size,
       createdSuggestions,
       updatedSuggestions,
+      enrichedFlows,
+      servicesAdded,
+      ignoredEmptyFlows,
+      cleanedEmptyFlows,
       skippedNodes,
     });
 
@@ -357,7 +443,12 @@ export class CloudEnrichmentService {
       groupedSuggestions: groupsByTag.size,
       createdSuggestions,
       updatedSuggestions,
+      enrichedFlows,
+      servicesAdded,
+      ignoredEmptyFlows,
+      cleanedEmptyFlows,
       skippedNodes,
+      ...(message ? { message } : {}),
       suggestions,
     };
   }

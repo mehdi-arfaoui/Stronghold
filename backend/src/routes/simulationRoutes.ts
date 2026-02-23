@@ -18,6 +18,13 @@ import {
   type NodeFinancialOverrideInput,
 } from '../services/financial-engine.service.js';
 import { BusinessFlowFinancialEngineService } from '../services/business-flow-financial-engine.service.js';
+import {
+  estimateServiceMonthlyProductionCost,
+  resolveCompanyFinancialProfile,
+  selectDrStrategyForService,
+} from '../services/company-financial-profile.service.js';
+import { CurrencyService } from '../services/currency.service.js';
+import type { DrStrategyKey } from '../constants/dr-financial-reference-data.js';
 import type { SimulationResult, WarRoomFinancial } from '../graph/types.js';
 
 const router = Router();
@@ -29,9 +36,14 @@ type InfraNodeWithEdges = Prisma.InfraNodeGetPayload<{
   };
 }>;
 
-type SimulationRtoSource = {
+type SimulationBiaProcessSource = {
   validatedRTO: number | null;
   suggestedRTO: number | null;
+  validatedRPO: number | null;
+  suggestedRPO: number | null;
+  impactCategory: string | null;
+  criticalityScore: number | null;
+  financialImpact: Prisma.JsonValue | null;
 };
 
 type WarRoomNodeCost = {
@@ -42,6 +54,10 @@ type WarRoomNodeCost = {
   recoveryCost: number;
   rtoMinutes: number;
   impactedAt: number;
+  costSource: 'business_flow' | 'bia_validated' | 'resource_estimate';
+  recoveryStrategy: DrStrategyKey;
+  monthlyDrCost: number;
+  recoveryActivationFactor: number;
 };
 
 function roundAmount(value: number): number {
@@ -102,14 +118,117 @@ function normalizePositiveNumber(value: unknown, fallback: number): number {
   return parsed;
 }
 
-function resolveImpactedAtByNodeId(result: SimulationResult): Map<string, number> {
+function extractBiaHourlyCost(financialImpact: unknown): number | null {
+  if (!financialImpact || typeof financialImpact !== 'object' || Array.isArray(financialImpact)) {
+    return null;
+  }
+  const payload = financialImpact as Record<string, unknown>;
+  const candidates = [
+    payload.estimatedCostPerHour,
+    payload.hourlyDowntimeCost,
+    payload.totalCostPerHour,
+  ];
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function normalizeCriticality(
+  recoveryTier: number | null | undefined,
+  criticalityScore: number | null | undefined,
+  impactCategory: string | null | undefined,
+): 'critical' | 'high' | 'medium' | 'low' {
+  const impact = String(impactCategory || '').toLowerCase();
+  if (impact.includes('tier1') || impact.includes('critical') || impact.includes('mission') || recoveryTier === 1) {
+    return 'critical';
+  }
+  if (impact.includes('tier2') || impact.includes('high') || impact.includes('business') || recoveryTier === 2) {
+    return 'high';
+  }
+  if (impact.includes('tier3') || impact.includes('medium') || impact.includes('important') || recoveryTier === 3) {
+    return 'medium';
+  }
+  if (impact.includes('tier4') || recoveryTier === 4) {
+    return 'low';
+  }
+
+  const score = Number(criticalityScore);
+  if (Number.isFinite(score)) {
+    const normalized = score > 1 ? score / 100 : score;
+    if (normalized >= 0.85) return 'critical';
+    if (normalized >= 0.65) return 'high';
+    if (normalized >= 0.45) return 'medium';
+  }
+  return 'low';
+}
+
+function resolveRecoveryActivationFactor(strategy: DrStrategyKey): number {
+  switch (strategy) {
+    case 'active_active':
+      return 0;
+    case 'hot_standby':
+      return 0.2;
+    case 'warm_standby':
+      return 0.4;
+    case 'pilot_light':
+      return 0.8;
+    case 'backup_restore':
+    default:
+      return 1.2;
+  }
+}
+
+function resolveStrategyOverride(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
+    return null;
+  }
+  const payload = metadata as Record<string, unknown>;
+  if (typeof payload.recoveryStrategy === 'string' && payload.recoveryStrategy.trim().length > 0) {
+    return payload.recoveryStrategy.trim();
+  }
+  const recommendation = payload.landingZoneRecommendation;
+  if (
+    recommendation &&
+    typeof recommendation === 'object' &&
+    !Array.isArray(recommendation) &&
+    typeof (recommendation as Record<string, unknown>).strategyOverride === 'string'
+  ) {
+    return String((recommendation as Record<string, unknown>).strategyOverride);
+  }
+  return null;
+}
+
+function resolveImpactedAtByNodeId(
+  result: SimulationResult,
+  fallbackDowntimeMinutes: number,
+): Map<string, number> {
   const byNodeId = new Map<string, number>();
+  for (const event of result.warRoomData?.propagationTimeline || []) {
+    const timestampMinutes = Math.max(0, Math.round(Number(event.timestampMinutes || 0)));
+    const previous = byNodeId.get(event.nodeId);
+    if (previous == null || timestampMinutes < previous) {
+      byNodeId.set(event.nodeId, timestampMinutes);
+    }
+  }
   for (const node of result.directlyAffected || []) {
     byNodeId.set(node.id, 0);
   }
+  const maxCascadeDepth = Math.max(
+    0,
+    ...((result.cascadeImpacted || []).map((node) => Number(node.cascadeDepth || 0))),
+  );
+  const cascadeStepMinutes =
+    maxCascadeDepth > 0
+      ? Math.max(1, Math.round(fallbackDowntimeMinutes / (maxCascadeDepth + 1)))
+      : Math.max(1, Math.round(fallbackDowntimeMinutes / 4));
   for (const node of result.cascadeImpacted || []) {
     const previous = byNodeId.get(node.id);
-    const next = Math.max(0, Number(node.cascadeDepth || 0));
+    const depth = Math.max(0, Number(node.cascadeDepth || 0));
+    const next = Math.round(depth * cascadeStepMinutes);
     if (previous == null || next < previous) {
       byNodeId.set(node.id, next);
     }
@@ -126,7 +245,7 @@ function resolveImpactedAtByNodeId(result: SimulationResult): Map<string, number
 
 function resolveRtoMinutes(
   node: InfraNodeWithEdges,
-  processByNodeId: Map<string, SimulationRtoSource>,
+  processByNodeId: Map<string, SimulationBiaProcessSource>,
   fallbackMinutes: number,
 ): number {
   const process = processByNodeId.get(node.id);
@@ -210,7 +329,7 @@ async function buildWarRoomFinancial(
     return buildFallbackWarRoomFinancial(result);
   }
 
-  const [nodes, latestBia, profile, overrides] = await Promise.all([
+  const [nodes, latestBia, resolvedProfile, overrides] = await Promise.all([
     prisma.infraNode.findMany({
       where: {
         tenantId,
@@ -230,14 +349,17 @@ async function buildWarRoomFinancial(
             serviceNodeId: true,
             validatedRTO: true,
             suggestedRTO: true,
+            validatedRPO: true,
+            suggestedRPO: true,
+            criticalityScore: true,
+            impactCategory: true,
+            financialImpact: true,
             validationStatus: true,
           },
         },
       },
     }),
-    prisma.organizationProfile.findUnique({
-      where: { tenantId },
-    }),
+    resolveCompanyFinancialProfile(prisma, tenantId),
     prisma.nodeFinancialOverride.findMany({
       where: {
         tenantId,
@@ -254,12 +376,17 @@ async function buildWarRoomFinancial(
     return buildFallbackWarRoomFinancial(result);
   }
 
-  const processByNodeId = new Map<string, SimulationRtoSource>();
+  const processByNodeId = new Map<string, SimulationBiaProcessSource>();
   for (const process of latestBia?.processes || []) {
     if (process.validationStatus !== 'validated') continue;
     processByNodeId.set(process.serviceNodeId, {
       validatedRTO: process.validatedRTO,
       suggestedRTO: process.suggestedRTO,
+      validatedRPO: process.validatedRPO,
+      suggestedRPO: process.suggestedRPO,
+      impactCategory: process.impactCategory,
+      criticalityScore: process.criticalityScore,
+      financialImpact: process.financialImpact,
     });
   }
 
@@ -275,14 +402,25 @@ async function buildWarRoomFinancial(
     1,
     roundAmount(normalizePositiveNumber(result.metrics.estimatedDowntimeMinutes, 60)),
   );
-  const impactedAtByNodeId = resolveImpactedAtByNodeId(result);
-  const profileInput = toProfileInput(profile);
+  const impactedAtByNodeId = resolveImpactedAtByNodeId(result, fallbackRtoMinutes);
+  const profileInput: FinancialOrganizationProfileInput = {
+    sizeCategory: resolvedProfile.sizeCategory,
+    verticalSector: resolvedProfile.verticalSector,
+    customDowntimeCostPerHour: resolvedProfile.customDowntimeCostPerHour,
+    hourlyDowntimeCost: resolvedProfile.hourlyDowntimeCost,
+    annualITBudget: resolvedProfile.annualITBudget,
+    drBudgetPercent: resolvedProfile.drBudgetPercent,
+    customCurrency: resolvedProfile.currency,
+    strongholdPlanId: resolvedProfile.strongholdPlanId,
+    strongholdMonthlyCost: resolvedProfile.strongholdMonthlyCost,
+  };
   const flowEngine = new BusinessFlowFinancialEngineService(prisma);
 
   const nodeCosts = await Promise.all(
     nodes.map(async (node) => {
       const financialNode = toFinancialNodeInput(node);
       const override = overrideByNodeId.get(node.id);
+      const validatedProcess = processByNodeId.get(node.id);
       const flowCost = await flowEngine.calculateNodeCostFromFlows({
         tenantId,
         nodeId: node.id,
@@ -299,14 +437,52 @@ async function buildWarRoomFinancial(
         override,
       );
 
-      const costPerHour = roundAmount(
-        flowCost.totalCostPerHour > 0
-          ? flowCost.totalCostPerHour
-          : fallbackImpact.estimatedCostPerHour,
-      );
+      const biaCostPerHour = extractBiaHourlyCost(validatedProcess?.financialImpact);
+      const biaCostInCurrency =
+        biaCostPerHour && biaCostPerHour > 0
+          ? roundAmount(CurrencyService.convertAmount(biaCostPerHour, 'EUR', resolvedProfile.currency))
+          : 0;
+
+      let costPerHour = fallbackImpact.estimatedCostPerHour;
+      let costSource: WarRoomNodeCost['costSource'] = 'resource_estimate';
+      if (flowCost.totalCostPerHour > 0) {
+        costPerHour = roundAmount(flowCost.totalCostPerHour);
+        costSource = 'business_flow';
+      } else if (biaCostInCurrency > 0) {
+        costPerHour = biaCostInCurrency;
+        costSource = 'bia_validated';
+      }
+
       const rtoMinutes = resolveRtoMinutes(node, processByNodeId, fallbackRtoMinutes);
-      const recoveryFactor = clamp(rtoMinutes / 180, 0.35, 1.5);
-      const recoveryCost = roundAmount(costPerHour * recoveryFactor);
+      const criticality = normalizeCriticality(
+        null,
+        validatedProcess?.criticalityScore ?? node.criticalityScore,
+        validatedProcess?.impactCategory ?? node.impactCategory,
+      );
+      const monthlyProductionCost = estimateServiceMonthlyProductionCost(
+        {
+          type: node.type,
+          provider: node.provider,
+          metadata: node.metadata,
+          criticalityScore: validatedProcess?.criticalityScore ?? node.criticalityScore,
+          impactCategory: validatedProcess?.impactCategory ?? node.impactCategory,
+        },
+        resolvedProfile.currency,
+      ).estimatedMonthlyCost;
+      const strategySelection = selectDrStrategyForService({
+        targetRtoMinutes: validatedProcess?.validatedRTO ?? rtoMinutes,
+        targetRpoMinutes:
+          validatedProcess?.validatedRPO ??
+          validatedProcess?.suggestedRPO ??
+          node.validatedRPO ??
+          node.suggestedRPO ??
+          null,
+        criticality,
+        monthlyProductionCost,
+        overrideStrategy: resolveStrategyOverride(node.metadata),
+      });
+      const recoveryActivationFactor = resolveRecoveryActivationFactor(strategySelection.strategy);
+      const recoveryCost = roundAmount(strategySelection.monthlyDrCost * recoveryActivationFactor);
       const impactedAt = clamp(
         Number(impactedAtByNodeId.get(node.id) ?? 0),
         0,
@@ -321,20 +497,29 @@ async function buildWarRoomFinancial(
         recoveryCost,
         rtoMinutes,
         impactedAt,
+        costSource,
+        recoveryStrategy: strategySelection.strategy,
+        monthlyDrCost: roundAmount(strategySelection.monthlyDrCost),
+        recoveryActivationFactor,
       } satisfies WarRoomNodeCost;
     }),
   );
 
-  const hourlyDowntimeCost = roundAmount(
+  const computedHourlyDowntimeCost = roundAmount(
     nodeCosts.reduce((sum, node) => sum + node.costPerHour, 0),
   );
+  const hourlyDowntimeCost =
+    computedHourlyDowntimeCost > 0
+      ? computedHourlyDowntimeCost
+      : roundAmount(resolvedProfile.hourlyDowntimeCost);
   const recoveryCostEstimate = roundAmount(
     nodeCosts.reduce((sum, node) => sum + node.recoveryCost, 0),
   );
 
   const totalDowntimeMinutes = Math.max(
     fallbackRtoMinutes,
-    ...nodeCosts.map((node) => node.rtoMinutes),
+    ...((result.warRoomData?.propagationTimeline || []).map((event) => Math.round(Number(event.timestampMinutes || 0)))),
+    ...nodeCosts.map((node) => Math.round(node.impactedAt)),
   );
   const cumulativeLossTimeline = computeCumulativeLossTimeline(
     nodeCosts,
@@ -359,6 +544,10 @@ async function buildWarRoomFinancial(
       costPerHour: node.costPerHour,
       recoveryCost: node.recoveryCost,
       rtoMinutes: node.rtoMinutes,
+      costSource: node.costSource,
+      recoveryStrategy: node.recoveryStrategy,
+      monthlyDrCost: node.monthlyDrCost,
+      recoveryActivationFactor: node.recoveryActivationFactor,
     }));
 
   return {

@@ -4,6 +4,7 @@ import {
   calculateRecommendationRoi,
   estimateServiceMonthlyProductionCost,
   findNextImprovingStrategy,
+  resolveCompanyFinancialProfile,
   resolveIncidentProbabilityForNodeType,
   selectDrStrategyForService,
   strategyTargetRtoMinutes,
@@ -164,4 +165,49 @@ test('findNextImprovingStrategy upgrades to the first strategy that improves cur
   assert.equal(findNextImprovingStrategy('pilot_light', 15), 'warm_standby');
   assert.equal(findNextImprovingStrategy('active_active', 0), null);
   assert.equal(findNextImprovingStrategy('active_active', 0.4), null);
+});
+
+test('resolveCompanyFinancialProfile preserves suggested source traces from profile metadata', async () => {
+  const prismaMock = {
+    organizationProfile: {
+      findUnique: async () => ({
+        tenantId: 'tenant-1',
+        sizeCategory: 'smb',
+        customCurrency: 'EUR',
+        annualRevenue: 25_000_000,
+        annualRevenueUSD: null,
+        employeeCount: 150,
+        annualITBudget: 1_250_000,
+        drBudgetPercent: 4,
+        hourlyDowntimeCost: 15_000,
+        customDowntimeCostPerHour: 15_000,
+        industrySector: 'technology_saas',
+        verticalSector: 'technology_saas',
+        profileMetadata: {
+          fieldSources: {
+            annualRevenue: 'suggested',
+            employeeCount: 'suggested',
+            annualITBudget: 'suggested',
+            drBudgetPercent: 'suggested',
+            hourlyDowntimeCost: 'suggested',
+          },
+        },
+      }),
+    },
+    bIAReport2: {
+      findFirst: async () => ({
+        processes: [],
+      }),
+    },
+    infraNode: {
+      count: async () => 20,
+    },
+  } as any;
+
+  const resolved = await resolveCompanyFinancialProfile(prismaMock, 'tenant-1');
+  assert.equal(resolved.fieldSources.annualRevenue?.source, 'suggested');
+  assert.equal(resolved.fieldSources.employeeCount?.source, 'suggested');
+  assert.equal(resolved.fieldSources.annualITBudget?.source, 'suggested');
+  assert.equal(resolved.fieldSources.drBudgetPercent?.source, 'suggested');
+  assert.equal(resolved.fieldSources.hourlyDowntimeCost?.source, 'suggested');
 });

@@ -9,12 +9,19 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { IntegrationsHub } from '@/components/integrations/IntegrationsHub';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { useUIStore } from '@/stores/ui.store';
 import { financialApi } from '@/api/financial.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
+import {
+  applySizeSuggestions,
+  mapApiSourceToEditableSource,
+  type FinancialFieldKey,
+  type FinancialFieldSource,
+} from '@/lib/financialProfileSuggestions';
 
 const SIZE_OPTIONS = [
   { value: 'startup', label: 'Startup' },
@@ -34,6 +41,8 @@ const VERTICAL_OPTIONS = [
   { value: 'media_telecom', label: 'Telecom / Media' },
   { value: 'government_public', label: 'Gouvernement / Public' },
 ];
+
+type EditableFieldSources = Partial<Record<FinancialFieldKey, FinancialFieldSource>>;
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
@@ -57,6 +66,7 @@ export function SettingsPage() {
   const [industrySector, setIndustrySector] = useState('');
   const [customDowntimeCostPerHour, setCustomDowntimeCostPerHour] = useState('');
   const [customCurrency, setCustomCurrency] = useState('EUR');
+  const [fieldSources, setFieldSources] = useState<EditableFieldSources>({});
 
   useEffect(() => {
     const profile = profileQuery.data;
@@ -74,7 +84,49 @@ export function SettingsPage() {
       profile.customDowntimeCostPerHour ? String(profile.customDowntimeCostPerHour) : '',
     );
     setCustomCurrency(profile.customCurrency || 'EUR');
+    setFieldSources({
+      employeeCount: mapApiSourceToEditableSource(profile.fieldSources?.employeeCount?.source),
+      annualRevenue: mapApiSourceToEditableSource(profile.fieldSources?.annualRevenue?.source),
+      annualITBudget: mapApiSourceToEditableSource(profile.fieldSources?.annualITBudget?.source),
+      drBudgetPercent: mapApiSourceToEditableSource(profile.fieldSources?.drBudgetPercent?.source),
+      hourlyDowntimeCost: mapApiSourceToEditableSource(profile.fieldSources?.hourlyDowntimeCost?.source),
+    });
   }, [profileQuery.data]);
+
+  const renderFieldSourceBadge = (field: FinancialFieldKey) => {
+    const source = fieldSources[field];
+    if (source === 'user_input') {
+      return <Badge variant="secondary">Valeur personnalisee</Badge>;
+    }
+    if (source === 'suggested') {
+      return <Badge variant="outline">Suggestion</Badge>;
+    }
+    return null;
+  };
+
+  const applySizeCategorySuggestions = (nextSizeCategory: string) => {
+    const next = applySizeSuggestions({
+      sizeCategory: nextSizeCategory,
+      currency: customCurrency,
+      values: {
+        employeeCount,
+        annualRevenue,
+        annualITBudget,
+        drBudgetPercent,
+        hourlyDowntimeCost,
+      },
+      sources: fieldSources,
+    });
+    setEmployeeCount(next.values.employeeCount);
+    setAnnualRevenue(next.values.annualRevenue);
+    setAnnualITBudget(next.values.annualITBudget);
+    setDrBudgetPercent(next.values.drBudgetPercent);
+    setHourlyDowntimeCost(next.values.hourlyDowntimeCost);
+    setFieldSources(next.sources);
+    if (next.suggestedFields.length > 0) {
+      toast(`${next.suggestedFields.length} suggestion(s) appliquee(s)`);
+    }
+  };
 
   const updateProfileMutation = useMutation({
     mutationFn: () =>
@@ -91,8 +143,18 @@ export function SettingsPage() {
         customDowntimeCostPerHour: customDowntimeCostPerHour
           ? Number(customDowntimeCostPerHour)
           : null,
-        profileSource: 'user_input',
         customCurrency,
+        fieldSources: {
+          employeeCount: fieldSources.employeeCount || 'inferred',
+          annualRevenue: fieldSources.annualRevenue || 'inferred',
+          annualRevenueUSD: fieldSources.annualRevenue || 'inferred',
+          annualITBudget: fieldSources.annualITBudget || 'inferred',
+          drBudgetPercent: fieldSources.drBudgetPercent || 'inferred',
+          hourlyDowntimeCost: fieldSources.hourlyDowntimeCost || 'inferred',
+          customDowntimeCostPerHour: fieldSources.hourlyDowntimeCost || 'inferred',
+          industrySector: industrySector ? 'user_input' : 'inferred',
+          verticalSector: verticalSector ? 'user_input' : 'inferred',
+        },
       }),
     onSuccess: async () => {
       toast.success('Profil financier mis a jour');
@@ -183,7 +245,11 @@ export function SettingsPage() {
                   <select
                     id="sizeCategory"
                     value={sizeCategory}
-                    onChange={(event) => setSizeCategory(event.target.value)}
+                    onChange={(event) => {
+                      const nextSize = event.target.value;
+                      setSizeCategory(nextSize);
+                      applySizeCategorySuggestions(nextSize);
+                    }}
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                   >
                     {SIZE_OPTIONS.map((option) => (
@@ -227,13 +293,20 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
+                    {renderFieldSourceBadge('employeeCount')}
+                  </div>
                   <Input
                     id="employeeCount"
                     type="number"
                     min={0}
                     value={employeeCount}
-                    onChange={(event) => setEmployeeCount(event.target.value)}
+                    onChange={(event) => {
+                      setEmployeeCount(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, employeeCount: 'user_input' }));
+                    }}
+                    className={fieldSources.employeeCount === 'suggested' ? 'text-muted-foreground' : undefined}
                     placeholder="Ex: 450"
                   />
                 </div>
@@ -245,37 +318,57 @@ export function SettingsPage() {
                     type="number"
                     min={0}
                     value={annualRevenueUSD}
-                    onChange={(event) => setAnnualRevenueUSD(event.target.value)}
+                    onChange={(event) => {
+                      setAnnualRevenueUSD(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, annualRevenue: 'user_input' }));
+                    }}
                     placeholder="Ex: 125000000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="annualRevenue">CA annuel ({customCurrency})</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="annualRevenue">CA annuel ({customCurrency})</Label>
+                    {renderFieldSourceBadge('annualRevenue')}
+                  </div>
                   <Input
                     id="annualRevenue"
                     type="number"
                     min={0}
                     value={annualRevenue}
-                    onChange={(event) => setAnnualRevenue(event.target.value)}
+                    onChange={(event) => {
+                      setAnnualRevenue(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, annualRevenue: 'user_input' }));
+                    }}
+                    className={fieldSources.annualRevenue === 'suggested' ? 'text-muted-foreground' : undefined}
                     placeholder="Ex: 30000000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="annualITBudget">Budget IT annuel ({customCurrency})</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="annualITBudget">Budget IT annuel ({customCurrency})</Label>
+                    {renderFieldSourceBadge('annualITBudget')}
+                  </div>
                   <Input
                     id="annualITBudget"
                     type="number"
                     min={0}
                     value={annualITBudget}
-                    onChange={(event) => setAnnualITBudget(event.target.value)}
+                    onChange={(event) => {
+                      setAnnualITBudget(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, annualITBudget: 'user_input' }));
+                    }}
+                    className={fieldSources.annualITBudget === 'suggested' ? 'text-muted-foreground' : undefined}
                     placeholder="Ex: 1500000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
+                    {renderFieldSourceBadge('drBudgetPercent')}
+                  </div>
                   <Input
                     id="drBudgetPercent"
                     type="number"
@@ -283,19 +376,30 @@ export function SettingsPage() {
                     max={100}
                     step="0.1"
                     value={drBudgetPercent}
-                    onChange={(event) => setDrBudgetPercent(event.target.value)}
+                    onChange={(event) => {
+                      setDrBudgetPercent(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, drBudgetPercent: 'user_input' }));
+                    }}
+                    className={fieldSources.drBudgetPercent === 'suggested' ? 'text-muted-foreground' : undefined}
                     placeholder="Ex: 4"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
+                    {renderFieldSourceBadge('hourlyDowntimeCost')}
+                  </div>
                   <Input
                     id="hourlyDowntimeCost"
                     type="number"
                     min={0}
                     value={hourlyDowntimeCost}
-                    onChange={(event) => setHourlyDowntimeCost(event.target.value)}
+                    onChange={(event) => {
+                      setHourlyDowntimeCost(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, hourlyDowntimeCost: 'user_input' }));
+                    }}
+                    className={fieldSources.hourlyDowntimeCost === 'suggested' ? 'text-muted-foreground' : undefined}
                     placeholder="Ex: 25000"
                   />
                 </div>
@@ -307,7 +411,10 @@ export function SettingsPage() {
                     type="number"
                     min={0}
                     value={customDowntimeCostPerHour}
-                    onChange={(event) => setCustomDowntimeCostPerHour(event.target.value)}
+                    onChange={(event) => {
+                      setCustomDowntimeCostPerHour(event.target.value);
+                      setFieldSources((prev) => ({ ...prev, hourlyDowntimeCost: 'user_input' }));
+                    }}
                     placeholder="Ex: 250000"
                   />
                 </div>
