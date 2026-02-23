@@ -1,18 +1,13 @@
 /**
  * Demo seed service for Stronghold.
- * Generates a realistic e-commerce environment "ShopMax" with ~45 nodes and ~55 edges.
+ * Generates a parametric demo environment for ShopMax-like infrastructures.
+ * Infrastructure size and service labels are derived from demo profile
+ * (sector + company size) through layered generation.
  *
- * SPOF INTENTIONNELS :
- *   1. Payment DB : PAS de replica, PAS de multi-AZ
- *   2. API Gateway : point d'entree unique
- *   3. ERP Legacy : serveur unique on-premise
- *   4. Redis Cache : instance unique, pas de cluster
- *
- * BONS PATTERNS (pour contraste) :
- *   - User DB : Multi-AZ + 1 read replica
- *   - Catalog DB : 2 read replicas
- *   - S3 : replication cross-region
- *   - EKS : multi-AZ, auto-scaling
+ * PME: core layer only (~15-25 nodes)
+ * PME+: core + microservices (~35-50 nodes)
+ * ETI: core + microservices + resilience + DR (~60-100 nodes)
+ * Large: all layers with multi-region + extended legacy (~120-180 nodes)
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client";
@@ -22,28 +17,15 @@ import { generateBIA } from '../graph/biaEngine.js';
 import { detectRisks } from '../graph/riskDetectionEngine.js';
 import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
 import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
+import { CurrencyService } from './currency.service.js';
+import {
+  deriveOrganizationSizeCategoryFromDemoProfile,
+  resolveDemoProfileSelection,
+  type DemoProfileSelection,
+  type DemoProfileSelectionInput,
+} from '../config/demo-profiles.js';
+import { generateDemoInfrastructure } from './demoInfrastructureFactory.js';
 import { appLogger } from "../utils/logger.js";
-
-interface NodeDef {
-  id: string;
-  externalId: string;
-  name: string;
-  type: string;
-  provider: string;
-  region?: string;
-  availabilityZone?: string;
-  tags: Record<string, string>;
-  metadata: Record<string, unknown>;
-}
-
-interface EdgeDef {
-  sourceId: string;
-  targetId: string;
-  type: string;
-  confidence?: number;
-  inferenceMethod?: string;
-  confirmed?: boolean;
-}
 
 interface DemoFlowNodeDef {
   infraNodeId: string;
@@ -80,574 +62,30 @@ interface DemoBusinessFlowDef {
   nodes: DemoFlowNodeDef[];
 }
 
-const nodes: NodeDef[] = [
-  // -- REGIONS --
-  {
-    id: "region-eu-west-1",
-    externalId: "aws:region:eu-west-1",
-    name: "eu-west-1 (Ireland)",
-    type: "REGION",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: {},
-    metadata: {},
-  },
-  {
-    id: "region-eu-central-1",
-    externalId: "aws:region:eu-central-1",
-    name: "eu-central-1 (Frankfurt)",
-    type: "REGION",
-    provider: "aws",
-    region: "eu-central-1",
-    tags: {},
-    metadata: {},
-  },
+export type RunDemoSeedOptions = {
+  profile?: DemoProfileSelectionInput;
+};
 
-  // -- VPC --
-  {
-    id: "vpc-prod",
-    externalId: "arn:aws:ec2:eu-west-1:123456:vpc/vpc-prod",
-    name: "vpc-production",
-    type: "VPC",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { env: "production" },
-    metadata: { cidr: "10.0.0.0/16" },
-  },
-  {
-    id: "vpc-dr",
-    externalId: "arn:aws:ec2:eu-central-1:123456:vpc/vpc-dr",
-    name: "vpc-disaster-recovery",
-    type: "VPC",
-    provider: "aws",
-    region: "eu-central-1",
-    tags: { env: "dr" },
-    metadata: { cidr: "10.1.0.0/16" },
-  },
+type DemoServiceCriticality = 'critical' | 'high' | 'medium' | 'low';
 
-  // -- SUBNETS --
-  {
-    id: "subnet-pub-1a",
-    externalId: "arn:aws:ec2:eu-west-1:123456:subnet/subnet-pub-1a",
-    name: "subnet-public-1a",
-    type: "SUBNET",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1a",
-    tags: { tier: "public" },
-    metadata: { cidr: "10.0.1.0/24" },
-  },
-  {
-    id: "subnet-priv-1a",
-    externalId: "arn:aws:ec2:eu-west-1:123456:subnet/subnet-priv-1a",
-    name: "subnet-private-1a",
-    type: "SUBNET",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1a",
-    tags: { tier: "private" },
-    metadata: { cidr: "10.0.10.0/24" },
-  },
-  {
-    id: "subnet-priv-1b",
-    externalId: "arn:aws:ec2:eu-west-1:123456:subnet/subnet-priv-1b",
-    name: "subnet-private-1b",
-    type: "SUBNET",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1b",
-    tags: { tier: "private" },
-    metadata: { cidr: "10.0.11.0/24" },
-  },
+type ValidatedBiaServiceSettings = {
+  validatedRTO: number;
+  validatedRPO: number;
+  validatedMTPD: number;
+  recoveryTier: number;
+  impactCategory: DemoServiceCriticality;
+};
 
-  // -- CDN --
-  {
-    id: "cloudflare-cdn",
-    externalId: "cloudflare:zone:shopmax.com",
-    name: "Cloudflare CDN",
-    type: "CDN",
-    provider: "manual",
-    tags: { service: "cdn" },
-    metadata: { domain: "shopmax.com" },
-  },
+type ValidatedBiaServiceOverride = ValidatedBiaServiceSettings & {
+  financialImpactPerHour: number;
+};
 
-  // -- LOAD BALANCERS --
-  {
-    id: "alb-prod",
-    externalId: "arn:aws:elasticloadbalancing:eu-west-1:123456:loadbalancer/app/alb-prod",
-    name: "alb-production",
-    type: "LOAD_BALANCER",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { env: "production", app: "shopmax" },
-    metadata: { scheme: "internet-facing", type: "application" },
-  },
-  {
-    id: "alb-dr",
-    externalId: "arn:aws:elasticloadbalancing:eu-central-1:123456:loadbalancer/app/alb-dr",
-    name: "alb-disaster-recovery",
-    type: "LOAD_BALANCER",
-    provider: "aws",
-    region: "eu-central-1",
-    tags: { env: "dr", app: "shopmax" },
-    metadata: { scheme: "internet-facing", type: "application", status: "standby" },
-  },
-
-  // -- KUBERNETES (EKS) --
-  {
-    id: "eks-prod",
-    externalId: "arn:aws:eks:eu-west-1:123456:cluster/eks-production",
-    name: "eks-production",
-    type: "KUBERNETES_CLUSTER",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { env: "production" },
-    metadata: { version: "1.28", nodeCount: 6, isMultiAZ: true },
-  },
-
-  // -- MICROSERVICES --
-  {
-    id: "svc-api-gateway",
-    externalId: "k8s:deployment/api-gateway",
-    name: "api-gateway",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "frontend", team: "platform" },
-    metadata: {
-      replicas: 3,
-      image: "shopmax/api-gateway:2.4.1",
-      cpu: "500m",
-      memory: "512Mi",
-      drMonthlyCostOverride: 260,
-    },
-  },
-  {
-    id: "svc-payment",
-    externalId: "k8s:deployment/payment-service",
-    name: "payment-service",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "backend", team: "payments", critical: "true" },
-    metadata: { replicas: 2, image: "shopmax/payment:3.1.0", cpu: "1000m", memory: "1Gi" },
-  },
-  {
-    id: "svc-user",
-    externalId: "k8s:deployment/user-service",
-    name: "user-service",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "backend", team: "identity" },
-    metadata: { replicas: 3, image: "shopmax/user:2.8.0", cpu: "500m", memory: "512Mi" },
-  },
-  {
-    id: "svc-catalog",
-    externalId: "k8s:deployment/catalog-service",
-    name: "catalog-service",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "backend", team: "catalog" },
-    metadata: { replicas: 3, image: "shopmax/catalog:4.0.2", cpu: "500m", memory: "1Gi" },
-  },
-  {
-    id: "svc-order",
-    externalId: "k8s:deployment/order-service",
-    name: "order-service",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "backend", team: "orders", critical: "true" },
-    metadata: { replicas: 2, image: "shopmax/order:3.5.1", cpu: "750m", memory: "768Mi" },
-  },
-  {
-    id: "svc-notification",
-    externalId: "k8s:deployment/notification-service",
-    name: "notification-service",
-    type: "MICROSERVICE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "backend", team: "comms" },
-    metadata: { replicas: 2, image: "shopmax/notification:1.9.0", cpu: "250m", memory: "256Mi" },
-  },
-  {
-    id: "svc-admin",
-    externalId: "k8s:deployment/admin-dashboard",
-    name: "admin-dashboard",
-    type: "APPLICATION",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", tier: "frontend", team: "internal" },
-    metadata: {
-      replicas: 1,
-      image: "shopmax/admin:2.1.0",
-      cpu: "250m",
-      memory: "256Mi",
-      drMonthlyCostOverride: 520,
-    },
-  },
-
-  // -- DATABASES --
-  {
-    id: "db-payment",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/payment-db",
-    name: "payment-db",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1a",
-    tags: { app: "shopmax", service: "payment", critical: "true" },
-    metadata: {
-      engine: "PostgreSQL 15.4", instanceType: "db.r6g.large",
-      isMultiAZ: false, replicaCount: 0,
-      isPubliclyAccessible: false, status: "available", storageGB: 500, iops: 3000,
-      drMonthlyCostOverride: 210,
-    },
-  },
-  {
-    id: "db-user",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/user-db",
-    name: "user-db",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "user" },
-    metadata: {
-      engine: "PostgreSQL 15.4", instanceType: "db.r6g.large",
-      isMultiAZ: true, replicaCount: 1,
-      isPubliclyAccessible: false, status: "available", storageGB: 200,
-    },
-  },
-  {
-    id: "db-user-replica",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/user-db-replica",
-    name: "user-db-replica",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1b",
-    tags: { app: "shopmax", service: "user", role: "replica" },
-    metadata: {
-      engine: "PostgreSQL 15.4", instanceType: "db.r6g.medium",
-      isMultiAZ: false, replicaCount: 0, status: "available",
-    },
-  },
-  {
-    id: "db-catalog",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/catalog-db",
-    name: "catalog-db",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "catalog" },
-    metadata: {
-      engine: "MySQL 8.0", instanceType: "db.r6g.xlarge",
-      isMultiAZ: true, replicaCount: 2, status: "available", storageGB: 1000,
-    },
-  },
-  {
-    id: "db-order",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/order-db",
-    name: "order-db",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "order" },
-    metadata: {
-      engine: "PostgreSQL 15.4", instanceType: "db.r6g.large",
-      isMultiAZ: true, replicaCount: 1, status: "available", storageGB: 300,
-    },
-  },
-  {
-    id: "db-admin",
-    externalId: "arn:aws:rds:eu-west-1:123456:db/admin-db",
-    name: "admin-db",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "admin" },
-    metadata: {
-      engine: "PostgreSQL 15.4", instanceType: "db.t4g.medium",
-      isMultiAZ: false, replicaCount: 0, status: "available", storageGB: 50,
-    },
-  },
-
-  // -- CACHE --
-  {
-    id: "redis-main",
-    externalId: "arn:aws:elasticache:eu-west-1:123456:cluster/redis-main",
-    name: "redis-main",
-    type: "CACHE",
-    provider: "aws",
-    region: "eu-west-1",
-    availabilityZone: "eu-west-1a",
-    tags: { app: "shopmax", service: "cache" },
-    metadata: {
-      engine: "Redis 7.0", instanceType: "cache.r6g.large",
-      isMultiAZ: false, replicaCount: 0, status: "available",
-      drMonthlyCostOverride: 140,
-    },
-  },
-
-  // -- ELASTICSEARCH --
-  {
-    id: "es-catalog",
-    externalId: "arn:aws:es:eu-west-1:123456:domain/catalog-search",
-    name: "catalog-search (Elasticsearch)",
-    type: "DATABASE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "search" },
-    metadata: {
-      engine: "OpenSearch 2.11", instanceType: "r6g.large.search",
-      isMultiAZ: true, replicaCount: 2, status: "available",
-    },
-  },
-
-  // -- SERVERLESS --
-  {
-    id: "lambda-image",
-    externalId: "arn:aws:lambda:eu-west-1:123456:function/image-processor",
-    name: "image-processor",
-    type: "SERVERLESS",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "media" },
-    metadata: { runtime: "nodejs20.x", memoryMB: 1024, timeoutSec: 30 },
-  },
-
-  // -- STORAGE --
-  {
-    id: "s3-images",
-    externalId: "arn:aws:s3:::shopmax-product-images",
-    name: "shopmax-product-images",
-    type: "OBJECT_STORAGE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "media" },
-    metadata: { versioning: true, crossRegionReplication: true, encryptionType: "AES256" },
-  },
-  {
-    id: "s3-backups",
-    externalId: "arn:aws:s3:::shopmax-backups",
-    name: "shopmax-backups",
-    type: "OBJECT_STORAGE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "backup" },
-    metadata: { versioning: true, lifecycleRules: true },
-  },
-
-  // -- MESSAGE QUEUES --
-  {
-    id: "sqs-orders",
-    externalId: "arn:aws:sqs:eu-west-1:123456:order-processing-queue",
-    name: "order-processing-queue",
-    type: "MESSAGE_QUEUE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "orders" },
-    metadata: { type: "SQS Standard", visibilityTimeoutSec: 60, retentionDays: 14 },
-  },
-  {
-    id: "sqs-notifications",
-    externalId: "arn:aws:sqs:eu-west-1:123456:notification-queue",
-    name: "notification-queue",
-    type: "MESSAGE_QUEUE",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax", service: "notifications" },
-    metadata: { type: "SQS Standard", visibilityTimeoutSec: 30 },
-  },
-
-  // -- DNS --
-  {
-    id: "route53-shopmax",
-    externalId: "arn:aws:route53:::hostedzone/Z1234SHOPMAX",
-    name: "shopmax.com (Route 53)",
-    type: "DNS",
-    provider: "aws",
-    region: "global",
-    tags: { app: "shopmax" },
-    metadata: { hostedZone: "shopmax.com", recordCount: 24 },
-  },
-
-  // -- MONITORING --
-  {
-    id: "datadog",
-    externalId: "saas:datadog:shopmax",
-    name: "Datadog Monitoring",
-    type: "SAAS_SERVICE",
-    provider: "manual",
-    tags: { service: "monitoring" },
-    metadata: { plan: "Pro", agentsInstalled: 45 },
-  },
-
-  // -- THIRD-PARTY SERVICES --
-  {
-    id: "stripe-api",
-    externalId: "third_party:stripe",
-    name: "Stripe Payment API",
-    type: "THIRD_PARTY_API",
-    provider: "manual",
-    tags: { service: "payment", critical: "true" },
-    metadata: { sla: "99.99%", apiVersion: "2023-10-16" },
-  },
-  {
-    id: "sendgrid-api",
-    externalId: "third_party:sendgrid",
-    name: "SendGrid Email API",
-    type: "THIRD_PARTY_API",
-    provider: "manual",
-    tags: { service: "email" },
-    metadata: { sla: "99.95%", plan: "Pro 100K" },
-  },
-
-  // -- ON-PREMISE --
-  {
-    id: "erp-server",
-    externalId: "onprem:192.168.1.50",
-    name: "ERP Legacy Server",
-    type: "PHYSICAL_SERVER",
-    provider: "on_premise",
-    tags: { service: "erp", critical: "true", legacy: "true" },
-    metadata: {
-      ip: "192.168.1.50", os: "Windows Server 2016",
-      cpu: "Xeon E5-2680 v4", memoryGB: 64, status: "running",
-      drMonthlyCostOverride: 2600,
-    },
-  },
-  {
-    id: "erp-db",
-    externalId: "onprem:192.168.1.51",
-    name: "ERP Database (SQL Server)",
-    type: "DATABASE",
-    provider: "on_premise",
-    tags: { service: "erp", legacy: "true" },
-    metadata: {
-      ip: "192.168.1.51", engine: "SQL Server 2019",
-      isMultiAZ: false, replicaCount: 0, status: "running",
-    },
-  },
-  {
-    id: "vpn-gateway",
-    externalId: "onprem:192.168.1.1",
-    name: "VPN Gateway",
-    type: "NETWORK_DEVICE",
-    provider: "on_premise",
-    tags: { service: "network" },
-    metadata: { ip: "192.168.1.1", model: "Cisco ASA 5516-X" },
-  },
-
-  // -- FIREWALL --
-  {
-    id: "waf-prod",
-    externalId: "arn:aws:wafv2:eu-west-1:123456:regional/webacl/shopmax-waf",
-    name: "WAF Production",
-    type: "FIREWALL",
-    provider: "aws",
-    region: "eu-west-1",
-    tags: { app: "shopmax" },
-    metadata: {
-      rulesCount: 12,
-      managedRules: ["AWSManagedRulesCommonRuleSet", "AWSManagedRulesSQLiRuleSet"],
-    },
-  },
-];
-
-const confirmedEdges: EdgeDef[] = [
-  // Containment : Region -> VPC -> Subnet
-  { sourceId: "region-eu-west-1", targetId: "vpc-prod", type: "CONTAINS" },
-  { sourceId: "region-eu-central-1", targetId: "vpc-dr", type: "CONTAINS" },
-  { sourceId: "vpc-prod", targetId: "subnet-pub-1a", type: "CONTAINS" },
-  { sourceId: "vpc-prod", targetId: "subnet-priv-1a", type: "CONTAINS" },
-  { sourceId: "vpc-prod", targetId: "subnet-priv-1b", type: "CONTAINS" },
-
-  // CDN -> DNS -> ALB
-  { sourceId: "cloudflare-cdn", targetId: "route53-shopmax", type: "ROUTES_TO" },
-  { sourceId: "route53-shopmax", targetId: "alb-prod", type: "ROUTES_TO" },
-  { sourceId: "route53-shopmax", targetId: "alb-dr", type: "ROUTES_TO" },
-
-  // WAF -> ALB
-  { sourceId: "waf-prod", targetId: "alb-prod", type: "ROUTES_TO" },
-
-  // ALB -> EKS
-  { sourceId: "alb-prod", targetId: "eks-prod", type: "ROUTES_TO" },
-  { sourceId: "eks-prod", targetId: "subnet-priv-1a", type: "RUNS_ON" },
-  { sourceId: "eks-prod", targetId: "subnet-priv-1b", type: "RUNS_ON" },
-
-  // EKS -> Microservices
-  { sourceId: "svc-api-gateway", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-payment", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-user", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-catalog", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-order", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-notification", targetId: "eks-prod", type: "RUNS_ON" },
-  { sourceId: "svc-admin", targetId: "eks-prod", type: "RUNS_ON" },
-
-  // API Gateway -> services
-  { sourceId: "svc-api-gateway", targetId: "svc-payment", type: "ROUTES_TO" },
-  { sourceId: "svc-api-gateway", targetId: "svc-user", type: "ROUTES_TO" },
-  { sourceId: "svc-api-gateway", targetId: "svc-catalog", type: "ROUTES_TO" },
-  { sourceId: "svc-api-gateway", targetId: "svc-order", type: "ROUTES_TO" },
-  { sourceId: "svc-api-gateway", targetId: "redis-main", type: "CONNECTS_TO" },
-
-  // Services -> Databases
-  { sourceId: "svc-payment", targetId: "db-payment", type: "CONNECTS_TO" },
-  { sourceId: "svc-payment", targetId: "stripe-api", type: "DEPENDS_ON" },
-  { sourceId: "svc-user", targetId: "db-user", type: "CONNECTS_TO" },
-  { sourceId: "svc-catalog", targetId: "db-catalog", type: "CONNECTS_TO" },
-  { sourceId: "svc-catalog", targetId: "es-catalog", type: "CONNECTS_TO" },
-  { sourceId: "svc-order", targetId: "db-order", type: "CONNECTS_TO" },
-  { sourceId: "svc-order", targetId: "sqs-orders", type: "PUBLISHES_TO" },
-  { sourceId: "svc-notification", targetId: "sqs-notifications", type: "SUBSCRIBES_TO" },
-  { sourceId: "svc-notification", targetId: "sendgrid-api", type: "DEPENDS_ON" },
-  { sourceId: "svc-admin", targetId: "db-admin", type: "CONNECTS_TO" },
-
-  // Order -> Notification (via queue)
-  { sourceId: "svc-order", targetId: "sqs-notifications", type: "PUBLISHES_TO" },
-
-  // DB replication
-  { sourceId: "db-user", targetId: "db-user-replica", type: "REPLICATES_TO" },
-
-  // Lambda
-  { sourceId: "lambda-image", targetId: "s3-images", type: "CONNECTS_TO" },
-  { sourceId: "svc-catalog", targetId: "lambda-image", type: "DEPENDS_ON" },
-
-  // Backups
-  { sourceId: "db-user", targetId: "s3-backups", type: "BACKS_UP_TO" },
-  { sourceId: "db-catalog", targetId: "s3-backups", type: "BACKS_UP_TO" },
-  { sourceId: "db-order", targetId: "s3-backups", type: "BACKS_UP_TO" },
-
-  // On-premise
-  { sourceId: "erp-server", targetId: "erp-db", type: "CONNECTS_TO" },
-  { sourceId: "svc-order", targetId: "erp-server", type: "DEPENDS_ON" },
-  { sourceId: "vpn-gateway", targetId: "vpc-prod", type: "CONNECTS_TO" },
-  { sourceId: "erp-server", targetId: "vpn-gateway", type: "CONNECTS_TO" },
-
-  // Monitoring
-  { sourceId: "datadog", targetId: "eks-prod", type: "MONITORS" },
-  { sourceId: "datadog", targetId: "db-payment", type: "MONITORS" },
-  { sourceId: "datadog", targetId: "db-user", type: "MONITORS" },
-  { sourceId: "datadog", targetId: "redis-main", type: "MONITORS" },
-];
-
-const inferredEdges: EdgeDef[] = [
-  {
-    sourceId: "svc-admin", targetId: "db-user", type: "CONNECTS_TO",
-    confidence: 0.7, inferenceMethod: "tags", confirmed: false,
-  },
-  {
-    sourceId: "svc-admin", targetId: "redis-main", type: "CONNECTS_TO",
-    confidence: 0.6, inferenceMethod: "naming", confirmed: false,
-  },
-  {
-    sourceId: "lambda-image", targetId: "sqs-orders", type: "SUBSCRIBES_TO",
-    confidence: 0.5, inferenceMethod: "network", confirmed: false,
-  },
-];
+const DEMO_BIA_RAW_WEIGHTS: Readonly<Record<DemoServiceCriticality, number>> = {
+  critical: 0.35,
+  high: 0.2,
+  medium: 0.1,
+  low: 0.05,
+};
 
 const demoBusinessFlows: DemoBusinessFlowDef[] = [
   {
@@ -801,24 +239,13 @@ const demoBusinessFlows: DemoBusinessFlowDef[] = [
   },
 ];
 
-const validatedBiaServiceOverrides: Record<
-  string,
-  {
-    validatedRTO: number;
-    validatedRPO: number;
-    validatedMTPD: number;
-    recoveryTier: number;
-    impactCategory: 'critical' | 'high' | 'medium' | 'low';
-    financialImpactPerHour: number;
-  }
-> = {
+const validatedBiaServiceSettings: Record<string, ValidatedBiaServiceSettings> = {
   'svc-payment': {
     validatedRTO: 4,
     validatedRPO: 1,
     validatedMTPD: 30,
     recoveryTier: 1,
     impactCategory: 'critical',
-    financialImpactPerHour: 15_000,
   },
   'svc-api-gateway': {
     validatedRTO: 10,
@@ -826,7 +253,6 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 60,
     recoveryTier: 1,
     impactCategory: 'critical',
-    financialImpactPerHour: 12_000,
   },
   'svc-order': {
     validatedRTO: 30,
@@ -834,7 +260,6 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 120,
     recoveryTier: 2,
     impactCategory: 'high',
-    financialImpactPerHour: 8_000,
   },
   'svc-user': {
     validatedRTO: 90,
@@ -842,7 +267,6 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 240,
     recoveryTier: 2,
     impactCategory: 'high',
-    financialImpactPerHour: 5_000,
   },
   'svc-catalog': {
     validatedRTO: 360,
@@ -850,7 +274,6 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 720,
     recoveryTier: 3,
     impactCategory: 'medium',
-    financialImpactPerHour: 3_000,
   },
   'svc-notification': {
     validatedRTO: 480,
@@ -858,7 +281,6 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 960,
     recoveryTier: 3,
     impactCategory: 'medium',
-    financialImpactPerHour: 900,
   },
   'svc-admin': {
     validatedRTO: 720,
@@ -866,52 +288,169 @@ const validatedBiaServiceOverrides: Record<
     validatedMTPD: 1_440,
     recoveryTier: 4,
     impactCategory: 'low',
-    financialImpactPerHour: 400,
   },
 };
 
-async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) {
+function roundMoney(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.round(value * 100) / 100;
+}
+
+function safeMultiplier(value: number, fallback: number): number {
+  if (!Number.isFinite(value) || value <= 0) return fallback;
+  return value;
+}
+
+function scaleNullableMoney(
+  value: number | null | undefined,
+  multiplier: number,
+): number | null {
+  if (!Number.isFinite(value as number)) return null;
+  return roundMoney(Number(value) * multiplier);
+}
+
+function buildDemoBusinessFlowsForProfile(selection: DemoProfileSelection): DemoBusinessFlowDef[] {
+  const baseAnnualRevenue = 200_000_000;
+  const baseHourlyDowntimeCost = 50_000;
+
+  const revenueMultiplier = safeMultiplier(
+    selection.financials.annualRevenue / baseAnnualRevenue,
+    1,
+  );
+  const hourlyMultiplier = safeMultiplier(
+    selection.financials.hourlyDowntimeCost / baseHourlyDowntimeCost,
+    1,
+  );
+
+  return demoBusinessFlows.map((flow) => ({
+    ...flow,
+    annualRevenue: scaleNullableMoney(flow.annualRevenue ?? null, revenueMultiplier),
+    revenuePerTransaction: scaleNullableMoney(flow.revenuePerTransaction ?? null, revenueMultiplier),
+    estimatedCostPerHour: scaleNullableMoney(flow.estimatedCostPerHour ?? null, hourlyMultiplier),
+    slaPenaltyPerHour: scaleNullableMoney(flow.slaPenaltyPerHour ?? null, hourlyMultiplier),
+    slaPenaltyFlat: scaleNullableMoney(flow.slaPenaltyFlat ?? null, hourlyMultiplier),
+    customerLifetimeValue: scaleNullableMoney(flow.customerLifetimeValue ?? null, revenueMultiplier),
+  }));
+}
+
+function buildValidatedBiaServiceOverrides(
+  selection: DemoProfileSelection,
+  availableNodeIds: ReadonlySet<string>,
+): Record<string, ValidatedBiaServiceOverride> {
+  const entries = Object.entries(validatedBiaServiceSettings).filter(([serviceId]) =>
+    availableNodeIds.has(serviceId),
+  );
+  if (entries.length === 0) return {};
+
+  const rawWeightTotal = entries.reduce(
+    (sum, [, settings]) => sum + DEMO_BIA_RAW_WEIGHTS[settings.impactCategory],
+    0,
+  );
+  const effectiveWeightTotal = rawWeightTotal > 0 ? rawWeightTotal : entries.length;
+  const hourlyDowntimeCost = Math.max(1, selection.financials.hourlyDowntimeCost);
+  let allocated = 0;
+
+  return Object.fromEntries(
+    entries.map(([serviceId, settings], index) => {
+      const rawWeight =
+        rawWeightTotal > 0
+          ? DEMO_BIA_RAW_WEIGHTS[settings.impactCategory]
+          : 1 / entries.length;
+      const normalizedWeight = rawWeight / effectiveWeightTotal;
+      const isLast = index === entries.length - 1;
+      const financialImpactPerHour = isLast
+        ? roundMoney(Math.max(0, hourlyDowntimeCost - allocated))
+        : roundMoney(hourlyDowntimeCost * normalizedWeight);
+
+      allocated += financialImpactPerHour;
+
+      return [
+        serviceId,
+        {
+          ...settings,
+          financialImpactPerHour,
+        },
+      ] as const;
+    }),
+  );
+}
+
+async function seedDemoFinancialProfile(
+  prisma: PrismaClient,
+  tenantId: string,
+  selection: DemoProfileSelection,
+) {
+  const annualRevenueUsd = roundMoney(
+    CurrencyService.convertAmount(selection.financials.annualRevenue, 'EUR', 'USD'),
+  );
+  const sizeCategory = deriveOrganizationSizeCategoryFromDemoProfile(selection);
+  const profileSource = selection.hasUserOverrides ? 'hybrid' : 'inferred';
+  const profileConfidence = selection.hasUserOverrides ? 0.88 : 0.74;
+
+  const annualRevenueSource = selection.fieldSources.annualRevenue;
+  const employeeCountSource = selection.fieldSources.employeeCount;
+  const annualITBudgetSource = selection.fieldSources.annualITBudget;
+  const drBudgetPercentSource = selection.fieldSources.drBudgetPercent;
+  const hourlyDowntimeSource = selection.fieldSources.hourlyDowntimeCost;
+
+  const profileMetadata = {
+    seededBy: 'demo-seed',
+    note: `Demo profile: ${selection.companySizeLabel} - ${selection.sectorLabel}`,
+    demoProfile: {
+      sector: selection.sector,
+      companySize: selection.companySize,
+      sectorLabel: selection.sectorLabel,
+      companySizeLabel: selection.companySizeLabel,
+      hasUserOverrides: selection.hasUserOverrides,
+    },
+    fieldSources: {
+      employeeCount: employeeCountSource,
+      annualRevenue: annualRevenueSource,
+      annualRevenueUSD: annualRevenueSource,
+      annualITBudget: annualITBudgetSource,
+      drBudgetPercent: drBudgetPercentSource,
+      hourlyDowntimeCost: hourlyDowntimeSource,
+      customDowntimeCostPerHour: hourlyDowntimeSource,
+      industrySector: 'user_input',
+      verticalSector: 'user_input',
+    },
+  } as const;
+
   await prisma.organizationProfile.upsert({
     where: { tenantId },
     create: {
       tenantId,
-      sizeCategory: 'midMarket',
-      verticalSector: 'retail_ecommerce',
-      industrySector: 'retail_ecommerce',
-      employeeCount: 200,
-      annualRevenueUSD: 32_500_000,
-      annualRevenue: 30_000_000,
-      annualITBudget: 1_500_000,
-      drBudgetPercent: 4,
-      hourlyDowntimeCost: 25_000,
-      profileSource: 'user_input',
-      profileConfidence: 0.95,
-      profileMetadata: {
-        seededBy: 'demo-seed',
-        note: 'ShopMax ETI ecommerce reference profile',
-      },
-      customDowntimeCostPerHour: 25_000,
+      sizeCategory,
+      verticalSector: selection.verticalSector,
+      industrySector: selection.industrySector,
+      employeeCount: Math.round(selection.financials.employeeCount),
+      annualRevenueUSD: annualRevenueUsd,
+      annualRevenue: selection.financials.annualRevenue,
+      annualITBudget: selection.financials.annualITBudget,
+      drBudgetPercent: selection.financials.drBudgetPercent,
+      hourlyDowntimeCost: selection.financials.hourlyDowntimeCost,
+      profileSource,
+      profileConfidence,
+      profileMetadata,
+      customDowntimeCostPerHour: selection.financials.hourlyDowntimeCost,
       customCurrency: 'EUR',
       strongholdPlanId: 'PRO',
       strongholdMonthlyCost: 800,
     },
     update: {
-      sizeCategory: 'midMarket',
-      verticalSector: 'retail_ecommerce',
-      industrySector: 'retail_ecommerce',
-      employeeCount: 200,
-      annualRevenueUSD: 32_500_000,
-      annualRevenue: 30_000_000,
-      annualITBudget: 1_500_000,
-      drBudgetPercent: 4,
-      hourlyDowntimeCost: 25_000,
-      profileSource: 'user_input',
-      profileConfidence: 0.95,
-      profileMetadata: {
-        seededBy: 'demo-seed',
-        note: 'ShopMax ETI ecommerce reference profile',
-      },
-      customDowntimeCostPerHour: 25_000,
+      sizeCategory,
+      verticalSector: selection.verticalSector,
+      industrySector: selection.industrySector,
+      employeeCount: Math.round(selection.financials.employeeCount),
+      annualRevenueUSD: annualRevenueUsd,
+      annualRevenue: selection.financials.annualRevenue,
+      annualITBudget: selection.financials.annualITBudget,
+      drBudgetPercent: selection.financials.drBudgetPercent,
+      hourlyDowntimeCost: selection.financials.hourlyDowntimeCost,
+      profileSource,
+      profileConfidence,
+      profileMetadata,
+      customDowntimeCostPerHour: selection.financials.hourlyDowntimeCost,
       customCurrency: 'EUR',
       strongholdPlanId: 'PRO',
       strongholdMonthlyCost: 800,
@@ -919,23 +458,17 @@ async function seedDemoFinancialProfile(prisma: PrismaClient, tenantId: string) 
   });
 }
 
-async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
-  const requiredNodeIds = Array.from(
-    new Set(demoBusinessFlows.flatMap((flow) => flow.nodes.map((node) => node.infraNodeId))),
-  );
+async function seedDemoBusinessFlows(
+  prisma: PrismaClient,
+  tenantId: string,
+  selection: DemoProfileSelection,
+) {
+  const demoFlows = buildDemoBusinessFlowsForProfile(selection);
   const existingNodes = await prisma.infraNode.findMany({
-    where: {
-      tenantId,
-      id: { in: requiredNodeIds },
-    },
+    where: { tenantId },
     select: { id: true },
   });
-
   const existingNodeIds = new Set(existingNodes.map((node) => node.id));
-  const missingNodeIds = requiredNodeIds.filter((nodeId) => !existingNodeIds.has(nodeId));
-  if (missingNodeIds.length > 0) {
-    throw new Error(`Missing infra nodes for business flows: ${missingNodeIds.join(', ')}`);
-  }
 
   await prisma.businessFlowNode.deleteMany({ where: { tenantId } });
   await prisma.businessFlow.deleteMany({ where: { tenantId } });
@@ -943,7 +476,26 @@ async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
   const flowIds: string[] = [];
   let validatedFlows = 0;
 
-  for (const flowDef of demoBusinessFlows) {
+  for (const flowDef of demoFlows) {
+    const normalizedNodes = flowDef.nodes
+      .filter((flowNode) => existingNodeIds.has(flowNode.infraNodeId))
+      .map((flowNode) => {
+        const hasAlternativePath = Boolean(
+          flowNode.hasAlternativePath === true &&
+            flowNode.alternativeNodeId &&
+            existingNodeIds.has(flowNode.alternativeNodeId),
+        );
+        return {
+          ...flowNode,
+          hasAlternativePath,
+          alternativeNodeId: hasAlternativePath ? flowNode.alternativeNodeId ?? null : null,
+        };
+      });
+
+    if (normalizedNodes.length < 2) {
+      continue;
+    }
+
     const validatedByUser = flowDef.validatedByUser === true;
     const flow = await prisma.businessFlow.create({
       data: {
@@ -985,7 +537,7 @@ async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
     });
 
     await prisma.businessFlowNode.createMany({
-      data: flowDef.nodes.map((flowNode, orderIndex) => ({
+      data: normalizedNodes.map((flowNode, orderIndex) => ({
         businessFlowId: flow.id,
         infraNodeId: flowNode.infraNodeId,
         tenantId,
@@ -1001,28 +553,33 @@ async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
     if (validatedByUser) validatedFlows += 1;
   }
 
-  await prisma.nodeFinancialOverride.upsert({
-    where: {
-      nodeId_tenantId: {
-        nodeId: 'erp-server',
-        tenantId,
+  const hourlyMultiplier = safeMultiplier(selection.financials.hourlyDowntimeCost / 50_000, 1);
+  const erpOverrideCost = roundMoney(12_000 * hourlyMultiplier);
+  const hasErpNode = existingNodeIds.has('erp-server');
+  if (hasErpNode) {
+    await prisma.nodeFinancialOverride.upsert({
+      where: {
+        nodeId_tenantId: {
+          nodeId: 'erp-server',
+          tenantId,
+        },
       },
-    },
-    create: {
-      tenantId,
-      nodeId: 'erp-server',
-      customCostPerHour: 12000,
-      justification: 'ERP legacy contractual penalties and manual processing fallback',
-      validatedBy: 'demo.seed',
-      validatedAt: new Date(),
-    },
-    update: {
-      customCostPerHour: 12000,
-      justification: 'ERP legacy contractual penalties and manual processing fallback',
-      validatedBy: 'demo.seed',
-      validatedAt: new Date(),
-    },
-  });
+      create: {
+        tenantId,
+        nodeId: 'erp-server',
+        customCostPerHour: erpOverrideCost,
+        justification: 'ERP legacy contractual penalties and manual processing fallback',
+        validatedBy: 'demo.seed',
+        validatedAt: new Date(),
+      },
+      update: {
+        customCostPerHour: erpOverrideCost,
+        justification: 'ERP legacy contractual penalties and manual processing fallback',
+        validatedBy: 'demo.seed',
+        validatedAt: new Date(),
+      },
+    });
+  }
 
   const flowEngine = new BusinessFlowFinancialEngineService(prisma);
   const coverage = await flowEngine.calculateFlowsCoverage(tenantId);
@@ -1034,12 +591,35 @@ async function seedDemoBusinessFlows(prisma: PrismaClient, tenantId: string) {
     coveragePercent: coverage.coveragePercent,
     coveredCriticalNodes: coverage.coveredCriticalNodes,
     totalCriticalNodes: coverage.totalCriticalNodes,
-    userOverrides: 1,
+    userOverrides: hasErpNode ? 1 : 0,
   };
 }
 
-export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
-  appLogger.info('Seeding demo environment "ShopMax E-commerce"...');
+export async function runDemoSeed(
+  prisma: PrismaClient,
+  tenantId: string,
+  options: RunDemoSeedOptions = {},
+) {
+  const demoProfileSelection = resolveDemoProfileSelection(options.profile);
+  const generatedInfrastructure = generateDemoInfrastructure({
+    sector: demoProfileSelection.sector,
+    companySize: demoProfileSelection.companySize,
+  });
+  const availableNodeIds = new Set(
+    generatedInfrastructure.nodes.map((node) => node.id),
+  );
+  const validatedBiaServiceOverrides = buildValidatedBiaServiceOverrides(
+    demoProfileSelection,
+    availableNodeIds,
+  );
+
+  appLogger.info(
+    `Seeding demo environment "ShopMax" for ${demoProfileSelection.companySizeLabel} - ${demoProfileSelection.sectorLabel}...`,
+  );
+  appLogger.info(
+    `Infrastructure layers: ${generatedInfrastructure.layers.join(', ')} ` +
+      `(${generatedInfrastructure.nodes.length} nodes)`,
+  );
 
   // Clean existing resilience data for this tenant
   appLogger.info('Cleaning existing data...');
@@ -1057,9 +637,9 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   await prisma.simulation.deleteMany({ where: { tenantId } });
   await prisma.scanJob.deleteMany({ where: { tenantId } });
 
-  appLogger.info(`Creating ${nodes.length} nodes...`);
+  appLogger.info(`Creating ${generatedInfrastructure.nodes.length} nodes...`);
   await prisma.infraNode.createMany({
-    data: nodes.map((node) => ({
+    data: generatedInfrastructure.nodes.map((node) => ({
       id: node.id,
       externalId: node.externalId,
       name: node.name,
@@ -1074,9 +654,11 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
-  appLogger.info(`Creating ${confirmedEdges.length} confirmed edges...`);
+  appLogger.info(
+    `Creating ${generatedInfrastructure.confirmedEdges.length} confirmed edges...`,
+  );
   await prisma.infraEdge.createMany({
-    data: confirmedEdges.map((edge) => ({
+    data: generatedInfrastructure.confirmedEdges.map((edge) => ({
       sourceId: edge.sourceId,
       targetId: edge.targetId,
       type: edge.type,
@@ -1086,9 +668,11 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
-  appLogger.info(`Creating ${inferredEdges.length} inferred edges...`);
+  appLogger.info(
+    `Creating ${generatedInfrastructure.inferredEdges.length} inferred edges...`,
+  );
   await prisma.infraEdge.createMany({
-    data: inferredEdges.map((edge) => ({
+    data: generatedInfrastructure.inferredEdges.map((edge) => ({
       sourceId: edge.sourceId,
       targetId: edge.targetId,
       type: edge.type,
@@ -1099,27 +683,57 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     })),
   });
 
+  const discoveredRegions = Array.from(
+    new Set(
+      generatedInfrastructure.nodes
+        .map((node) => node.region)
+        .filter((region): region is string => Boolean(region && region !== 'global')),
+    ),
+  );
+  const cloudProviders = Array.from(
+    new Set(
+      generatedInfrastructure.nodes
+        .map((node) => node.provider)
+        .filter((provider) => provider === 'aws' || provider === 'azure' || provider === 'gcp'),
+    ),
+  );
+  const kubernetesClusters = generatedInfrastructure.nodes
+    .filter((node) => node.type === 'KUBERNETES_CLUSTER')
+    .map((node) => node.id);
+  const hasOnPremNodes = generatedInfrastructure.nodes.some(
+    (node) => node.provider === 'on_premise',
+  );
+
   appLogger.info('Creating completed scan job...');
   await prisma.scanJob.create({
     data: {
       status: 'completed',
       config: {
         providers: [
-          { type: 'aws', regions: ['eu-west-1', 'eu-central-1'] },
-          { type: 'kubernetes', clusters: ['eks-production'] },
-          { type: 'on_premise', ipRanges: ['192.168.1.0/24'] },
+          ...cloudProviders.map((type) => ({
+            type,
+            regions: discoveredRegions,
+          })),
+          ...(kubernetesClusters.length > 0
+            ? [{ type: 'kubernetes', clusters: kubernetesClusters }]
+            : []),
+          ...(hasOnPremNodes ? [{ type: 'on_premise', ipRanges: ['192.168.1.0/24'] }] : []),
         ],
       },
       progress: {
-        totalAdapters: 3,
-        completedAdapters: 3,
-        nodesDiscovered: nodes.length,
-        edgesDiscovered: confirmedEdges.length + inferredEdges.length,
+        totalAdapters:
+          cloudProviders.length + (kubernetesClusters.length > 0 ? 1 : 0) + (hasOnPremNodes ? 1 : 0),
+        completedAdapters:
+          cloudProviders.length + (kubernetesClusters.length > 0 ? 1 : 0) + (hasOnPremNodes ? 1 : 0),
+        nodesDiscovered: generatedInfrastructure.nodes.length,
+        edgesDiscovered:
+          generatedInfrastructure.confirmedEdges.length +
+          generatedInfrastructure.inferredEdges.length,
       },
       result: {
-        nodesCreated: nodes.length,
-        edgesCreated: confirmedEdges.length,
-        edgesInferred: inferredEdges.length,
+        nodesCreated: generatedInfrastructure.nodes.length,
+        edgesCreated: generatedInfrastructure.confirmedEdges.length,
+        edgesInferred: generatedInfrastructure.inferredEdges.length,
         duration: 187000,
       },
       tenantId,
@@ -1316,11 +930,15 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
 
   try {
     appLogger.info('Configuring demo financial profile...');
-    await seedDemoFinancialProfile(prisma, tenantId);
+    await seedDemoFinancialProfile(prisma, tenantId, demoProfileSelection);
     profileConfigured = true;
 
     appLogger.info('Seeding business flows...');
-    businessFlowSummary = await seedDemoBusinessFlows(prisma, tenantId);
+    businessFlowSummary = await seedDemoBusinessFlows(
+      prisma,
+      tenantId,
+      demoProfileSelection,
+    );
     appLogger.info(
       `Business flows seeded: ${businessFlowSummary.flowsCreated} ` +
         `(validated=${businessFlowSummary.validatedFlows}, ` +
@@ -1338,10 +956,12 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
   });
 
   const summary = {
-    nodes: nodes.length,
-    confirmedEdges: confirmedEdges.length,
-    inferredEdges: inferredEdges.length,
-    totalEdges: confirmedEdges.length + inferredEdges.length,
+    nodes: generatedInfrastructure.nodes.length,
+    confirmedEdges: generatedInfrastructure.confirmedEdges.length,
+    inferredEdges: generatedInfrastructure.inferredEdges.length,
+    totalEdges:
+      generatedInfrastructure.confirmedEdges.length +
+      generatedInfrastructure.inferredEdges.length,
     resilienceScore,
     spofCount,
     biaProcesses: biaProcessCount,
@@ -1352,15 +972,24 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
     unvalidatedBusinessFlows: businessFlowSummary.unvalidatedFlows,
     flowCoveragePercent: businessFlowSummary.coveragePercent,
     userOverrides: businessFlowSummary.userOverrides,
-    spofs: [
-      'payment-db (no replica, no multi-AZ)',
-      'redis-main (single instance)',
-      'erp-server (single on-premise server)',
-      'api-gateway (single entry point)',
-    ],
+    demoProfile: {
+      sector: demoProfileSelection.sector,
+      sectorLabel: demoProfileSelection.sectorLabel,
+      companySize: demoProfileSelection.companySize,
+      companySizeLabel: demoProfileSelection.companySizeLabel,
+      hasUserOverrides: demoProfileSelection.hasUserOverrides,
+      ...demoProfileSelection.financials,
+    },
+    infrastructureLayers: generatedInfrastructure.layers,
+    spofs: generatedInfrastructure.spofNodeIds.map((nodeId) => {
+      const node = generatedInfrastructure.nodes.find((item) => item.id === nodeId);
+      return node ? `${node.name} (${nodeId})` : nodeId;
+    }),
   };
 
-  appLogger.info('Demo environment "ShopMax E-commerce" seeded successfully!');
+  appLogger.info(
+    `Demo environment "ShopMax" seeded successfully (${demoProfileSelection.sectorLabel} / ${demoProfileSelection.companySizeLabel})!`,
+  );
   appLogger.info(`${summary.nodes} infrastructure nodes`);
   appLogger.info(`${summary.confirmedEdges} confirmed dependencies`);
   appLogger.info(`${summary.inferredEdges} inferred dependencies (to validate)`);
@@ -1374,4 +1003,5 @@ export async function runDemoSeed(prisma: PrismaClient, tenantId: string) {
 
   return summary;
 }
+
 

@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { InfraGraph } from '@/components/graph/InfraGraph';
+import { InfraGraph, type GraphViewMode } from '@/components/graph/InfraGraph';
 import { GraphControls } from '@/components/graph/GraphControls';
 import { GraphLegend } from '@/components/graph/GraphLegend';
 import { NodeDetailPanel } from '@/components/graph/NodeDetailPanel';
@@ -21,6 +21,7 @@ import { useDiscoveryStore } from '@/stores/discovery.store';
 import { discoveryApi } from '@/api/discovery.api';
 import { businessFlowsApi } from '@/api/businessFlows.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { cn } from '@/lib/utils';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
 import type { ScanHealthProvider, ScanHealthIssue } from '@/types/discovery.types';
 
@@ -52,6 +53,8 @@ export function DiscoveryPage() {
   const [scanJobId, setScanJobId] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [colorByBusinessFlow, setColorByBusinessFlow] = useState(false);
+  const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>('auto');
+  const [showMiniMap, setShowMiniMap] = useState(false);
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
 
   useDiscovery(scanJobId ?? undefined);
@@ -304,7 +307,13 @@ export function DiscoveryPage() {
         {/* Show graph building up */}
         {allNodes.length > 0 && (
           <div className="h-[500px] rounded-lg border">
-            <InfraGraph infraNodes={allNodes} infraEdges={allEdges} layout={layout} />
+            <InfraGraph
+              infraNodes={allNodes}
+              infraEdges={allEdges}
+              layout={layout}
+              graphViewMode={graphViewMode}
+              showMiniMap={showMiniMap}
+            />
           </div>
         )}
       </div>
@@ -354,7 +363,7 @@ export function DiscoveryPage() {
             ))}
           </div>
           <div className="text-xs text-muted-foreground">
-            Cohérence graphe — orphan: {healthQuery.data?.graphConsistency?.orphanNodes ?? 0}, reverse manquants: {healthQuery.data?.graphConsistency?.missingReverseEdges ?? 0}, stale: {healthQuery.data?.graphConsistency?.staleNodes ?? 0}
+            Coherence graphe - orphan: {healthQuery.data?.graphConsistency?.orphanNodes ?? 0}, reverse manquants: {healthQuery.data?.graphConsistency?.missingReverseEdges ?? 0}, stale: {healthQuery.data?.graphConsistency?.staleNodes ?? 0}
           </div>
         </CardContent>
       </Card>
@@ -374,6 +383,32 @@ export function DiscoveryPage() {
         >
           Colorer par flux metier
         </Button>
+        <Button
+          variant={showMiniMap ? 'default' : 'outline'}
+          onClick={() => setShowMiniMap((value) => !value)}
+        >
+          MiniMap
+        </Button>
+        <div className="inline-flex items-center gap-1 rounded-lg border bg-card p-1">
+          {([
+            { key: 'auto', label: 'Vue auto' },
+            { key: 'grouped', label: 'Vue groupee' },
+            { key: 'detailed', label: 'Vue detaillee' },
+          ] as const).map((option) => (
+            <Button
+              key={option.key}
+              size="sm"
+              variant={graphViewMode === option.key ? 'default' : 'ghost'}
+              className={cn(graphViewMode === option.key && 'pointer-events-none')}
+              onClick={() => setGraphViewMode(option.key)}
+            >
+              {option.label}
+            </Button>
+          ))}
+        </div>
+        {graphViewMode === 'auto' && allNodes.length > 50 && (
+          <Badge variant="secondary">Cluster auto actif ({allNodes.length} noeuds)</Badge>
+        )}
       </div>
 
       {/* Main content */}
@@ -407,6 +442,8 @@ export function DiscoveryPage() {
             layout={layout}
             getNodeDataOverrides={getNodeDataOverrides}
             getEdgeStyleOverrides={getEdgeStyleOverrides}
+            graphViewMode={graphViewMode}
+            showMiniMap={showMiniMap}
           />
 
           {/* Legend overlay */}
@@ -466,3 +503,4 @@ export function DiscoveryPage() {
     </div>
   );
 }
+

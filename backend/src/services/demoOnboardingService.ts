@@ -10,7 +10,7 @@ import {
   DEMO_SERVICE_SEEDS,
   DEMO_SIMULATION_SEEDS,
 } from './demoOnboardingDataset.js';
-import { runDemoSeed } from './demoSeedService.js';
+import { runDemoSeed, type RunDemoSeedOptions } from './demoSeedService.js';
 import { appLogger } from '../utils/logger.js';
 
 const PERFORMANCE_BUDGET_MS = 10_000;
@@ -583,6 +583,7 @@ async function seedDemoPreparednessArtifacts(
 export async function runDemoOnboarding(
   prisma: PrismaClient,
   tenantId: string,
+  options: RunDemoSeedOptions = {},
 ): Promise<DemoOnboardingSummary> {
   const pipeline: DemoPipelineStep[] = [];
   const startedAt = Date.now();
@@ -610,7 +611,7 @@ export async function runDemoOnboarding(
   };
 
   const baseSeedSummary = await runStep('seed_infra_and_analysis', async () =>
-    runDemoSeed(prisma, tenantId),
+    runDemoSeed(prisma, tenantId, options),
   );
   const serviceSummary = await runStep('seed_service_catalog', async () =>
     seedDemoServices(prisma, tenantId),

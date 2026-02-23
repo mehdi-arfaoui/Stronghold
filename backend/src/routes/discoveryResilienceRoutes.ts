@@ -22,8 +22,102 @@ import {
 } from '../services/demoOnboardingService.js';
 import { buildScanHealthReport } from '../services/discoveryHealthService.js';
 import { scanConfigHasPlaintextCredentials } from '../services/scanConfigSecurityService.js';
+import {
+  isDemoCompanySizeKey,
+  isDemoSectorKey,
+  type DemoFinancialFieldKey,
+  type DemoProfileSelectionInput,
+} from '../config/demo-profiles.js';
 
 const router = Router();
+
+const DEMO_FINANCIAL_FIELDS: DemoFinancialFieldKey[] = [
+  'annualRevenue',
+  'employeeCount',
+  'annualITBudget',
+  'drBudgetPercent',
+  'hourlyDowntimeCost',
+];
+
+function parsePositiveNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function parseDemoSeedProfileInput(body: unknown):
+  | { ok: true; value: DemoProfileSelectionInput }
+  | { ok: false; error: string; details: Array<{ field: string; message: string }> } {
+  if (body == null || body === '') {
+    return { ok: true, value: {} };
+  }
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      ok: false,
+      error: 'Invalid payload',
+      details: [{ field: 'body', message: 'Expected JSON object' }],
+    };
+  }
+
+  const payload = body as Record<string, unknown>;
+  const details: Array<{ field: string; message: string }> = [];
+  const input: DemoProfileSelectionInput = {};
+
+  if (payload.sector !== undefined) {
+    if (!isDemoSectorKey(payload.sector)) {
+      details.push({ field: 'sector', message: 'Unsupported demo sector' });
+    } else {
+      input.sector = payload.sector;
+    }
+  }
+
+  if (payload.companySize !== undefined) {
+    if (!isDemoCompanySizeKey(payload.companySize)) {
+      details.push({ field: 'companySize', message: 'Unsupported company size' });
+    } else {
+      input.companySize = payload.companySize;
+    }
+  }
+
+  if (payload.financialOverrides !== undefined) {
+    if (
+      payload.financialOverrides == null ||
+      typeof payload.financialOverrides !== 'object' ||
+      Array.isArray(payload.financialOverrides)
+    ) {
+      details.push({
+        field: 'financialOverrides',
+        message: 'Expected object with numeric overrides',
+      });
+    } else {
+      const parsedOverrides: Partial<Record<DemoFinancialFieldKey, number>> = {};
+      const rawOverrides = payload.financialOverrides as Record<string, unknown>;
+      for (const field of DEMO_FINANCIAL_FIELDS) {
+        if (rawOverrides[field] === undefined) continue;
+        const parsed = parsePositiveNumber(rawOverrides[field]);
+        if (parsed == null) {
+          details.push({
+            field: `financialOverrides.${field}`,
+            message: 'Expected positive number',
+          });
+          continue;
+        }
+        parsedOverrides[field] = parsed;
+      }
+      input.financialOverrides = parsedOverrides;
+    }
+  }
+
+  if (details.length > 0) {
+    return {
+      ok: false,
+      error: 'Invalid demo profile payload',
+      details,
+    };
+  }
+
+  return { ok: true, value: input };
+}
 
 // ─── POST /discovery/auto-scan — Launch automated scan ──────────
 router.post('/auto-scan', async (req: TenantRequest, res) => {
@@ -270,11 +364,21 @@ router.post('/seed-demo', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const summary = await runDemoOnboarding(prisma, tenantId);
+    const parsedProfileInput = parseDemoSeedProfileInput(req.body);
+    if (!parsedProfileInput.ok) {
+      return res.status(400).json({
+        error: parsedProfileInput.error,
+        details: parsedProfileInput.details,
+      });
+    }
+
+    const summary = await runDemoOnboarding(prisma, tenantId, {
+      profile: parsedProfileInput.value,
+    });
 
     return res.json({
       success: true,
-      message: 'Demo onboarding completed for "ShopMax E-commerce"',
+      message: `Demo onboarding completed for "${summary.demoProfile.sectorLabel}"`,
       environment: guard.nodeEnv,
       mode: guard.mode,
       ...summary,

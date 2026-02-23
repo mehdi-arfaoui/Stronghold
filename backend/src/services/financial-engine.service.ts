@@ -480,6 +480,29 @@ function classifyGlobalRoi(
   };
 }
 
+function computeRoiPercent(riskReductionAmount: number, annualRemediationCost: number): number | null {
+  if (!(annualRemediationCost > 0) || !Number.isFinite(annualRemediationCost)) return null;
+  if (!Number.isFinite(riskReductionAmount) || riskReductionAmount <= 0) return null;
+  return Number((((riskReductionAmount - annualRemediationCost) / annualRemediationCost) * 100).toFixed(2));
+}
+
+function computePaybackMonths(riskReductionAmount: number, annualRemediationCost: number): number | null {
+  if (!(annualRemediationCost > 0) || !(riskReductionAmount > 0)) return null;
+  const months = annualRemediationCost / (riskReductionAmount / 12);
+  if (!Number.isFinite(months) || months <= 0) return null;
+  return Number(months.toFixed(2));
+}
+
+function classifyPaybackLabel(paybackMonths: number | null): string {
+  if (paybackMonths == null || !Number.isFinite(paybackMonths) || paybackMonths <= 0) {
+    return 'Non rentable';
+  }
+  if (paybackMonths > 60) return '> 60 mois';
+  if (paybackMonths < 6) return 'Quick win';
+  if (paybackMonths <= 24) return 'Rentable a moyen terme';
+  return 'Investissement long terme';
+}
+
 function ensureProfileDefaults(
   profile: FinancialOrganizationProfileInput | OrganizationProfile | null | undefined,
 ): Required<Pick<FinancialOrganizationProfileInput, 'sizeCategory' | 'customCurrency'>> &
@@ -761,6 +784,15 @@ export class FinancialEngineService {
     );
 
     const nodeLookup = new Map((analysisResult.nodes || []).map((node) => [node.id, node]));
+    const nodeLossById = new Map(losses.map((loss) => [loss.nodeId, loss]));
+    // Keep ROI anchored to the exact ALE baseline used by the dashboard (same nodes, same costs, same probabilities).
+    const baselineCurrentALE = roundAmount(
+      losses.reduce((sum, loss) => sum + (Number.isFinite(loss.ale) ? loss.ale : 0), 0),
+    );
+    // Track best projected ALE per node to avoid double-counting savings when recommendations overlap.
+    const projectedAleByNodeId = new Map(
+      losses.map((loss) => [loss.nodeId, Number.isFinite(loss.ale) ? loss.ale : 0]),
+    );
     const processMap = new Map(
       (biaResult.processes || []).map((process) => [process.serviceNodeId, process]),
     );
@@ -776,8 +808,6 @@ export class FinancialEngineService {
     const breakdownByRecommendation: ROIResult['breakdownByRecommendation'] = [];
 
     let remediationCostTotal = 0;
-    let currentALE = 0;
-    let projectedALE = 0;
 
     for (const recommendation of recommendations || []) {
       const targetNodes = recommendationTargetNodes(recommendation);
@@ -800,10 +830,12 @@ export class FinancialEngineService {
       let recommendationProjectedAle = 0;
       const probabilityValues: number[] = [];
       const currentRtoValues: number[] = [];
+      const hourlyCostValues: number[] = [];
 
       for (const nodeId of targetNodes) {
         const node = nodeLookup.get(nodeId);
-        if (!node) continue;
+        const nodeLoss = nodeLossById.get(nodeId);
+        if (!node || !nodeLoss) continue;
 
         const currentRtoMinutes =
           Number.isFinite(recommendation.currentRtoMinutes) && Number(recommendation.currentRtoMinutes) > 0
@@ -813,14 +845,32 @@ export class FinancialEngineService {
           Number.isFinite(recommendation.incidentProbabilityAnnual) &&
           Number(recommendation.incidentProbabilityAnnual) > 0
             ? Number(recommendation.incidentProbabilityAnnual)
-            : resolveIncidentProbabilityForNodeType(node.type).probabilityAnnual;
-        const currentAleNode = companyHourlyDowntimeCost * (currentRtoMinutes / 60) * probability;
-        const projectedAleNode = companyHourlyDowntimeCost * (targetRtoMinutes / 60) * probability;
+            : nodeLoss.probability;
+        const hourlyDowntimeCost =
+          Number.isFinite(nodeLoss.costPerHour) && nodeLoss.costPerHour > 0
+            ? nodeLoss.costPerHour
+            : companyHourlyDowntimeCost;
+        const currentAleNode =
+          Number.isFinite(nodeLoss.ale) && nodeLoss.ale > 0
+            ? nodeLoss.ale
+            : hourlyDowntimeCost * (currentRtoMinutes / 60) * probability;
+        const projectedAleNode = Math.min(
+          currentAleNode,
+          hourlyDowntimeCost * (targetRtoMinutes / 60) * probability,
+        );
 
         recommendationCurrentAle += currentAleNode;
         recommendationProjectedAle += projectedAleNode;
         probabilityValues.push(probability);
         currentRtoValues.push(currentRtoMinutes / 60);
+        hourlyCostValues.push(hourlyDowntimeCost);
+
+        const currentProjected = projectedAleByNodeId.get(nodeId);
+        if (Number.isFinite(currentProjected as number)) {
+          projectedAleByNodeId.set(nodeId, Math.min(currentProjected as number, projectedAleNode));
+        } else {
+          projectedAleByNodeId.set(nodeId, projectedAleNode);
+        }
       }
 
       const recommendationRiskReduction = recommendationCurrentAle - recommendationProjectedAle;
@@ -840,10 +890,14 @@ export class FinancialEngineService {
       }
 
       remediationCostTotal += annualCost;
+      const avgHourlyDowntimeCost =
+        hourlyCostValues.length > 0
+          ? hourlyCostValues.reduce((sum, value) => sum + value, 0) / hourlyCostValues.length
+          : companyHourlyDowntimeCost;
       const roiCalc =
         targetNodes.length > 0
           ? calculateRecommendationRoi({
-              hourlyDowntimeCost: companyHourlyDowntimeCost,
+              hourlyDowntimeCost: avgHourlyDowntimeCost,
               currentRtoMinutes:
                 currentRtoValues.length > 0
                   ? (currentRtoValues.reduce((sum, value) => sum + value, 0) /
@@ -865,28 +919,23 @@ export class FinancialEngineService {
               incidentProbabilityAnnual: 0,
               monthlyDrCost: annualCost / 12,
             });
-
-      currentALE += recommendationCurrentAle;
-      projectedALE += recommendationProjectedAle;
-
-      const individualROI =
-        annualCost > 0 && recommendationRiskReduction > 0
-          ? Number((((recommendationRiskReduction - annualCost) / annualCost) * 100).toFixed(2))
-          : annualCost > 0 && recommendationRiskReduction !== 0
-            ? Number((((recommendationRiskReduction - annualCost) / annualCost) * 100).toFixed(2))
-            : null;
-      const paybackMonths =
-        recommendationRiskReduction > 0 && annualCost > 0
-          ? Number((annualCost / (recommendationRiskReduction / 12)).toFixed(2))
-          : null;
-      const paybackLabel =
-        paybackMonths == null || paybackMonths <= 0 || paybackMonths > 60
-          ? 'Non rentable'
-          : paybackMonths < 6
-            ? 'Quick win'
-            : paybackMonths <= 24
-              ? 'Rentable a moyen terme'
-              : 'Investissement long terme';
+      const individualROI = computeRoiPercent(recommendationRiskReduction, annualCost);
+      let paybackMonths = computePaybackMonths(recommendationRiskReduction, annualCost);
+      let paybackLabel = classifyPaybackLabel(paybackMonths);
+      if (individualROI != null && individualROI > 0 && paybackLabel === 'Non rentable') {
+        appLogger.error('financial.roi.payback_inconsistency_recommendation', {
+          recommendationId: recommendation.recommendationId || recommendation.id || 'unknown',
+          individualROI,
+          recommendationRiskReduction: roundAmount(recommendationRiskReduction),
+          annualCost: roundAmount(annualCost),
+        });
+        paybackMonths = computePaybackMonths(recommendationRiskReduction, annualCost);
+        paybackLabel = classifyPaybackLabel(paybackMonths);
+      }
+      if (individualROI != null && individualROI < 0 && paybackMonths != null) {
+        paybackMonths = null;
+        paybackLabel = 'Non rentable';
+      }
       const classification = classifyGlobalRoi(
         individualROI,
         recommendationRiskReduction,
@@ -922,28 +971,40 @@ export class FinancialEngineService {
     );
 
     const annualRemediationCost = roundAmount(remediationCostTotal);
-    const riskReductionAmount = roundAmount(currentALE - projectedALE);
+    const currentALE = roundAmount(baselineCurrentALE);
+    const projectedALE = roundAmount(
+      Array.from(projectedAleByNodeId.values()).reduce((sum, value) => sum + value, 0),
+    );
+    let riskReductionAmount = roundAmount(currentALE - projectedALE);
+    if (riskReductionAmount < 0) {
+      riskReductionAmount = 0;
+    }
+    if (riskReductionAmount > currentALE) {
+      appLogger.error('financial.roi.inconsistent_risk_reduction_exceeds_annual_risk', {
+        currentALE,
+        projectedALE,
+        riskReductionAmount,
+      });
+      riskReductionAmount = currentALE;
+    }
     const riskReduction = currentALE > 0 ? (riskReductionAmount / currentALE) * 100 : 0;
-    const netAnnualSavings = riskReductionAmount - annualRemediationCost;
-    const roiPercent =
-      annualRemediationCost > 0 && riskReductionAmount > 0
-        ? Number((((riskReductionAmount - annualRemediationCost) / annualRemediationCost) * 100).toFixed(2))
-        : annualRemediationCost > 0 && riskReductionAmount !== 0
-          ? Number((((riskReductionAmount - annualRemediationCost) / annualRemediationCost) * 100).toFixed(2))
-          : null;
-
-    const paybackMonths =
-      annualRemediationCost > 0 && riskReductionAmount > 0
-        ? Number((annualRemediationCost / (riskReductionAmount / 12)).toFixed(2))
-        : null;
-    const paybackLabel =
-      paybackMonths == null || paybackMonths <= 0 || paybackMonths > 60
-        ? 'Non rentable'
-        : paybackMonths < 6
-          ? 'Quick win'
-          : paybackMonths <= 24
-            ? 'Rentable a moyen terme'
-            : 'Investissement long terme';
+    const netAnnualSavings = roundAmount(riskReductionAmount - annualRemediationCost);
+    const roiPercent = computeRoiPercent(riskReductionAmount, annualRemediationCost);
+    let paybackMonths = computePaybackMonths(riskReductionAmount, annualRemediationCost);
+    let paybackLabel = classifyPaybackLabel(paybackMonths);
+    if (roiPercent != null && roiPercent > 0 && paybackLabel === 'Non rentable') {
+      appLogger.error('financial.roi.payback_inconsistency_global', {
+        roiPercent,
+        riskReductionAmount,
+        annualRemediationCost,
+      });
+      paybackMonths = computePaybackMonths(riskReductionAmount, annualRemediationCost);
+      paybackLabel = classifyPaybackLabel(paybackMonths);
+    }
+    if (roiPercent != null && roiPercent < 0 && paybackMonths != null) {
+      paybackMonths = null;
+      paybackLabel = 'Non rentable';
+    }
     const globalClassification = classifyGlobalRoi(
       roiPercent,
       riskReductionAmount,
@@ -956,7 +1017,7 @@ export class FinancialEngineService {
       riskReduction: Number(riskReduction.toFixed(2)),
       riskReductionAmount: roundAmount(riskReductionAmount),
       annualRemediationCost,
-      netAnnualSavings: roundAmount(netAnnualSavings),
+      netAnnualSavings,
       roiPercent,
       roiStatus: globalClassification.status,
       roiMessage: globalClassification.message,

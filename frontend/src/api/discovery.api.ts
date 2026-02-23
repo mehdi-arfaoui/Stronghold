@@ -38,7 +38,43 @@ export interface DemoOnboardingResponse {
   performanceBudgetMs: number;
   withinPerformanceBudget: boolean;
   pipeline: DemoOnboardingPipelineStep[];
+  demoProfile?: {
+    sector: DemoSectorKey;
+    sectorLabel: string;
+    companySize: DemoCompanySizeKey;
+    companySizeLabel: string;
+    hasUserOverrides: boolean;
+    annualRevenue: number;
+    employeeCount: number;
+    annualITBudget: number;
+    drBudgetPercent: number;
+    hourlyDowntimeCost: number;
+  };
 }
+
+export type DemoSectorKey =
+  | 'ecommerce'
+  | 'finance'
+  | 'healthcare'
+  | 'manufacturing'
+  | 'it_saas'
+  | 'transport'
+  | 'energy'
+  | 'public';
+
+export type DemoCompanySizeKey = 'pme' | 'pme_plus' | 'eti' | 'large';
+
+export type DemoSeedPayload = {
+  sector: DemoSectorKey;
+  companySize: DemoCompanySizeKey;
+  financialOverrides?: Partial<{
+    annualRevenue: number;
+    employeeCount: number;
+    annualITBudget: number;
+    drBudgetPercent: number;
+    hourlyDowntimeCost: number;
+  }>;
+};
 
 export const discoveryApi = {
   launchScan: (config: ScanConfig) =>
@@ -65,8 +101,9 @@ export const discoveryApi = {
   getHealth: () =>
     api.get<{ data: ScanHealthReport }>('/discovery/health'),
 
-  seedDemo: () =>
+  seedDemo: (payload?: DemoSeedPayload) =>
     api.post<DemoOnboardingResponse>(
-      '/discovery-resilience/seed-demo'
+      '/discovery-resilience/seed-demo',
+      payload ?? {}
     ),
 };

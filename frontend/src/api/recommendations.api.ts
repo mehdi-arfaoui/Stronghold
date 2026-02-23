@@ -69,6 +69,7 @@ export interface RecommendationsSummary {
   riskAvoidedAnnual?: number;
   roiPercent?: number | null;
   paybackMonths?: number | null;
+  paybackLabel?: string;
   currency?: string;
   budgetAnnual?: number | null;
   financialDisclaimers?: {

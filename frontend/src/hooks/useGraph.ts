@@ -2,17 +2,21 @@ import { useQuery } from '@tanstack/react-query';
 import { useGraphStore } from '@/stores/graph.store';
 import { discoveryApi } from '@/api/discovery.api';
 import { useMemo } from 'react';
+import { getCredentialScopeKey } from '@/lib/credentialStorage';
 
 export function useGraph() {
   const { nodes, edges, filters, setGraphData } = useGraphStore();
+  const tenantScope = getCredentialScopeKey();
 
   const query = useQuery({
-    queryKey: ['graph'],
+    queryKey: ['graph', tenantScope],
     queryFn: async () => {
       const { data } = await discoveryApi.getGraph();
       setGraphData(data.nodes, data.edges);
       return data;
     },
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const filteredNodes = useMemo(() => {

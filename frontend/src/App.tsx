@@ -1,36 +1,48 @@
-﻿import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
+import { lazy, Suspense, type ReactNode, useEffect } from 'react';
+import { createBrowserRouter, Navigate, RouterProvider } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/layout/AppShell';
-import { DashboardPage } from '@/pages/DashboardPage';
-import { DiscoveryPage } from '@/pages/DiscoveryPage';
-import { AnalysisPage } from '@/pages/AnalysisPage';
-import { SimulationPage } from '@/pages/SimulationPage';
-import { RecommendationsPage } from '@/pages/RecommendationsPage';
-import { IncidentsPage } from '@/pages/IncidentsPage';
-import { DocumentsPage } from '@/pages/DocumentsPage';
-import { ReportPage } from '@/pages/ReportPage';
-import { SettingsPage } from '@/pages/SettingsPage';
 import { OnboardingPage } from '@/pages/OnboardingPage';
 import { LoginPage } from '@/pages/LoginPage';
-import { KnowledgeBasePage } from '@/pages/KnowledgeBasePage';
-import { DriftDetectionPage } from '@/pages/DriftDetectionPage';
-import { FinancialDashboardPage } from '@/pages/FinancialDashboardPage';
-import { BusinessFlowsPage } from '@/pages/BusinessFlowsPage';
-import { RunbooksPage } from '@/pages/RunbooksPage';
-import { RunbookDetailPage } from '@/pages/RunbookDetailPage';
-import { RemediationPage } from '@/pages/RemediationPage';
-import { PRAExercisesPage } from '@/pages/PRAExercisesPage';
+import { LoadingState } from '@/components/common/LoadingState';
 import { useUIStore } from '@/stores/ui.store';
-import { useEffect } from 'react';
 import { getCredentialScopeKey, isCredentialStorageKey } from '@/lib/credentialStorage';
+
+const DashboardPage = lazy(async () => ({ default: (await import('@/pages/DashboardPage')).DashboardPage }));
+const DiscoveryPage = lazy(async () => ({ default: (await import('@/pages/DiscoveryPage')).DiscoveryPage }));
+const AnalysisPage = lazy(async () => ({ default: (await import('@/pages/AnalysisPage')).AnalysisPage }));
+const SimulationPage = lazy(async () => ({ default: (await import('@/pages/SimulationPage')).SimulationPage }));
+const RecommendationsPage = lazy(async () => ({ default: (await import('@/pages/RecommendationsPage')).RecommendationsPage }));
+const IncidentsPage = lazy(async () => ({ default: (await import('@/pages/IncidentsPage')).IncidentsPage }));
+const DocumentsPage = lazy(async () => ({ default: (await import('@/pages/DocumentsPage')).DocumentsPage }));
+const ReportPage = lazy(async () => ({ default: (await import('@/pages/ReportPage')).ReportPage }));
+const SettingsPage = lazy(async () => ({ default: (await import('@/pages/SettingsPage')).SettingsPage }));
+const KnowledgeBasePage = lazy(async () => ({ default: (await import('@/pages/KnowledgeBasePage')).KnowledgeBasePage }));
+const DriftDetectionPage = lazy(async () => ({ default: (await import('@/pages/DriftDetectionPage')).DriftDetectionPage }));
+const FinancialDashboardPage = lazy(async () => ({ default: (await import('@/pages/FinancialDashboardPage')).FinancialDashboardPage }));
+const BusinessFlowsPage = lazy(async () => ({ default: (await import('@/pages/BusinessFlowsPage')).BusinessFlowsPage }));
+const RunbooksPage = lazy(async () => ({ default: (await import('@/pages/RunbooksPage')).RunbooksPage }));
+const RunbookDetailPage = lazy(async () => ({ default: (await import('@/pages/RunbookDetailPage')).RunbookDetailPage }));
+const RemediationPage = lazy(async () => ({ default: (await import('@/pages/RemediationPage')).RemediationPage }));
+const PRAExercisesPage = lazy(async () => ({ default: (await import('@/pages/PRAExercisesPage')).PRAExercisesPage }));
+
+function routeElement(element: ReactNode) {
+  return (
+    <Suspense fallback={<LoadingState message="Chargement du module..." />}>
+      {element}
+    </Suspense>
+  );
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30000,
+      staleTime: 5 * 60 * 1000,
+      gcTime: 10 * 60 * 1000,
       retry: 1,
+      refetchOnWindowFocus: false,
     },
   },
 });
@@ -40,24 +52,24 @@ const router = createBrowserRouter([
     element: <AppShell />,
     children: [
       { path: '/', element: <OnboardingPage /> },
-      { path: '/settings', element: <SettingsPage /> },
-      { path: '/dashboard', element: <DashboardPage /> },
-      { path: '/discovery', element: <DiscoveryPage /> },
-      { path: '/analysis', element: <AnalysisPage /> },
-      { path: '/business-flows', element: <BusinessFlowsPage /> },
-      { path: '/recommendations', element: <RecommendationsPage /> },
-      { path: '/finance', element: <FinancialDashboardPage /> },
-      { path: '/simulations', element: <SimulationPage /> },
-      { path: '/drift', element: <DriftDetectionPage /> },
-      { path: '/simulations/runbooks', element: <RunbooksPage /> },
-      { path: '/simulations/runbooks/:id', element: <RunbookDetailPage /> },
-      { path: '/simulations/pra-exercises', element: <PRAExercisesPage /> },
-      { path: '/recommendations/remediation', element: <RemediationPage /> },
+      { path: '/settings', element: routeElement(<SettingsPage />) },
+      { path: '/dashboard', element: routeElement(<DashboardPage />) },
+      { path: '/discovery', element: routeElement(<DiscoveryPage />) },
+      { path: '/analysis', element: routeElement(<AnalysisPage />) },
+      { path: '/business-flows', element: routeElement(<BusinessFlowsPage />) },
+      { path: '/recommendations', element: routeElement(<RecommendationsPage />) },
+      { path: '/finance', element: routeElement(<FinancialDashboardPage />) },
+      { path: '/simulations', element: routeElement(<SimulationPage />) },
+      { path: '/drift', element: routeElement(<DriftDetectionPage />) },
+      { path: '/simulations/runbooks', element: routeElement(<RunbooksPage />) },
+      { path: '/simulations/runbooks/:id', element: routeElement(<RunbookDetailPage />) },
+      { path: '/simulations/pra-exercises', element: routeElement(<PRAExercisesPage />) },
+      { path: '/recommendations/remediation', element: routeElement(<RemediationPage />) },
       { path: '/exercises', element: <Navigate to="/simulations/runbooks" replace /> },
-      { path: '/incidents', element: <IncidentsPage /> },
-      { path: '/documents', element: <DocumentsPage /> },
-      { path: '/report', element: <ReportPage /> },
-      { path: '/knowledge-base', element: <KnowledgeBasePage /> },
+      { path: '/incidents', element: routeElement(<IncidentsPage />) },
+      { path: '/documents', element: routeElement(<DocumentsPage />) },
+      { path: '/report', element: routeElement(<ReportPage />) },
+      { path: '/knowledge-base', element: routeElement(<KnowledgeBasePage />) },
     ],
   },
   { path: '/login', element: <LoginPage /> },
@@ -112,3 +124,4 @@ export default function App() {
     </GlobalErrorBoundary>
   );
 }
+

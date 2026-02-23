@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   X,
   Play,
@@ -90,7 +90,6 @@ export function WarRoom({
   const [timelinePosition, setTimelinePosition] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [nodeStates, setNodeStates] = useState<Record<string, NodeVisualState>>({});
   const animationRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -120,6 +119,37 @@ export function WarRoom({
         };
       });
 
+  const timelineIndexByNodeId = useMemo(() => {
+    const map = new Map<string, number>();
+    (timelineEvents ?? []).forEach((event, index) => {
+      if (!map.has(event.nodeId)) {
+        map.set(event.nodeId, index);
+      }
+    });
+    return map;
+  }, [timelineEvents]);
+  const nodeStates = useMemo<Record<string, NodeVisualState>>(() => {
+    const next: Record<string, NodeVisualState> = {};
+    for (const node of impactedNodes) {
+      const timelineIndex = timelineIndexByNodeId.get(node.id);
+      if (phase === 'complete') {
+        next[node.id] = 'down';
+        continue;
+      }
+      if (timelineIndex == null) {
+        next[node.id] = 'healthy';
+        continue;
+      }
+      if (currentStep > timelineIndex) {
+        next[node.id] = 'down';
+      } else if (currentStep === timelineIndex) {
+        next[node.id] = 'at_risk';
+      } else {
+        next[node.id] = 'healthy';
+      }
+    }
+    return next;
+  }, [currentStep, impactedNodes, phase, timelineIndexByNodeId]);
   const totalNodes = impactedNodes.length ?? 0;
   const downNodes = Object.values(nodeStates).filter((state) => state === 'down').length;
   const impactedServiceCount = (result.impactedServices ?? []).filter((service) => service.impact !== 'none').length;
@@ -145,9 +175,8 @@ export function WarRoom({
 
   const startAnimation = useCallback(() => {
     setPhase('initial');
-    setCurrentStep(0);
+    setCurrentStep(-1);
     setTimelinePosition(0);
-    setNodeStates({});
     setIsPlaying(true);
     setElapsedSeconds(0);
 
@@ -168,17 +197,6 @@ export function WarRoom({
 
       setPhase('propagating');
       setCurrentStep(step);
-      const event = timelineEvents[step];
-
-      setNodeStates((previous) => {
-        const next = { ...previous };
-        next[event.nodeId] = 'at_risk';
-        setTimeout(() => {
-          setNodeStates((later) => ({ ...later, [event.nodeId]: 'down' }));
-        }, 250);
-        return next;
-      });
-
       setTimelinePosition(((step + 1) / Math.max(timelineEvents.length, 1)) * 100);
       step += 1;
       animationRef.current = setTimeout(animateStep, 700);
@@ -199,7 +217,6 @@ export function WarRoom({
     setCurrentStep(0);
     setTimelinePosition(0);
     setElapsedSeconds(0);
-    setNodeStates({});
   }, []);
 
   useEffect(() => {
@@ -260,7 +277,7 @@ export function WarRoom({
             <span>Services down: {downNodes}/{Math.max(totalNodes, 1)}</span>
             <span>Temps: {Math.floor(elapsedSeconds / 60)}min</span>
             <span className="font-semibold text-severity-critical">
-              {'\uD83D\uDCB0'} Perte cumulee: {formatCurrency(cumulativeBusinessLoss, currency)}
+              Perte cumulee: {formatCurrency(cumulativeBusinessLoss, currency)}
             </span>
           </div>
 

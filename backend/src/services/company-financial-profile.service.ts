@@ -228,9 +228,10 @@ function midpoint(min: number, max: number): number {
 }
 
 function classifyPaybackLabel(paybackMonths: number | null): string {
-  if (paybackMonths == null || !Number.isFinite(paybackMonths) || paybackMonths <= 0 || paybackMonths > 60) {
+  if (paybackMonths == null || !Number.isFinite(paybackMonths) || paybackMonths <= 0) {
     return 'Non rentable';
   }
+  if (paybackMonths > 60) return '> 60 mois';
   if (paybackMonths < 6) return 'Quick win';
   if (paybackMonths <= 24) return 'Rentable a moyen terme';
   return 'Investissement long terme';
@@ -1034,11 +1035,23 @@ export function calculateRecommendationRoi(options: {
     roiPercent = roundPercent(((riskAvoidedAnnual - annualDrCost) / annualDrCost) * 100);
   }
 
-  const paybackMonths =
+  let paybackMonths =
     riskAvoidedAnnual > 0 && annualDrCost > 0
       ? roundPercent(annualDrCost / (riskAvoidedAnnual / 12))
       : null;
-  const paybackLabel = classifyPaybackLabel(paybackMonths);
+  let paybackLabel = classifyPaybackLabel(paybackMonths);
+
+  if (roiPercent != null && roiPercent > 0 && paybackLabel === 'Non rentable') {
+    paybackMonths =
+      riskAvoidedAnnual > 0 && annualDrCost > 0
+        ? roundPercent(annualDrCost / (riskAvoidedAnnual / 12))
+        : null;
+    paybackLabel = classifyPaybackLabel(paybackMonths);
+  }
+  if (roiPercent != null && roiPercent < 0 && paybackMonths != null) {
+    paybackMonths = null;
+    paybackLabel = 'Non rentable';
+  }
 
   const roiState = classifyRoiStatus(roiPercent, riskAvoidedAnnual, annualDrCost);
 

@@ -12,6 +12,7 @@ import {
   type FinancialOrganizationProfileInput,
   type NodeFinancialOverrideInput,
 } from './financial-engine.service.js';
+import { appLogger } from '../utils/logger.js';
 import { CurrencyService } from './currency.service.js';
 import { buildLandingZoneFinancialContext } from './landing-zone-financial.service.js';
 
@@ -692,6 +693,36 @@ export async function buildFinancialSummaryPayload(
   const profile = recommendationContext.financialProfileInput;
   const ale = recommendationContext.ale;
   const roi = recommendationContext.roi;
+  const annualRisk = Math.max(0, Number(ale.totalALE) || 0);
+  let potentialSavings = Math.max(0, Number(roi.riskReductionAmount) || 0);
+  if (potentialSavings > annualRisk) {
+    appLogger.error('financial.summary.inconsistent_savings_exceeds_risk', {
+      tenantId,
+      annualRisk,
+      potentialSavings,
+    });
+    potentialSavings = annualRisk;
+  }
+  let paybackMonths = roi.paybackMonths;
+  if (
+    (roi.roiPercent ?? 0) > 0 &&
+    (paybackMonths == null || !Number.isFinite(paybackMonths) || paybackMonths <= 0) &&
+    potentialSavings > 0 &&
+    roi.annualRemediationCost > 0
+  ) {
+    const recalculated = roi.annualRemediationCost / (potentialSavings / 12);
+    if (Number.isFinite(recalculated) && recalculated > 0) {
+      paybackMonths = Math.round(recalculated * 100) / 100;
+      appLogger.error('financial.summary.payback_recalculated_for_positive_roi', {
+        tenantId,
+        roiPercent: roi.roiPercent,
+        paybackMonths,
+      });
+    }
+  }
+  if ((roi.roiPercent ?? 0) < 0 && paybackMonths != null) {
+    paybackMonths = null;
+  }
 
   const [regulatoryExposure, tenant] = await Promise.all([
     buildRegulatoryExposureSummary(prismaClient, tenantId, profile.verticalSector),
@@ -708,10 +739,10 @@ export async function buildFinancialSummaryPayload(
 
   return {
     metrics: {
-      annualRisk: ale.totalALE,
-      potentialSavings: roi.riskReductionAmount,
+      annualRisk,
+      potentialSavings,
       roiPercent: roi.roiPercent,
-      paybackMonths: roi.paybackMonths,
+      paybackMonths,
     },
     totals: {
       totalSPOFs: ale.totalSPOFs,

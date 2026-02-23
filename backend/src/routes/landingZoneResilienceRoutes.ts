@@ -206,6 +206,7 @@ router.get("/cost-summary", async (req: TenantRequest, res) => {
       riskAvoidedAnnual: context.summary.riskAvoidedAnnual,
       roiPercent: context.summary.roiPercent,
       paybackMonths: context.summary.paybackMonths,
+      paybackLabel: context.summary.paybackLabel,
       currency: context.profile.currency,
       budgetAnnual: context.profile.estimatedDrBudgetAnnual,
       financialDisclaimers: context.financialDisclaimers,
@@ -217,4 +218,3 @@ router.get("/cost-summary", async (req: TenantRequest, res) => {
 });
 
 export default router;
-

@@ -176,30 +176,80 @@ function FinancialDashboardInner() {
   const currency = summary?.currency || 'EUR';
   const financialPrecision = summary?.financialPrecision;
   const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
-  const paybackMonths = summary?.metrics.paybackMonths ?? null;
+  const potentialSavingsRaw = summary?.metrics.potentialSavings ?? 0;
+  const annualRisk = Math.max(0, summary?.metrics.annualRisk ?? 0);
+  const potentialSavings = Math.min(
+    Math.max(0, potentialSavingsRaw),
+    annualRisk,
+  );
+  const annualRemediationCost = Math.max(0, summary?.roi.annualRemediationCost ?? 0);
+  const roiPercent = summary?.metrics.roiPercent ?? null;
+  const rawPaybackMonths = summary?.metrics.paybackMonths ?? summary?.roi.paybackMonths ?? null;
+  const rawPaybackLabel = summary?.roi.paybackLabel;
+  let paybackMonths =
+    rawPaybackMonths != null && Number.isFinite(rawPaybackMonths) && rawPaybackMonths > 0
+      ? rawPaybackMonths
+      : null;
+  let paybackLabel = rawPaybackLabel?.trim() || undefined;
+  if (
+    (roiPercent ?? 0) > 0 &&
+    (paybackMonths == null || paybackLabel === 'Non rentable') &&
+    potentialSavings > 0 &&
+    annualRemediationCost > 0
+  ) {
+    const derived = annualRemediationCost / (potentialSavings / 12);
+    if (Number.isFinite(derived) && derived > 0) {
+      paybackMonths = Math.round(derived * 10) / 10;
+      paybackLabel = paybackMonths > 60 ? '> 60 mois' : undefined;
+    }
+  }
+  if ((roiPercent ?? 0) <= 0 && paybackMonths == null) {
+    paybackLabel = 'Non rentable';
+  } else if (paybackMonths != null && paybackMonths > 60 && !paybackLabel) {
+    paybackLabel = '> 60 mois';
+  }
   const roiDisplay = formatPercentNullable(summary?.metrics.roiPercent ?? null);
   const potentialSavingsDisplay =
-    (summary?.metrics.potentialSavings ?? 0) < 0
+    potentialSavingsRaw < 0
       ? 'Aucun gain - service deja protege'
-      : formatMoney(summary?.metrics.potentialSavings ?? 0, currency);
+      : formatMoney(potentialSavings, currency);
   const paybackValue =
-    paybackMonths != null && paybackMonths > 0 ? `${paybackMonths.toFixed(1)} mois` : 'Non rentable';
+    paybackLabel && paybackLabel.length > 0
+      ? paybackLabel
+      : paybackMonths != null && paybackMonths > 0
+        ? `${paybackMonths.toFixed(1)} mois`
+        : 'Non rentable';
   const paybackSubtitle =
     paybackMonths != null && paybackMonths > 0
       ? 'Temps de retour sur investissement'
       : 'Les gains annuels estimes ne couvrent pas les couts';
   const chartData = useMemo(() => {
     if (!summary) return [];
+    const baselineRisk = Math.max(0, summary.metrics.annualRisk ?? 0);
+    const cappedSavings = Math.min(
+      Math.max(0, summary.metrics.potentialSavings ?? 0),
+      baselineRisk,
+    );
+    let projectedRisk = Math.max(0, summary.roi.projectedALE ?? 0);
+    const remediationCost = Math.max(0, summary.roi.annualRemediationCost ?? 0);
+    let withPraTotal = projectedRisk + remediationCost;
+    if ((summary.metrics.roiPercent ?? 0) > 100 && withPraTotal >= baselineRisk) {
+      projectedRisk = Math.max(0, baselineRisk - cappedSavings);
+      withPraTotal = projectedRisk + remediationCost;
+      if ((summary.metrics.roiPercent ?? 0) > 1000 && withPraTotal >= baselineRisk / 10) {
+        projectedRisk = Math.max(0, baselineRisk / 12 - remediationCost);
+      }
+    }
     return [
       {
         name: 'Sans PRA',
-        ale: summary.ale.totalALE,
+        ale: baselineRisk,
         remediation: 0,
       },
       {
         name: 'Avec PRA Stronghold',
-        ale: summary.roi.projectedALE,
-        remediation: summary.roi.annualRemediationCost,
+        ale: projectedRisk,
+        remediation: remediationCost,
       },
     ];
   }, [summary]);
@@ -453,7 +503,7 @@ function FinancialDashboardInner() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <KpiCard
           title="Risque annuel"
-          value={formatMoney(summary.metrics.annualRisk, currency)}
+          value={formatMoney(annualRisk, currency)}
           subtitle={`Perte annuelle attendue (ALE), ${summary.totals.totalSPOFs} SPOFs detectes`}
           icon={ArrowDown}
           tone="risk"
@@ -463,7 +513,7 @@ function FinancialDashboardInner() {
           value={potentialSavingsDisplay}
           subtitle="Si les recommandations sont appliquees"
           icon={PiggyBank}
-          tone={summary.metrics.potentialSavings < 0 ? 'payback' : 'savings'}
+          tone={potentialSavingsRaw < 0 ? 'payback' : 'savings'}
         />
         <KpiCard
           title="ROI estime"

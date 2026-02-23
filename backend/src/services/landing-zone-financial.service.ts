@@ -94,6 +94,7 @@ export type LandingZoneFinancialSummary = {
   riskAvoidedAnnual: number;
   roiPercent: number | null;
   paybackMonths: number | null;
+  paybackLabel: string;
 };
 
 export type LandingZoneFinancialContext = {
@@ -224,6 +225,13 @@ function normalizeCriticality(
     if (normalized >= 0.45) return 'medium';
   }
   return 'low';
+}
+
+function criticalityBudgetWeight(level: 'critical' | 'high' | 'medium' | 'low'): number {
+  if (level === 'critical') return 1.9;
+  if (level === 'high') return 1.45;
+  if (level === 'medium') return 1;
+  return 0.7;
 }
 
 function resolveStrategyOverride(metadata: unknown): string | null {
@@ -408,6 +416,7 @@ function buildDefaultContext(
       riskAvoidedAnnual: 0,
       roiPercent: null,
       paybackMonths: null,
+      paybackLabel: 'Non rentable',
     },
     recommendationInputs: [],
     roi: emptyRoi,
@@ -496,6 +505,11 @@ export async function buildLandingZoneFinancialContext(
   const sortedRecommendations = [...report.recommendations].sort(
     (left, right) => right.priorityScore - left.priorityScore,
   );
+  const infrastructureNodeCount = Math.max(1, financialContext.analysisResult.nodes.length);
+  const budgetDerivedMonthlyCostPerNode =
+    profile.annualITBudget && profile.annualITBudget > 0
+      ? roundMoney(profile.annualITBudget / 12 / infrastructureNodeCount)
+      : null;
 
   const recommendationSeeds: InternalRecommendationSeed[] = [];
   for (const recommendation of sortedRecommendations) {
@@ -519,6 +533,17 @@ export async function buildLandingZoneFinancialContext(
       validatedProcess?.criticalityScore ?? node?.criticalityScore ?? null,
       validatedProcess?.impactCategory ?? node?.impactCategory ?? null,
     );
+    const budgetCalibratedMonthlyCost =
+      budgetDerivedMonthlyCostPerNode != null
+        ? roundMoney(Math.max(0, budgetDerivedMonthlyCostPerNode * criticalityBudgetWeight(criticality)))
+        : null;
+    const estimatedProductionMonthlyCost =
+      budgetCalibratedMonthlyCost != null
+        ? roundMoney(Math.max(monthlyCostEstimate.estimatedMonthlyCost, budgetCalibratedMonthlyCost))
+        : monthlyCostEstimate.estimatedMonthlyCost;
+    const budgetCalibrationApplied =
+      budgetCalibratedMonthlyCost != null &&
+      estimatedProductionMonthlyCost > monthlyCostEstimate.estimatedMonthlyCost;
 
     const targetRtoMinutes =
       validatedProcess?.validatedRTO ?? node?.validatedRTO ?? node?.suggestedRTO ?? null;
@@ -531,7 +556,7 @@ export async function buildLandingZoneFinancialContext(
       targetRtoMinutes,
       targetRpoMinutes,
       criticality,
-      monthlyProductionCost: monthlyCostEstimate.estimatedMonthlyCost,
+      monthlyProductionCost: estimatedProductionMonthlyCost,
       budgetRemainingMonthly,
       overrideStrategy: resolveStrategyOverride(node?.metadata),
     });
@@ -549,14 +574,21 @@ export async function buildLandingZoneFinancialContext(
 
     const strategyUpgraded = adjustedStrategy !== selected.strategy;
     const monthlyDrCost = strategyUpgraded
-      ? estimateStrategyMonthlyDrCost(monthlyCostEstimate.estimatedMonthlyCost, adjustedStrategy)
+      ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, adjustedStrategy)
       : selected.monthlyDrCost;
     const annualDrCost = roundMoney(monthlyDrCost * 12);
+    const calibrationWarning = budgetCalibrationApplied
+      ? `Calibration budget profile: cout de production ajuste a ${estimatedProductionMonthlyCost.toFixed(0)} ${profile.currency}/mois.`
+      : null;
     const budgetWarning = strategyUpgraded
       ? selected.budgetWarning
         ? `${selected.budgetWarning} | Ajustement RTO: strategie relevee pour garantir un gain de reprise.`
         : 'Ajustement RTO: strategie relevee pour garantir un gain de reprise.'
       : selected.budgetWarning;
+    const combinedBudgetWarning =
+      budgetWarning && calibrationWarning
+        ? `${budgetWarning} | ${calibrationWarning}`
+        : budgetWarning || calibrationWarning;
 
     if (budgetRemainingMonthly && monthlyDrCost > 0) {
       budgetRemainingMonthly = Math.max(0, budgetRemainingMonthly - monthlyDrCost);
@@ -574,16 +606,18 @@ export async function buildLandingZoneFinancialContext(
       strategy,
       estimatedCost: monthlyDrCost,
       estimatedAnnualCost: annualDrCost,
-      estimatedProductionMonthlyCost: monthlyCostEstimate.estimatedMonthlyCost,
-      costSource: monthlyCostEstimate.costSource,
-      costConfidence: monthlyCostEstimate.confidence,
+      estimatedProductionMonthlyCost,
+      costSource: budgetCalibrationApplied ? 'budget_profile_calibration' : monthlyCostEstimate.costSource,
+      costConfidence: budgetCalibrationApplied
+        ? Math.max(monthlyCostEstimate.confidence, 0.7)
+        : monthlyCostEstimate.confidence,
       description: recommendation.strategy.description,
       priority: recommendation.priorityScore,
       notes: state.notes,
       status: state.status,
       statusUpdatedAt: state.updatedAt,
       statusHistory: state.history,
-      budgetWarning,
+      budgetWarning: combinedBudgetWarning,
       accepted: acceptedFromStatus(state.status),
       probabilitySource: probability.source,
     });
@@ -740,6 +774,18 @@ export async function buildLandingZoneFinancialContext(
 
   const totalCostAnnual = roi.annualRemediationCost;
   const totalCostMonthly = roundMoney(totalCostAnnual / 12);
+  const cappedRiskAvoidedAnnual = Math.min(
+    Math.max(0, roi.riskReductionAmount),
+    Math.max(0, ale.totalALE),
+  );
+  if (cappedRiskAvoidedAnnual < roi.riskReductionAmount) {
+    appLogger.error('landing_zone.summary.risk_avoided_capped_to_annual_risk', {
+      tenantId,
+      annualRisk: ale.totalALE,
+      rawRiskAvoidedAnnual: roi.riskReductionAmount,
+      cappedRiskAvoidedAnnual,
+    });
+  }
   const costSharePercentByStrategy = Object.fromEntries(
     Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => [
       strategy,
@@ -761,9 +807,10 @@ export async function buildLandingZoneFinancialContext(
       ),
       costSharePercentByStrategy,
       totalRecommendations: recommendations.length,
-      riskAvoidedAnnual: roi.riskReductionAmount,
+      riskAvoidedAnnual: roundMoney(cappedRiskAvoidedAnnual),
       roiPercent: roi.roiPercent,
       paybackMonths: roi.paybackMonths,
+      paybackLabel: roi.paybackLabel,
     },
     recommendationInputs: filteredRecommendationInputs,
     roi,

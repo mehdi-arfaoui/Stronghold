@@ -361,63 +361,78 @@ export function calculateCascade(
   const downSet = new Set(affectedNodeIds);
   const visited = new Set<string>();
 
-  let currentLayer = [...affectedNodeIds];
-  let depth = 0;
+  const inNeighborsByNode = new Map<string, string[]>();
+  const outNeighborsByNode = new Map<string, string[]>();
+  const unavailableDependenciesByNode = new Map<string, number>();
+  graph.forEachNode((nodeId: string) => {
+    const inNeighbors = graph.inNeighbors(nodeId);
+    const outNeighbors = graph.outNeighbors(nodeId);
+    inNeighborsByNode.set(nodeId, inNeighbors);
+    outNeighborsByNode.set(nodeId, outNeighbors);
 
-  while (currentLayer.length > 0 && depth < 20) {
-    depth++;
-    const nextLayer: string[] = [];
+    let unavailable = 0;
+    for (const depId of outNeighbors) {
+      if (downSet.has(depId)) unavailable += 1;
+    }
+    unavailableDependenciesByNode.set(nodeId, unavailable);
+  });
 
-    for (const nId of currentLayer) {
-      if (!graph.hasNode(nId)) continue;
-      const dependents: string[] = graph.inNeighbors(nId);
-      const filtered = dependents.filter(
-        (id: string) => !visited.has(id) && !affectedSet.has(id)
-      );
+  const queue: Array<{ nodeId: string; depth: number; incrementDependents: boolean }> = affectedNodeIds
+    .filter((nodeId) => graph.hasNode(nodeId))
+    .map((nodeId) => ({ nodeId, depth: 0, incrementDependents: false }));
 
-      for (const depId of filtered) {
-        if (visited.has(depId)) continue;
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    if (current.depth >= 20) continue;
 
-        const allDeps: string[] = graph.outNeighbors(depId);
-        const healthyDeps = allDeps.filter((d: string) => !affectedSet.has(d) && !downSet.has(d));
+    const dependents = inNeighborsByNode.get(current.nodeId) || [];
+    for (const depId of dependents) {
+      if (visited.has(depId) || affectedSet.has(depId)) continue;
 
-        let status: 'down' | 'degraded';
-        let reason: string;
+      if (current.incrementDependents) {
+        unavailableDependenciesByNode.set(
+          depId,
+          (unavailableDependenciesByNode.get(depId) || 0) + 1,
+        );
+      }
 
-        if (healthyDeps.length === 0 && allDeps.length > 0) {
-          status = 'down';
-          reason = 'All dependencies unavailable';
-        } else if (healthyDeps.length < allDeps.length) {
-          status = 'degraded';
-          reason = `${allDeps.length - healthyDeps.length}/${allDeps.length} dependencies unavailable`;
-        } else {
-          continue;
-        }
+      const allDeps = outNeighborsByNode.get(depId) || [];
+      const unavailable = unavailableDependenciesByNode.get(depId) || 0;
+      if (allDeps.length === 0 || unavailable <= 0) continue;
 
-        const na = nodeAttrs(graph, depId);
-        if (na.metadata?.isMultiAZ && status === 'down') {
-          status = 'degraded';
-          reason += ' (multi-AZ active, failover in progress)';
-        }
+      let status: 'down' | 'degraded' =
+        unavailable >= allDeps.length ? 'down' : 'degraded';
+      let reason =
+        status === 'down'
+          ? 'All dependencies unavailable'
+          : `${unavailable}/${allDeps.length} dependencies unavailable`;
 
-        visited.add(depId);
-        cascade.push({
-          id: depId,
-          name: na.name,
-          type: na.type,
-          status,
-          cascadeReason: reason,
-          cascadeDepth: depth,
+      const na = nodeAttrs(graph, depId);
+      if (na.metadata?.isMultiAZ && status === 'down') {
+        status = 'degraded';
+        reason += ' (multi-AZ active, failover in progress)';
+      }
+
+      visited.add(depId);
+      cascade.push({
+        id: depId,
+        name: na.name,
+        type: na.type,
+        status,
+        cascadeReason: reason,
+        cascadeDepth: current.depth + 1,
+      });
+
+      if (status === 'down') {
+        downSet.add(depId);
+        queue.push({
+          nodeId: depId,
+          depth: current.depth + 1,
+          incrementDependents: true,
         });
-
-        if (status === 'down') {
-          downSet.add(depId);
-          nextLayer.push(depId);
-        }
       }
     }
-
-    currentLayer = nextLayer;
   }
 
   return cascade;

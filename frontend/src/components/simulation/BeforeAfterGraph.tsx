@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { InfraGraph } from '@/components/graph/InfraGraph';
 import type { InfraNode, InfraEdge, NodeStatus } from '@/types/graph.types';
@@ -13,12 +13,14 @@ interface BeforeAfterGraphProps {
 export function BeforeAfterGraph({ nodes, edges, affectedNodes }: BeforeAfterGraphProps) {
   const [view, setView] = useState<'before' | 'after'>('after');
 
-  const nodeStatuses = new Map<string, NodeStatus>();
-  if (view === 'after') {
-    affectedNodes.forEach((n) => {
-      nodeStatuses.set(n.nodeId, n.status);
-    });
-  }
+  const nodeStatuses = useMemo(() => {
+    const statuses = new Map<string, NodeStatus>();
+    if (view !== 'after') return statuses;
+    for (const node of affectedNodes) {
+      statuses.set(node.nodeId, node.status);
+    }
+    return statuses;
+  }, [affectedNodes, view]);
 
   return (
     <div className="space-y-3">

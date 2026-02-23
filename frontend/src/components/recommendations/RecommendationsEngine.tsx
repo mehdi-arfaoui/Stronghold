@@ -58,6 +58,43 @@ function formatPaybackMonths(paybackMonths: number | null | undefined, paybackLa
   return `${paybackMonths.toFixed(1)} mois`;
 }
 
+function resolveConsistentPayback(input: {
+  paybackMonths: number | null | undefined;
+  paybackLabel?: string | null;
+  roiPercent: number | null | undefined;
+  riskAvoidedAnnual: number;
+  annualCost: number;
+}): { paybackMonths: number | null; paybackLabel?: string } {
+  const providedLabel = typeof input.paybackLabel === 'string' ? input.paybackLabel.trim() : '';
+  const providedMonths =
+    input.paybackMonths != null && Number.isFinite(input.paybackMonths) && input.paybackMonths > 0
+      ? input.paybackMonths
+      : null;
+
+  if (providedMonths != null) {
+    if (providedLabel.length > 0) return { paybackMonths: providedMonths, paybackLabel: providedLabel };
+    if (providedMonths > 60) return { paybackMonths: providedMonths, paybackLabel: '> 60 mois' };
+    return { paybackMonths: providedMonths };
+  }
+
+  if ((input.roiPercent ?? 0) <= 0) {
+    return { paybackMonths: null, paybackLabel: 'Non rentable' };
+  }
+
+  if (!(input.riskAvoidedAnnual > 0) || !(input.annualCost > 0)) {
+    return { paybackMonths: null, paybackLabel: 'Non rentable' };
+  }
+
+  const derived = input.annualCost / (input.riskAvoidedAnnual / 12);
+  if (!Number.isFinite(derived) || derived <= 0) {
+    return { paybackMonths: null, paybackLabel: 'Non rentable' };
+  }
+
+  const rounded = Math.round(derived * 10) / 10;
+  if (rounded > 60) return { paybackMonths: rounded, paybackLabel: '> 60 mois' };
+  return { paybackMonths: rounded };
+}
+
 function formatRoiPercent(value: number | null | undefined): { label: string; tooltip?: string } {
   if (value == null || !Number.isFinite(value)) return { label: 'Non applicable' };
   if (value > ROI_DISPLAY_HIGH_THRESHOLD) {
@@ -215,11 +252,19 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     recommendationsSummaryQuery.data?.roiPercent ?? roiQuery.data?.roiPercent ?? null;
   const summaryPaybackMonths =
     recommendationsSummaryQuery.data?.paybackMonths ?? roiQuery.data?.paybackMonths ?? null;
+  const summaryPaybackLabel = recommendationsSummaryQuery.data?.paybackLabel ?? roiQuery.data?.paybackLabel;
   const summaryTotalRecommendations =
     recommendationsSummaryQuery.data?.totalRecommendations ?? recommendations.length;
   const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
   const summaryRiskAvoidedDisplay =
     summaryRiskAvoided < 0 ? 'Aucun gain - service deja protege' : money(summaryRiskAvoided, currency);
+  const resolvedSummaryPayback = resolveConsistentPayback({
+    paybackMonths: summaryPaybackMonths,
+    paybackLabel: summaryPaybackLabel,
+    roiPercent: summaryRoiPercent,
+    riskAvoidedAnnual: summaryRiskAvoided,
+    annualCost: summaryAnnualCost,
+  });
 
   const setRecommendationStatus = (recommendation: Recommendation, status: RecommendationStatus) => {
     setLocalStatuses((previous) => ({ ...previous, [recommendation.id]: status }));
@@ -292,7 +337,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               />
               <Metric
                 label="Payback"
-                value={formatPaybackMonths(summaryPaybackMonths)}
+                value={formatPaybackMonths(
+                  resolvedSummaryPayback.paybackMonths,
+                  resolvedSummaryPayback.paybackLabel,
+                )}
               />
             </div>
 

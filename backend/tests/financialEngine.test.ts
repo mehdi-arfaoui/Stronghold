@@ -224,8 +224,7 @@ test('calculateROI marks negative recommendation ROI as cost exceeding avoided r
   assert.equal(roi.breakdownByRecommendation.length, 1);
   assert.equal(roi.breakdownByRecommendation[0]?.roiStatus, 'cost_exceeds_avoided_risk');
   assert.equal(roi.breakdownByRecommendation[0]?.roiMessage, 'Cout superieur au risque evite');
-  assert.ok((roi.breakdownByRecommendation[0]?.paybackMonths ?? 0) > 60);
-  assert.ok((roi.breakdownByRecommendation[0]?.paybackMonths ?? 0) < 1_000);
+  assert.equal(roi.breakdownByRecommendation[0]?.paybackMonths, null);
   assert.equal(roi.breakdownByRecommendation[0]?.paybackLabel, 'Non rentable');
 });
 
@@ -272,10 +271,112 @@ test('calculateROI filters recommendations that do not reduce ALE', () => {
   );
 
   assert.equal(roi.breakdownByRecommendation.length, 0);
-  assert.equal(roi.currentALE, 0);
-  assert.equal(roi.projectedALE, 0);
+  assert.ok(roi.currentALE > 0);
+  assert.equal(roi.projectedALE, roi.currentALE);
   assert.equal(roi.riskReductionAmount, 0);
   assert.equal(roi.annualRemediationCost, 0);
   assert.equal(roi.roiStatus, 'non_applicable');
+});
+
+test('calculateROI keeps positive ROI aligned with numeric payback', () => {
+  const roi = FinancialEngineService.calculateROI(
+    {
+      nodes: [
+        {
+          id: 'node-payback-consistency',
+          name: 'payment-db',
+          type: 'DATABASE',
+          isSPOF: true,
+          criticalityScore: 0.95,
+          redundancyScore: 0,
+          dependentsCount: 4,
+          suggestedRTO: 300,
+        },
+      ],
+    },
+    {
+      processes: [
+        {
+          serviceNodeId: 'node-payback-consistency',
+          recoveryTier: 1,
+          suggestedRTO: 300,
+          validatedRTO: 300,
+        },
+      ],
+    },
+    [
+      {
+        recommendationId: 'rec-payback-consistency',
+        strategy: 'warm-standby',
+        targetNodes: ['node-payback-consistency'],
+        targetRtoMinutes: 10,
+        annualCost: 1_200,
+      },
+    ],
+    {
+      customDowntimeCostPerHour: 80_000,
+      hourlyDowntimeCost: 80_000,
+      customCurrency: 'EUR',
+    },
+  );
+
+  assert.ok((roi.roiPercent ?? 0) > 0);
+  assert.ok((roi.paybackMonths ?? 0) > 0);
+  assert.notEqual(roi.paybackLabel, 'Non rentable');
+});
+
+test('calculateROI caps avoided risk to annual risk even with overlapping recommendations', () => {
+  const roi = FinancialEngineService.calculateROI(
+    {
+      nodes: [
+        {
+          id: 'node-overlap',
+          name: 'orders-db',
+          type: 'DATABASE',
+          isSPOF: true,
+          criticalityScore: 0.95,
+          redundancyScore: 0,
+          dependentsCount: 3,
+          suggestedRTO: 240,
+        },
+      ],
+    },
+    {
+      processes: [
+        {
+          serviceNodeId: 'node-overlap',
+          recoveryTier: 1,
+          suggestedRTO: 240,
+          validatedRTO: 240,
+        },
+      ],
+    },
+    [
+      {
+        recommendationId: 'rec-overlap-1',
+        strategy: 'warm-standby',
+        targetNodes: ['node-overlap'],
+        targetRtoMinutes: 20,
+        annualCost: 3_000,
+      },
+      {
+        recommendationId: 'rec-overlap-2',
+        strategy: 'hot-standby',
+        targetNodes: ['node-overlap'],
+        targetRtoMinutes: 3,
+        annualCost: 6_000,
+      },
+    ],
+    {
+      customDowntimeCostPerHour: 60_000,
+      hourlyDowntimeCost: 60_000,
+      customCurrency: 'EUR',
+    },
+  );
+
+  assert.ok(roi.currentALE > 0);
+  assert.ok(roi.riskReductionAmount >= 0);
+  assert.ok(roi.riskReductionAmount <= roi.currentALE);
+  assert.ok(roi.projectedALE >= 0);
 });
 
