@@ -29,7 +29,52 @@ import type { ScenarioTemplate, SimulationConfig } from '@/types/simulation.type
 
 type SimulationSubView = 'library' | 'priorities' | 'history';
 
-function mapScenarioToEngine(template: ScenarioTemplate, customParams: Record<string, unknown>, availableNodeIds: string[]): SimulationConfig {
+function resolveRansomwareTargetTypes(
+  template: ScenarioTemplate,
+  customParams: Record<string, unknown>,
+  availableNodeTypes: Set<string>,
+): string[] {
+  const requestedTypes = Array.isArray(customParams.targetTypes)
+    ? customParams.targetTypes
+        .filter((entry): entry is string => typeof entry === 'string')
+        .map((entry) => entry.toUpperCase())
+    : [];
+  if (requestedTypes.length > 0) {
+    const matched = requestedTypes.filter((entry) => availableNodeTypes.has(entry));
+    if (matched.length > 0) return matched;
+  }
+
+  const singleRequestedType =
+    typeof customParams.targetType === 'string' ? customParams.targetType.toUpperCase() : null;
+  if (singleRequestedType && availableNodeTypes.has(singleRequestedType)) {
+    return [singleRequestedType];
+  }
+
+  const preferredTypes = (template.impactProfile?.targetNodeTypes || [])
+    .map((entry) => String(entry || '').toUpperCase())
+    .filter((entry) => entry.length > 0);
+  const preferredMatches = preferredTypes.filter((entry) => availableNodeTypes.has(entry));
+  if (preferredMatches.length > 0) return preferredMatches;
+
+  const ransomwareFallbackOrder = ['DATABASE', 'OBJECT_STORAGE', 'FILE_STORAGE', 'VM', 'APPLICATION', 'MICROSERVICE'];
+  const fallbackMatches = ransomwareFallbackOrder.filter((entry) => availableNodeTypes.has(entry));
+  if (fallbackMatches.length > 0) return fallbackMatches;
+
+  return ['DATABASE'];
+}
+
+function mapScenarioToEngine(
+  template: ScenarioTemplate,
+  customParams: Record<string, unknown>,
+  availableNodes: Array<{ id: string; type?: string }>,
+): SimulationConfig {
+  const availableNodeIds = availableNodes.map((node) => node.id).filter(Boolean);
+  const availableNodeTypes = new Set(
+    availableNodes
+      .map((node) => String(node.type || '').toUpperCase())
+      .filter((value) => value.length > 0),
+  );
+
   if (template.id === 'complete-region-loss') {
     return { scenarioType: 'region_loss', name: template.name, params: { region: customParams.region ?? 'unknown-region' } };
   }
@@ -37,7 +82,20 @@ function mapScenarioToEngine(template: ScenarioTemplate, customParams: Record<st
     return { scenarioType: 'az_loss', name: template.name, params: { az: customParams.az ?? 'unknown-az' } };
   }
   if (template.id.includes('ransomware')) {
-    return { scenarioType: 'ransomware', name: template.name, params: { targetType: 'VM', ...customParams } };
+    const targetTypes = resolveRansomwareTargetTypes(template, customParams, availableNodeTypes);
+    const targetType =
+      typeof customParams.targetType === 'string' && customParams.targetType.trim().length > 0
+        ? customParams.targetType.toUpperCase()
+        : targetTypes[0] || 'DATABASE';
+    return {
+      scenarioType: 'ransomware',
+      name: template.name,
+      params: {
+        ...customParams,
+        targetType,
+        targetTypes,
+      },
+    };
   }
   if (template.id === 'database-corruption') {
     return { scenarioType: 'database_failure', name: template.name, params: { databases: availableNodeIds.slice(0, 2), ...customParams } };
@@ -97,8 +155,8 @@ export function SimulationPage() {
 
   const handleLaunch = async (template: ScenarioTemplate, params: Record<string, unknown>) => {
     try {
-      const availableNodeIds = (allNodes ?? []).map((node) => node.id).filter(Boolean);
-      const config = mapScenarioToEngine(template, params ?? {}, availableNodeIds);
+      const availableNodes = (allNodes ?? []).map((node) => ({ id: node.id, type: node.type }));
+      const config = mapScenarioToEngine(template, params ?? {}, availableNodes);
       const result = await createSimulation(config);
       if (!result) {
         throw new Error('Simulation response is empty');

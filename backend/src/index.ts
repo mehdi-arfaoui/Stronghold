@@ -62,6 +62,7 @@ import financialRoutes from "./routes/financialRoutes.js";
 import businessFlowRoutes from "./routes/businessFlowRoutes.js";
 import remediationTaskRoutes from "./routes/remediationTaskRoutes.js";
 import praExerciseRoutes from "./routes/praExerciseRoutes.js";
+import devRoutes from "./routes/devRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
 import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
@@ -620,6 +621,9 @@ const routes = [
   { path: "/business-flows", handler: businessFlowRoutes, name: "businessFlowRoutes" },
   { path: "/remediation-tasks", handler: remediationTaskRoutes, name: "remediationTaskRoutes" },
   { path: "/pra-exercises", handler: praExerciseRoutes, name: "praExerciseRoutes" },
+  ...(isDevelopment
+    ? [{ path: "/dev", handler: devRoutes, name: "devRoutes" }]
+    : []),
 ];
 
 for (const route of routes) {

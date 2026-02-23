@@ -156,3 +156,31 @@ edge,,,,svc-1,db-1,dépendance
 - `POST /exercises/:id/results` : saisie des résultats d’exercice.
 - `POST /exercises/:id/analysis` : génération d’analyse automatisée.
 - `GET /exercises/:id/report` : rapport synthétique.
+
+## Reset complet
+
+Pour repartir d'un environnement local totalement propre:
+
+Windows (PowerShell):
+```powershell
+.\scripts\reset-full.ps1
+```
+
+Unix / macOS:
+```bash
+bash scripts/reset-full.sh
+```
+
+Ces scripts effectuent:
+- `docker compose down -v --remove-orphans`
+- nettoyage des volumes `stronghold*` et du cache Docker build
+- nettoyage des builds frontend/backend
+- relance `postgres` + `redis`
+- `npx prisma migrate reset --force`
+- `npm run db:seed` puis `npm run seed:demo`
+- relance de tous les services Docker
+
+Apres execution, vider aussi le localStorage navigateur pour les cles `stronghold_*`.
+
+Reset cache serveur (sans rebuild complet), en dev/test uniquement:
+- `POST /api/dev/clear-session-cache`

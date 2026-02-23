@@ -282,6 +282,7 @@ export function BusinessFlowsPage() {
         {sortedFlows.map((flow) => {
           const total = flow.computedCost?.totalCostPerHour || flow.calculatedCostPerHour || 0;
           const peak = flow.computedCost?.peakCostPerHour || total * (flow.peakHoursMultiplier || 1);
+          const aleAnnual = flow.financialImpact?.aleAnnual || 0;
           const flowCurrency = String(flow.currency || flow.computedCost?.currency || 'EUR').toUpperCase();
           const isValidated = flow.validatedByUser;
           return (
@@ -298,6 +299,13 @@ export function BusinessFlowsPage() {
                   <p className="text-sm text-muted-foreground">
                     {flow.flowNodes.length} node(s) • cost/h {formatMoney(total, flowCurrency)} • peak {formatMoney(peak, flowCurrency)}
                   </p>
+                  {flow.financialImpactMessage ? (
+                    <p className="text-xs text-amber-700">{flow.financialImpactMessage}</p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      ALE estime: {formatMoney(aleAnnual, flowCurrency)} / an
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <Button

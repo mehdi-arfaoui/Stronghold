@@ -19,6 +19,7 @@ async function withServer(app: express.Express, handler: (baseUrl: string) => Pr
 
 test('GET /business-flows applies tenant isolation in Prisma query', async () => {
   const originalFindMany = prisma.businessFlow.findMany;
+  const originalProfileFindUnique = prisma.organizationProfile.findUnique;
   let capturedWhere: unknown = null;
 
   prisma.businessFlow.findMany = (async (args: any) => {
@@ -59,6 +60,7 @@ test('GET /business-flows applies tenant isolation in Prisma query', async () =>
       },
     ] as any;
   }) as any;
+  prisma.organizationProfile.findUnique = (async () => ({ customCurrency: 'EUR' })) as any;
 
   const app = express();
   app.use(express.json());
@@ -81,5 +83,6 @@ test('GET /business-flows applies tenant isolation in Prisma query', async () =>
     assert.deepEqual(capturedWhere, { tenantId: 'tenant-x' });
   } finally {
     prisma.businessFlow.findMany = originalFindMany;
+    prisma.organizationProfile.findUnique = originalProfileFindUnique;
   }
 });

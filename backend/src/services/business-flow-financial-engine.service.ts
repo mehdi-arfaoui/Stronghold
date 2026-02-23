@@ -11,6 +11,7 @@ import {
   type FinancialOrganizationProfileInput,
   type NodeFinancialOverrideInput,
 } from './financial-engine.service.js';
+import { resolveIncidentProbabilityForNodeType } from './company-financial-profile.service.js';
 import {
   SUPPORTED_CURRENCIES,
   type SupportedCurrency,
@@ -26,6 +27,31 @@ export type FlowCost = {
   totalCostPerHour: number;
   peakCostPerHour: number;
   method: string;
+  confidence: FlowCostConfidence;
+  currency: SupportedCurrency;
+};
+
+export type FlowFinancialSnapshot = {
+  flowId: string;
+  hourlyDowntimeCost: number;
+  aleAnnual: number;
+  averageRtoHours: number;
+  incidentProbabilityAnnual: number;
+  servicesCount: number;
+  sourceBreakdown: {
+    userOverride: number;
+    biaValidated: number;
+    resourceEstimate: number;
+  };
+  estimable: boolean;
+  message: string | null;
+  computedCost: FlowCost | null;
+  method:
+    | 'direct_estimate'
+    | 'annual_revenue'
+    | 'transactional'
+    | 'services_aggregate'
+    | 'not_estimable';
   confidence: FlowCostConfidence;
   currency: SupportedCurrency;
 };
@@ -122,6 +148,71 @@ function convertCurrency(
   );
 }
 
+function extractBiaHourlyCost(financialImpact: unknown): number | null {
+  if (!financialImpact || typeof financialImpact !== 'object' || Array.isArray(financialImpact)) {
+    return null;
+  }
+
+  const payload = financialImpact as Record<string, unknown>;
+  const candidates = [
+    payload.estimatedCostPerHour,
+    payload.hourlyDowntimeCost,
+    payload.totalCostPerHour,
+  ];
+
+  for (const candidate of candidates) {
+    const parsed = Number(candidate);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function resolveRtoHours(
+  flow: BusinessFlow,
+  node: FinancialNodeInput,
+  validatedProcess: {
+    validatedRTO: number | null;
+    suggestedRTO: number | null;
+  } | null | undefined,
+): number {
+  const rawMinutes =
+    validatedProcess?.validatedRTO ??
+    validatedProcess?.suggestedRTO ??
+    node.validatedRTO ??
+    node.suggestedRTO ??
+    flow.contractualRTO ??
+    240;
+  const minutes = Math.max(1, Number(rawMinutes || 240));
+  return Number((minutes / 60).toFixed(2));
+}
+
+function resolveFallbackFlowRtoHours(flow: BusinessFlow): number {
+  const minutes = Number(flow.contractualRTO);
+  if (Number.isFinite(minutes) && minutes > 0) {
+    return Number((minutes / 60).toFixed(2));
+  }
+  return 4;
+}
+
+function inferSnapshotConfidence(input: {
+  method: FlowFinancialSnapshot['method'];
+  hasUserOverride: boolean;
+  hasBiaValidated: boolean;
+  hasResourceEstimate: boolean;
+  flowValidatedByUser: boolean;
+}): FlowCostConfidence {
+  if (input.method === 'not_estimable') return 'low';
+  if (input.method !== 'services_aggregate') {
+    return input.flowValidatedByUser ? 'high' : 'medium';
+  }
+  if (input.hasUserOverride) return 'high';
+  if (input.hasBiaValidated) return input.flowValidatedByUser ? 'high' : 'medium';
+  if (input.hasResourceEstimate) return 'low';
+  return 'low';
+}
+
 function inferFlowConfidence(flow: BusinessFlow, method: string): FlowCostConfidence {
   if (flow.source === 'ai_suggested' && !flow.validatedByUser) return 'low';
   if (method === 'direct_estimate' || method === 'annual_revenue') return 'high';
@@ -212,6 +303,265 @@ export class BusinessFlowFinancialEngineService {
       indirectCostPerHour: convertCurrency(indirectCostPerHour, sourceCurrency, currency),
       totalCostPerHour: convertCurrency(totalCostPerHour, sourceCurrency, currency),
       peakCostPerHour: convertCurrency(peakCostPerHour, sourceCurrency, currency),
+      method,
+      confidence,
+      currency,
+    };
+  }
+
+  async calculateFlowFinancialSnapshot(input: {
+    tenantId: string;
+    flowId: string;
+    preferredCurrency?: SupportedCurrency;
+    sourceCurrency?: SupportedCurrency;
+  }): Promise<FlowFinancialSnapshot | null> {
+    const sourceCurrency = input.sourceCurrency ?? 'EUR';
+
+    const [flow, profile] = await Promise.all([
+      this.prismaClient.businessFlow.findFirst({
+        where: { id: input.flowId, tenantId: input.tenantId },
+        include: {
+          flowNodes: {
+            orderBy: { orderIndex: 'asc' },
+            include: {
+              infraNode: {
+                include: {
+                  inEdges: true,
+                  outEdges: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prismaClient.organizationProfile.findUnique({
+        where: { tenantId: input.tenantId },
+        select: {
+          sizeCategory: true,
+          verticalSector: true,
+          customDowntimeCostPerHour: true,
+          customCurrency: true,
+          hourlyDowntimeCost: true,
+          annualITBudget: true,
+          drBudgetPercent: true,
+          strongholdPlanId: true,
+          strongholdMonthlyCost: true,
+        },
+      }),
+    ]);
+
+    if (!flow) return null;
+
+    const currency = input.preferredCurrency ?? normalizeCurrency(profile?.customCurrency);
+    const flowDirectCost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(
+      flow,
+      currency,
+      sourceCurrency,
+    );
+
+    const nodeIds = flow.flowNodes.map((entry) => entry.infraNodeId);
+    const [latestBia, overrides] = nodeIds.length > 0
+      ? await Promise.all([
+          this.prismaClient.bIAReport2.findFirst({
+            where: { tenantId: input.tenantId },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              processes: {
+                where: {
+                  validationStatus: 'validated',
+                  serviceNodeId: { in: nodeIds },
+                },
+                select: {
+                  serviceNodeId: true,
+                  validatedRTO: true,
+                  suggestedRTO: true,
+                  financialImpact: true,
+                },
+              },
+            },
+          }),
+          this.prismaClient.nodeFinancialOverride.findMany({
+            where: {
+              tenantId: input.tenantId,
+              nodeId: { in: nodeIds },
+            },
+            select: {
+              nodeId: true,
+              customCostPerHour: true,
+            },
+          }),
+        ])
+      : [null, [] as Array<{ nodeId: string; customCostPerHour: number }>];
+
+    const processByNodeId = new Map(
+      (latestBia?.processes || []).map((process) => [
+        process.serviceNodeId,
+        process,
+      ]),
+    );
+    const overrideByNodeId = new Map(
+      overrides
+        .filter((entry) => Number(entry.customCostPerHour) > 0)
+        .map((entry) => [entry.nodeId, { customCostPerHour: Number(entry.customCostPerHour) }]),
+    );
+
+    const profileInput: FinancialOrganizationProfileInput = {
+      sizeCategory: profile?.sizeCategory ?? 'midMarket',
+      verticalSector: profile?.verticalSector ?? null,
+      customDowntimeCostPerHour: profile?.customDowntimeCostPerHour ?? null,
+      hourlyDowntimeCost: profile?.hourlyDowntimeCost ?? null,
+      annualITBudget: profile?.annualITBudget ?? null,
+      drBudgetPercent: profile?.drBudgetPercent ?? null,
+      customCurrency: currency,
+      strongholdPlanId: profile?.strongholdPlanId ?? null,
+      strongholdMonthlyCost: profile?.strongholdMonthlyCost ?? null,
+    };
+
+    let aggregatedHourlyCost = 0;
+    let userOverrideCount = 0;
+    let biaValidatedCount = 0;
+    let resourceEstimateCount = 0;
+
+    const rtoHoursValues: number[] = [];
+    const incidentProbabilityValues: number[] = [];
+
+    for (const flowNode of flow.flowNodes) {
+      const infraNode = flowNode.infraNode;
+      const financialNode: FinancialNodeInput = {
+        id: infraNode.id,
+        name: infraNode.name,
+        type: infraNode.type,
+        provider: infraNode.provider,
+        region: infraNode.region,
+        isSPOF: infraNode.isSPOF,
+        criticalityScore: infraNode.criticalityScore,
+        redundancyScore: infraNode.redundancyScore,
+        impactCategory: infraNode.impactCategory,
+        suggestedRTO: infraNode.suggestedRTO,
+        validatedRTO: infraNode.validatedRTO,
+        suggestedRPO: infraNode.suggestedRPO,
+        validatedRPO: infraNode.validatedRPO,
+        suggestedMTPD: infraNode.suggestedMTPD,
+        validatedMTPD: infraNode.validatedMTPD,
+        dependentsCount: infraNode.inEdges.length,
+        inEdges: infraNode.inEdges,
+        outEdges: infraNode.outEdges,
+      };
+      const validatedProcess = processByNodeId.get(infraNode.id);
+      const override = overrideByNodeId.get(infraNode.id);
+
+      let nodeHourlyCost = 0;
+      if (override?.customCostPerHour && override.customCostPerHour > 0) {
+        nodeHourlyCost = roundMoney(override.customCostPerHour);
+        userOverrideCount += 1;
+      } else {
+        const biaCostPerHour = extractBiaHourlyCost(validatedProcess?.financialImpact);
+        if (biaCostPerHour && biaCostPerHour > 0) {
+          nodeHourlyCost = convertCurrency(biaCostPerHour, sourceCurrency, currency);
+          biaValidatedCount += 1;
+        } else {
+          const fallback = FinancialEngineService.calculateNodeFinancialImpact(
+            financialNode,
+            profileInput,
+            override ?? undefined,
+          );
+          nodeHourlyCost = roundMoney(fallback.estimatedCostPerHour);
+          if (nodeHourlyCost > 0) {
+            resourceEstimateCount += 1;
+          }
+        }
+      }
+
+      if (!flowDirectCost) {
+        aggregatedHourlyCost += nodeHourlyCost;
+      }
+
+      const rtoHours = resolveRtoHours(flow, financialNode, validatedProcess);
+      rtoHoursValues.push(rtoHours);
+
+      const incidentProbability = resolveIncidentProbabilityForNodeType(infraNode.type).probabilityAnnual;
+      if (incidentProbability > 0) {
+        incidentProbabilityValues.push(incidentProbability);
+      }
+    }
+
+    const hourlyDowntimeCost = flowDirectCost
+      ? roundMoney(flowDirectCost.totalCostPerHour)
+      : roundMoney(aggregatedHourlyCost);
+    const servicesCount = flow.flowNodes.length;
+    const averageRtoHours = Number(
+      (
+        rtoHoursValues.length > 0
+          ? rtoHoursValues.reduce((sum, value) => sum + value, 0) / rtoHoursValues.length
+          : resolveFallbackFlowRtoHours(flow)
+      ).toFixed(2),
+    );
+    const incidentProbabilityAnnual = Number(
+      (
+        incidentProbabilityValues.length > 0
+          ? incidentProbabilityValues.reduce((sum, value) => sum + value, 0) /
+            incidentProbabilityValues.length
+          : 0.03
+      ).toFixed(4),
+    );
+    const aleAnnual = roundMoney(
+      hourlyDowntimeCost * averageRtoHours * incidentProbabilityAnnual,
+    );
+
+    const estimable = hourlyDowntimeCost > 0;
+    const fallbackComputedCost =
+      estimable && !flowDirectCost
+        ? {
+            directCostPerHour: hourlyDowntimeCost,
+            slaPenaltyPerHour: 0,
+            indirectCostPerHour: 0,
+            totalCostPerHour: hourlyDowntimeCost,
+            peakCostPerHour: roundMoney(hourlyDowntimeCost * Math.max(1, Number(flow.peakHoursMultiplier || 1.5))),
+            method: 'services_aggregate',
+            confidence: inferSnapshotConfidence({
+              method: 'services_aggregate',
+              hasUserOverride: userOverrideCount > 0,
+              hasBiaValidated: biaValidatedCount > 0,
+              hasResourceEstimate: resourceEstimateCount > 0,
+              flowValidatedByUser: flow.validatedByUser,
+            }),
+            currency,
+          }
+        : null;
+
+    const method: FlowFinancialSnapshot['method'] = flowDirectCost
+      ? (flowDirectCost.method as FlowFinancialSnapshot['method'])
+      : estimable
+        ? 'services_aggregate'
+        : 'not_estimable';
+
+    const confidence = flowDirectCost
+      ? flowDirectCost.confidence
+      : inferSnapshotConfidence({
+          method,
+          hasUserOverride: userOverrideCount > 0,
+          hasBiaValidated: biaValidatedCount > 0,
+          hasResourceEstimate: resourceEstimateCount > 0,
+          flowValidatedByUser: flow.validatedByUser,
+        });
+
+    return {
+      flowId: flow.id,
+      hourlyDowntimeCost,
+      aleAnnual,
+      averageRtoHours,
+      incidentProbabilityAnnual,
+      servicesCount,
+      sourceBreakdown: {
+        userOverride: userOverrideCount,
+        biaValidated: biaValidatedCount,
+        resourceEstimate: resourceEstimateCount,
+      },
+      estimable,
+      message: estimable
+        ? null
+        : 'Impact financier non estimable - validez le BIA des services de ce flux',
+      computedCost: flowDirectCost ?? fallbackComputedCost,
       method,
       confidence,
       currency,
@@ -380,24 +730,18 @@ export class BusinessFlowFinancialEngineService {
     tenantId: string,
     flowId: string,
   ): Promise<BusinessFlow | null> {
-    const [flow, profile] = await Promise.all([
-      this.prismaClient.businessFlow.findFirst({
-        where: { id: flowId, tenantId },
-      }),
-      this.prismaClient.organizationProfile.findUnique({
-        where: { tenantId },
-        select: { customCurrency: true },
-      }),
-    ]);
-    if (!flow) return null;
+    const snapshot = await this.calculateFlowFinancialSnapshot({
+      tenantId,
+      flowId,
+      sourceCurrency: 'EUR',
+    });
+    if (!snapshot) return null;
 
-    const currency = normalizeCurrency(profile?.customCurrency);
-    const cost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow, currency, 'EUR');
     const updated = await this.prismaClient.businessFlow.update({
-      where: { id: flow.id },
+      where: { id: flowId },
       data: {
-        calculatedCostPerHour: cost ? cost.totalCostPerHour : null,
-        costCalculationMethod: cost ? cost.method : null,
+        calculatedCostPerHour: snapshot.estimable ? snapshot.hourlyDowntimeCost : null,
+        costCalculationMethod: snapshot.method,
       },
     });
     return updated;

@@ -411,13 +411,59 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
 async function serializeFlow(
   flow: Awaited<ReturnType<typeof prisma.businessFlow.findFirstOrThrow>>,
   currency: SupportedCurrency,
+  tenantId: string,
 ) {
-  const computed = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow, currency);
+  let snapshot = null;
+  try {
+    snapshot = await businessFlowFinancialEngine.calculateFlowFinancialSnapshot({
+      tenantId,
+      flowId: flow.id,
+      preferredCurrency: currency,
+      sourceCurrency: 'EUR',
+    });
+  } catch (error) {
+    appLogger.warn('business_flow.serialize.snapshot_failed', {
+      tenantId,
+      flowId: flow.id,
+      reason: error instanceof Error ? error.message : 'unknown_error',
+    });
+  }
+  const persistedComputed =
+    flow.calculatedCostPerHour != null && flow.calculatedCostPerHour > 0
+      ? {
+          directCostPerHour: flow.calculatedCostPerHour,
+          slaPenaltyPerHour: 0,
+          indirectCostPerHour: 0,
+          totalCostPerHour: flow.calculatedCostPerHour,
+          peakCostPerHour:
+            flow.calculatedCostPerHour * Math.max(1, Number(flow.peakHoursMultiplier || 1.5)),
+          method: flow.costCalculationMethod || 'services_aggregate',
+          confidence: flow.validatedByUser ? ('medium' as const) : ('low' as const),
+          currency,
+        }
+      : null;
+  const computed =
+    snapshot?.computedCost ??
+    BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow, currency) ??
+    persistedComputed;
+  const financialImpact = snapshot
+    ? {
+        hourlyDowntimeCost: snapshot.hourlyDowntimeCost,
+        aleAnnual: snapshot.aleAnnual,
+        averageRtoHours: snapshot.averageRtoHours,
+        incidentProbabilityAnnual: snapshot.incidentProbabilityAnnual,
+        servicesCount: snapshot.servicesCount,
+        sourceBreakdown: snapshot.sourceBreakdown,
+        estimable: snapshot.estimable,
+      }
+    : null;
   return {
     ...flow,
     computedCost: computed,
     currency,
     precisionBadge: flow.validatedByUser ? 'business_flow_validated' : 'business_flow_not_validated',
+    financialImpact,
+    financialImpactMessage: snapshot?.message ?? null,
   };
 }
 
@@ -470,7 +516,7 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
           where: { id: suggestion.flowId, tenantId },
           include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
         });
-        return flow ? serializeFlow(flow, currency) : null;
+        return flow ? serializeFlow(flow, currency, tenantId) : null;
       }),
     );
     const suggestionInsights = buildAISuggestionInsights({
@@ -567,7 +613,7 @@ router.post('/', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
       include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
     });
 
-    return res.status(201).json(await serializeFlow(persisted, currency));
+    return res.status(201).json(await serializeFlow(persisted, currency, tenantId));
   } catch (error) {
     appLogger.error('Error creating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -590,7 +636,7 @@ router.get('/', requireRole('READER'), async (req: TenantRequest, res) => {
       orderBy: { updatedAt: 'desc' },
     });
 
-    const result = await Promise.all(flows.map((flow) => serializeFlow(flow, currency)));
+    const result = await Promise.all(flows.map((flow) => serializeFlow(flow, currency, tenantId)));
     return res.json(result);
   } catch (error) {
     appLogger.error('Error listing business flows', error);
@@ -629,7 +675,7 @@ router.get('/:id', requireRole('READER'), async (req: TenantRequest, res) => {
     });
 
     if (!flow) return res.status(404).json({ error: 'Business flow not found' });
-    return res.json(await serializeFlow(flow, currency));
+    return res.json(await serializeFlow(flow, currency, tenantId));
   } catch (error) {
     appLogger.error('Error fetching business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -680,7 +726,7 @@ router.patch('/:id', requireRole('OPERATOR'), async (req: TenantRequest, res) =>
       include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
     });
 
-    return res.json(await serializeFlow(refreshed, currency));
+    return res.json(await serializeFlow(refreshed, currency, tenantId));
   } catch (error) {
     appLogger.error('Error updating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -730,7 +776,7 @@ router.post('/:id/validate', requireRole('OPERATOR'), async (req: TenantRequest,
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.json(await serializeFlow(updated, currency));
+    return res.json(await serializeFlow(updated, currency, tenantId));
   } catch (error) {
     appLogger.error('Error validating business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -856,6 +902,8 @@ router.post('/:id/nodes', requireRole('OPERATOR'), async (req: TenantRequest, re
       ),
     );
 
+    await businessFlowFinancialEngine.recalculateFlowComputedCost(tenantId, flowId);
+
     const updatedFlow = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
       include: {
@@ -871,7 +919,7 @@ router.post('/:id/nodes', requireRole('OPERATOR'), async (req: TenantRequest, re
     });
     if (!updatedFlow) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.status(201).json(await serializeFlow(updatedFlow, currency));
+    return res.status(201).json(await serializeFlow(updatedFlow, currency, tenantId));
   } catch (error) {
     appLogger.error('Error adding nodes to business flow', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -898,13 +946,15 @@ router.delete('/:id/nodes/:nodeId', requireRole('OPERATOR'), async (req: TenantR
     });
     if (deleted.count === 0) return res.status(404).json({ error: 'Node is not linked to this flow' });
 
+    await businessFlowFinancialEngine.recalculateFlowComputedCost(tenantId, flowId);
+
     const updated = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
       include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 
-    return res.json(await serializeFlow(updated, currency));
+    return res.json(await serializeFlow(updated, currency, tenantId));
   } catch (error) {
     appLogger.error('Error removing node from business flow', error);
     return res.status(500).json({ error: 'Internal server error' });

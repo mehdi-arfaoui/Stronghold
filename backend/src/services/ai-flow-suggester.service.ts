@@ -1,6 +1,7 @@
 import type { InfraEdge, InfraNode, OrganizationProfile, PrismaClient } from '@prisma/client';
 import prisma from '../prismaClient.js';
 import { appLogger } from '../utils/logger.js';
+import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 
 export type FlowSuggestionNode = {
   nodeId: string;
@@ -581,6 +582,7 @@ export class AIFlowSuggesterService {
     const validNodeIds = new Set(nodes.map((node) => node.id));
     const graphAdjacency = buildAdjacency(edges);
     const suggestions: FlowSuggestion[] = [];
+    const flowFinancialEngine = new BusinessFlowFinancialEngineService(this.prismaClient);
 
     for (const rawSuggestion of rawSuggestions) {
       const name = typeof rawSuggestion.name === 'string' ? rawSuggestion.name.trim() : '';
@@ -678,6 +680,15 @@ export class AIFlowSuggesterService {
           })),
         }),
       ]);
+      try {
+        await flowFinancialEngine.recalculateFlowComputedCost(tenantId, flow.id);
+      } catch (error) {
+        appLogger.warn('business_flow.ai_suggestion_financial_recalc_failed', {
+          tenantId,
+          flowId: flow.id,
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        });
+      }
 
       suggestions.push({
         flowId: flow.id,

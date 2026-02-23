@@ -1,6 +1,7 @@
 import type { InfraNode, Prisma, PrismaClient } from '@prisma/client';
 import prisma from '../prismaClient.js';
 import { appLogger } from '../utils/logger.js';
+import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 
 export type CloudFlowSuggestion = {
   flowId: string;
@@ -275,6 +276,7 @@ export class CloudEnrichmentService {
   }
 
   async enrichFromCloudData(tenantId: string): Promise<EnrichmentResult> {
+    const flowFinancialEngine = new BusinessFlowFinancialEngineService(this.prismaClient);
     const [nodes, edges, existingCloudFlows] = await Promise.all([
       this.prismaClient.infraNode.findMany({
         where: { tenantId },
@@ -410,6 +412,15 @@ export class CloudEnrichmentService {
           })),
         }),
       ]);
+      try {
+        await flowFinancialEngine.recalculateFlowComputedCost(tenantId, flow.id);
+      } catch (error) {
+        appLogger.warn('cloud.enrichment.financial_recalc_failed', {
+          tenantId,
+          flowId: flow.id,
+          reason: error instanceof Error ? error.message : 'unknown_error',
+        });
+      }
 
       suggestions.push({
         flowId: flow.id,

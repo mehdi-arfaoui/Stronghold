@@ -184,10 +184,11 @@ function applyScenario(graph: GraphInstance, scenario: SimulationScenario): stri
       return removeNodesByAZ(graph, params.az as string);
 
     case 'ransomware':
-      return removeNodesByTypeOrTag(
+      return removeNodesForRansomware(
         graph,
-        params.targetType as string,
-        params.targetTag as string | undefined
+        params.targetType as string | undefined,
+        params.targetTypes as unknown,
+        params.targetTag as string | undefined,
       );
 
     case 'database_failure':
@@ -208,6 +209,48 @@ function applyScenario(graph: GraphInstance, scenario: SimulationScenario): stri
     default:
       return [];
   }
+}
+
+function normalizeRansomwareTargetTypes(
+  targetType: string | undefined,
+  targetTypes: unknown,
+): string[] {
+  const normalized = new Set<string>();
+
+  if (typeof targetType === 'string' && targetType.trim().length > 0) {
+    normalized.add(targetType.trim().toUpperCase());
+  }
+
+  if (Array.isArray(targetTypes)) {
+    for (const entry of targetTypes) {
+      if (typeof entry !== 'string') continue;
+      const value = entry.trim().toUpperCase();
+      if (value.length > 0) {
+        normalized.add(value);
+      }
+    }
+  }
+
+  if (normalized.size > 0) {
+    return Array.from(normalized);
+  }
+
+  return ['DATABASE', 'OBJECT_STORAGE', 'FILE_STORAGE', 'VM'];
+}
+
+function removeNodesForRansomware(
+  graph: GraphInstance,
+  targetType: string | undefined,
+  targetTypes: unknown,
+  targetTag?: string,
+): string[] {
+  const initialTargets = normalizeRansomwareTargetTypes(targetType, targetTypes);
+  const impacted = removeNodesByTypesOrTag(graph, initialTargets, targetTag);
+  if (impacted.length > 0) return impacted;
+
+  // Fallback: if no explicit match, target the main data-bearing components.
+  const fallbackTargets = ['DATABASE', 'OBJECT_STORAGE', 'FILE_STORAGE', 'VM', 'APPLICATION', 'MICROSERVICE'];
+  return removeNodesByTypesOrTag(graph, fallbackTargets);
 }
 
 function removeNodesByRegion(graph: GraphInstance, region: string): string[] {
@@ -240,15 +283,24 @@ function removeNodesByType(graph: GraphInstance, type: string): string[] {
   return affected;
 }
 
-function removeNodesByTypeOrTag(
+function removeNodesByTypesOrTag(
   graph: GraphInstance,
-  targetType: string,
+  targetTypes: string[],
   targetTag?: string
 ): string[] {
   const affected: string[] = [];
+  const normalizedTypes = new Set(
+    targetTypes
+      .map((entry) => String(entry || '').trim().toUpperCase())
+      .filter((entry) => entry.length > 0),
+  );
+  if (normalizedTypes.size === 0) {
+    return affected;
+  }
+
   graph.forEachNode((nodeId: string, attrs: any) => {
     const a = attrs as InfraNodeAttrs;
-    const typeMatch = a.type === targetType;
+    const typeMatch = normalizedTypes.has(String(a.type || '').toUpperCase());
     const tagMatch = targetTag
       ? Object.values(a.tags || {}).some(v => v === targetTag)
       : true;

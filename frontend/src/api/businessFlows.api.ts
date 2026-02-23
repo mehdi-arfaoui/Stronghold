@@ -63,6 +63,20 @@ export interface BusinessFlow {
   mutualExclusionGroup: string | null;
   precisionBadge?: string;
   currency?: string;
+  financialImpact?: {
+    hourlyDowntimeCost: number;
+    aleAnnual: number;
+    averageRtoHours: number;
+    incidentProbabilityAnnual: number;
+    servicesCount: number;
+    sourceBreakdown: {
+      userOverride: number;
+      biaValidated: number;
+      resourceEstimate: number;
+    };
+    estimable: boolean;
+  } | null;
+  financialImpactMessage?: string | null;
   computedCost: FlowCost | null;
   flowNodes: BusinessFlowNode[];
   createdAt: string;
