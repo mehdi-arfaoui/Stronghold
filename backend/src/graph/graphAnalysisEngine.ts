@@ -16,6 +16,199 @@ import type {
 import { NodeType, EdgeType } from './types.js';
 import type { GraphInstance } from './graphService.js';
 import { getBlastRadius } from './graphService.js';
+import { isAnalyzableServiceNode } from './serviceClassification.js';
+
+function readBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return null;
+}
+
+function readNumber(value: unknown): number | null {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getMetadata(node: InfraNodeAttrs): Record<string, unknown> {
+  return node.metadata && typeof node.metadata === 'object'
+    ? (node.metadata as Record<string, unknown>)
+    : {};
+}
+
+function getReplicaCount(metadata: Record<string, unknown>): number {
+  return (
+    readNumber(metadata.readReplicaCount) ??
+    readNumber(metadata.readReplicas) ??
+    readNumber(metadata.replicaCount) ??
+    readNumber(metadata.replica_count) ??
+    readNumber(metadata.replicas) ??
+    0
+  );
+}
+
+function isMultiAzEnabled(metadata: Record<string, unknown>): boolean {
+  const fromMetadata =
+    readBoolean(metadata.multiAZ) ??
+    readBoolean(metadata.multiAz) ??
+    readBoolean(metadata.multi_az) ??
+    readBoolean(metadata.isMultiAZ);
+  return fromMetadata === true;
+}
+
+function getAvailabilityZone(node: InfraNodeAttrs): string | null {
+  if (typeof node.availabilityZone === 'string' && node.availabilityZone.trim().length > 0) {
+    return node.availabilityZone.trim();
+  }
+  const metadata = getMetadata(node);
+  return readString(metadata.availabilityZone) ?? readString(metadata.zone);
+}
+
+function severityFromBlastRadius(blastRadius: number, totalNodes: number): 'critical' | 'high' | 'medium' | 'low' {
+  const ratio = totalNodes > 0 ? blastRadius / totalNodes : 0;
+  if (ratio > 0.5) return 'critical';
+  if (ratio > 0.2) return 'high';
+  if (blastRadius > 5) return 'medium';
+  return 'low';
+}
+
+const severityOrder: Record<'critical' | 'high' | 'medium' | 'low', number> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+function upsertSpof(target: SPOFReport[], candidate: SPOFReport): void {
+  const index = target.findIndex((entry) => entry.nodeId === candidate.nodeId);
+  if (index < 0) {
+    target.push(candidate);
+    return;
+  }
+
+  const existing = target[index]!;
+  const mergedImpacted = Array.from(new Set([...existing.impactedServices, ...candidate.impactedServices]));
+  const stronger =
+    severityOrder[candidate.severity] > severityOrder[existing.severity] ||
+    candidate.blastRadius > existing.blastRadius;
+
+  target[index] = stronger
+    ? {
+        ...candidate,
+        impactedServices: mergedImpacted,
+      }
+    : {
+        ...existing,
+        impactedServices: mergedImpacted,
+      };
+}
+
+function isDynamoLikeDatabase(node: InfraNodeAttrs): boolean {
+  const metadata = getMetadata(node);
+  const engine = (readString(metadata.engine) || '').toLowerCase();
+  const sourceType = (readString(metadata.sourceType) || '').toLowerCase();
+  const name = (node.name || '').toLowerCase();
+
+  return (
+    engine.includes('dynamo') ||
+    sourceType.includes('dynamo') ||
+    name.includes('dynamo')
+  );
+}
+
+function getSourceType(node: InfraNodeAttrs): string {
+  const metadata = getMetadata(node);
+  return (readString(metadata.sourceType) || '').toLowerCase();
+}
+
+function getSource(node: InfraNodeAttrs): string {
+  const metadata = getMetadata(node);
+  return (
+    readString(metadata.source) ||
+    (typeof node.provider === 'string' ? node.provider : '')
+  ).toLowerCase();
+}
+
+function isS3LikeObjectStorage(node: InfraNodeAttrs): boolean {
+  if (node.type !== NodeType.OBJECT_STORAGE) return false;
+  const sourceType = getSourceType(node);
+  const source = getSource(node);
+  const name = (node.name || '').toLowerCase();
+
+  return (
+    sourceType.includes('s3') ||
+    source.includes('aws') ||
+    name.includes('s3') ||
+    name.includes('bucket')
+  );
+}
+
+function isManagedQueue(node: InfraNodeAttrs): boolean {
+  if (node.type !== NodeType.MESSAGE_QUEUE) return false;
+  const sourceType = getSourceType(node);
+  const source = getSource(node);
+  const name = (node.name || '').toLowerCase();
+
+  return (
+    sourceType.includes('sqs') ||
+    sourceType.includes('sns') ||
+    sourceType.includes('pubsub') ||
+    sourceType.includes('service-bus') ||
+    sourceType.includes('event-hub') ||
+    (sourceType.includes('topic') && source.includes('aws')) ||
+    source.includes('aws') ||
+    name.includes('sqs') ||
+    name.includes('sns')
+  );
+}
+
+function isSqsLikeQueue(node: InfraNodeAttrs): boolean {
+  if (node.type !== NodeType.MESSAGE_QUEUE) return false;
+  const sourceType = getSourceType(node);
+  const name = (node.name || '').toLowerCase();
+  return (
+    sourceType.includes('sqs') ||
+    sourceType.includes('queue') ||
+    (name.includes('queue') && !name.includes('topic'))
+  );
+}
+
+function hasDeadLetterQueue(metadata: Record<string, unknown>): boolean {
+  const directArn =
+    readString(metadata.deadLetterTargetArn) ??
+    readString(metadata.deadLetterQueueArn) ??
+    readString(metadata.dlqArn) ??
+    readString(metadata.dlq);
+  if (directArn) return true;
+
+  const redrivePolicy = metadata.redrivePolicy;
+  if (typeof redrivePolicy === 'string') {
+    const trimmed = redrivePolicy.trim();
+    return trimmed.length > 0 && trimmed !== '{}';
+  }
+  if (redrivePolicy && typeof redrivePolicy === 'object' && !Array.isArray(redrivePolicy)) {
+    return Object.keys(redrivePolicy as Record<string, unknown>).length > 0;
+  }
+
+  return false;
+}
+
+function isManagedServiceSpofExempt(node: InfraNodeAttrs): boolean {
+  if (node.type === NodeType.SERVERLESS) return true;
+  if (node.type === NodeType.DATABASE && isDynamoLikeDatabase(node)) return true;
+  if (isS3LikeObjectStorage(node)) return true;
+  if (isManagedQueue(node)) return true;
+  return false;
+}
 
 // =====================================================
 //  MAIN ANALYSIS
@@ -78,20 +271,14 @@ function detectSPOFs(graph: GraphInstance): SPOFReport[] {
   for (const nodeId of articulationPoints) {
     const blast = getBlastRadius(graph, nodeId);
     const attrs = graph.getNodeAttributes(nodeId) as InfraNodeAttrs;
+    if (!isAnalyzableServiceNode(attrs)) continue;
+    if (isManagedServiceSpofExempt(attrs)) continue;
 
-    let severity: 'critical' | 'high' | 'medium' | 'low';
-    const ratio = graph.order > 0 ? blast.length / graph.order : 0;
-
-    if (ratio > 0.5) severity = 'critical';
-    else if (ratio > 0.2) severity = 'high';
-    else if (blast.length > 5) severity = 'medium';
-    else severity = 'low';
-
-    spofs.push({
+    upsertSpof(spofs, {
       nodeId,
       nodeName: attrs.name,
       nodeType: attrs.type,
-      severity,
+      severity: severityFromBlastRadius(blast.length, graph.order),
       blastRadius: blast.length,
       impactedServices: blast.map(n => n.name),
       recommendation: generateSPOFRecommendation(attrs, blast.length),
@@ -101,9 +288,12 @@ function detectSPOFs(graph: GraphInstance): SPOFReport[] {
   // Also check high fan-in nodes that aren't articulation points
   graph.forEachNode((nodeId: string, attrs: any) => {
     const a = attrs as InfraNodeAttrs;
+    if (!isAnalyzableServiceNode(a)) return;
+    if (isManagedServiceSpofExempt(a)) return;
+
     const inDeg = graph.inDegree(nodeId);
     if (inDeg > 10 && !articulationPoints.has(nodeId)) {
-      spofs.push({
+      upsertSpof(spofs, {
         nodeId,
         nodeName: a.name,
         nodeType: a.type,
@@ -117,7 +307,126 @@ function detectSPOFs(graph: GraphInstance): SPOFReport[] {
     }
   });
 
+  for (const explicitSpof of detectExplicitServiceSpofs(graph)) {
+    upsertSpof(spofs, explicitSpof);
+  }
+
   return spofs.sort((a, b) => b.blastRadius - a.blastRadius);
+}
+
+function isEc2LikeVmNode(node: InfraNodeAttrs): boolean {
+  if (node.type !== NodeType.VM) return false;
+  if (!isAnalyzableServiceNode(node)) return false;
+
+  const metadata = getMetadata(node);
+  const sourceType = (readString(metadata.sourceType) || '').toLowerCase();
+
+  if (sourceType.includes('asg') || sourceType.includes('auto_scaling')) return false;
+  if (sourceType.includes('security_group') || sourceType.includes('route_table')) return false;
+  if (sourceType.includes('internet_gateway') || sourceType.includes('nat_gateway')) return false;
+
+  return true;
+}
+
+function hasAutoScaling(metadata: Record<string, unknown>): boolean {
+  const explicitAsg =
+    readString(metadata.autoScalingGroupName) ??
+    readString(metadata.asgName) ??
+    readString(metadata.autoScalingGroup);
+  return Boolean(explicitAsg);
+}
+
+function detectExplicitServiceSpofs(graph: GraphInstance): SPOFReport[] {
+  const spofs: SPOFReport[] = [];
+
+  const vmNodes: InfraNodeAttrs[] = [];
+  graph.forEachNode((_nodeId: string, attrs: any) => {
+    const node = attrs as InfraNodeAttrs;
+    if (isEc2LikeVmNode(node)) vmNodes.push(node);
+  });
+
+  const vmAzValues = vmNodes
+    .map((node) => getAvailabilityZone(node))
+    .filter((az): az is string => Boolean(az));
+  const vmAzSet = new Set(vmAzValues);
+  const vmSameAzRisk = vmNodes.length > 1 && vmAzSet.size === 1;
+
+  for (const node of vmNodes) {
+    const metadata = getMetadata(node);
+    if (hasAutoScaling(metadata)) continue;
+
+    const isSingleInstance = vmNodes.length === 1;
+    if (!isSingleInstance && !vmSameAzRisk) continue;
+
+    const blast = getBlastRadius(graph, node.id);
+    const recommendation = isSingleInstance
+      ? `Deploy at least one additional instance for ${node.name} in another availability zone and front it with a load balancer.`
+      : `Distribute ${node.name} workload across multiple availability zones to remove single-AZ dependency.`;
+
+    spofs.push({
+      nodeId: node.id,
+      nodeName: node.name,
+      nodeType: node.type,
+      severity: blast.length >= 3 ? 'critical' : 'high',
+      blastRadius: blast.length,
+      impactedServices: blast.map((item) => item.name),
+      recommendation,
+    });
+  }
+
+  graph.forEachNode((nodeId: string, attrs: any) => {
+    const node = attrs as InfraNodeAttrs;
+    if (!isAnalyzableServiceNode(node)) return;
+
+    const metadata = getMetadata(node);
+
+    if (node.type === NodeType.DATABASE) {
+      if (isDynamoLikeDatabase(node)) return;
+
+      const multiAz = isMultiAzEnabled(metadata);
+      const replicaCount = getReplicaCount(metadata);
+      const hasReplica = replicaCount > 0;
+      if (!multiAz && !hasReplica) {
+        const blast = getBlastRadius(graph, nodeId);
+        spofs.push({
+          nodeId,
+          nodeName: node.name,
+          nodeType: node.type,
+          severity: blast.length >= 3 ? 'critical' : 'high',
+          blastRadius: blast.length,
+          impactedServices: blast.map((item) => item.name),
+          recommendation: `Enable Multi-AZ and add at least one read replica for ${node.name}.`,
+        });
+      }
+      return;
+    }
+
+    if (node.type === NodeType.CACHE) {
+      const numCacheNodes =
+        readNumber(metadata.numCacheNodes) ??
+        readNumber(metadata.num_cache_nodes) ??
+        readNumber(metadata.cacheNodes);
+      const replicaCount = getReplicaCount(metadata);
+      const replicationGroupId = readString(metadata.replicationGroupId) ?? readString(metadata.replicationGroup);
+      const singleNode = numCacheNodes != null ? numCacheNodes <= 1 : replicaCount <= 0;
+      const missingReplication = !replicationGroupId && replicaCount <= 0;
+
+      if (singleNode || missingReplication) {
+        const blast = getBlastRadius(graph, nodeId);
+        spofs.push({
+          nodeId,
+          nodeName: node.name,
+          nodeType: node.type,
+          severity: blast.length >= 3 ? 'critical' : 'high',
+          blastRadius: blast.length,
+          impactedServices: blast.map((item) => item.name),
+          recommendation: `Enable replication group / cluster mode for ${node.name} with at least 2 cache nodes.`,
+        });
+      }
+    }
+  });
+
+  return spofs;
 }
 
 function findArticulationPoints(graph: GraphInstance): Set<string> {
@@ -306,12 +615,16 @@ function getTypeWeight(type: string): number {
 
 function getNodeRedundancyScore(nodeId: string, graph: GraphInstance): number {
   const attrs = graph.getNodeAttributes(nodeId) as InfraNodeAttrs;
+  const metadata = getMetadata(attrs);
   let score = 100;
 
   // No Multi-AZ for DB/Cache
   if ([NodeType.DATABASE, NodeType.CACHE].includes(attrs.type as NodeType)) {
-    if (!attrs.metadata?.isMultiAZ) score -= 25;
-    if ((attrs.metadata?.replicaCount as number || 0) === 0) score -= 25;
+    const isDynamo = attrs.type === NodeType.DATABASE && isDynamoLikeDatabase(attrs);
+    if (!isDynamo) {
+      if (!isMultiAzEnabled(metadata)) score -= 25;
+      if (getReplicaCount(metadata) === 0) score -= 25;
+    }
   }
 
   // No load balancer in front
@@ -323,12 +636,33 @@ function getNodeRedundancyScore(nodeId: string, graph: GraphInstance): number {
     if (!hasLB) score -= 25;
   }
 
+  if (isEc2LikeVmNode(attrs)) {
+    const vmNodes: InfraNodeAttrs[] = [];
+    graph.forEachNode((_id: string, nodeAttrs: any) => {
+      const vmNode = nodeAttrs as InfraNodeAttrs;
+      if (isEc2LikeVmNode(vmNode) && !hasAutoScaling(getMetadata(vmNode))) {
+        vmNodes.push(vmNode);
+      }
+    });
+
+    const vmAzSet = new Set(
+      vmNodes
+        .map((node) => getAvailabilityZone(node))
+        .filter((az): az is string => Boolean(az))
+    );
+    if (vmNodes.length === 1) score -= 25;
+    else if (vmNodes.length > 1 && vmAzSet.size === 1) score -= 20;
+  }
+
   // Check backup edges
   const hasBackup = graph.outEdges(nodeId).some((edgeKey: string) => {
     const edgeAttrs = graph.getEdgeAttributes(edgeKey) as InfraEdgeAttrs;
     return edgeAttrs.type === EdgeType.BACKS_UP_TO;
   });
-  if (!hasBackup && [NodeType.DATABASE, NodeType.OBJECT_STORAGE].includes(attrs.type as NodeType)) {
+  const shouldCheckBackup =
+    attrs.type === NodeType.DATABASE ||
+    (attrs.type === NodeType.OBJECT_STORAGE && !isS3LikeObjectStorage(attrs));
+  if (!hasBackup && shouldCheckBackup) {
     score -= 25;
   }
 
@@ -341,14 +675,36 @@ function getNodeRedundancyScore(nodeId: string, graph: GraphInstance): number {
 
 function analyzeRedundancy(graph: GraphInstance): RedundancyIssue[] {
   const issues: RedundancyIssue[] = [];
+  const vmNodes: InfraNodeAttrs[] = [];
+
+  graph.forEachNode((_nodeId: string, attrs: any) => {
+    const node = attrs as InfraNodeAttrs;
+    if (isEc2LikeVmNode(node) && !hasAutoScaling(getMetadata(node))) {
+      vmNodes.push(node);
+    }
+  });
+  const vmAzSet = new Set(
+    vmNodes
+      .map((node) => getAvailabilityZone(node))
+      .filter((az): az is string => Boolean(az))
+  );
+  const vmSingleInstance = vmNodes.length === 1;
+  const vmSingleAzDistribution = vmNodes.length > 1 && vmAzSet.size === 1;
 
   graph.forEachNode((nodeId: string, attrs: any) => {
     const a = attrs as InfraNodeAttrs;
+    if (!isAnalyzableServiceNode(a)) return;
+
+    const metadata = getMetadata(a);
     const checks: RedundancyCheck[] = [];
+    const isDynamo = a.type === NodeType.DATABASE && isDynamoLikeDatabase(a);
 
     // Multi-AZ check
-    if (!a.metadata?.isMultiAZ &&
-      [NodeType.DATABASE, NodeType.CACHE].includes(a.type as NodeType)) {
+    if (
+      !isDynamo &&
+      [NodeType.DATABASE, NodeType.CACHE].includes(a.type as NodeType) &&
+      !isMultiAzEnabled(metadata)
+    ) {
       checks.push({
         check: 'multi_az',
         passed: false,
@@ -358,13 +714,33 @@ function analyzeRedundancy(graph: GraphInstance): RedundancyIssue[] {
     }
 
     // Read replicas
-    if (a.type === NodeType.DATABASE && ((a.metadata?.replicaCount as number) || 0) === 0) {
+    if (!isDynamo && a.type === NodeType.DATABASE && getReplicaCount(metadata) === 0) {
       checks.push({
         check: 'read_replicas',
         passed: false,
         recommendation: `Add at least one read replica for ${a.name}`,
         impact: 'high',
       });
+    }
+
+    // Cache replication
+    if (a.type === NodeType.CACHE) {
+      const numCacheNodes =
+        readNumber(metadata.numCacheNodes) ??
+        readNumber(metadata.num_cache_nodes) ??
+        readNumber(metadata.cacheNodes);
+      const replicaCount = getReplicaCount(metadata);
+      const replicationGroupId = readString(metadata.replicationGroupId) ?? readString(metadata.replicationGroup);
+      const singleNode = numCacheNodes != null ? numCacheNodes <= 1 : replicaCount <= 0;
+      const missingReplication = !replicationGroupId && replicaCount <= 0;
+      if (singleNode || missingReplication) {
+        checks.push({
+          check: 'cache_replication',
+          passed: false,
+          recommendation: `Enable replication group / cluster mode for ${a.name}`,
+          impact: 'high',
+        });
+      }
     }
 
     // Load balancer
@@ -378,6 +754,25 @@ function analyzeRedundancy(graph: GraphInstance): RedundancyIssue[] {
           passed: false,
           recommendation: `${a.name} is not behind a load balancer`,
           impact: 'medium',
+        });
+      }
+    }
+
+    // EC2 distribution checks
+    if (isEc2LikeVmNode(a) && !hasAutoScaling(metadata)) {
+      if (vmSingleInstance) {
+        checks.push({
+          check: 'single_instance',
+          passed: false,
+          recommendation: `${a.name} is a single EC2 instance without ASG`,
+          impact: 'critical',
+        });
+      } else if (vmSingleAzDistribution) {
+        checks.push({
+          check: 'single_az_distribution',
+          passed: false,
+          recommendation: `${a.name} fleet is concentrated in one availability zone`,
+          impact: 'high',
         });
       }
     }
@@ -400,11 +795,27 @@ function analyzeRedundancy(graph: GraphInstance): RedundancyIssue[] {
       }
     }
 
+    // Managed queue reliability warning (not a SPOF by itself)
+    if (isSqsLikeQueue(a) && !hasDeadLetterQueue(metadata)) {
+      checks.push({
+        check: 'dlq',
+        passed: false,
+        recommendation: `Configure a dead-letter queue for ${a.name}`,
+        impact: 'low',
+      });
+    }
+
     // Backup check
     const hasBackup = graph.outEdges(nodeId).some(edgeKey => {
       return (graph.getEdgeAttributes(edgeKey) as InfraEdgeAttrs).type === EdgeType.BACKS_UP_TO;
     });
-    if (!hasBackup && [NodeType.DATABASE, NodeType.OBJECT_STORAGE].includes(a.type as NodeType)) {
+    const shouldCheckBackup =
+      (!isDynamo && a.type === NodeType.DATABASE) ||
+      (a.type === NodeType.OBJECT_STORAGE && !isS3LikeObjectStorage(a));
+    if (
+      !hasBackup &&
+      shouldCheckBackup
+    ) {
       checks.push({
         check: 'backup',
         passed: false,

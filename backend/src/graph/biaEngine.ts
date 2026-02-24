@@ -14,6 +14,7 @@ import type {
 import { NodeType } from './types.js';
 import type { GraphInstance } from './graphService.js';
 import { getSubgraph } from './graphService.js';
+import { isAnalyzableServiceNode } from './serviceClassification.js';
 
 // =====================================================
 //  MAIN BIA GENERATION
@@ -100,35 +101,10 @@ function identifyBusinessServices(graph: GraphInstance): InfraNodeAttrs[] {
 
   graph.forEachNode((_nodeId: string, attrs: any) => {
     const a = attrs as InfraNodeAttrs;
-    // Business services: Applications, API Gateways, Load Balancers, Microservices
-    // that have dependents (they serve something)
-    if ([
-      NodeType.APPLICATION,
-      NodeType.MICROSERVICE,
-      NodeType.API_GATEWAY,
-      NodeType.LOAD_BALANCER,
-      NodeType.SERVERLESS,
-    ].includes(a.type as NodeType)) {
-      services.push(a);
+    if (isAnalyzableServiceNode(a)) {
+      services.push(attrs as InfraNodeAttrs);
     }
   });
-
-  // If no application-type nodes, include all leaf nodes (nodes with in-edges but no out-edges)
-  if (services.length === 0) {
-    graph.forEachNode((_nodeId: string, attrs: any) => {
-      const a = attrs as InfraNodeAttrs;
-      if (graph.inDegree(a.id) === 0 && graph.outDegree(a.id) > 0) {
-        services.push(a);
-      }
-    });
-  }
-
-  // Fallback: return all nodes
-  if (services.length === 0) {
-    graph.forEachNode((_nodeId: string, attrs: any) => {
-      services.push(attrs as InfraNodeAttrs);
-    });
-  }
 
   return services;
 }

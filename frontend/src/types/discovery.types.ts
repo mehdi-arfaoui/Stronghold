@@ -24,6 +24,7 @@ export interface KubernetesProviderConfig {
 }
 
 export type ScanJobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type ScanAdapterStatus = ScanJobStatus | 'skipped';
 
 export interface ScanJob {
   id: string;
@@ -33,16 +34,20 @@ export interface ScanJob {
   nodesFound: number;
   edgesFound: number;
   inferredEdges: number;
-  startedAt: string;
-  completedAt?: string;
+  startedAt: string | null;
+  completedAt?: string | null;
   error?: string;
+  scannedProviders?: string[];
+  ignoredProviders?: Array<{ provider: string; reason: string }>;
+  failedProviders?: string[];
+  warnings?: string[];
 }
 
 export interface AdapterProgress {
   adapter: string;
   provider: string;
   region?: string;
-  status: ScanJobStatus;
+  status: ScanAdapterStatus;
   resourcesFound: number;
   error?: string;
 }

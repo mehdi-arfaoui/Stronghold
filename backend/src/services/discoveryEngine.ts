@@ -250,44 +250,60 @@ function hasProvider(target: string, providers: string[]) {
 }
 
 async function collectDiscoveryData(context: DiscoveryRunContext) {
-  const results: Array<Promise<{
-    resources: DiscoveredResource[];
-    flows: DiscoveredFlow[];
-    warnings: string[];
-  }>> = [];
+  const tasks: Array<{
+    label: string;
+    run: () => Promise<{
+      resources: DiscoveredResource[];
+      flows: DiscoveredFlow[];
+      warnings: string[];
+    }>;
+  }> = [];
+
+  const registerTask = (
+    label: string,
+    run: () => Promise<{
+      resources: DiscoveredResource[];
+      flows: DiscoveredFlow[];
+      warnings: string[];
+    }>
+  ) => {
+    tasks.push({ label, run });
+  };
 
   if (context.ipRanges.length > 0) {
-    results.push(scanNetwork(context.ipRanges, context.credentials));
+    registerTask("network", () => scanNetwork(context.ipRanges, context.credentials));
   }
 
-  results.push(scanHyperV(context.credentials));
-  results.push(scanVmware(context.credentials));
-  results.push(scanKubernetes(context.credentials));
-  results.push(scanFlows(context.credentials));
+  registerTask("hyperv", () => scanHyperV(context.credentials));
+  registerTask("vmware", () => scanVmware(context.credentials));
+  registerTask("kubernetes", () => scanKubernetes(context.credentials));
+  registerTask("flows", () => scanFlows(context.credentials));
 
   if (hasProvider("aws", context.cloudProviders)) {
-    results.push(scanAws(context.credentials));
+    registerTask("aws", () => scanAws(context.credentials));
   }
   if (hasProvider("azure", context.cloudProviders)) {
-    results.push(scanAzure(context.credentials));
+    registerTask("azure", () => scanAzure(context.credentials));
   }
   if (hasProvider("gcp", context.cloudProviders)) {
-    results.push(scanGcp(context.credentials));
+    registerTask("gcp", () => scanGcp(context.credentials));
   }
 
-  const settled = await Promise.allSettled(results);
+  const settled = await Promise.allSettled(tasks.map((task) => task.run()));
   const resources: DiscoveredResource[] = [];
   const flows: DiscoveredFlow[] = [];
   const warnings: string[] = [];
 
-  settled.forEach((entry) => {
+  settled.forEach((entry, index) => {
+    const task = tasks[index];
+    if (!task) return;
     if (entry.status === "fulfilled") {
       resources.push(...entry.value.resources);
       flows.push(...entry.value.flows);
       warnings.push(...entry.value.warnings);
     } else {
       const message = entry.reason instanceof Error ? entry.reason.message : "Connector error";
-      warnings.push(message);
+      warnings.push(`${task.label}: ${message}`);
     }
   });
 

@@ -474,7 +474,16 @@ async function scanAwsRegion(
           type: "EC2",
           ip: instance.PrivateIpAddress || null,
           hostname: instance.PrivateDnsName || null,
-          metadata: { state: instance.State?.Name, instanceType: instance.InstanceType, region },
+          metadata: {
+            state: instance.State?.Name,
+            instanceType: instance.InstanceType,
+            region,
+            availabilityZone: instance.Placement?.AvailabilityZone,
+            subnetId: instance.SubnetId,
+            vpcId: instance.VpcId,
+            architecture: instance.Architecture,
+            platformDetails: instance.PlatformDetails,
+          },
         })
       );
     });
@@ -490,16 +499,34 @@ async function scanAwsRegion(
       const existing = new Set(resource.tags || []);
       existing.add(`${tag.Key}:${tag.Value ?? ""}`);
       resource.tags = Array.from(existing);
+      resource.metadata = {
+        ...(resource.metadata || {}),
+        awsTags: {
+          ...((resource.metadata as Record<string, unknown> | null)?.awsTags as Record<string, string> | undefined),
+          [tag.Key]: tag.Value ?? "",
+        },
+      };
     });
   }
 
   // Persist structured business tags in metadata for downstream enrichment.
   for (const resource of resources) {
     const businessTags = toBusinessTagMap(resource.tags || []);
-    if (Object.keys(businessTags).length === 0) continue;
+    const metadata = (resource.metadata && typeof resource.metadata === "object"
+      ? (resource.metadata as Record<string, unknown>)
+      : {}) as Record<string, unknown>;
+    const awsTags =
+      metadata.awsTags && typeof metadata.awsTags === "object" && !Array.isArray(metadata.awsTags)
+        ? (metadata.awsTags as Record<string, string>)
+        : {};
+    const autoScalingGroupName =
+      typeof awsTags["aws:autoscaling:groupName"] === "string"
+        ? awsTags["aws:autoscaling:groupName"]
+        : undefined;
     resource.metadata = {
-      ...(resource.metadata || {}),
-      businessTags,
+      ...metadata,
+      ...(autoScalingGroupName ? { autoScalingGroupName } : {}),
+      ...(Object.keys(businessTags).length > 0 ? { businessTags } : {}),
     };
   }
 
@@ -515,7 +542,18 @@ async function scanAwsRegion(
         kind: "infra",
         type: "RDS",
         ip: db.Endpoint?.Address || null,
-        metadata: { engine: db.Engine, status: db.DBInstanceStatus, region },
+        metadata: {
+          engine: db.Engine,
+          status: db.DBInstanceStatus,
+          region,
+          multiAz: Boolean(db.MultiAZ),
+          multi_az: Boolean(db.MultiAZ),
+          isMultiAZ: Boolean(db.MultiAZ),
+          readReplicaCount: db.ReadReplicaDBInstanceIdentifiers?.length || 0,
+          replicaCount: db.ReadReplicaDBInstanceIdentifiers?.length || 0,
+          publiclyAccessible: db.PubliclyAccessible,
+          availabilityZone: db.AvailabilityZone,
+        },
       })
     );
 

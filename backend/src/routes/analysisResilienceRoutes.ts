@@ -258,16 +258,73 @@ router.get('/redundancy-issues', async (req: TenantRequest, res) => {
     }
 
     const report = latest.report as any;
-    const issues = (report.redundancyIssues || []).map((issue: any) => ({
-      nodeId: issue.nodeId,
-      nodeName: issue.nodeName,
-      nodeType: issue.nodeType,
-      redundancyScore: issue.redundancyScore ?? 0,
-      multiAZ: issue.failedChecks?.some((c: any) => c.check === 'no_multi_az') === false,
-      replicas: 0,
-      hasBackup: issue.failedChecks?.some((c: any) => c.check === 'no_backup') === false,
-      recommendations: issue.failedChecks?.map((c: any) => c.recommendation || c.check) || [],
-    }));
+    const rawIssues = Array.isArray(report.redundancyIssues) ? report.redundancyIssues : [];
+    const issueNodeIds = rawIssues
+      .map((issue: any) => issue?.nodeId)
+      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+
+    const infraNodes = issueNodeIds.length > 0
+      ? await prisma.infraNode.findMany({
+          where: { tenantId, id: { in: issueNodeIds } },
+          select: { id: true, metadata: true },
+        })
+      : [];
+
+    const metadataByNodeId = new Map<string, Record<string, unknown>>();
+    for (const node of infraNodes) {
+      if (node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)) {
+        metadataByNodeId.set(node.id, node.metadata as Record<string, unknown>);
+      }
+    }
+
+    const readBoolean = (value: unknown): boolean | null => {
+      if (typeof value === 'boolean') return value;
+      if (typeof value === 'string') {
+        const normalized = value.trim().toLowerCase();
+        if (normalized === 'true') return true;
+        if (normalized === 'false') return false;
+      }
+      return null;
+    };
+
+    const readNumber = (value: unknown): number | null => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const issues = rawIssues.map((issue: any) => {
+      const failedChecks = Array.isArray(issue?.failedChecks) ? issue.failedChecks : [];
+      const hasFailedCheck = (...names: string[]) =>
+        failedChecks.some((check: any) => names.includes(String(check?.check || '')));
+      const metadata = metadataByNodeId.get(issue.nodeId) || {};
+
+      const metadataMultiAz =
+        readBoolean(metadata.multiAZ) ??
+        readBoolean(metadata.multiAz) ??
+        readBoolean(metadata.multi_az) ??
+        readBoolean(metadata.isMultiAZ);
+
+      const replicas =
+        readNumber(metadata.readReplicaCount) ??
+        readNumber(metadata.readReplicas) ??
+        readNumber(metadata.replicaCount) ??
+        readNumber(metadata.replica_count) ??
+        readNumber(metadata.replicas) ??
+        readNumber(metadata.numCacheNodes) ??
+        readNumber(metadata.num_cache_nodes) ??
+        0;
+
+      return {
+        nodeId: issue.nodeId,
+        nodeName: issue.nodeName,
+        nodeType: issue.nodeType,
+        redundancyScore: issue.redundancyScore ?? 0,
+        multiAZ: hasFailedCheck('multi_az', 'no_multi_az') ? false : (metadataMultiAz ?? true),
+        replicas: Math.max(0, Math.floor(replicas)),
+        hasBackup: hasFailedCheck('backup', 'no_backup') ? false : true,
+        recommendations: failedChecks.map((c: any) => c?.recommendation || c?.check).filter(Boolean),
+      };
+    });
     return res.json(issues);
   } catch (error) {
     appLogger.error('Error fetching redundancy issues:', error);

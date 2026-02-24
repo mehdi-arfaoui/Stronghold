@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, AlertTriangle, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -21,6 +21,10 @@ import { useDiscoveryStore } from '@/stores/discovery.store';
 import { discoveryApi } from '@/api/discovery.api';
 import { businessFlowsApi } from '@/api/businessFlows.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import {
+  buildCloudProviderScanPayload,
+  loadCloudProviderConfigs,
+} from '@/lib/cloudProviderConfigs';
 import { cn } from '@/lib/utils';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
 import type { ScanHealthProvider, ScanHealthIssue } from '@/types/discovery.types';
@@ -45,6 +49,7 @@ function formatMoneyCompact(value: number): string {
 
 export function DiscoveryPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const tenantScope = getCredentialScopeKey();
   const [searchParams] = useSearchParams();
   const { nodes, edges, allNodes, allEdges, isLoading: graphLoading, availableTypes, availableProviders, availableRegions } = useGraph();
@@ -56,6 +61,12 @@ export function DiscoveryPage() {
   const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>('auto');
   const [showMiniMap, setShowMiniMap] = useState(false);
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
+  const cloudProviderConfigs = useMemo(() => loadCloudProviderConfigs(tenantScope), [tenantScope]);
+  const cloudScanProviders = useMemo(
+    () => buildCloudProviderScanPayload(cloudProviderConfigs),
+    [cloudProviderConfigs],
+  );
+  const hasCloudProvidersConfigured = cloudScanProviders.length > 0;
 
   useDiscovery(scanJobId ?? undefined);
 
@@ -195,12 +206,23 @@ export function DiscoveryPage() {
   }, [searchParams, setSelectedNode]);
 
   const launchScanMutation = useMutation({
-    mutationFn: () => discoveryApi.launchScan({ providers: [] }),
+    mutationFn: () => {
+      if (cloudScanProviders.length === 0) {
+        throw new Error('Aucun provider cloud configure');
+      }
+      return discoveryApi.launchScan({
+        providers: cloudScanProviders,
+        options: { inferDependencies: true },
+      });
+    },
     onSuccess: (res) => {
       setScanJobId(res.data.jobId);
       toast.success('Scan lance');
     },
-    onError: () => toast.error('Erreur lors du lancement du scan'),
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Erreur lors du lancement du scan';
+      toast.error(message);
+    },
   });
 
   const confirmEdgeMutation = useMutation({
@@ -265,6 +287,7 @@ export function DiscoveryPage() {
 
   // Scanning phase
   if (isScanning && currentJob) {
+    const adapters = currentJob.adapters || [];
     return (
       <div className="space-y-6">
         <Card>
@@ -272,11 +295,11 @@ export function DiscoveryPage() {
             <CardTitle className="flex items-center gap-2">
               <Loader2 className="h-5 w-5 animate-spin" />
               Scan en cours...
-              ({currentJob.adapters.filter((a) => a.status === 'completed').length}/{currentJob.adapters.length} adapters)
+              ({adapters.filter((a) => a.status === 'completed').length}/{adapters.length} adapters)
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {currentJob.adapters.map((adapter) => (
+            {adapters.map((adapter) => (
               <div key={adapter.adapter} className="flex items-center gap-3">
                 {adapter.status === 'completed' ? (
                   <Check className="h-4 w-4 text-resilience-high" />
@@ -284,6 +307,8 @@ export function DiscoveryPage() {
                   <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 ) : adapter.status === 'failed' ? (
                   <AlertTriangle className="h-4 w-4 text-severity-critical" />
+                ) : adapter.status === 'skipped' ? (
+                  <div className="h-4 w-4 rounded-full border border-muted-foreground/60 bg-muted" />
                 ) : (
                   <div className="h-4 w-4 rounded-full border-2" />
                 )}
@@ -324,10 +349,20 @@ export function DiscoveryPage() {
   if (allNodes.length === 0) {
     return (
       <EmptyState
-        title="Aucune infrastructure decouverte"
-        description="Lancez un scan pour decouvrir automatiquement votre infrastructure."
-        actionLabel="Lancer le scan"
-        onAction={() => launchScanMutation.mutate()}
+        title={hasCloudProvidersConfigured ? 'Aucune infrastructure decouverte' : 'Aucun provider cloud configure'}
+        description={
+          hasCloudProvidersConfigured
+            ? 'Lancez un scan pour decouvrir automatiquement votre infrastructure.'
+            : 'Configurez au moins un provider cloud pour lancer la decouverte.'
+        }
+        actionLabel={hasCloudProvidersConfigured ? 'Lancer un scan' : 'Configurer un provider'}
+        onAction={() => {
+          if (hasCloudProvidersConfigured) {
+            launchScanMutation.mutate();
+            return;
+          }
+          navigate('/settings?tab=cloud');
+        }}
       />
     );
   }
@@ -496,9 +531,15 @@ export function DiscoveryPage() {
             <Badge variant="secondary">{inferredCount} dependances inferees a valider</Badge>
           )}
         </div>
-        <Button onClick={() => launchScanMutation.mutate()} disabled={launchScanMutation.isPending}>
-          Relancer le scan
-        </Button>
+        {hasCloudProvidersConfigured ? (
+          <Button onClick={() => launchScanMutation.mutate()} disabled={launchScanMutation.isPending}>
+            Relancer le scan
+          </Button>
+        ) : (
+          <Button variant="outline" onClick={() => navigate('/settings?tab=cloud')}>
+            Configurer un provider
+          </Button>
+        )}
       </div>
     </div>
   );

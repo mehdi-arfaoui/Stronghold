@@ -401,6 +401,7 @@ const buildReadinessReport = async (): Promise<{
 
 const app = express();
 const globalExceptionFilter = new GlobalExceptionFilter();
+app.set("trust proxy", 1);
 
 app.use(
   helmet({
@@ -609,6 +610,7 @@ const routes = [
   { path: "/risks-resilience", handler: riskResilienceRoutes, name: "riskResilienceRoutes" },
   { path: "/recommendations/landing-zone", handler: landingZoneResilienceRoutes, name: "landingZoneResilienceRoutes" },
   { path: "/discovery-resilience", handler: discoveryResilienceRoutes, name: "discoveryResilienceRoutes" },
+  { path: "/api/discovery-resilience", handler: discoveryResilienceRoutes, name: "discoveryResilienceRoutesApi" },
   { path: "/reports", handler: reportRoutes, name: "reportRoutes" },
   { path: "/exercises-resilience", handler: exerciseResilienceRoutes, name: "exerciseResilienceRoutes" },
   { path: "/integrations", handler: integrationsRoutes, name: "integrationsRoutes" },

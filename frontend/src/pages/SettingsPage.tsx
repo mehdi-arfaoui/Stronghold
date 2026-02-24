@@ -1,4 +1,5 @@
-﻿import { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Building2, Settings } from 'lucide-react';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { IntegrationsHub } from '@/components/integrations/IntegrationsHub';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
+import { CloudProvidersSettings } from '@/components/settings/CloudProvidersSettings';
 import { useUIStore } from '@/stores/ui.store';
 import { financialApi } from '@/api/financial.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
@@ -43,12 +45,20 @@ const VERTICAL_OPTIONS = [
 ];
 
 type EditableFieldSources = Partial<Record<FinancialFieldKey, FinancialFieldSource>>;
+type SettingsTab = 'general' | 'finance' | 'cloud' | 'integrations';
+
+function resolveSettingsTab(value: string | null): SettingsTab {
+  if (value === 'finance' || value === 'cloud' || value === 'integrations') return value;
+  return 'general';
+}
 
 export function SettingsPage() {
   const queryClient = useQueryClient();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tenantScope = getCredentialScopeKey();
   const { theme, toggleTheme } = useUIStore();
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<SettingsTab>(() => resolveSettingsTab(searchParams.get('tab')));
 
   const profileQuery = useQuery({
     queryKey: ['financial-org-profile', tenantScope],
@@ -92,6 +102,19 @@ export function SettingsPage() {
       hourlyDowntimeCost: mapApiSourceToEditableSource(profile.fieldSources?.hourlyDowntimeCost?.source),
     });
   }, [profileQuery.data]);
+
+  useEffect(() => {
+    const tabFromQuery = resolveSettingsTab(searchParams.get('tab'));
+    setActiveTab((current) => (current === tabFromQuery ? current : tabFromQuery));
+  }, [searchParams]);
+
+  const handleTabChange = (nextTab: string) => {
+    const resolved = resolveSettingsTab(nextTab);
+    setActiveTab(resolved);
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', resolved);
+    setSearchParams(nextParams, { replace: true });
+  };
 
   const renderFieldSourceBadge = (field: FinancialFieldKey) => {
     const source = fieldSources[field];
@@ -167,10 +190,11 @@ export function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <Tabs defaultValue="general">
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
           <TabsTrigger value="general">General</TabsTrigger>
           <TabsTrigger value="finance">Finance</TabsTrigger>
+          <TabsTrigger value="cloud">Cloud</TabsTrigger>
           <TabsTrigger value="integrations">Integrations</TabsTrigger>
         </TabsList>
 
@@ -463,6 +487,10 @@ export function SettingsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="cloud">
+          <CloudProvidersSettings tenantScope={tenantScope} />
         </TabsContent>
 
         <TabsContent value="integrations">

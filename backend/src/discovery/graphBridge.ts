@@ -39,6 +39,19 @@ function mapResourceTypeToNodeType(source: string, type: string, metadata?: Reco
     if (lower.includes('vpc')) return NodeType.VPC;
     if (lower.includes('subnet')) return NodeType.SUBNET;
     if (lower.includes('dynamodb')) return NodeType.DATABASE;
+    if (lower.includes('security_group') || lower.includes('security-group') || lower === 'sg') return NodeType.FIREWALL;
+    if (
+      lower.includes('route_table') ||
+      lower.includes('route-table') ||
+      lower.includes('internet_gateway') ||
+      lower.includes('internet-gateway') ||
+      lower.includes('nat_gateway') ||
+      lower.includes('nat-gateway') ||
+      lower.includes('network_acl') ||
+      lower.includes('network-acl') ||
+      lower.includes('transit_gateway') ||
+      lower.includes('transit-gateway')
+    ) return NodeType.NETWORK_DEVICE;
     if (lower.includes('asg')) return NodeType.VM;
     return NodeType.VM;
   }
@@ -160,9 +173,11 @@ export function transformToScanResult(
     const tags: Record<string, string> = {};
     if (resource.tags) {
       for (const tag of resource.tags) {
-        const parts = tag.split(':');
-        if (parts.length === 2) {
-          tags[parts[0]!] = parts[1]!;
+        const separator = tag.lastIndexOf(':');
+        if (separator > 0 && separator < tag.length - 1) {
+          const key = tag.slice(0, separator);
+          const value = tag.slice(separator + 1);
+          tags[key] = value;
         } else {
           tags[tag] = 'true';
         }
@@ -181,11 +196,22 @@ export function transformToScanResult(
       tags,
       metadata: {
         ...meta,
+        source: resource.source,
+        sourceType: resource.type,
         ip: resource.ip ?? undefined,
         hostname: resource.hostname ?? undefined,
         openPorts: resource.openPorts ?? undefined,
-        isMultiAZ: meta.multiAz === true || meta.isMultiAZ === true,
-        replicaCount: typeof meta.replicaCount === 'number' ? meta.replicaCount : 0,
+        isMultiAZ:
+          meta.multiAz === true ||
+          meta.multiAZ === true ||
+          meta.multi_az === true ||
+          meta.isMultiAZ === true,
+        replicaCount:
+          typeof meta.replicaCount === 'number'
+            ? meta.replicaCount
+            : typeof meta.readReplicaCount === 'number'
+              ? meta.readReplicaCount
+              : 0,
         isPubliclyAccessible: meta.publiclyAccessible === true || meta.isPubliclyAccessible === true,
         status: typeof meta.status === 'string' ? meta.status : 'running',
         securityGroups: meta.securityGroups ?? undefined,

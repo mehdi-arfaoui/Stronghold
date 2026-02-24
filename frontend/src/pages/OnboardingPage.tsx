@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,7 +10,6 @@ import {
   Network,
   Check,
   Loader2,
-  Plus,
   Rocket,
   ArrowRight,
   DatabaseZap,
@@ -46,8 +45,15 @@ import {
   type DemoOnboardingResponse,
   type DemoSectorKey,
 } from '@/api/discovery.api';
-import { useDiscoveryStore } from '@/stores/discovery.store';
 import { cn } from '@/lib/utils';
+import {
+  buildCloudProviderScanPayload,
+  loadCloudProviderConfigs,
+  saveCloudProviderConfigs,
+  validateCloudProviderConfig,
+  type CloudProviderConfigMap,
+  type CloudProviderId,
+} from '@/lib/cloudProviderConfigs';
 import {
   DEFAULT_DEMO_PROFILE,
   DEMO_COMPANY_SIZE_DEFINITIONS,
@@ -91,6 +97,7 @@ const PROVIDERS: ProviderInfo[] = [
       { name: 'tenantId', label: 'Tenant ID', type: 'text', required: true },
       { name: 'clientId', label: 'Client ID', type: 'text', required: true },
       { name: 'clientSecret', label: 'Client Secret', type: 'password', required: true },
+      { name: 'subscriptionId', label: 'Subscription ID', type: 'text', required: true },
     ],
   },
   {
@@ -124,14 +131,21 @@ const PROVIDERS: ProviderInfo[] = [
   },
 ];
 
+const CLOUD_PROVIDER_IDS: CloudProviderId[] = ['aws', 'azure', 'gcp'];
+
+function isCloudProvider(providerId: string): providerId is CloudProviderId {
+  return CLOUD_PROVIDER_IDS.includes(providerId as CloudProviderId);
+}
+
 function parseApiError(error: unknown, fallback: string): string {
   if (
     error &&
     typeof error === 'object' &&
-    'response' in error &&
-    (error as { response?: { data?: { error?: string } } }).response?.data?.error
+    'response' in error
   ) {
-    return (error as { response?: { data?: { error?: string } } }).response?.data?.error || fallback;
+    const data = (error as { response?: { data?: { error?: string; message?: string } } }).response?.data;
+    if (data?.error) return data.error;
+    if (data?.message) return data.message;
   }
   return fallback;
 }
@@ -258,7 +272,6 @@ function buildSuggestedFieldSources(): DemoFieldSources {
 export function OnboardingPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { configuredProviders, addConfiguredProvider } = useDiscoveryStore();
 
   const [mode, setMode] = useState<OnboardingMode>('demo');
   const [step, setStep] = useState<1 | 2 | 3>(1);
@@ -279,25 +292,59 @@ export function OnboardingPage() {
   const [providerConfigs, setProviderConfigs] = useState<Record<string, StoredProviderConfig>>({});
   const [demoSummary, setDemoSummary] = useState<DemoOnboardingResponse | null>(null);
 
+  useEffect(() => {
+    const storedCloudConfigs = loadCloudProviderConfigs();
+    if (Object.keys(storedCloudConfigs).length === 0) return;
+    setProviderConfigs((previous) => {
+      const next = { ...previous };
+      for (const providerId of CLOUD_PROVIDER_IDS) {
+        const config = storedCloudConfigs[providerId];
+        if (!config) continue;
+        next[providerId] = {
+          credentials: config.credentials,
+          regions: config.regions || [],
+        };
+      }
+      return next;
+    });
+  }, []);
+
+  const cloudProviderConfigs = useMemo<CloudProviderConfigMap>(() => {
+    const next: CloudProviderConfigMap = {};
+    for (const providerId of CLOUD_PROVIDER_IDS) {
+      const config = providerConfigs[providerId];
+      if (!config) continue;
+      next[providerId] = {
+        credentials: config.credentials,
+        regions: config.regions,
+      };
+    }
+    return next;
+  }, [providerConfigs]);
+
+  const configuredProviders = useMemo(
+    () =>
+      PROVIDERS.filter((provider) => {
+        const config = providerConfigs[provider.id];
+        if (!config) return false;
+        if (isCloudProvider(provider.id)) {
+          return validateCloudProviderConfig(provider.id, config.credentials).valid;
+        }
+        return hasRequiredFields(provider, sanitizeCredentials(config.credentials));
+      }).map((provider) => provider.id),
+    [providerConfigs],
+  );
+
   const testMutation = useMutation({
     mutationFn: ({ provider, creds }: { provider: string; creds: Record<string, string> }) =>
       discoveryApi.testCredentials(provider, creds),
     onSuccess: (res) => setTestResult({ success: res.data.success, message: res.data.message }),
-    onError: () => setTestResult({ success: false, message: 'Connection test failed' }),
+    onError: (error) => setTestResult({ success: false, message: parseApiError(error, 'Connection test failed') }),
   });
 
   const launchScanMutation = useMutation({
     mutationFn: async () => {
-      const cloudProviders = configuredProviders
-        .filter((providerId) => providerId === 'aws' || providerId === 'azure' || providerId === 'gcp')
-        .map((providerId) => {
-          const config = providerConfigs[providerId];
-          return {
-            type: providerId,
-            credentials: config?.credentials || {},
-            regions: config?.regions || [],
-          };
-        });
+      const cloudProviders = buildCloudProviderScanPayload(cloudProviderConfigs);
 
       const kubernetes = configuredProviders
         .filter((providerId) => providerId === 'kubernetes')
@@ -314,6 +361,10 @@ export function OnboardingPage() {
 
       if (configuredProviders.includes('github')) {
         toast.info('GitHub connector is ignored in discovery scan mode.');
+      }
+
+      if (cloudProviders.length === 0 && kubernetes.length === 0 && ipRanges.length === 0) {
+        throw new Error('No valid discovery source configured');
       }
 
       return discoveryApi.launchScan({
@@ -391,7 +442,13 @@ export function OnboardingPage() {
     (providerId) => PROVIDERS.find((provider) => provider.id === providerId)?.label || providerId,
   );
 
-  const canLaunchScan = configuredProviders.length > 0 && !launchScanMutation.isPending;
+  const cloudScanProviders = buildCloudProviderScanPayload(cloudProviderConfigs);
+  const kubernetesConfig = providerConfigs.kubernetes;
+  const hasKubernetesSource = Boolean(kubernetesConfig?.credentials.kubeconfig?.trim());
+  const hasOnPremSource = parseCidrRanges(providerConfigs.network?.credentials.cidrRanges).length > 0;
+  const canLaunchScan =
+    (cloudScanProviders.length > 0 || hasKubernetesSource || hasOnPremSource) &&
+    !launchScanMutation.isPending;
   const selectedSectorDefinition =
     DEMO_SECTOR_DEFINITIONS.find((item) => item.key === demoSector) ??
     DEMO_SECTOR_DEFINITIONS[0];
@@ -444,14 +501,32 @@ export function OnboardingPage() {
       return;
     }
 
-    addConfiguredProvider(activeProvider.id);
+    if (isCloudProvider(activeProvider.id)) {
+      const validation = validateCloudProviderConfig(activeProvider.id, sanitized);
+      if (!validation.valid) {
+        toast.error(validation.reason);
+        return;
+      }
+    }
+
+    const nextConfig: StoredProviderConfig = {
+      credentials: sanitized,
+      regions: Array.from(selectedRegions),
+    };
     setProviderConfigs((previous) => ({
       ...previous,
-      [activeProvider.id]: {
-        credentials: sanitized,
-        regions: Array.from(selectedRegions),
-      },
+      [activeProvider.id]: nextConfig,
     }));
+
+    if (isCloudProvider(activeProvider.id)) {
+      saveCloudProviderConfigs({
+        ...cloudProviderConfigs,
+        [activeProvider.id]: {
+          credentials: nextConfig.credentials,
+          regions: nextConfig.regions,
+        },
+      });
+    }
 
     toast.success(`${activeProvider.label} configured`);
     setActiveProvider(null);
@@ -785,12 +860,12 @@ export function OnboardingPage() {
                 <h3 className="font-semibold">{provider.label}</h3>
                 {isConfigured ? (
                   <div className="mt-2 flex items-center gap-1 text-sm text-resilience-high">
-                    <Check className="h-4 w-4" /> Configured
+                    <Check className="h-4 w-4" /> Configure
                   </div>
                 ) : (
-                  <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
-                    <Plus className="h-4 w-4" /> Add
-                  </div>
+                  <Badge variant="outline" className="mt-2 text-muted-foreground">
+                    Non configure
+                  </Badge>
                 )}
               </CardContent>
             </Card>
@@ -801,7 +876,7 @@ export function OnboardingPage() {
       {configuredProviders.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Configured connectors</CardTitle>
+            <CardTitle className="text-base">Connecteurs configures</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1 text-sm text-muted-foreground">
             {configuredProviderLabels.map((label) => (
@@ -814,13 +889,17 @@ export function OnboardingPage() {
         </Card>
       )}
 
+      <p className="text-sm text-muted-foreground">
+        Vous pourrez ajouter d'autres sources plus tard depuis les Parametres.
+      </p>
+
       <div className="flex flex-wrap justify-end gap-2">
         <Button variant="ghost" onClick={() => setStep(1)}>
           Back
         </Button>
         <Button onClick={() => launchScanMutation.mutate()} disabled={!canLaunchScan}>
           {launchScanMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-          Launch scan
+          Lancer le scan
         </Button>
       </div>
     </div>
