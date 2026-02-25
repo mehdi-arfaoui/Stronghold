@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { RefreshCw, Download } from 'lucide-react';
@@ -23,6 +24,7 @@ import type { Risk } from '@/types/risks.types';
 import type { BIAEntry } from '@/types/bia.types';
 
 export function AnalysisPage() {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const tenantScope = getCredentialScopeKey();
   const [exportOpen, setExportOpen] = useState(false);
@@ -143,6 +145,21 @@ export function AnalysisPage() {
 
           {summary && (
             <BIAValidation totalServices={summary.totalServices} validatedCount={summary.validatedCount} />
+          )}
+
+          {orgProfileQuery.data?.mode === 'business_profile' ? (
+            <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+              Profil financier configure. Les couts/h utilisent le profil global sauf override personnalise.
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+              <span>
+                Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.
+              </span>
+              <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=finance')}>
+                Configurer
+              </Button>
+            </div>
           )}
 
           <Card>

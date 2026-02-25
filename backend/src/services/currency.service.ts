@@ -20,9 +20,15 @@ type CurrencyCacheEntry = {
   source: 'live' | 'default';
 };
 
+function readPositiveEnvRate(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw <= 0) return fallback;
+  return raw;
+}
+
 const DEFAULT_USD_TO_TARGET: Record<SupportedCurrency, number> = {
   USD: 1,
-  EUR: 0.92,
+  EUR: readPositiveEnvRate('USD_EUR_RATE', 0.92),
   GBP: 0.79,
   CHF: 0.88,
 };
@@ -191,4 +197,3 @@ export class CurrencyService {
     return amount * (toRate / fromRate);
   }
 }
-

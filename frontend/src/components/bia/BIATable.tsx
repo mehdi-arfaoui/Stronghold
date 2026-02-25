@@ -22,8 +22,9 @@ interface BIATableProps {
 type EditableField = 'validatedRTO' | 'validatedRPO' | 'validatedMTPD';
 type SuggestionMetric = 'rto' | 'rpo' | 'mtpd';
 
-function formatHourlyCost(amount: number, currency: string): string {
-  return `${formatCurrency(amount, currency)}/h`;
+function formatHourlyCost(amount: number | null | undefined, currency: string): string {
+  if (!Number.isFinite(amount as number) || Number(amount) <= 0) return '—';
+  return `${formatCurrency(Number(amount), currency)}/h`;
 }
 
 function precisionBadgeModel(entry: BIAEntry): {
@@ -49,6 +50,18 @@ function precisionBadgeModel(entry: BIAEntry): {
         label: 'Override valide',
         className: 'border-green-300 bg-green-50 text-green-800',
         tooltip: 'Valeur saisie manuellement par utilisateur.',
+      };
+    case 'profile_global':
+      return {
+        label: 'Profil global',
+        className: 'border-blue-300 bg-blue-50 text-blue-800',
+        tooltip: 'Valeur du profil financier global appliquee a ce service.',
+      };
+    case 'not_configured':
+      return {
+        label: 'Non configure',
+        className: 'border-slate-300 bg-slate-50 text-slate-700',
+        tooltip: 'Impact financier non estime tant que le profil financier n est pas configure.',
       };
     case 'business_flow_not_validated':
       return {
@@ -80,7 +93,12 @@ export function BIATable({
   const [overrideJustification, setOverrideJustification] = useState('');
 
   const sortedEntries = useMemo(
-    () => [...(entries ?? [])].sort((a, b) => (b.financialImpactPerHour ?? 0) - (a.financialImpactPerHour ?? 0)),
+    () =>
+      [...(entries ?? [])].sort((a, b) => {
+        const left = Number.isFinite(a.financialImpactPerHour as number) ? Number(a.financialImpactPerHour) : -1;
+        const right = Number.isFinite(b.financialImpactPerHour as number) ? Number(b.financialImpactPerHour) : -1;
+        return right - left;
+      }),
     [entries],
   );
 
@@ -102,8 +120,9 @@ export function BIATable({
   const cancelEdit = () => setEditingCell(null);
 
   const openOverridePopover = (entry: BIAEntry) => {
+    const baselineValue = entry.financialOverride?.customCostPerHour ?? entry.financialImpactPerHour ?? 0;
     setOverridePopoverEntry(entry);
-    setOverrideValue(String(Math.max(1, Math.round(entry.financialOverride?.customCostPerHour ?? entry.financialImpactPerHour ?? 1))));
+    setOverrideValue(String(Math.max(1, Math.round(baselineValue))));
     setOverrideJustification(entry.financialOverride?.justification ?? '');
   };
 
@@ -225,7 +244,12 @@ export function BIATable({
                           className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
                           onClick={() => openOverridePopover(entry)}
                         >
-                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour ?? 0, currency)}</span>
+                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour, currency)}</span>
+                          {entry.financialScopeLabel && (
+                            <span className="text-[10px] text-muted-foreground">
+                              ({entry.financialScopeLabel})
+                            </span>
+                          )}
                           {entry.financialIsOverride ? (
                             <Tooltip>
                               <TooltipTrigger asChild>

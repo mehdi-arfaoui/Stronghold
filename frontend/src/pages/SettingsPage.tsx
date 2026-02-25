@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -10,20 +10,14 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import { IntegrationsHub } from '@/components/integrations/IntegrationsHub';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { CloudProvidersSettings } from '@/components/settings/CloudProvidersSettings';
 import { useUIStore } from '@/stores/ui.store';
-import { financialApi } from '@/api/financial.api';
+import { discoveryApi } from '@/api/discovery.api';
+import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
-import {
-  applySizeSuggestions,
-  mapApiSourceToEditableSource,
-  type FinancialFieldKey,
-  type FinancialFieldSource,
-} from '@/lib/financialProfileSuggestions';
 
 const SIZE_OPTIONS = [
   { value: 'startup', label: 'Startup' },
@@ -44,12 +38,98 @@ const VERTICAL_OPTIONS = [
   { value: 'government_public', label: 'Gouvernement / Public' },
 ];
 
-type EditableFieldSources = Partial<Record<FinancialFieldKey, FinancialFieldSource>>;
+const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF'] as const;
+
+const CRITICALITY_TIER_OPTIONS = [
+  { value: '', label: 'Global' },
+  { value: 'critical', label: 'Critique' },
+  { value: 'high', label: 'Elevee' },
+  { value: 'medium', label: 'Moyenne' },
+  { value: 'low', label: 'Faible' },
+] as const;
+
 type SettingsTab = 'general' | 'finance' | 'cloud' | 'integrations';
+
+type ServiceOverrideDraft = {
+  customDowntimeCostPerHour: string;
+  customCriticalityTier: '' | 'critical' | 'high' | 'medium' | 'low';
+};
+
+const EMPTY_OVERRIDE_DRAFT: ServiceOverrideDraft = {
+  customDowntimeCostPerHour: '',
+  customCriticalityTier: '',
+};
 
 function resolveSettingsTab(value: string | null): SettingsTab {
   if (value === 'finance' || value === 'cloud' || value === 'integrations') return value;
   return 'general';
+}
+
+function toNumberOrNull(value: string): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function splitConstraints(raw: string): string[] {
+  return raw
+    .split(/\r?\n|,/g)
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+function buildOverrideDrafts(
+  overrides: OrganizationFinancialProfile['serviceOverrides'] | undefined,
+): Record<string, ServiceOverrideDraft> {
+  const result: Record<string, ServiceOverrideDraft> = {};
+  for (const entry of overrides || []) {
+    if (!entry?.nodeId) continue;
+    result[entry.nodeId] = {
+      customDowntimeCostPerHour:
+        entry.customDowntimeCostPerHour && entry.customDowntimeCostPerHour > 0
+          ? String(entry.customDowntimeCostPerHour)
+          : '',
+      customCriticalityTier: (entry.customCriticalityTier || '') as ServiceOverrideDraft['customCriticalityTier'],
+    };
+  }
+  return result;
+}
+
+function toServiceOverrides(
+  drafts: Record<string, ServiceOverrideDraft>,
+): NonNullable<OrganizationFinancialProfile['serviceOverrides']> {
+  const overrides: NonNullable<OrganizationFinancialProfile['serviceOverrides']> = [];
+  for (const [nodeId, draft] of Object.entries(drafts)) {
+    const customDowntimeCostPerHour = toNumberOrNull(draft.customDowntimeCostPerHour);
+    const customCriticalityTier =
+      draft.customCriticalityTier === 'critical' ||
+      draft.customCriticalityTier === 'high' ||
+      draft.customCriticalityTier === 'medium' ||
+      draft.customCriticalityTier === 'low'
+        ? draft.customCriticalityTier
+        : undefined;
+    if (customDowntimeCostPerHour == null && !customCriticalityTier) continue;
+    overrides.push({
+      nodeId,
+      ...(customDowntimeCostPerHour != null ? { customDowntimeCostPerHour } : {}),
+      ...(customCriticalityTier ? { customCriticalityTier } : {}),
+    });
+  }
+  return overrides;
+}
+
+function describeServiceNode(node: {
+  provider?: string;
+  type?: string;
+  region?: string;
+  availabilityZone?: string;
+}) {
+  const parts = [
+    node.provider ? String(node.provider).toUpperCase() : '',
+    node.type ? String(node.type).replaceAll('_', ' ') : '',
+    node.region || node.availabilityZone || '',
+  ].filter(Boolean);
+  return parts.join(' - ') || 'Service detecte';
 }
 
 export function SettingsPage() {
@@ -68,15 +148,62 @@ export function SettingsPage() {
   const [sizeCategory, setSizeCategory] = useState('midMarket');
   const [verticalSector, setVerticalSector] = useState('technology_saas');
   const [employeeCount, setEmployeeCount] = useState('');
-  const [annualRevenueUSD, setAnnualRevenueUSD] = useState('');
   const [annualRevenue, setAnnualRevenue] = useState('');
   const [annualITBudget, setAnnualITBudget] = useState('');
   const [drBudgetPercent, setDrBudgetPercent] = useState('');
   const [hourlyDowntimeCost, setHourlyDowntimeCost] = useState('');
   const [industrySector, setIndustrySector] = useState('');
-  const [customDowntimeCostPerHour, setCustomDowntimeCostPerHour] = useState('');
+  const [numberOfCustomers, setNumberOfCustomers] = useState('');
+  const [criticalStart, setCriticalStart] = useState('');
+  const [criticalEnd, setCriticalEnd] = useState('');
+  const [criticalTimezone, setCriticalTimezone] = useState('');
+  const [regulatoryConstraintsText, setRegulatoryConstraintsText] = useState('');
+  const [serviceOverrideDrafts, setServiceOverrideDrafts] = useState<Record<string, ServiceOverrideDraft>>({});
   const [customCurrency, setCustomCurrency] = useState('EUR');
-  const [fieldSources, setFieldSources] = useState<EditableFieldSources>({});
+
+  const graphQuery = useQuery({
+    queryKey: ['settings-financial-overrides-services', tenantScope],
+    enabled: activeTab === 'finance',
+    staleTime: 60_000,
+    queryFn: async () => (await discoveryApi.getGraph()).data,
+  });
+
+  const detectedServiceNodes = useMemo(() => {
+    const excludedTypes = new Set(['REGION', 'AVAILABILITY_ZONE', 'VPC', 'SUBNET', 'FIREWALL']);
+    return (graphQuery.data?.nodes || [])
+      .filter((node) => !excludedTypes.has(String(node.type || '').toUpperCase()))
+      .sort((left, right) => String(left.name || '').localeCompare(String(right.name || ''), 'fr-FR'));
+  }, [graphQuery.data?.nodes]);
+
+  const activeOverrideCount = useMemo(
+    () => toServiceOverrides(serviceOverrideDrafts).length,
+    [serviceOverrideDrafts],
+  );
+
+  const unknownOverrideCount = useMemo(() => {
+    const knownNodeIds = new Set(detectedServiceNodes.map((node) => node.id));
+    return toServiceOverrides(serviceOverrideDrafts).filter((override) => !knownNodeIds.has(override.nodeId)).length;
+  }, [detectedServiceNodes, serviceOverrideDrafts]);
+
+  const upsertOverrideDraft = (nodeId: string, patch: Partial<ServiceOverrideDraft>) => {
+    setServiceOverrideDrafts((current) => ({
+      ...current,
+      [nodeId]: {
+        customDowntimeCostPerHour: current[nodeId]?.customDowntimeCostPerHour || '',
+        customCriticalityTier: current[nodeId]?.customCriticalityTier || '',
+        ...patch,
+      },
+    }));
+  };
+
+  const clearOverrideDraft = (nodeId: string) => {
+    setServiceOverrideDrafts((current) => {
+      if (!current[nodeId]) return current;
+      const next = { ...current };
+      delete next[nodeId];
+      return next;
+    });
+  };
 
   useEffect(() => {
     const profile = profileQuery.data;
@@ -84,23 +211,18 @@ export function SettingsPage() {
     setSizeCategory(profile.sizeCategory || 'midMarket');
     setVerticalSector(profile.verticalSector || 'technology_saas');
     setEmployeeCount(profile.employeeCount ? String(profile.employeeCount) : '');
-    setAnnualRevenueUSD(profile.annualRevenueUSD ? String(profile.annualRevenueUSD) : '');
     setAnnualRevenue(profile.annualRevenue ? String(profile.annualRevenue) : '');
     setAnnualITBudget(profile.annualITBudget ? String(profile.annualITBudget) : '');
     setDrBudgetPercent(profile.drBudgetPercent ? String(profile.drBudgetPercent) : '');
     setHourlyDowntimeCost(profile.hourlyDowntimeCost ? String(profile.hourlyDowntimeCost) : '');
     setIndustrySector(profile.industrySector || '');
-    setCustomDowntimeCostPerHour(
-      profile.customDowntimeCostPerHour ? String(profile.customDowntimeCostPerHour) : '',
-    );
+    setNumberOfCustomers(profile.numberOfCustomers ? String(profile.numberOfCustomers) : '');
+    setCriticalStart(profile.criticalBusinessHours?.start || '');
+    setCriticalEnd(profile.criticalBusinessHours?.end || '');
+    setCriticalTimezone(profile.criticalBusinessHours?.timezone || '');
+    setRegulatoryConstraintsText((profile.regulatoryConstraints || []).join('\n'));
+    setServiceOverrideDrafts(buildOverrideDrafts(profile.serviceOverrides));
     setCustomCurrency(profile.customCurrency || 'EUR');
-    setFieldSources({
-      employeeCount: mapApiSourceToEditableSource(profile.fieldSources?.employeeCount?.source),
-      annualRevenue: mapApiSourceToEditableSource(profile.fieldSources?.annualRevenue?.source),
-      annualITBudget: mapApiSourceToEditableSource(profile.fieldSources?.annualITBudget?.source),
-      drBudgetPercent: mapApiSourceToEditableSource(profile.fieldSources?.drBudgetPercent?.source),
-      hourlyDowntimeCost: mapApiSourceToEditableSource(profile.fieldSources?.hourlyDowntimeCost?.source),
-    });
   }, [profileQuery.data]);
 
   useEffect(() => {
@@ -116,75 +238,54 @@ export function SettingsPage() {
     setSearchParams(nextParams, { replace: true });
   };
 
-  const renderFieldSourceBadge = (field: FinancialFieldKey) => {
-    const source = fieldSources[field];
-    if (source === 'user_input') {
-      return <Badge variant="secondary">Valeur personnalisee</Badge>;
-    }
-    if (source === 'suggested') {
-      return <Badge variant="outline">Suggestion</Badge>;
-    }
-    return null;
-  };
-
-  const applySizeCategorySuggestions = (nextSizeCategory: string) => {
-    const next = applySizeSuggestions({
-      sizeCategory: nextSizeCategory,
-      currency: customCurrency,
-      values: {
-        employeeCount,
-        annualRevenue,
-        annualITBudget,
-        drBudgetPercent,
-        hourlyDowntimeCost,
-      },
-      sources: fieldSources,
-    });
-    setEmployeeCount(next.values.employeeCount);
-    setAnnualRevenue(next.values.annualRevenue);
-    setAnnualITBudget(next.values.annualITBudget);
-    setDrBudgetPercent(next.values.drBudgetPercent);
-    setHourlyDowntimeCost(next.values.hourlyDowntimeCost);
-    setFieldSources(next.sources);
-    if (next.suggestedFields.length > 0) {
-      toast(`${next.suggestedFields.length} suggestion(s) appliquee(s)`);
-    }
-  };
-
   const updateProfileMutation = useMutation({
-    mutationFn: () =>
-      financialApi.updateOrgProfile({
+    mutationFn: async () => {
+      const serviceOverrides = toServiceOverrides(serviceOverrideDrafts);
+
+      const criticalBusinessHours =
+        criticalStart.trim() && criticalEnd.trim() && criticalTimezone.trim()
+          ? {
+              start: criticalStart.trim(),
+              end: criticalEnd.trim(),
+              timezone: criticalTimezone.trim(),
+            }
+          : null;
+
+      await financialApi.updateOrgProfile({
         sizeCategory,
         verticalSector,
         industrySector: industrySector || null,
-        employeeCount: employeeCount ? Number(employeeCount) : null,
-        annualRevenueUSD: annualRevenueUSD ? Number(annualRevenueUSD) : null,
-        annualRevenue: annualRevenue ? Number(annualRevenue) : null,
-        annualITBudget: annualITBudget ? Number(annualITBudget) : null,
-        drBudgetPercent: drBudgetPercent ? Number(drBudgetPercent) : null,
-        hourlyDowntimeCost: hourlyDowntimeCost ? Number(hourlyDowntimeCost) : null,
-        customDowntimeCostPerHour: customDowntimeCostPerHour
-          ? Number(customDowntimeCostPerHour)
-          : null,
+        employeeCount: toNumberOrNull(employeeCount),
+        annualRevenue: toNumberOrNull(annualRevenue),
+        annualITBudget: toNumberOrNull(annualITBudget),
+        drBudgetPercent: toNumberOrNull(drBudgetPercent),
+        hourlyDowntimeCost: toNumberOrNull(hourlyDowntimeCost),
+        customDowntimeCostPerHour: toNumberOrNull(hourlyDowntimeCost),
+        numberOfCustomers: toNumberOrNull(numberOfCustomers),
+        criticalBusinessHours,
+        regulatoryConstraints: splitConstraints(regulatoryConstraintsText),
+        serviceOverrides,
         customCurrency,
         fieldSources: {
-          employeeCount: fieldSources.employeeCount || 'inferred',
-          annualRevenue: fieldSources.annualRevenue || 'inferred',
-          annualRevenueUSD: fieldSources.annualRevenue || 'inferred',
-          annualITBudget: fieldSources.annualITBudget || 'inferred',
-          drBudgetPercent: fieldSources.drBudgetPercent || 'inferred',
-          hourlyDowntimeCost: fieldSources.hourlyDowntimeCost || 'inferred',
-          customDowntimeCostPerHour: fieldSources.hourlyDowntimeCost || 'inferred',
-          industrySector: industrySector ? 'user_input' : 'inferred',
-          verticalSector: verticalSector ? 'user_input' : 'inferred',
+          employeeCount: employeeCount ? 'user_input' : undefined,
+          annualRevenue: annualRevenue ? 'user_input' : undefined,
+          annualRevenueUSD: annualRevenue ? 'user_input' : undefined,
+          annualITBudget: annualITBudget ? 'user_input' : undefined,
+          drBudgetPercent: drBudgetPercent ? 'user_input' : undefined,
+          hourlyDowntimeCost: hourlyDowntimeCost ? 'user_input' : undefined,
+          customDowntimeCostPerHour: hourlyDowntimeCost ? 'user_input' : undefined,
+          industrySector: industrySector ? 'user_input' : undefined,
+          verticalSector: verticalSector ? 'user_input' : undefined,
         },
-      }),
+      });
+    },
     onSuccess: async () => {
       toast.success('Profil financier mis a jour');
       await invalidateFinancialProfileDependentQueries(queryClient);
     },
-    onError: () => {
-      toast.error('Echec de la mise a jour du profil financier');
+    onError: (error) => {
+      const message = error instanceof Error ? error.message : 'Echec de la mise a jour du profil financier';
+      toast.error(message);
     },
   });
 
@@ -251,12 +352,23 @@ export function SettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="grid gap-4 md:grid-cols-2">
-                {profileQuery.data?.inferenceBanner && (
+                {profileQuery.data?.reviewBanner && (
+                  <div className="md:col-span-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    {profileQuery.data.reviewBanner}
+                  </div>
+                )}
+                {!profileQuery.data?.reviewBanner && profileQuery.data?.inferenceBanner && (
                   <div className="md:col-span-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
                     {profileQuery.data.inferenceBanner}
                   </div>
                 )}
+                {profileQuery.data?.mode === 'business_profile' && (
+                  <div className="md:col-span-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
+                    Profil financier configure.
+                  </div>
+                )}
                 <div className="md:col-span-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                  <span>Mode: {profileQuery.data?.mode || 'infra_only'}</span>
                   <span>Source profil: {profileQuery.data?.profileSource || 'inferred'}</span>
                   <span>
                     Confiance: {profileQuery.data?.profileConfidence != null
@@ -269,11 +381,7 @@ export function SettingsPage() {
                   <select
                     id="sizeCategory"
                     value={sizeCategory}
-                    onChange={(event) => {
-                      const nextSize = event.target.value;
-                      setSizeCategory(nextSize);
-                      applySizeCategorySuggestions(nextSize);
-                    }}
+                    onChange={(event) => setSizeCategory(event.target.value)}
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                   >
                     {SIZE_OPTIONS.map((option) => (
@@ -317,82 +425,43 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
-                    {renderFieldSourceBadge('employeeCount')}
-                  </div>
+                  <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
                   <Input
                     id="employeeCount"
                     type="number"
                     min={0}
                     value={employeeCount}
-                    onChange={(event) => {
-                      setEmployeeCount(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, employeeCount: 'user_input' }));
-                    }}
-                    className={fieldSources.employeeCount === 'suggested' ? 'text-muted-foreground' : undefined}
+                    onChange={(event) => setEmployeeCount(event.target.value)}
                     placeholder="Ex: 450"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="annualRevenueUSD">CA annuel (USD)</Label>
-                  <Input
-                    id="annualRevenueUSD"
-                    type="number"
-                    min={0}
-                    value={annualRevenueUSD}
-                    onChange={(event) => {
-                      setAnnualRevenueUSD(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, annualRevenue: 'user_input' }));
-                    }}
-                    placeholder="Ex: 125000000"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="annualRevenue">CA annuel ({customCurrency})</Label>
-                    {renderFieldSourceBadge('annualRevenue')}
-                  </div>
+                  <Label htmlFor="annualRevenue">CA annuel ({customCurrency})</Label>
                   <Input
                     id="annualRevenue"
                     type="number"
                     min={0}
                     value={annualRevenue}
-                    onChange={(event) => {
-                      setAnnualRevenue(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, annualRevenue: 'user_input' }));
-                    }}
-                    className={fieldSources.annualRevenue === 'suggested' ? 'text-muted-foreground' : undefined}
+                    onChange={(event) => setAnnualRevenue(event.target.value)}
                     placeholder="Ex: 30000000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="annualITBudget">Budget IT annuel ({customCurrency})</Label>
-                    {renderFieldSourceBadge('annualITBudget')}
-                  </div>
+                  <Label htmlFor="annualITBudget">Budget IT annuel ({customCurrency})</Label>
                   <Input
                     id="annualITBudget"
                     type="number"
                     min={0}
                     value={annualITBudget}
-                    onChange={(event) => {
-                      setAnnualITBudget(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, annualITBudget: 'user_input' }));
-                    }}
-                    className={fieldSources.annualITBudget === 'suggested' ? 'text-muted-foreground' : undefined}
+                    onChange={(event) => setAnnualITBudget(event.target.value)}
                     placeholder="Ex: 1500000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
-                    {renderFieldSourceBadge('drBudgetPercent')}
-                  </div>
+                  <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
                   <Input
                     id="drBudgetPercent"
                     type="number"
@@ -400,46 +469,32 @@ export function SettingsPage() {
                     max={100}
                     step="0.1"
                     value={drBudgetPercent}
-                    onChange={(event) => {
-                      setDrBudgetPercent(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, drBudgetPercent: 'user_input' }));
-                    }}
-                    className={fieldSources.drBudgetPercent === 'suggested' ? 'text-muted-foreground' : undefined}
+                    onChange={(event) => setDrBudgetPercent(event.target.value)}
                     placeholder="Ex: 4"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
-                    {renderFieldSourceBadge('hourlyDowntimeCost')}
-                  </div>
+                  <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
                   <Input
                     id="hourlyDowntimeCost"
                     type="number"
                     min={0}
                     value={hourlyDowntimeCost}
-                    onChange={(event) => {
-                      setHourlyDowntimeCost(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, hourlyDowntimeCost: 'user_input' }));
-                    }}
-                    className={fieldSources.hourlyDowntimeCost === 'suggested' ? 'text-muted-foreground' : undefined}
+                    onChange={(event) => setHourlyDowntimeCost(event.target.value)}
                     placeholder="Ex: 25000"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="customDowntimeCostPerHour">Cout downtime horaire (optionnel)</Label>
+                  <Label htmlFor="numberOfCustomers">Nombre de clients</Label>
                   <Input
-                    id="customDowntimeCostPerHour"
+                    id="numberOfCustomers"
                     type="number"
                     min={0}
-                    value={customDowntimeCostPerHour}
-                    onChange={(event) => {
-                      setCustomDowntimeCostPerHour(event.target.value);
-                      setFieldSources((prev) => ({ ...prev, hourlyDowntimeCost: 'user_input' }));
-                    }}
-                    placeholder="Ex: 250000"
+                    value={numberOfCustomers}
+                    onChange={(event) => setNumberOfCustomers(event.target.value)}
+                    placeholder="Ex: 12000"
                   />
                 </div>
 
@@ -451,27 +506,171 @@ export function SettingsPage() {
                     onChange={(event) => setCustomCurrency(event.target.value)}
                     className="h-10 w-full rounded-md border bg-background px-3 text-sm"
                   >
-                    <option value="EUR">EUR</option>
-                    <option value="USD">USD</option>
-                    <option value="GBP">GBP</option>
-                    <option value="CHF">CHF</option>
+                    {CURRENCY_OPTIONS.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
                   </select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="criticalStart">Heures critiques debut</Label>
+                  <Input
+                    id="criticalStart"
+                    value={criticalStart}
+                    onChange={(event) => setCriticalStart(event.target.value)}
+                    placeholder="09:00"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="criticalEnd">Heures critiques fin</Label>
+                  <Input
+                    id="criticalEnd"
+                    value={criticalEnd}
+                    onChange={(event) => setCriticalEnd(event.target.value)}
+                    placeholder="18:00"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="criticalTimezone">Timezone heures critiques</Label>
+                  <Input
+                    id="criticalTimezone"
+                    value={criticalTimezone}
+                    onChange={(event) => setCriticalTimezone(event.target.value)}
+                    placeholder="Europe/Paris"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="regulatoryConstraints">Contraintes reglementaires (ligne ou virgule)</Label>
+                  <textarea
+                    id="regulatoryConstraints"
+                    value={regulatoryConstraintsText}
+                    onChange={(event) => setRegulatoryConstraintsText(event.target.value)}
+                    className="min-h-[84px] w-full rounded-md border bg-background px-3 py-2 text-sm"
+                    placeholder="NIS2, DORA, ISO 27001"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <Label>Overrides par service</Label>
+                    <span className="text-xs text-muted-foreground">
+                      Overrides actifs: {activeOverrideCount}
+                      {unknownOverrideCount > 0 ? ` (dont ${unknownOverrideCount} hors inventaire courant)` : ''}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Ajustez la criticite et/ou le cout downtime/h pour chaque service detecte.
+                  </p>
+                  {graphQuery.isLoading ? (
+                    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                      Chargement des services detectes...
+                    </div>
+                  ) : graphQuery.isError ? (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
+                      Impossible de charger la liste des services detectes. Vous pouvez enregistrer sans overrides.
+                    </div>
+                  ) : detectedServiceNodes.length === 0 ? (
+                    <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
+                      Aucun service detecte pour l instant.
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <div className="max-h-[320px] overflow-auto">
+                        <table className="w-full min-w-[720px] text-sm">
+                          <colgroup>
+                            <col style={{ width: '35%' }} />
+                            <col style={{ width: '25%' }} />
+                            <col style={{ width: '25%' }} />
+                            <col style={{ width: '15%' }} />
+                          </colgroup>
+                          <thead className="sticky top-0 bg-muted/80 backdrop-blur">
+                            <tr className="border-b">
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Service</th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                Downtime/h override ({customCurrency}/h)
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">
+                                Criticite override
+                              </th>
+                              <th className="px-3 py-2 text-left font-medium text-muted-foreground">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {detectedServiceNodes.map((node) => {
+                              const draft = serviceOverrideDrafts[node.id] || EMPTY_OVERRIDE_DRAFT;
+                              const hasOverride =
+                                toNumberOrNull(draft.customDowntimeCostPerHour) != null ||
+                                !!draft.customCriticalityTier;
+
+                              return (
+                                <tr key={node.id} className="border-b align-top last:border-0">
+                                  <td className="px-3 py-2">
+                                    <p className="font-medium">{node.name || node.id}</p>
+                                    <p className="text-xs text-muted-foreground">{describeServiceNode(node)}</p>
+                                    <p className="text-[11px] text-muted-foreground">ID: {node.id}</p>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      value={draft.customDowntimeCostPerHour}
+                                      onChange={(event) =>
+                                        upsertOverrideDraft(node.id, {
+                                          customDowntimeCostPerHour: event.target.value,
+                                        })
+                                      }
+                                      placeholder="10 000"
+                                      className="h-9"
+                                    />
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <select
+                                      value={draft.customCriticalityTier}
+                                      onChange={(event) =>
+                                        upsertOverrideDraft(node.id, {
+                                          customCriticalityTier:
+                                            event.target.value as ServiceOverrideDraft['customCriticalityTier'],
+                                        })
+                                      }
+                                      className="h-9 w-full rounded-md border bg-background px-3 text-sm"
+                                    >
+                                      {CRITICALITY_TIER_OPTIONS.map((option) => (
+                                        <option key={option.value || 'default'} value={option.value}>
+                                          {option.label}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-3 py-2">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => clearOverrideDraft(node.id)}
+                                      disabled={!hasOverride}
+                                    >
+                                      Reinitialiser
+                                    </Button>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 <div className="md:col-span-2">
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Estimation basee sur donnees marche publiques. Ajustez ces valeurs avec la finance pour refleter votre contexte.
+                    Les valeurs business ne sont jamais auto-estimees. Saisissez uniquement vos donnees valides.
                   </p>
-                  {profileQuery.data?.fieldSources && (
-                    <div className="mb-3 rounded-md border bg-muted/20 p-3 text-xs">
-                      <p className="mb-1 font-medium">Traceabilite des valeurs</p>
-                      {Object.entries(profileQuery.data.fieldSources).map(([field, trace]) => (
-                        <p key={field}>
-                          {field}: {trace.source} ({Math.round(trace.confidence * 100)}%) - {trace.note}
-                        </p>
-                      ))}
-                    </div>
-                  )}
                   <div className="mb-3">
                     <Button variant="secondary" onClick={() => setWizardOpen(true)}>
                       Ouvrir l assistant onboarding financier

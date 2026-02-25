@@ -1,6 +1,15 @@
 # Stronghold - Full reset (DB + cache + builds + browser storage)
 
+param(
+  [switch]$LoadBaseSeed,
+  [switch]$LoadDemoSeed
+)
+
 $ErrorActionPreference = "Stop"
+
+if ($LoadDemoSeed -and -not $LoadBaseSeed) {
+  $LoadBaseSeed = $true
+}
 
 Write-Host "Stopping all containers..."
 docker compose down -v --remove-orphans
@@ -26,11 +35,21 @@ Start-Sleep -Seconds 8
 
 Push-Location backend
 Write-Host "Running migrations..."
-npx prisma migrate reset --force
-Write-Host "Seeding base data..."
-npm run db:seed
-Write-Host "Seeding demo data..."
-npm run seed:demo
+npx prisma migrate reset --force --skip-seed
+
+if ($LoadBaseSeed) {
+  Write-Host "Seeding base data..."
+  npm run db:seed
+} else {
+  Write-Host "Skipping base seed (default reset = migrations only)."
+}
+
+if ($LoadDemoSeed) {
+  Write-Host "Seeding demo data..."
+  npm run seed:demo
+} else {
+  Write-Host "Skipping demo seed (default)."
+}
 Pop-Location
 
 Write-Host "Starting all services..."

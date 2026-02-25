@@ -195,29 +195,14 @@ function calculateMetrics(
 function estimateFinancialImpact(service: InfraNodeAttrs): FinancialImpact {
   const dependentsCount = service.dependentsCount || 0;
 
-  const typeMultipliers: Record<string, number> = {
-    [NodeType.DATABASE]: 500,
-    [NodeType.API_GATEWAY]: 300,
-    [NodeType.LOAD_BALANCER]: 300,
-    [NodeType.APPLICATION]: 200,
-    [NodeType.MICROSERVICE]: 200,
-    [NodeType.CACHE]: 100,
-    [NodeType.DNS]: 400,
-    [NodeType.SERVERLESS]: 150,
-    [NodeType.MESSAGE_QUEUE]: 200,
-  };
-
-  const multiplier = typeMultipliers[service.type] || 50;
-  const estimatedCostPerHour = Math.max(multiplier, dependentsCount * multiplier);
-
   return {
-    estimatedCostPerHour,
+    estimatedCostPerHour: 0,
     confidence: 'low',
-    note: 'Estimate based on service type and dependent count. Adjust with real business data.',
+    note: 'Business impact not estimated automatically. Configure a financial profile to compute downtime cost.',
     breakdown: {
       directDependents: dependentsCount,
       serviceType: service.type,
-      multiplier,
+      multiplier: 0,
     },
   };
 }

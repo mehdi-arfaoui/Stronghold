@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -159,11 +159,11 @@ function FinancialDashboardInner() {
 
   useEffect(() => {
     if (!orgProfileQuery.isSuccess || wizardAutoOpened) return;
-    if (orgProfileQuery.data?.isConfigured === false) {
+    if (orgProfileQuery.data?.requiresReview) {
       setWizardOpen(true);
       setWizardAutoOpened(true);
     }
-  }, [orgProfileQuery.data?.isConfigured, orgProfileQuery.isSuccess, wizardAutoOpened]);
+  }, [orgProfileQuery.data?.requiresReview, orgProfileQuery.isSuccess, wizardAutoOpened]);
 
   const refreshFinancialData = async () => {
     await invalidateFinancialProfileDependentQueries(queryClient);
@@ -172,7 +172,7 @@ function FinancialDashboardInner() {
   const summary = summaryQuery.data;
   const flowCoverage = flowCoverageQuery.data;
   const lowFlowCoverage = (flowCoverage?.coveragePercent ?? 0) < 50;
-  const profileConfigured = orgProfileQuery.data?.isConfigured !== false;
+  const businessProfileConfigured = orgProfileQuery.data?.mode === 'business_profile';
   const currency = summary?.currency || 'EUR';
   const financialPrecision = summary?.financialPrecision;
   const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
@@ -395,9 +395,9 @@ function FinancialDashboardInner() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">ROI & Finance</h1>
           <div className="flex items-center gap-2">
-            {!profileConfigured && (
+            {!businessProfileConfigured && (
               <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
-                Profil non configure
+                Mode infra uniquement
               </Badge>
             )}
             <Button
@@ -425,11 +425,17 @@ function FinancialDashboardInner() {
         </p>
       </div>
 
-      {!profileConfigured && (
+      {orgProfileQuery.data?.reviewBanner && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <p className="text-sm font-medium">{orgProfileQuery.data.reviewBanner}</p>
+        </div>
+      )}
+      {!orgProfileQuery.data?.reviewBanner && !businessProfileConfigured && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">
-              Configurez votre profil organisation pour des estimations financieres plus precises.
+              {orgProfileQuery.data?.inferenceBanner ||
+                'Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.'}
             </p>
             <Button
               size="sm"
@@ -442,9 +448,19 @@ function FinancialDashboardInner() {
           </div>
         </div>
       )}
-      {orgProfileQuery.data?.inferenceBanner && (
-        <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-blue-900">
-          <p className="text-sm font-medium">{orgProfileQuery.data.inferenceBanner}</p>
+      {businessProfileConfigured && (
+        <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium">Profil financier configure.</p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-emerald-500 bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
+              onClick={() => setWizardOpen(true)}
+            >
+              Modifier
+            </Button>
+          </div>
         </div>
       )}
 
@@ -480,20 +496,25 @@ function FinancialDashboardInner() {
             </div>
             <div className="space-y-1 text-sm">
               <p>
-                {financialPrecision.breakdown.businessFlowValidated.nodes} noeuds via Business Flows valides (
-                {financialPrecision.breakdown.businessFlowValidated.costSharePercent}% du cout total)
+                Precision couts infra: {financialPrecision.infraCostPrecisionPercent}% / 50
               </p>
               <p>
-                {financialPrecision.breakdown.userOverride.nodes} noeuds via overrides utilisateur (
-                {financialPrecision.breakdown.userOverride.costSharePercent}% du cout total)
+                Precision profil business: {financialPrecision.businessProfilePrecisionPercent}% / 50
               </p>
               <p>
-                {financialPrecision.breakdown.estimationEnriched.nodes} noeuds via estimation enrichie (
-                {financialPrecision.breakdown.estimationEnriched.costSharePercent}% du cout total)
+                [Prix reel ✓✓]: {financialPrecision.breakdown.pricingSources.costExplorer.costSharePercent}% du cout
+                infra
               </p>
               <p>
-                {financialPrecision.breakdown.estimationBase.nodes} noeuds via estimation de base (
-                {financialPrecision.breakdown.estimationBase.costSharePercent}% du cout total)
+                [Prix API ✓]: {financialPrecision.breakdown.pricingSources.pricingApi.costSharePercent}% du cout
+                infra
+              </p>
+              <p>
+                [Estimation ≈]: {financialPrecision.breakdown.pricingSources.staticTable.costSharePercent}% du cout
+                infra
+              </p>
+              <p>
+                Niveau profil business: {financialPrecision.breakdown.businessProfile.level}
               </p>
             </div>
           </CardContent>
@@ -618,6 +639,8 @@ function FinancialDashboardInner() {
                   <th className="pb-2">Composant</th>
                   <th className="pb-2">Type</th>
                   <th className="pb-2">Dependants</th>
+                  <th className="pb-2">Cout/mois</th>
+                  <th className="pb-2">Source prix</th>
                   <th className="pb-2">Cout/h</th>
                   <th className="pb-2">Risque/an</th>
                 </tr>
@@ -628,6 +651,14 @@ function FinancialDashboardInner() {
                     <td className="py-2 font-medium">{spof.nodeName}</td>
                     <td className="py-2">{spof.nodeType}</td>
                     <td className="py-2">{spof.dependentsCount}</td>
+                    <td className="py-2">
+                      {spof.monthlyCost != null ? formatMoney(spof.monthlyCost, currency) : 'N/A'}
+                    </td>
+                    <td className="py-2">
+                      <span className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs">
+                        {spof.monthlyCostSourceLabel || '[Estimation ≈]'}
+                      </span>
+                    </td>
                     <td className="py-2">{formatMoney(spof.costPerHour, currency)}</td>
                     <td className="py-2 font-semibold text-red-600">
                       {formatMoney(spof.ale, currency)}
@@ -811,3 +842,4 @@ export function FinancialDashboardPage() {
     </ModuleErrorBoundary>
   );
 }
+

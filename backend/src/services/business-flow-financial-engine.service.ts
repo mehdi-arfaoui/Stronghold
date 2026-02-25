@@ -48,8 +48,6 @@ export type FlowFinancialSnapshot = {
   computedCost: FlowCost | null;
   method:
     | 'direct_estimate'
-    | 'annual_revenue'
-    | 'transactional'
     | 'services_aggregate'
     | 'not_estimable';
   confidence: FlowCostConfidence;
@@ -215,8 +213,7 @@ function inferSnapshotConfidence(input: {
 
 function inferFlowConfidence(flow: BusinessFlow, method: string): FlowCostConfidence {
   if (flow.source === 'ai_suggested' && !flow.validatedByUser) return 'low';
-  if (method === 'direct_estimate' || method === 'annual_revenue') return 'high';
-  if (method === 'transactional') return 'medium';
+  if (method === 'direct_estimate') return 'high';
   return flow.validatedByUser ? 'medium' : 'low';
 }
 
@@ -265,9 +262,6 @@ export class BusinessFlowFinancialEngineService {
     sourceCurrency: SupportedCurrency = 'EUR',
   ): FlowCost | null {
     const directEstimate = toPositive(flow.estimatedCostPerHour);
-    const annualRevenue = toPositive(flow.annualRevenue);
-    const transactionsPerHour = toPositive(flow.transactionsPerHour);
-    const revenuePerTransaction = toPositive(flow.revenuePerTransaction);
 
     let directCostPerHour: number | null = null;
     let method = 'unknown';
@@ -275,14 +269,6 @@ export class BusinessFlowFinancialEngineService {
     if (directEstimate != null) {
       directCostPerHour = directEstimate;
       method = 'direct_estimate';
-    } else if (annualRevenue != null) {
-      const operatingDaysPerWeek = Math.max(1, Math.floor(flow.operatingDaysPerWeek || 5));
-      const operatingHoursPerDay = Math.max(1, Math.floor(flow.operatingHoursPerDay || 10));
-      directCostPerHour = annualRevenue / (operatingDaysPerWeek * 52 * operatingHoursPerDay);
-      method = 'annual_revenue';
-    } else if (transactionsPerHour != null && revenuePerTransaction != null) {
-      directCostPerHour = transactionsPerHour * revenuePerTransaction;
-      method = 'transactional';
     }
 
     if (directCostPerHour == null) return null;

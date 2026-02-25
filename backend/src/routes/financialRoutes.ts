@@ -90,8 +90,12 @@ async function resolveFinancialProfileInput(
     preferredCurrency,
   });
   return {
+    mode: resolved.mode,
     sizeCategory: resolved.sizeCategory,
     verticalSector: resolved.verticalSector,
+    industrySector: resolved.industrySector,
+    employeeCount: resolved.employeeCount,
+    annualRevenue: resolved.annualRevenue,
     customDowntimeCostPerHour: resolved.customDowntimeCostPerHour,
     hourlyDowntimeCost: resolved.hourlyDowntimeCost,
     annualITBudget: resolved.annualITBudget,
@@ -99,6 +103,11 @@ async function resolveFinancialProfileInput(
     customCurrency: resolved.currency,
     strongholdPlanId: resolved.strongholdPlanId,
     strongholdMonthlyCost: resolved.strongholdMonthlyCost,
+    numberOfCustomers: resolved.numberOfCustomers,
+    criticalBusinessHours: resolved.criticalBusinessHours,
+    regulatoryConstraints: resolved.regulatoryConstraints,
+    serviceOverrides: resolved.serviceOverrides,
+    isConfigured: resolved.isConfigured,
   };
 }
 
@@ -113,6 +122,71 @@ function parseNullableNumber(
   if (options?.min != null && parsed < options.min) return undefined;
   if (options?.max != null && parsed > options.max) return undefined;
   return parsed;
+}
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return [];
+  if (!Array.isArray(value)) return undefined;
+  return value
+    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
+    .filter((entry) => entry.length > 0);
+}
+
+function parseCriticalBusinessHours(value: unknown):
+  | { start: string; end: string; timezone: string }
+  | null
+  | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const payload = value as Record<string, unknown>;
+  const start = typeof payload.start === 'string' ? payload.start.trim() : '';
+  const end = typeof payload.end === 'string' ? payload.end.trim() : '';
+  const timezone = typeof payload.timezone === 'string' ? payload.timezone.trim() : '';
+  if (!start || !end || !timezone) return undefined;
+  return { start, end, timezone };
+}
+
+function parseServiceOverrides(value: unknown):
+  | Array<{
+      nodeId: string;
+      customDowntimeCostPerHour?: number;
+      customCriticalityTier?: 'critical' | 'high' | 'medium' | 'low';
+    }>
+  | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return [];
+  if (!Array.isArray(value)) return undefined;
+
+  const overrides: Array<{
+    nodeId: string;
+    customDowntimeCostPerHour?: number;
+    customCriticalityTier?: 'critical' | 'high' | 'medium' | 'low';
+  }> = [];
+
+  for (const rawItem of value) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
+    const item = rawItem as Record<string, unknown>;
+    const nodeId = typeof item.nodeId === 'string' ? item.nodeId.trim() : '';
+    if (!nodeId) continue;
+    const downtime = parseNullableNumber(item.customDowntimeCostPerHour, { min: 0 });
+    const tierRaw =
+      typeof item.customCriticalityTier === 'string'
+        ? item.customCriticalityTier.trim().toLowerCase()
+        : '';
+    const tier =
+      tierRaw === 'critical' || tierRaw === 'high' || tierRaw === 'medium' || tierRaw === 'low'
+        ? tierRaw
+        : undefined;
+    overrides.push({
+      nodeId,
+      ...(typeof downtime === 'number' && downtime > 0 ? { customDowntimeCostPerHour: downtime } : {}),
+      ...(tier ? { customCriticalityTier: tier } : {}),
+    });
+  }
+
+  return overrides;
 }
 
 function normalizeProfileSource(
@@ -151,16 +225,18 @@ function normalizeFieldSource(value: unknown): ProfileFieldSource | undefined {
   return undefined;
 }
 
-function parseIncomingFieldSources(rawFieldSources: unknown): Partial<Record<TrackedProfileField, ProfileFieldSource>> {
+function parseIncomingFieldSources(
+  rawFieldSources: unknown,
+  options?: { allowLegacy?: boolean },
+): Partial<Record<TrackedProfileField, ProfileFieldSource>> {
   if (!rawFieldSources || typeof rawFieldSources !== 'object' || Array.isArray(rawFieldSources)) {
     return {};
   }
   const parsed: Partial<Record<TrackedProfileField, ProfileFieldSource>> = {};
   for (const field of TRACKED_PROFILE_FIELDS) {
     const normalized = normalizeFieldSource((rawFieldSources as Record<string, unknown>)[field]);
-    if (normalized) {
-      parsed[field] = normalized;
-    }
+    if (!normalized) continue;
+    parsed[field] = normalized;
   }
   return parsed;
 }
@@ -172,7 +248,7 @@ function readStoredFieldSources(
     return {};
   }
   const fieldSources = (profileMetadata as Record<string, unknown>).fieldSources;
-  return parseIncomingFieldSources(fieldSources);
+  return parseIncomingFieldSources(fieldSources, { allowLegacy: true });
 }
 
 function buildPayloadHash(payload: unknown): string {
@@ -318,6 +394,9 @@ async function loadFinancialContext(tenantId: string) {
       validatedMTPD: node.validatedMTPD,
       metadata: node.metadata,
       estimatedMonthlyCost: node.estimatedMonthlyCost,
+      estimatedMonthlyCostCurrency: node.estimatedMonthlyCostCurrency,
+      estimatedMonthlyCostSource: node.estimatedMonthlyCostSource,
+      estimatedMonthlyCostConfidence: node.estimatedMonthlyCostConfidence,
       dependentsCount: node.inEdges.length,
       inEdges: node.inEdges,
       outEdges: node.outEdges,
@@ -492,8 +571,10 @@ router.post('/calculate-ale', requireCalcRateLimit, async (req: TenantRequest, r
       ...ale,
       validationScope: context.biaValidationScope,
       orgProfile: {
+        mode: profile?.mode ?? 'infra_only',
         sizeCategory: profile?.sizeCategory ?? 'midMarket',
         verticalSector: profile?.verticalSector ?? null,
+        annualRevenue: profile?.annualRevenue ?? null,
         customCurrency: profile?.customCurrency ?? ale.currency,
         customDowntimeCostPerHour: profile?.customDowntimeCostPerHour ?? null,
         strongholdPlanId: profile?.strongholdPlanId ?? null,
@@ -949,6 +1030,7 @@ router.get('/org-profile', async (req: TenantRequest, res) => {
         : null);
     return res.json({
       tenantId,
+      mode: resolved.mode,
       sizeCategory: resolved.sizeCategory,
       verticalSector: profile?.verticalSector ?? null,
       employeeCount: resolved.employeeCount,
@@ -962,11 +1044,17 @@ router.get('/org-profile', async (req: TenantRequest, res) => {
       customCurrency: resolved.currency,
       strongholdPlanId: resolved.strongholdPlanId,
       strongholdMonthlyCost: resolved.strongholdMonthlyCost,
+      numberOfCustomers: resolved.numberOfCustomers,
+      criticalBusinessHours: resolved.criticalBusinessHours,
+      regulatoryConstraints: resolved.regulatoryConstraints,
+      serviceOverrides: resolved.serviceOverrides,
       isConfigured: resolved.isConfigured,
       profileSource: resolved.source,
       profileConfidence: resolved.confidence,
       sourceDisclaimer: resolved.sourceDisclaimer,
       inferenceBanner: resolved.inferenceBanner,
+      reviewBanner: resolved.reviewBanner,
+      requiresReview: resolved.requiresReview,
       fieldSources: resolved.fieldSources,
       estimatedDrBudgetAnnual: resolved.estimatedDrBudgetAnnual,
     });
@@ -1002,6 +1090,10 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
     const hourlyDowntimeCostInput = parseNullableNumber(req.body?.hourlyDowntimeCost, { min: 0 });
     const legacyDowntimeInput = parseNullableNumber(req.body?.customDowntimeCostPerHour, { min: 0 });
     const strongholdMonthlyCostInput = parseNullableNumber(req.body?.strongholdMonthlyCost, { min: 0 });
+    const numberOfCustomersInput = parseNullableNumber(req.body?.numberOfCustomers, { min: 0 });
+    const criticalBusinessHoursInput = parseCriticalBusinessHours(req.body?.criticalBusinessHours);
+    const regulatoryConstraintsInput = parseStringArray(req.body?.regulatoryConstraints);
+    const serviceOverridesInput = parseServiceOverrides(req.body?.serviceOverrides);
     const profileConfidenceInput = parseNullableNumber(req.body?.profileConfidence, { min: 0, max: 1 });
     const incomingFieldSources = parseIncomingFieldSources(req.body?.fieldSources);
     const existingFieldSources = readStoredFieldSources(existingProfile?.profileMetadata);
@@ -1014,8 +1106,6 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
       if (existingProfile.employeeCount != null) existingFieldSources.employeeCount = 'user_input';
       if (existingProfile.annualRevenueUSD != null) existingFieldSources.annualRevenueUSD = 'user_input';
       if (existingProfile.annualRevenue != null) existingFieldSources.annualRevenue = 'user_input';
-      if (existingProfile.annualITBudget != null) existingFieldSources.annualITBudget = 'user_input';
-      if (existingProfile.drBudgetPercent != null) existingFieldSources.drBudgetPercent = 'user_input';
       if (existingProfile.hourlyDowntimeCost != null) existingFieldSources.hourlyDowntimeCost = 'user_input';
       if (existingProfile.customDowntimeCostPerHour != null) {
         existingFieldSources.customDowntimeCostPerHour = 'user_input';
@@ -1047,9 +1137,6 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
         : typeof req.body?.industrySector === 'string'
           ? req.body.industrySector
           : undefined;
-    const profileSourceInput = normalizeProfileSource(req.body?.profileSource);
-    const defaultIncomingFieldSource: ProfileFieldSource =
-      profileSourceInput === 'inferred' ? 'inferred' : 'user_input';
     const hourlyDowntimeCostResolvedInput =
       hourlyDowntimeCostInput !== undefined
         ? hourlyDowntimeCostInput
@@ -1068,24 +1155,14 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
       ...existingFieldSources,
     };
     const appliedUserInputFields: TrackedProfileField[] = [];
-    const appliedSuggestedOrInferredFields: TrackedProfileField[] = [];
-    const blockedSuggestedUpdates: TrackedProfileField[] = [];
 
     const applyTrackedField = (field: TrackedProfileField, value: unknown) => {
       if (value === undefined) return;
-      const incomingSource = incomingFieldSources[field] ?? defaultIncomingFieldSource;
-      const existingSource = existingFieldSources[field];
-      if (existingSource === 'user_input' && incomingSource !== 'user_input') {
-        blockedSuggestedUpdates.push(field);
-        return;
-      }
+      const incomingSource: ProfileFieldSource = incomingFieldSources[field] ?? 'user_input';
+      if (incomingSource !== 'user_input') return;
       appliedFieldValues[field] = value;
       mergedFieldSources[field] = incomingSource;
-      if (incomingSource === 'user_input') {
-        appliedUserInputFields.push(field);
-      } else {
-        appliedSuggestedOrInferredFields.push(field);
-      }
+      appliedUserInputFields.push(field);
     };
 
     applyTrackedField('employeeCount', employeeCountInput);
@@ -1099,22 +1176,12 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
     applyTrackedField('verticalSector', verticalSectorInput);
 
     const userProvidedFinancialFields = appliedUserInputFields.length > 0;
-    const hasNonUserFieldUpdates = appliedSuggestedOrInferredFields.length > 0;
-
-    const resolvedProfileSource =
-      profileSourceInput ??
-      (userProvidedFinancialFields
-        ? existingNormalizedProfileSource === 'inferred'
-          ? 'hybrid'
-          : 'user_input'
-        : hasNonUserFieldUpdates
-          ? existingNormalizedProfileSource === 'user_input'
-            ? 'hybrid'
-            : 'inferred'
-          : undefined);
+    const resolvedProfileSource = userProvidedFinancialFields
+      ? 'user_input'
+      : existingNormalizedProfileSource;
     const resolvedProfileConfidence =
       profileConfidenceInput ??
-      (userProvidedFinancialFields ? 0.85 : hasNonUserFieldUpdates ? 0.65 : undefined);
+      (userProvidedFinancialFields ? 0.95 : undefined);
 
     const existingMetadata =
       existingProfile?.profileMetadata &&
@@ -1132,8 +1199,17 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
     if (userProvidedFinancialFields) {
       mergedMetadata.lastManualUpdateAt = nowIso;
     }
-    if (blockedSuggestedUpdates.length > 0) {
-      mergedMetadata.lastBlockedSuggestionFields = Array.from(new Set(blockedSuggestedUpdates));
+    if (numberOfCustomersInput !== undefined) {
+      mergedMetadata.numberOfCustomers = numberOfCustomersInput;
+    }
+    if (criticalBusinessHoursInput !== undefined) {
+      mergedMetadata.criticalBusinessHours = criticalBusinessHoursInput;
+    }
+    if (regulatoryConstraintsInput !== undefined) {
+      mergedMetadata.regulatoryConstraints = regulatoryConstraintsInput;
+    }
+    if (serviceOverridesInput !== undefined) {
+      mergedMetadata.serviceOverrides = serviceOverridesInput;
     }
     const mergedMetadataJson = toPrismaJson(mergedMetadata);
 
@@ -1179,8 +1255,8 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
             ? (appliedFieldValues.customDowntimeCostPerHour as number | null)
             : null,
         customCurrency: currency,
-        profileSource: resolvedProfileSource ?? 'inferred',
-        profileConfidence: resolvedProfileConfidence ?? 0.4,
+        profileSource: resolvedProfileSource ?? 'user_input',
+        profileConfidence: resolvedProfileConfidence ?? 0.95,
         profileMetadata: mergedMetadataJson,
         strongholdPlanId:
           typeof req.body?.strongholdPlanId === 'string'
@@ -1225,7 +1301,12 @@ router.put('/org-profile', requireRole('OPERATOR'), async (req: TenantRequest, r
         ...(resolvedProfileConfidence != null
           ? { profileConfidence: resolvedProfileConfidence }
           : {}),
-        ...(Object.keys(appliedFieldValues).length > 0 || resolvedProfileSource
+        ...(Object.keys(appliedFieldValues).length > 0 ||
+        resolvedProfileSource ||
+        numberOfCustomersInput !== undefined ||
+        criticalBusinessHoursInput !== undefined ||
+        regulatoryConstraintsInput !== undefined ||
+        serviceOverridesInput !== undefined
           ? {
               profileMetadata: mergedMetadataJson,
             }

@@ -20,8 +20,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
-type CostMethod = 'direct' | 'annual' | 'transactional';
-
 function formatMoney(value: number, currency: string = 'EUR') {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
@@ -38,11 +36,7 @@ export function BusinessFlowsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
   const [category, setCategory] = useState('operations');
-  const [method, setMethod] = useState<CostMethod>('direct');
   const [estimatedCostPerHour, setEstimatedCostPerHour] = useState('');
-  const [annualRevenue, setAnnualRevenue] = useState('');
-  const [transactionsPerHour, setTransactionsPerHour] = useState('');
-  const [revenuePerTransaction, setRevenuePerTransaction] = useState('');
   const [latestSuggestionInsights, setLatestSuggestionInsights] = useState<
     FlowSuggestionResponse['suggestionInsights']
   >([]);
@@ -72,9 +66,6 @@ export function BusinessFlowsPage() {
       setCreateOpen(false);
       setName('');
       setEstimatedCostPerHour('');
-      setAnnualRevenue('');
-      setTransactionsPerHour('');
-      setRevenuePerTransaction('');
       await refreshFlows();
     },
     onError: () => toast.error('Unable to create business flow'),
@@ -142,22 +133,20 @@ export function BusinessFlowsPage() {
 
   const createFlow = () => {
     if (!name.trim()) return;
+    const parsedManualCost = Number(estimatedCostPerHour);
+
     const payload: Record<string, unknown> = {
       name: name.trim(),
       category,
       source: 'manual',
+      estimatedCostPerHour:
+        Number.isFinite(parsedManualCost) && parsedManualCost > 0
+          ? parsedManualCost
+          : null,
+      annualRevenue: null,
+      transactionsPerHour: null,
+      revenuePerTransaction: null,
     };
-
-    if (method === 'direct') {
-      payload.estimatedCostPerHour = Number(estimatedCostPerHour || 0);
-    } else if (method === 'annual') {
-      payload.annualRevenue = Number(annualRevenue || 0);
-      payload.operatingDaysPerWeek = 5;
-      payload.operatingHoursPerDay = 10;
-    } else {
-      payload.transactionsPerHour = Number(transactionsPerHour || 0);
-      payload.revenuePerTransaction = Number(revenuePerTransaction || 0);
-    }
 
     createMutation.mutate(payload);
   };
@@ -355,7 +344,9 @@ export function BusinessFlowsPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>New business flow</DialogTitle>
-            <DialogDescription>Fill at least one business value method.</DialogDescription>
+            <DialogDescription>
+              Configurez un cout downtime/h manuel (optionnel).
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">
@@ -374,69 +365,13 @@ export function BusinessFlowsPage() {
               <option value="compliance">Compliance</option>
               <option value="internal">Internal</option>
             </select>
-
-            <div className="grid grid-cols-3 gap-2 rounded-md border p-2 text-sm">
-              <button
-                className={`rounded px-2 py-1 ${method === 'direct' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                type="button"
-                onClick={() => setMethod('direct')}
-              >
-                Direct
-              </button>
-              <button
-                className={`rounded px-2 py-1 ${method === 'annual' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                type="button"
-                onClick={() => setMethod('annual')}
-              >
-                Annual
-              </button>
-              <button
-                className={`rounded px-2 py-1 ${method === 'transactional' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                type="button"
-                onClick={() => setMethod('transactional')}
-              >
-                Tx
-              </button>
-            </div>
-
-            {method === 'direct' && (
-              <Input
-                type="number"
-                min={1}
-                value={estimatedCostPerHour}
-                onChange={(event) => setEstimatedCostPerHour(event.target.value)}
-                placeholder="Estimated cost / hour"
-              />
-            )}
-
-            {method === 'annual' && (
-              <Input
-                type="number"
-                min={1}
-                value={annualRevenue}
-                onChange={(event) => setAnnualRevenue(event.target.value)}
-                placeholder="Annual revenue"
-              />
-            )}
-
-            {method === 'transactional' && (
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="number"
-                  min={1}
-                  value={transactionsPerHour}
-                  onChange={(event) => setTransactionsPerHour(event.target.value)}
-                  placeholder="Transactions/hour"
-                />
-                <Input
-                  type="number"
-                  min={1}
-                  value={revenuePerTransaction}
-                  onChange={(event) => setRevenuePerTransaction(event.target.value)}
-                  placeholder="Revenue/transaction"
-                />
-              </div>
-            )}
+            <Input
+              type="number"
+              min={0}
+              value={estimatedCostPerHour}
+              onChange={(event) => setEstimatedCostPerHour(event.target.value)}
+              placeholder="Cout downtime/h (manuel)"
+            />
           </div>
 
           <DialogFooter>

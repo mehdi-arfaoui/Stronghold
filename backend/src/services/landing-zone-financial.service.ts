@@ -18,7 +18,7 @@ import {
   buildServiceSpecificRecommendation,
   buildFinancialDisclaimers,
   estimateStrategyMonthlyDrCost,
-  estimateServiceMonthlyProductionCost,
+  estimateServiceMonthlyProductionCostAsync,
   findNextImprovingStrategy,
   resolveCompanyFinancialProfile,
   resolveIncidentProbabilityForNodeType,
@@ -54,6 +54,7 @@ export type LandingZoneFinancialRecommendation = {
   estimatedAnnualCost: number;
   estimatedProductionMonthlyCost: number;
   costSource: string;
+  costSourceLabel: string;
   costConfidence: number;
   roi: number | null;
   roiStatus: string;
@@ -129,6 +130,7 @@ type InternalRecommendationSeed = {
   estimatedAnnualCost: number;
   estimatedProductionMonthlyCost: number;
   costSource: string;
+  costSourceLabel: string;
   costConfidence: number;
   description: string;
   priority: number;
@@ -228,13 +230,6 @@ function normalizeCriticality(
   return 'low';
 }
 
-function criticalityBudgetWeight(level: 'critical' | 'high' | 'medium' | 'low'): number {
-  if (level === 'critical') return 1.9;
-  if (level === 'high') return 1.45;
-  if (level === 'medium') return 1;
-  return 0.7;
-}
-
 function resolveStrategyOverride(metadata: unknown): string | null {
   if (!isRecord(metadata)) return null;
   const recommendationBlock = isRecord(metadata.landingZoneRecommendation)
@@ -253,8 +248,12 @@ function toFinancialProfileInput(
   profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>,
 ): FinancialOrganizationProfileInput {
   return {
+    mode: profile.mode,
     sizeCategory: profile.sizeCategory,
     verticalSector: profile.verticalSector,
+    industrySector: profile.industrySector,
+    employeeCount: profile.employeeCount,
+    annualRevenue: profile.annualRevenue,
     customDowntimeCostPerHour: profile.customDowntimeCostPerHour,
     hourlyDowntimeCost: profile.hourlyDowntimeCost,
     annualITBudget: profile.annualITBudget,
@@ -262,6 +261,10 @@ function toFinancialProfileInput(
     customCurrency: profile.currency,
     strongholdPlanId: profile.strongholdPlanId,
     strongholdMonthlyCost: profile.strongholdMonthlyCost,
+    numberOfCustomers: profile.numberOfCustomers,
+    criticalBusinessHours: profile.criticalBusinessHours,
+    regulatoryConstraints: profile.regulatoryConstraints,
+    serviceOverrides: profile.serviceOverrides,
     isConfigured: profile.isConfigured,
   };
 }
@@ -305,6 +308,9 @@ async function loadFinancialContext(prismaClient: PrismaClient, tenantId: string
       validatedMTPD: node.validatedMTPD,
       metadata: node.metadata,
       estimatedMonthlyCost: node.estimatedMonthlyCost,
+      estimatedMonthlyCostCurrency: node.estimatedMonthlyCostCurrency,
+      estimatedMonthlyCostSource: node.estimatedMonthlyCostSource,
+      estimatedMonthlyCostConfidence: node.estimatedMonthlyCostConfidence,
       dependentsCount: node.inEdges.length,
       inEdges: node.inEdges,
       outEdges: node.outEdges,
@@ -509,11 +515,6 @@ export async function buildLandingZoneFinancialContext(
   const sortedRecommendations = [...report.recommendations].sort(
     (left, right) => right.priorityScore - left.priorityScore,
   );
-  const infrastructureNodeCount = Math.max(1, financialContext.analysisResult.nodes.length);
-  const budgetDerivedMonthlyCostPerNode =
-    profile.isConfigured && profile.annualITBudget && profile.annualITBudget > 0
-      ? roundMoney(profile.annualITBudget / 12 / infrastructureNodeCount)
-      : null;
 
   const recommendationSeeds: InternalRecommendationSeed[] = [];
   for (const recommendation of sortedRecommendations) {
@@ -521,7 +522,7 @@ export async function buildLandingZoneFinancialContext(
     const validatedProcess = validatedBiaByServiceId.get(recommendation.serviceId);
     const state = parsePersistedRecommendationState(node?.metadata);
 
-    const monthlyCostEstimate = estimateServiceMonthlyProductionCost(
+    const monthlyCostEstimate = await estimateServiceMonthlyProductionCostAsync(
       {
         type: node?.type || 'APPLICATION',
         provider: node?.provider || 'unknown',
@@ -537,17 +538,7 @@ export async function buildLandingZoneFinancialContext(
       validatedProcess?.criticalityScore ?? node?.criticalityScore ?? null,
       validatedProcess?.impactCategory ?? node?.impactCategory ?? null,
     );
-    const budgetCalibratedMonthlyCost =
-      budgetDerivedMonthlyCostPerNode != null
-        ? roundMoney(Math.max(0, budgetDerivedMonthlyCostPerNode * criticalityBudgetWeight(criticality)))
-        : null;
-    const estimatedProductionMonthlyCost =
-      budgetCalibratedMonthlyCost != null
-        ? roundMoney(Math.max(monthlyCostEstimate.estimatedMonthlyCost, budgetCalibratedMonthlyCost))
-        : monthlyCostEstimate.estimatedMonthlyCost;
-    const budgetCalibrationApplied =
-      budgetCalibratedMonthlyCost != null &&
-      estimatedProductionMonthlyCost > monthlyCostEstimate.estimatedMonthlyCost;
+    const estimatedProductionMonthlyCost = monthlyCostEstimate.estimatedMonthlyCost;
 
     const targetRtoMinutes =
       validatedProcess?.validatedRTO ?? node?.validatedRTO ?? node?.suggestedRTO ?? null;
@@ -567,8 +558,10 @@ export async function buildLandingZoneFinancialContext(
       provider: node?.provider || 'unknown',
       metadata: node?.metadata || {},
     });
-    const adjustedStrategy = findNextImprovingStrategy(selected.strategy, currentRtoMinutes);
-    if (!adjustedStrategy) {
+    const improvingStrategy = findNextImprovingStrategy(selected.strategy, currentRtoMinutes);
+    const effectiveStrategy = improvingStrategy ?? selected.strategy;
+    const strategyHasRtoGain = improvingStrategy != null;
+    if (!strategyHasRtoGain) {
       appLogger.warn('landing_zone.recommendation_skipped_no_rto_gain', {
         tenantId,
         serviceId: recommendation.serviceId,
@@ -576,36 +569,35 @@ export async function buildLandingZoneFinancialContext(
         strategy: selected.strategy,
         currentRtoMinutes,
       });
-      continue;
     }
 
-    const strategyUpgraded = adjustedStrategy !== selected.strategy;
+    const strategyUpgraded = effectiveStrategy !== selected.strategy;
     const monthlyDrCost = strategyUpgraded
-      ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, adjustedStrategy, {
+      ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, effectiveStrategy, {
           nodeType: node?.type || 'APPLICATION',
           provider: node?.provider || 'unknown',
           metadata: node?.metadata || {},
         })
       : selected.monthlyDrCost;
     const annualDrCost = roundMoney(monthlyDrCost * 12);
-    const calibrationWarning = budgetCalibrationApplied
-      ? `Calibration budget profile: cout de production ajuste a ${estimatedProductionMonthlyCost.toFixed(0)} ${profile.currency}/mois.`
-      : null;
     const budgetWarning = strategyUpgraded
       ? selected.budgetWarning
         ? `${selected.budgetWarning} | Ajustement RTO: strategie relevee pour garantir un gain de reprise.`
         : 'Ajustement RTO: strategie relevee pour garantir un gain de reprise.'
       : selected.budgetWarning;
+    const noGainWarning = strategyHasRtoGain
+      ? null
+      : 'Strategie conservee: aucun gain RTO supplementaire detecte sur ce service.';
     const combinedBudgetWarning =
-      budgetWarning && calibrationWarning
-        ? `${budgetWarning} | ${calibrationWarning}`
-        : budgetWarning || calibrationWarning;
+      budgetWarning && noGainWarning
+        ? `${budgetWarning} | ${noGainWarning}`
+        : budgetWarning || noGainWarning;
 
     if (budgetRemainingMonthly && monthlyDrCost > 0) {
       budgetRemainingMonthly = Math.max(0, budgetRemainingMonthly - monthlyDrCost);
     }
 
-    const strategy = strategyKeyToLegacySlug(adjustedStrategy);
+    const strategy = strategyKeyToLegacySlug(effectiveStrategy);
     const probability = resolveIncidentProbabilityForNodeType(
       node?.type || recommendation.serviceName,
       undefined,
@@ -616,7 +608,7 @@ export async function buildLandingZoneFinancialContext(
       nodeType: node?.type || 'APPLICATION',
       provider: node?.provider || 'unknown',
       metadata: node?.metadata || {},
-      strategy: adjustedStrategy,
+      strategy: effectiveStrategy,
       monthlyDrCost,
       currency: profile.currency,
     });
@@ -626,15 +618,14 @@ export async function buildLandingZoneFinancialContext(
       nodeId: recommendation.serviceId,
       serviceName: recommendation.serviceName,
       tier: recommendation.recoveryTier,
-      strategyKey: adjustedStrategy,
+      strategyKey: effectiveStrategy,
       strategy,
       estimatedCost: monthlyDrCost,
       estimatedAnnualCost: annualDrCost,
       estimatedProductionMonthlyCost,
-      costSource: budgetCalibrationApplied ? 'budget_profile_calibration' : monthlyCostEstimate.costSource,
-      costConfidence: budgetCalibrationApplied
-        ? Math.max(monthlyCostEstimate.confidence, 0.7)
-        : monthlyCostEstimate.confidence,
+      costSource: monthlyCostEstimate.pricingSource,
+      costSourceLabel: monthlyCostEstimate.pricingSourceLabel,
+      costConfidence: monthlyCostEstimate.confidence,
       description: serviceSpecificRecommendation.text,
       priority: recommendation.priorityScore,
       notes: state.notes,
@@ -703,7 +694,7 @@ export async function buildLandingZoneFinancialContext(
     roi.breakdownByRecommendation.map((entry) => [entry.recommendationId, entry]),
   );
 
-  const recommendations: LandingZoneFinancialRecommendation[] = recommendationSeeds.flatMap((seed) => {
+  const recommendations: LandingZoneFinancialRecommendation[] = recommendationSeeds.map((seed) => {
     const breakdown = breakdownByRecommendationId.get(seed.id);
     if (!breakdown) {
       appLogger.warn('landing_zone.recommendation_filtered_missing_breakdown', {
@@ -711,9 +702,7 @@ export async function buildLandingZoneFinancialContext(
         serviceId: seed.id,
         serviceName: seed.serviceName,
       });
-      return [];
-    }
-    if (breakdown.projectedALE >= breakdown.currentALE || breakdown.riskReduction <= 0) {
+    } else if (breakdown.projectedALE >= breakdown.currentALE || breakdown.riskReduction <= 0) {
       appLogger.warn('landing_zone.recommendation_filtered_non_positive_gain', {
         tenantId,
         serviceId: seed.id,
@@ -722,7 +711,6 @@ export async function buildLandingZoneFinancialContext(
         aleAfter: breakdown.projectedALE,
         riskReduction: breakdown.riskReduction,
       });
-      return [];
     }
     const fallbackRto = strategyTargetRtoMinutes(seed.strategyKey) / 60;
     const fallbackInputs = {
@@ -733,12 +721,12 @@ export async function buildLandingZoneFinancialContext(
       monthlyDrCost: roundMoney(seed.estimatedCost),
     };
     const calculationInputs = breakdown?.calculationInputs ?? fallbackInputs;
-    const annualDrCost = breakdown.annualCost ?? seed.estimatedAnnualCost;
-    const riskAvoidedAnnual = breakdown.riskReduction ?? 0;
-    const aleCurrent = breakdown.currentALE ?? 0;
-    const aleAfter = breakdown.projectedALE ?? Math.max(0, aleCurrent - riskAvoidedAnnual);
+    const annualDrCost = breakdown?.annualCost ?? seed.estimatedAnnualCost;
+    const riskAvoidedAnnual = breakdown?.riskReduction ?? 0;
+    const aleCurrent = breakdown?.currentALE ?? 0;
+    const aleAfter = breakdown?.projectedALE ?? Math.max(0, aleCurrent - riskAvoidedAnnual);
 
-    return [{
+    return {
       id: seed.id,
       nodeId: seed.nodeId,
       serviceName: seed.serviceName,
@@ -748,10 +736,11 @@ export async function buildLandingZoneFinancialContext(
       estimatedAnnualCost: seed.estimatedAnnualCost,
       estimatedProductionMonthlyCost: seed.estimatedProductionMonthlyCost,
       costSource: seed.costSource,
+      costSourceLabel: seed.costSourceLabel,
       costConfidence: seed.costConfidence,
       roi: breakdown?.individualROI ?? null,
-      roiStatus: breakdown?.roiStatus ?? 'non_applicable',
-      roiMessage: breakdown?.roiMessage ?? 'Non applicable',
+      roiStatus: breakdown?.roiStatus ?? (riskAvoidedAnnual > 0 ? 'rentable' : 'non_applicable'),
+      roiMessage: breakdown?.roiMessage ?? (riskAvoidedAnnual > 0 ? 'Rentable' : 'Non applicable'),
       paybackMonths: breakdown?.paybackMonths ?? null,
       paybackLabel: breakdown?.paybackLabel ?? 'Non rentable',
       accepted: seed.accepted,
@@ -776,7 +765,7 @@ export async function buildLandingZoneFinancialContext(
         seed.probabilitySource,
         'Stronghold financial engine',
       ],
-    }];
+    };
   });
 
   const recommendationInputById = new Map<string, RecommendationInput>(

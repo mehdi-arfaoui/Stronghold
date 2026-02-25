@@ -1,6 +1,7 @@
 import {
   GetProductsCommand,
   PricingClient,
+  type PricingClientConfig,
   type FilterType,
   type GetProductsCommandOutput,
 } from "@aws-sdk/client-pricing";
@@ -27,11 +28,36 @@ export type AwsPricingProductsResult = {
 };
 
 const DEFAULT_REGION = process.env.AWS_PRICING_REGION || "us-east-1";
+let cachedPricingClient: PricingClient | null = null;
+
+function buildPricingClientConfig(): PricingClientConfig {
+  const config: PricingClientConfig = {
+    region: DEFAULT_REGION,
+  };
+
+  const accessKeyId = process.env.AWS_PRICING_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.AWS_PRICING_SECRET_ACCESS_KEY;
+  if (accessKeyId && secretAccessKey) {
+    config.credentials = {
+      accessKeyId,
+      secretAccessKey,
+    };
+  }
+
+  return config;
+}
+
+function getPricingClient(): PricingClient {
+  if (!cachedPricingClient) {
+    cachedPricingClient = new PricingClient(buildPricingClientConfig());
+  }
+  return cachedPricingClient;
+}
 
 export async function fetchAwsPricingProducts(
   query: AwsPricingQuery
 ): Promise<AwsPricingProductsResult> {
-  const client = new PricingClient({ region: DEFAULT_REGION });
+  const client = getPricingClient();
   const filters =
     query.filters?.map((filter) => ({
       Type: filter.type ?? "TERM_MATCH",

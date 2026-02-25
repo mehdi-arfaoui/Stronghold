@@ -11,6 +11,7 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { analysisApi } from '@/api/analysis.api';
 import { risksApi } from '@/api/risks.api';
+import { financialApi } from '@/api/financial.api';
 import { formatRelativeTime } from '@/lib/formatters';
 
 export function DashboardPage() {
@@ -29,6 +30,11 @@ export function DashboardPage() {
   const risksQuery = useQuery({
     queryKey: ['risks'],
     queryFn: async () => (await risksApi.getRisks()).data,
+  });
+  const financialProfileQuery = useQuery({
+    queryKey: ['financial-org-profile'],
+    queryFn: async () => (await financialApi.getOrgProfile()).data,
+    staleTime: 60_000,
   });
 
   const isLoading = scoreQuery.isLoading || spofsQuery.isLoading;
@@ -53,6 +59,7 @@ export function DashboardPage() {
   const score = scoreQuery.data;
   const spofs = Array.isArray(spofsQuery.data) ? spofsQuery.data : [];
   const risks = Array.isArray(risksQuery.data) ? risksQuery.data : [];
+  const financialMode = financialProfileQuery.data?.mode || 'infra_only';
 
   if (typeof score?.overall !== 'number') {
     return (
@@ -95,6 +102,20 @@ export function DashboardPage() {
           icon={Clock}
         />
       </div>
+
+      {/* Row 2: Gauge + SPOFs */}
+      <Card className={financialMode === 'business_profile' ? 'border-emerald-300 bg-emerald-50/50' : 'border-blue-300 bg-blue-50/50'}>
+        <CardContent className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+          {financialMode === 'business_profile' ? (
+            <span>Profil financier configure. Vous pouvez l ajuster a tout moment.</span>
+          ) : (
+            <span>Profil financier non configure. Configurez-le pour activer l impact business.</span>
+          )}
+          <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=finance')}>
+            Configurer
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Row 2: Gauge + SPOFs */}
       <div className="grid gap-6 lg:grid-cols-2">

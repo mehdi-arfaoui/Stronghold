@@ -197,7 +197,7 @@ router.get('/events', async (req: TenantRequest, res) => {
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const enrichedEvents = events.map((event) => {
-      let costPerHour = 500;
+      let costPerHour = 0;
       let eventCurrency = String(profile?.customCurrency || 'EUR').toUpperCase();
       if (event.nodeId) {
         const node = nodeById.get(event.nodeId);

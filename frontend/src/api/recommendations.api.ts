@@ -15,6 +15,7 @@ export interface Recommendation {
   estimatedAnnualCost?: number;
   estimatedProductionMonthlyCost?: number;
   costSource?: 'cloud_type_reference' | 'criticality_fallback' | 'user_override' | string;
+  costSourceLabel?: string;
   costConfidence?: number;
   roi?: number | null;
   roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable' | string;

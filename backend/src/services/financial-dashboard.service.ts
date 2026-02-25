@@ -74,18 +74,29 @@ export type RegulatoryExposureSummary = {
 
 export type FinancialPrecisionBreakdownItem = {
   nodes: number;
-  aleAmount: number;
+  weightedAmount: number;
   costSharePercent: number;
+  contributionPercent: number;
 };
 
 export type FinancialPrecisionSummary = {
   scorePercent: number;
-  highConfidenceCostSharePercent: number;
+  infraCostPrecisionPercent: number;
+  businessProfilePrecisionPercent: number;
   breakdown: {
-    businessFlowValidated: FinancialPrecisionBreakdownItem;
-    userOverride: FinancialPrecisionBreakdownItem;
-    estimationEnriched: FinancialPrecisionBreakdownItem;
-    estimationBase: FinancialPrecisionBreakdownItem;
+    pricingSources: {
+      costExplorer: FinancialPrecisionBreakdownItem;
+      pricingApi: FinancialPrecisionBreakdownItem;
+      staticTable: FinancialPrecisionBreakdownItem;
+    };
+    businessProfile: {
+      level: 'none' | 'essentials' | 'context' | 'advanced' | 'complete';
+      hasCoreInputs: boolean;
+      hasSectorAndEmployees: boolean;
+      hasCriticalBusinessHours: boolean;
+      hasServiceOverrides: boolean;
+      hasExtendedContext: boolean;
+    };
   };
 };
 
@@ -104,11 +115,16 @@ export type FinancialSummaryPayload = {
     nodeId: string;
     nodeName: string;
     nodeType: string;
+    recoveryTier?: number;
     ale: number;
     probability: number;
     estimatedDowntimeHours: number;
     costPerHour: number;
     dependentsCount: number;
+    monthlyCost?: number;
+    monthlyCostSource?: string;
+    monthlyCostSourceLabel?: string;
+    pricingConfidence?: number;
   }>;
   ale: ReturnType<typeof FinancialEngineService.calculateAnnualExpectedLoss>;
   roi: ReturnType<typeof FinancialEngineService.calculateROI>;
@@ -276,6 +292,9 @@ function toNodeInput(node: InfraNodeWithEdges) {
     validatedMTPD: node.validatedMTPD,
     metadata: node.metadata,
     estimatedMonthlyCost: node.estimatedMonthlyCost,
+    estimatedMonthlyCostCurrency: node.estimatedMonthlyCostCurrency,
+    estimatedMonthlyCostSource: node.estimatedMonthlyCostSource,
+    estimatedMonthlyCostConfidence: node.estimatedMonthlyCostConfidence,
     dependentsCount: node.inEdges.length,
     inEdges: node.inEdges,
     outEdges: node.outEdges,
@@ -603,76 +622,176 @@ export async function buildRegulatoryExposureSummary(
   };
 }
 
-function hasCloudCostMetadata(rawMetadata: unknown): boolean {
-  if (!isPlainObject(rawMetadata)) return false;
-  const cloudCost = rawMetadata.cloudCost;
-  if (!isPlainObject(cloudCost)) return false;
-  const monthly = Number(cloudCost.monthlyTotalUSD);
-  return Number.isFinite(monthly) && monthly > 0;
-}
-
 function buildFinancialPrecisionSummary(input: {
   ale: ReturnType<typeof FinancialEngineService.calculateAnnualExpectedLoss>;
-  nodeMetadataById: Map<string, unknown>;
+  profile: FinancialOrganizationProfileInput;
 }): FinancialPrecisionSummary {
   const breakdownRaw = {
-    businessFlowValidated: { nodes: 0, aleAmount: 0 },
-    userOverride: { nodes: 0, aleAmount: 0 },
-    estimationEnriched: { nodes: 0, aleAmount: 0 },
-    estimationBase: { nodes: 0, aleAmount: 0 },
+    costExplorer: { nodes: 0, weightedAmount: 0 },
+    pricingApi: { nodes: 0, weightedAmount: 0 },
+    staticTable: { nodes: 0, weightedAmount: 0 },
   };
 
   for (const spof of input.ale.aleBySPOF) {
-    const method = String(spof.costMethod || 'legacy_estimate');
-    const confidence = String(spof.costConfidence || 'low');
-    const hasCloudCost = hasCloudCostMetadata(input.nodeMetadataById.get(spof.nodeId));
-    const aleAmount = Number(spof.ale) || 0;
+    const source = String(spof.monthlyCostSource || 'static-table').toLowerCase();
+    const weight = Math.max(
+      0,
+      Number(spof.monthlyCost) || Number(spof.ale) || 0,
+    );
 
-    if (method === 'business_flows' && confidence === 'high') {
-      breakdownRaw.businessFlowValidated.nodes += 1;
-      breakdownRaw.businessFlowValidated.aleAmount += aleAmount;
+    if (source === 'cost-explorer') {
+      breakdownRaw.costExplorer.nodes += 1;
+      breakdownRaw.costExplorer.weightedAmount += weight;
       continue;
     }
-    if (method === 'user_override') {
-      breakdownRaw.userOverride.nodes += 1;
-      breakdownRaw.userOverride.aleAmount += aleAmount;
+    if (source === 'pricing-api') {
+      breakdownRaw.pricingApi.nodes += 1;
+      breakdownRaw.pricingApi.weightedAmount += weight;
       continue;
     }
-    if (method === 'business_flows' || (method === 'fallback_estimate' && hasCloudCost)) {
-      breakdownRaw.estimationEnriched.nodes += 1;
-      breakdownRaw.estimationEnriched.aleAmount += aleAmount;
-      continue;
-    }
-    breakdownRaw.estimationBase.nodes += 1;
-    breakdownRaw.estimationBase.aleAmount += aleAmount;
+    breakdownRaw.staticTable.nodes += 1;
+    breakdownRaw.staticTable.weightedAmount += weight;
   }
 
-  const totalAle =
-    input.ale.totalALE > 0
-      ? input.ale.totalALE
-      : Object.values(breakdownRaw).reduce((sum, bucket) => sum + bucket.aleAmount, 0);
+  const totalWeightedAmount = Object.values(breakdownRaw).reduce(
+    (sum, bucket) => sum + bucket.weightedAmount,
+    0,
+  );
+  const sourceWeights =
+    totalWeightedAmount > 0
+      ? {
+          costExplorer: breakdownRaw.costExplorer.weightedAmount / totalWeightedAmount,
+          pricingApi: breakdownRaw.pricingApi.weightedAmount / totalWeightedAmount,
+          staticTable: breakdownRaw.staticTable.weightedAmount / totalWeightedAmount,
+        }
+      : {
+          costExplorer: 0,
+          pricingApi: 0,
+          staticTable: 1,
+        };
 
-  const toBreakdownItem = (bucket: { nodes: number; aleAmount: number }): FinancialPrecisionBreakdownItem => ({
+  const sourcePrecisionCaps = {
+    costExplorer: 50,
+    pricingApi: 42,
+    staticTable: 30,
+  };
+
+  const infraCostPrecision = Number(
+    (
+      sourceWeights.costExplorer * sourcePrecisionCaps.costExplorer +
+      sourceWeights.pricingApi * sourcePrecisionCaps.pricingApi +
+      sourceWeights.staticTable * sourcePrecisionCaps.staticTable
+    ).toFixed(2),
+  );
+
+  const toBreakdownItem = (
+    bucket: { nodes: number; weightedAmount: number },
+    weightShare: number,
+    maxContribution: number,
+  ): FinancialPrecisionBreakdownItem => ({
     nodes: bucket.nodes,
-    aleAmount: roundAmount(bucket.aleAmount),
-    costSharePercent: totalAle > 0 ? roundAmount((bucket.aleAmount / totalAle) * 100) : 0,
+    weightedAmount: roundAmount(bucket.weightedAmount),
+    costSharePercent: Number((weightShare * 100).toFixed(2)),
+    contributionPercent: Number((weightShare * maxContribution).toFixed(2)),
   });
 
-  const breakdown = {
-    businessFlowValidated: toBreakdownItem(breakdownRaw.businessFlowValidated),
-    userOverride: toBreakdownItem(breakdownRaw.userOverride),
-    estimationEnriched: toBreakdownItem(breakdownRaw.estimationEnriched),
-    estimationBase: toBreakdownItem(breakdownRaw.estimationBase),
+  const pricingSources = {
+    costExplorer: toBreakdownItem(
+      breakdownRaw.costExplorer,
+      sourceWeights.costExplorer,
+      sourcePrecisionCaps.costExplorer,
+    ),
+    pricingApi: toBreakdownItem(
+      breakdownRaw.pricingApi,
+      sourceWeights.pricingApi,
+      sourcePrecisionCaps.pricingApi,
+    ),
+    staticTable: toBreakdownItem(
+      breakdownRaw.staticTable,
+      sourceWeights.staticTable,
+      sourcePrecisionCaps.staticTable,
+    ),
   };
 
-  const highConfidenceSharePercent =
-    breakdown.businessFlowValidated.costSharePercent + breakdown.userOverride.costSharePercent;
+  const annualRevenue = Number(input.profile.annualRevenue || 0);
+  const downtimeCostPerHour = Number(
+    input.profile.customDowntimeCostPerHour || input.profile.hourlyDowntimeCost || 0,
+  );
+  const mode = String(input.profile.mode || '').toLowerCase();
+  const hasCoreInputs =
+    mode === 'business_profile' && annualRevenue > 0 && downtimeCostPerHour > 0;
+  const hasSectorAndEmployees =
+    Boolean(input.profile.verticalSector || input.profile.industrySector) &&
+    Number(input.profile.employeeCount || 0) > 0;
+  const hasCriticalBusinessHours = Boolean(
+    input.profile.criticalBusinessHours?.start &&
+      input.profile.criticalBusinessHours?.end &&
+      input.profile.criticalBusinessHours?.timezone,
+  );
+  const hasServiceOverrides = Array.isArray(input.profile.serviceOverrides)
+    ? input.profile.serviceOverrides.length > 0
+    : false;
+  const hasExtendedContext =
+    Number(input.profile.numberOfCustomers || 0) > 0 ||
+    (Array.isArray(input.profile.regulatoryConstraints) &&
+      input.profile.regulatoryConstraints.length > 0);
+
+  let businessProfilePrecision = 0;
+  let businessLevel: FinancialPrecisionSummary['breakdown']['businessProfile']['level'] = 'none';
+  if (hasCoreInputs) {
+    businessProfilePrecision = 30;
+    businessLevel = 'essentials';
+    if (hasSectorAndEmployees) {
+      businessProfilePrecision = 35;
+      businessLevel = 'context';
+    }
+    if (hasCriticalBusinessHours) {
+      businessProfilePrecision = Math.max(businessProfilePrecision, 40);
+      businessLevel = 'advanced';
+    }
+    if (hasServiceOverrides) {
+      businessProfilePrecision = Math.max(businessProfilePrecision, 45);
+      businessLevel = 'advanced';
+    }
+    if (
+      hasSectorAndEmployees &&
+      hasCriticalBusinessHours &&
+      hasServiceOverrides &&
+      hasExtendedContext
+    ) {
+      businessProfilePrecision = 50;
+      businessLevel = 'complete';
+    }
+  }
+
+  const scorePercent = Number(
+    Math.max(0, Math.min(100, infraCostPrecision + businessProfilePrecision)).toFixed(2),
+  );
 
   return {
-    scorePercent: highConfidenceSharePercent,
-    highConfidenceCostSharePercent: highConfidenceSharePercent,
-    breakdown,
+    scorePercent,
+    infraCostPrecisionPercent: infraCostPrecision,
+    businessProfilePrecisionPercent: businessProfilePrecision,
+    breakdown: {
+      pricingSources,
+      businessProfile: {
+        level: businessLevel,
+        hasCoreInputs,
+        hasSectorAndEmployees,
+        hasCriticalBusinessHours,
+        hasServiceOverrides,
+        hasExtendedContext,
+      },
+    },
   };
+}
+
+function recoveryTierSortOrder(recoveryTier: number | undefined): number {
+  if (recoveryTier === 1) return 0;
+  if (recoveryTier === 2) return 1;
+  if (recoveryTier === 3) return 2;
+  if (recoveryTier === 4) return 3;
+  return 99;
 }
 
 export async function buildFinancialSummaryPayload(
@@ -736,8 +855,16 @@ export async function buildFinancialSummaryPayload(
 
   const financialPrecision = buildFinancialPrecisionSummary({
     ale,
-    nodeMetadataById: context.nodeMetadataById,
+    profile,
   });
+  const topSPOFs = [...ale.aleBySPOF]
+    .sort((left, right) => {
+      const criticalityDelta =
+        recoveryTierSortOrder(left.recoveryTier) - recoveryTierSortOrder(right.recoveryTier);
+      if (criticalityDelta !== 0) return criticalityDelta;
+      return right.ale - left.ale;
+    })
+    .slice(0, 5);
 
   return {
     metrics: {
@@ -750,7 +877,7 @@ export async function buildFinancialSummaryPayload(
       totalSPOFs: ale.totalSPOFs,
       avgDowntimeHoursPerIncident: ale.avgDowntimeHoursPerIncident,
     },
-    topSPOFs: ale.aleBySPOF.slice(0, 5),
+    topSPOFs,
     ale,
     roi,
     organizationProfile: profile,

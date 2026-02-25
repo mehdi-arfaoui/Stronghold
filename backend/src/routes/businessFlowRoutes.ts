@@ -222,27 +222,21 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
   const category = parseOptionalCategory(payload.category, 'category', issues);
   if (category !== undefined) data.category = category;
 
-  const annualRevenue = parseOptionalNumber(payload.annualRevenue, 'annualRevenue', issues, {
-    allowNull: true,
-    min: 0,
-  });
-  if (annualRevenue !== undefined) data.annualRevenue = annualRevenue;
-
-  const transactionsPerHour = parseOptionalNumber(
-    payload.transactionsPerHour,
-    'transactionsPerHour',
-    issues,
-    { allowNull: true, min: 0 },
-  );
-  if (transactionsPerHour !== undefined) data.transactionsPerHour = transactionsPerHour;
-
-  const revenuePerTransaction = parseOptionalNumber(
-    payload.revenuePerTransaction,
-    'revenuePerTransaction',
-    issues,
-    { allowNull: true, min: 0 },
-  );
-  if (revenuePerTransaction !== undefined) data.revenuePerTransaction = revenuePerTransaction;
+  // Legacy valuation methods are intentionally disabled to prevent implicit business estimations.
+  const legacyValuationFields = ['annualRevenue', 'transactionsPerHour', 'revenuePerTransaction'] as const;
+  for (const field of legacyValuationFields) {
+    const rawValue = payload[field];
+    if (rawValue === null) {
+      data[field] = null;
+      continue;
+    }
+    if (rawValue !== undefined) {
+      issues.push({
+        field,
+        message: 'ce champ n est plus supporte; utilisez estimatedCostPerHour ou laissez vide',
+      });
+    }
+  }
 
   const estimatedCostPerHour = parseOptionalNumber(
     payload.estimatedCostPerHour,
@@ -385,25 +379,6 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
     { allowNull: true, maxLength: 128 },
   );
   if (mutualExclusionGroup !== undefined) data.mutualExclusionGroup = mutualExclusionGroup;
-
-  if (!isPatch) {
-    const direct = typeof data.estimatedCostPerHour === 'number' && data.estimatedCostPerHour > 0;
-    const annual = typeof data.annualRevenue === 'number' && data.annualRevenue > 0;
-    const tx =
-      typeof data.transactionsPerHour === 'number' &&
-      data.transactionsPerHour > 0 &&
-      typeof data.revenuePerTransaction === 'number' &&
-      data.revenuePerTransaction > 0;
-    const sourceValue = String(data.source || 'manual');
-    const canBeSuggestion = sourceValue === 'ai_suggested' || sourceValue === 'cloud_tags';
-    if (!direct && !annual && !tx && !canBeSuggestion) {
-      issues.push({
-        field: 'businessValue',
-        message:
-          'au moins une mÃ©thode de valorisation est requise (estimatedCostPerHour, annualRevenue, ou transactionsPerHour x revenuePerTransaction)',
-      });
-    }
-  }
 
   return { issues, data };
 }

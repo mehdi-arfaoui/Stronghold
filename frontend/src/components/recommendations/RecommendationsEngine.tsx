@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+﻿import { useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -116,6 +116,13 @@ function formatRoiPercent(value: number | null | undefined): { label: string; to
 }
 
 function mapCostSourceLabel(costSource: string | undefined): string {
+  if (!costSource) return 'Estimation Stronghold';
+  if (costSource.startsWith('budget_profile_calibration:')) {
+    return `Calibration budget (${mapCostSourceLabel(costSource.split(':')[1])})`;
+  }
+  if (costSource === 'cost-explorer') return '[Prix reel ✓✓]';
+  if (costSource === 'pricing-api') return '[Prix API ✓]';
+  if (costSource === 'static-table') return '[Estimation ≈]';
   if (costSource === 'user_override') return 'Override utilisateur';
   if (costSource === 'cloud_type_reference') return 'Reference cloud';
   if (costSource === 'criticality_fallback') return 'Fallback criticite';
@@ -411,7 +418,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
                   {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
                   {recommendation.costSource && recommendation.costSource !== 'user_override' && (
-                    <Badge variant="outline">Estimation - basee sur votre profil</Badge>
+                    <Badge variant="outline">
+                      {recommendation.costSourceLabel || mapCostSourceLabel(recommendation.costSource)}
+                    </Badge>
                   )}
                   {isQuickWin && <Badge className="bg-green-500/10 text-green-700 border-green-500/20">Quick Win</Badge>}
                   {roiMessage && (
@@ -463,7 +472,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs text-muted-foreground">
-                    Source cout: {mapCostSourceLabel(recommendation.costSource)}{typeof recommendation.costConfidence === 'number' ? ` (confiance ${(recommendation.costConfidence * 100).toFixed(0)}%)` : ''}
+                    Source cout: {recommendation.costSourceLabel || mapCostSourceLabel(recommendation.costSource)}
+                    {typeof recommendation.costConfidence === 'number'
+                      ? ` (confiance ${(recommendation.costConfidence * 100).toFixed(0)}%)`
+                      : ''}
                   </p>
                   <div className="flex items-center gap-2">
                     <Badge
@@ -595,3 +607,4 @@ function MiniMetric({
     </div>
   );
 }
+

@@ -118,6 +118,7 @@ export interface FinancialFlowCoverageResponse {
 
 export interface OrganizationFinancialProfile {
   tenantId?: string;
+  mode?: 'infra_only' | 'business_profile';
   sizeCategory?: string;
   verticalSector?: string | null;
   employeeCount?: number | null;
@@ -131,10 +132,24 @@ export interface OrganizationFinancialProfile {
   customCurrency?: string;
   strongholdPlanId?: string | null;
   strongholdMonthlyCost?: number | null;
+  numberOfCustomers?: number | null;
+  criticalBusinessHours?: {
+    start: string;
+    end: string;
+    timezone: string;
+  } | null;
+  regulatoryConstraints?: string[];
+  serviceOverrides?: Array<{
+    nodeId: string;
+    customDowntimeCostPerHour?: number;
+    customCriticalityTier?: 'critical' | 'high' | 'medium' | 'low';
+  }>;
   profileSource?: 'user_input' | 'inferred' | 'hybrid' | string;
   profileConfidence?: number;
   sourceDisclaimer?: string;
   inferenceBanner?: string | null;
+  reviewBanner?: string | null;
+  requiresReview?: boolean;
   fieldSources?: Record<
     string,
     {
@@ -167,6 +182,10 @@ export interface FinancialSummary {
     estimatedDowntimeHours: number;
     costPerHour: number;
     dependentsCount: number;
+    monthlyCost?: number;
+    monthlyCostSource?: string;
+    monthlyCostSourceLabel?: string;
+    pricingConfidence?: number;
   }>;
   ale: {
     totalALE: number;
@@ -208,12 +227,37 @@ export interface FinancialSummary {
   };
   financialPrecision?: {
     scorePercent: number;
-    highConfidenceCostSharePercent: number;
+    infraCostPrecisionPercent: number;
+    businessProfilePrecisionPercent: number;
     breakdown: {
-      businessFlowValidated: { nodes: number; aleAmount: number; costSharePercent: number };
-      userOverride: { nodes: number; aleAmount: number; costSharePercent: number };
-      estimationEnriched: { nodes: number; aleAmount: number; costSharePercent: number };
-      estimationBase: { nodes: number; aleAmount: number; costSharePercent: number };
+      pricingSources: {
+        costExplorer: {
+          nodes: number;
+          weightedAmount: number;
+          costSharePercent: number;
+          contributionPercent: number;
+        };
+        pricingApi: {
+          nodes: number;
+          weightedAmount: number;
+          costSharePercent: number;
+          contributionPercent: number;
+        };
+        staticTable: {
+          nodes: number;
+          weightedAmount: number;
+          costSharePercent: number;
+          contributionPercent: number;
+        };
+      };
+      businessProfile: {
+        level: 'none' | 'essentials' | 'context' | 'advanced' | 'complete';
+        hasCoreInputs: boolean;
+        hasSectorAndEmployees: boolean;
+        hasCriticalBusinessHours: boolean;
+        hasServiceOverrides: boolean;
+        hasExtendedContext: boolean;
+      };
     };
   };
   regulatoryExposure?: {

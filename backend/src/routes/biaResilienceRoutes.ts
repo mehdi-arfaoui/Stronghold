@@ -11,15 +11,76 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
-import { BusinessFlowFinancialEngineService } from '../services/business-flow-financial-engine.service.js';
+import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
 
 const router = Router();
-const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
 
 function readString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+type BiaFinancialScope = 'not_configured' | 'profile_global' | 'custom';
+
+function resolveConfiguredDowntimeCost(
+  profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>,
+): number | null {
+  if (!profile.isConfigured) return null;
+  const value = Number(profile.customDowntimeCostPerHour || profile.hourlyDowntimeCost || 0);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return value;
+}
+
+function resolveBiaFinancialForService(input: {
+  nodeId: string;
+  profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>;
+  overrideByNodeId: Map<
+    string,
+    {
+      customCostPerHour: number;
+      justification: string | null;
+      validatedBy: string | null;
+      validatedAt: Date | null;
+    }
+  >;
+}): {
+  financialImpactPerHour: number | null;
+  financialScope: BiaFinancialScope;
+  financialScopeLabel: string;
+  financialConfidence: 'user_defined' | 'estimated' | 'low_confidence';
+  financialSources: string[];
+} {
+  const override = input.overrideByNodeId.get(input.nodeId);
+  const overrideCost = Number(override?.customCostPerHour || 0);
+  if (Number.isFinite(overrideCost) && overrideCost > 0) {
+    return {
+      financialImpactPerHour: overrideCost,
+      financialScope: 'custom',
+      financialScopeLabel: 'personnalise',
+      financialConfidence: 'user_defined',
+      financialSources: ['Valeur personnalisee sur ce service'],
+    };
+  }
+
+  const profileCost = resolveConfiguredDowntimeCost(input.profile);
+  if (profileCost != null) {
+    return {
+      financialImpactPerHour: profileCost,
+      financialScope: 'profile_global',
+      financialScopeLabel: 'profil global',
+      financialConfidence: 'user_defined',
+      financialSources: ['Profil financier global (downtime cost/h)'],
+    };
+  }
+
+  return {
+    financialImpactPerHour: null,
+    financialScope: 'not_configured',
+    financialScopeLabel: 'non configure',
+    financialConfidence: 'low_confidence',
+    financialSources: ['Non estime - configurez le profil financier'],
+  };
 }
 
 // ─── POST /bia-resilience/auto-generate — Generate BIA from graph ──────────
@@ -79,7 +140,7 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
           suggestedRPO: p.suggestedRPO,
           suggestedMTPD: p.suggestedMTPD,
           impactCategory: p.impactCategory,
-          financialImpactPerHour: p.financialImpact.estimatedCostPerHour,
+          financialImpactPerHour: null,
         },
       });
     }
@@ -96,8 +157,7 @@ function buildTiers(processes: Array<{
   recoveryTier?: number;
   tier?: number;
   serviceName: string;
-  financialImpact?: any;
-  financialImpactPerHour?: number;
+  financialImpactPerHour?: number | null;
 }>) {
   const tiers: Record<string, { count: number; services: string[]; totalImpact: number }> = {
     tier1: { count: 0, services: [], totalImpact: 0 },
@@ -111,7 +171,10 @@ function buildTiers(processes: Array<{
     if (tiers[key]) {
       tiers[key].count++;
       tiers[key].services.push(p.serviceName);
-      tiers[key].totalImpact += p.financialImpactPerHour ?? ((p.financialImpact as any)?.estimatedCostPerHour || 0);
+      tiers[key].totalImpact +=
+        typeof p.financialImpactPerHour === 'number' && Number.isFinite(p.financialImpactPerHour)
+          ? p.financialImpactPerHour
+          : 0;
     }
   }
   return tiers;
@@ -139,7 +202,7 @@ router.get('/entries', async (req: TenantRequest, res) => {
     const nodeIds = report.processes.map((process) => process.serviceNodeId);
     const [graph, profile, overrides] = await Promise.all([
       GraphService.getGraph(prisma, tenantId),
-      prisma.organizationProfile.findUnique({ where: { tenantId } }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
       prisma.nodeFinancialOverride.findMany({
         where: {
           tenantId,
@@ -171,81 +234,11 @@ router.get('/entries', async (req: TenantRequest, res) => {
         });
 
         const financialOverride = overridesByNodeId.get(p.serviceNodeId);
-        const dependentsCount = graph.hasNode(p.serviceNodeId) ? graph.inDegree(p.serviceNodeId) : 0;
-        const flowFinancialCost = await businessFlowFinancialEngine.calculateNodeCostFromFlows({
-          tenantId,
+        const financialResolution = resolveBiaFinancialForService({
           nodeId: p.serviceNodeId,
-          node: {
-            id: p.serviceNodeId,
-            name: p.serviceName,
-            type: node?.type ?? p.serviceType,
-            provider: node?.provider ?? 'unknown',
-            region: node?.region ?? null,
-            isSPOF: node?.isSPOF ?? false,
-            criticalityScore: node?.criticalityScore ?? p.criticalityScore,
-            redundancyScore: node?.redundancyScore ?? null,
-            impactCategory: node?.impactCategory ?? p.impactCategory,
-            suggestedRTO: p.suggestedRTO,
-            validatedRTO: p.validatedRTO,
-            suggestedRPO: p.suggestedRPO,
-            validatedRPO: p.validatedRPO,
-            suggestedMTPD: p.suggestedMTPD,
-            validatedMTPD: p.validatedMTPD,
-            dependentsCount,
-          },
-          orgProfile: profile,
-          ...(financialOverride
-            ? {
-                override: {
-                  customCostPerHour: financialOverride.customCostPerHour,
-                  justification: financialOverride.justification,
-                  validatedBy: financialOverride.validatedBy,
-                  validatedAt: financialOverride.validatedAt,
-                },
-              }
-            : {}),
-          includeUnvalidatedFlows: true,
-          applyCloudCostFactor: true,
+          profile,
+          overrideByNodeId: overridesByNodeId,
         });
-
-        const metadata = node?.metadata as Record<string, unknown> | undefined;
-        const cloudCost = metadata?.cloudCost as Record<string, unknown> | undefined;
-        const hasCloudCost =
-          cloudCost && Number.isFinite(Number(cloudCost.monthlyTotalUSD))
-            ? Number(cloudCost.monthlyTotalUSD) > 0
-            : false;
-
-        const financialPrecisionBadge =
-          flowFinancialCost.method === 'user_override'
-            ? 'override_user'
-            : flowFinancialCost.method === 'business_flows'
-              ? flowFinancialCost.confidence === 'high'
-                ? 'business_flow_validated'
-                : 'business_flow_not_validated'
-              : hasCloudCost
-                ? 'estimation_enriched'
-                : 'estimation_base';
-
-        const financialConfidence =
-          flowFinancialCost.method === 'user_override'
-            ? 'user_defined'
-            : financialPrecisionBadge === 'estimation_base'
-              ? 'low_confidence'
-              : 'estimated';
-
-        const financialSources =
-          flowFinancialCost.method === 'business_flows'
-            ? [
-                `Calcule a partir de ${flowFinancialCost.impactedFlows.length} flux metier`,
-                ...(flowFinancialCost.confidence === 'high'
-                  ? ['Flux valides par utilisateur']
-                  : ['Flux en attente de validation']),
-              ]
-            : flowFinancialCost.method === 'user_override'
-              ? ['Valeur definie par utilisateur']
-              : hasCloudCost
-                ? ['Estimation enrichie par cout cloud']
-                : ['Estimation de base Stronghold'];
 
         const validated = p.validationStatus === 'validated';
         const metadataRecord =
@@ -275,11 +268,18 @@ router.get('/entries', async (req: TenantRequest, res) => {
           effectiveRto: p.validatedRTO ?? suggestion.rto,
           effectiveRpo: p.validatedRPO ?? suggestion.rpo,
           effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
-          financialImpactPerHour: flowFinancialCost.totalCostPerHour,
-          financialConfidence,
-          financialSources,
-          financialIsOverride: flowFinancialCost.method === 'user_override',
-          financialPrecisionBadge,
+          financialImpactPerHour: financialResolution.financialImpactPerHour,
+          financialConfidence: financialResolution.financialConfidence,
+          financialSources: financialResolution.financialSources,
+          financialIsOverride: financialResolution.financialScope === 'custom',
+          financialPrecisionBadge:
+            financialResolution.financialScope === 'custom'
+              ? 'override_user'
+              : financialResolution.financialScope === 'profile_global'
+                ? 'profile_global'
+                : 'not_configured',
+          financialScope: financialResolution.financialScope,
+          financialScopeLabel: financialResolution.financialScopeLabel,
           financialOverride: financialOverride
             ? {
                 customCostPerHour: financialOverride.customCostPerHour,
@@ -312,11 +312,24 @@ router.get('/summary', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: true },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: true },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
 
     if (!report) {
       return res.json({
@@ -337,20 +350,27 @@ router.get('/summary', async (req: TenantRequest, res) => {
       3: 'Important',
       4: 'Non-Critical',
     };
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const tiers = [1, 2, 3, 4].map(tier => {
       const procs = report.processes.filter(p => p.recoveryTier === tier);
       const maxRTO = procs.length > 0
         ? Math.max(...procs.map(p => (p.validatedRTO ?? p.suggestedRTO) || 0))
         : 0;
+      const totalFinancialImpact = procs.reduce((sum, process) => {
+        const resolved = resolveBiaFinancialForService({
+          nodeId: process.serviceNodeId,
+          profile,
+          overrideByNodeId,
+        });
+        return sum + (resolved.financialImpactPerHour || 0);
+      }, 0);
       return {
         tier,
         label: tierNames[tier],
         serviceCount: procs.length,
         maxRTO: String(maxRTO),
-        totalFinancialImpact: procs.reduce(
-          (sum, p) => sum + ((p.financialImpact as any)?.estimatedCostPerHour || 0), 0
-        ),
+        totalFinancialImpact,
       };
     });
 
@@ -371,30 +391,51 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const header = 'Service,Type,Tier,Suggested RTO,Suggested RPO,Suggested MTPD,Validated RTO,Validated RPO,Validated MTPD,Impact Category,Criticality Score,Financial Impact/h,Status\n';
-    const rows = (report?.processes || []).map(p =>
-      [
-        `"${p.serviceName}"`,
-        p.serviceType,
-        p.recoveryTier,
-        p.suggestedRTO,
-        p.suggestedRPO,
-        p.suggestedMTPD,
-        p.validatedRTO ?? '',
-        p.validatedRPO ?? '',
-        p.validatedMTPD ?? '',
-        p.impactCategory,
-        p.criticalityScore,
-        (p.financialImpact as any)?.estimatedCostPerHour || 0,
-        p.validationStatus,
-      ].join(',')
-    ).join('\n');
+    const rows = (report?.processes || [])
+      .map((p) => {
+        const resolvedFinancial = resolveBiaFinancialForService({
+          nodeId: p.serviceNodeId,
+          profile,
+          overrideByNodeId,
+        });
+        return [
+          `"${p.serviceName}"`,
+          p.serviceType,
+          p.recoveryTier,
+          p.suggestedRTO,
+          p.suggestedRPO,
+          p.suggestedMTPD,
+          p.validatedRTO ?? '',
+          p.validatedRPO ?? '',
+          p.validatedMTPD ?? '',
+          p.impactCategory,
+          p.criticalityScore,
+          resolvedFinancial.financialImpactPerHour ?? '',
+          p.validationStatus,
+        ].join(',');
+      })
+      .join('\n');
 
     res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', 'attachment; filename="bia-export.csv"');
@@ -411,27 +452,50 @@ router.get('/export/json', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
-    const processes = (report?.processes || []).map(p => ({
-      serviceName: p.serviceName,
-      serviceType: p.serviceType,
-      tier: p.recoveryTier,
-      suggestedRTO: p.suggestedRTO,
-      suggestedRPO: p.suggestedRPO,
-      suggestedMTPD: p.suggestedMTPD,
-      validatedRTO: p.validatedRTO,
-      validatedRPO: p.validatedRPO,
-      validatedMTPD: p.validatedMTPD,
-      impactCategory: p.impactCategory,
-      criticalityScore: p.criticalityScore,
-      financialImpactPerHour: (p.financialImpact as any)?.estimatedCostPerHour || 0,
-      validationStatus: p.validationStatus,
-    }));
+    const processes = (report?.processes || []).map((p) => {
+      const resolvedFinancial = resolveBiaFinancialForService({
+        nodeId: p.serviceNodeId,
+        profile,
+        overrideByNodeId,
+      });
+      return {
+        serviceName: p.serviceName,
+        serviceType: p.serviceType,
+        tier: p.recoveryTier,
+        suggestedRTO: p.suggestedRTO,
+        suggestedRPO: p.suggestedRPO,
+        suggestedMTPD: p.suggestedMTPD,
+        validatedRTO: p.validatedRTO,
+        validatedRPO: p.validatedRPO,
+        validatedMTPD: p.validatedMTPD,
+        impactCategory: p.impactCategory,
+        criticalityScore: p.criticalityScore,
+        financialImpactPerHour: resolvedFinancial.financialImpactPerHour,
+        financialScope: resolvedFinancial.financialScope,
+        financialScopeLabel: resolvedFinancial.financialScopeLabel,
+        validationStatus: p.validationStatus,
+      };
+    });
 
     return res.json({ exportedAt: new Date().toISOString(), processes });
   } catch (error) {
@@ -446,30 +510,51 @@ router.get('/export/xlsx', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const header = 'Service\tType\tTier\tSuggested RTO\tSuggested RPO\tSuggested MTPD\tValidated RTO\tValidated RPO\tValidated MTPD\tImpact Category\tCriticality Score\tFinancial Impact/h\tStatus\n';
-    const rows = (report?.processes || []).map(p =>
-      [
-        p.serviceName,
-        p.serviceType,
-        p.recoveryTier,
-        p.suggestedRTO,
-        p.suggestedRPO,
-        p.suggestedMTPD,
-        p.validatedRTO ?? '',
-        p.validatedRPO ?? '',
-        p.validatedMTPD ?? '',
-        p.impactCategory,
-        p.criticalityScore,
-        (p.financialImpact as any)?.estimatedCostPerHour || 0,
-        p.validationStatus,
-      ].join('\t')
-    ).join('\n');
+    const rows = (report?.processes || [])
+      .map((p) => {
+        const resolvedFinancial = resolveBiaFinancialForService({
+          nodeId: p.serviceNodeId,
+          profile,
+          overrideByNodeId,
+        });
+        return [
+          p.serviceName,
+          p.serviceType,
+          p.recoveryTier,
+          p.suggestedRTO,
+          p.suggestedRPO,
+          p.suggestedMTPD,
+          p.validatedRTO ?? '',
+          p.validatedRPO ?? '',
+          p.validatedMTPD ?? '',
+          p.impactCategory,
+          p.criticalityScore,
+          resolvedFinancial.financialImpactPerHour ?? '',
+          p.validationStatus,
+        ].join('\t');
+      })
+      .join('\n');
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename="bia-export.xlsx"');
@@ -486,20 +571,43 @@ router.get('/export/pdf', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     // Build text content for PDF
     const lines = [
       'Business Impact Analysis (BIA) Export',
       `Generated: ${new Date().toISOString()}`,
       '',
-      ...((report?.processes || []).map(p =>
-        `[Tier ${p.recoveryTier}] ${p.serviceName} (${p.serviceType}) - RTO: ${p.validatedRTO ?? p.suggestedRTO}min, RPO: ${p.validatedRPO ?? p.suggestedRPO}min - Impact: ${(p.financialImpact as any)?.estimatedCostPerHour || 0} EUR/h - ${p.validationStatus}`
-      )),
+      ...((report?.processes || []).map((p) => {
+        const resolvedFinancial = resolveBiaFinancialForService({
+          nodeId: p.serviceNodeId,
+          profile,
+          overrideByNodeId,
+        });
+        const impact =
+          resolvedFinancial.financialImpactPerHour != null
+            ? `${resolvedFinancial.financialImpactPerHour} EUR/h (${resolvedFinancial.financialScopeLabel})`
+            : 'Non estime - configurez le profil financier';
+        return `[Tier ${p.recoveryTier}] ${p.serviceName} (${p.serviceType}) - RTO: ${p.validatedRTO ?? p.suggestedRTO}min, RPO: ${p.validatedRPO ?? p.suggestedRPO}min - Impact: ${impact} - ${p.validationStatus}`;
+      })),
     ];
 
     const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib');
@@ -695,15 +803,29 @@ router.get('/matrix', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const report = await prisma.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: { processes: { orderBy: { recoveryTier: 'asc' } } },
-    });
+    const [report, profile, overrides] = await Promise.all([
+      prisma.bIAReport2.findFirst({
+        where: { tenantId },
+        orderBy: { createdAt: 'desc' },
+        include: { processes: { orderBy: { recoveryTier: 'asc' } } },
+      }),
+      resolveCompanyFinancialProfile(prisma, tenantId),
+      prisma.nodeFinancialOverride.findMany({
+        where: { tenantId },
+        select: {
+          nodeId: true,
+          customCostPerHour: true,
+          justification: true,
+          validatedBy: true,
+          validatedAt: true,
+        },
+      }),
+    ]);
 
     if (!report) {
       return res.json({ tiers: [], message: 'No BIA report generated yet' });
     }
+    const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
 
     const tierNames: Record<number, string> = {
       1: 'Mission Critical',
@@ -718,9 +840,14 @@ router.get('/matrix', async (req: TenantRequest, res) => {
         tier,
         name: tierNames[tier],
         processes: procs,
-        totalImpact: procs.reduce(
-          (sum, p) => sum + ((p.financialImpact as any)?.estimatedCostPerHour || 0), 0
-        ),
+        totalImpact: procs.reduce((sum, process) => {
+          const resolvedFinancial = resolveBiaFinancialForService({
+            nodeId: process.serviceNodeId,
+            profile,
+            overrideByNodeId,
+          });
+          return sum + (resolvedFinancial.financialImpactPerHour || 0);
+        }, 0),
       };
     });
 

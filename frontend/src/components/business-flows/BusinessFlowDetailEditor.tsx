@@ -12,15 +12,10 @@ import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import type { InfraEdge, InfraNode } from '@/types/graph.types';
 
-type CostMethod = 'annual' | 'transactional' | 'direct';
-
 type FlowFormState = {
   name: string;
   description: string;
   category: string;
-  annualRevenue: string;
-  transactionsPerHour: string;
-  revenuePerTransaction: string;
   estimatedCostPerHour: string;
   peakHoursMultiplier: string;
   peakHoursStart: string;
@@ -62,28 +57,11 @@ function toNullableInt(value: string, min: number, max: number): number | null {
   return rounded;
 }
 
-function inferCostMethod(flow: BusinessFlow): CostMethod {
-  if (flow.estimatedCostPerHour && flow.estimatedCostPerHour > 0) return 'direct';
-  if (flow.annualRevenue && flow.annualRevenue > 0) return 'annual';
-  if (
-    flow.transactionsPerHour &&
-    flow.transactionsPerHour > 0 &&
-    flow.revenuePerTransaction &&
-    flow.revenuePerTransaction > 0
-  ) {
-    return 'transactional';
-  }
-  return 'direct';
-}
-
 function buildInitialFormState(flow: BusinessFlow): FlowFormState {
   return {
     name: flow.name || '',
     description: flow.description || '',
     category: flow.category || 'operations',
-    annualRevenue: toFieldValue(flow.annualRevenue),
-    transactionsPerHour: toFieldValue(flow.transactionsPerHour),
-    revenuePerTransaction: toFieldValue(flow.revenuePerTransaction),
     estimatedCostPerHour: toFieldValue(flow.estimatedCostPerHour),
     peakHoursMultiplier: toFieldValue(flow.peakHoursMultiplier ?? 1.5),
     peakHoursStart: toFieldValue(flow.peakHoursStart),
@@ -99,26 +77,13 @@ function buildInitialFormState(flow: BusinessFlow): FlowFormState {
   };
 }
 
-function computeCostPreview(form: FlowFormState, method: CostMethod) {
-  const annualRevenue = toNullableNumber(form.annualRevenue) || 0;
-  const txPerHour = toNullableNumber(form.transactionsPerHour) || 0;
-  const revPerTx = toNullableNumber(form.revenuePerTransaction) || 0;
+function computeCostPreview(form: FlowFormState) {
   const directEstimate = toNullableNumber(form.estimatedCostPerHour) || 0;
-  const operatingDays = Math.max(1, Number(form.operatingDaysPerWeek || 5));
-  const operatingHours = Math.max(1, Number(form.operatingHoursPerDay || 10));
   const peakMultiplier = Math.max(1, Number(form.peakHoursMultiplier || 1.5));
   const slaPenalty = Math.max(0, Number(form.slaPenaltyPerHour || 0));
   const churnPerHour = Math.max(0, Number(form.estimatedCustomerChurnPerHour || 0));
   const ltv = Math.max(0, Number(form.customerLifetimeValue || 0));
-
-  let directCostPerHour = 0;
-  if (method === 'direct') {
-    directCostPerHour = directEstimate;
-  } else if (method === 'annual') {
-    directCostPerHour = annualRevenue / (operatingDays * 52 * operatingHours);
-  } else {
-    directCostPerHour = txPerHour * revPerTx;
-  }
+  const directCostPerHour = directEstimate;
 
   const indirectCostPerHour = churnPerHour * ltv;
   const totalCostPerHour = directCostPerHour + slaPenalty + indirectCostPerHour;
@@ -161,14 +126,10 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
     staleTime: 60_000,
   });
 
-  const [costMethod, setCostMethod] = useState<CostMethod>('direct');
   const [form, setForm] = useState<FlowFormState>({
     name: '',
     description: '',
     category: 'operations',
-    annualRevenue: '',
-    transactionsPerHour: '',
-    revenuePerTransaction: '',
     estimatedCostPerHour: '',
     peakHoursMultiplier: '1.5',
     peakHoursStart: '',
@@ -185,7 +146,6 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
 
   useEffect(() => {
     if (!flowQuery.data) return;
-    setCostMethod(inferCostMethod(flowQuery.data));
     setForm(buildInitialFormState(flowQuery.data));
   }, [flowQuery.data]);
 
@@ -215,24 +175,11 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
         contractualRTO: toNullableInt(form.contractualRTO, 0, 10080),
         estimatedCustomerChurnPerHour: toNullableNumber(form.estimatedCustomerChurnPerHour),
         customerLifetimeValue: toNullableNumber(form.customerLifetimeValue),
+        estimatedCostPerHour: toNullableNumber(form.estimatedCostPerHour),
+        annualRevenue: null,
+        transactionsPerHour: null,
+        revenuePerTransaction: null,
       };
-
-      if (costMethod === 'direct') {
-        payload.estimatedCostPerHour = toNullableNumber(form.estimatedCostPerHour);
-        payload.annualRevenue = null;
-        payload.transactionsPerHour = null;
-        payload.revenuePerTransaction = null;
-      } else if (costMethod === 'annual') {
-        payload.estimatedCostPerHour = null;
-        payload.annualRevenue = toNullableNumber(form.annualRevenue);
-        payload.transactionsPerHour = null;
-        payload.revenuePerTransaction = null;
-      } else {
-        payload.estimatedCostPerHour = null;
-        payload.annualRevenue = null;
-        payload.transactionsPerHour = toNullableNumber(form.transactionsPerHour);
-        payload.revenuePerTransaction = toNullableNumber(form.revenuePerTransaction);
-      }
 
       return businessFlowsApi.update(flowId, payload);
     },
@@ -318,10 +265,7 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
     return ids;
   }, [flowNodesSorted, graphEdges]);
 
-  const currentPreview = useMemo(
-    () => computeCostPreview(form, costMethod),
-    [form, costMethod],
-  );
+  const currentPreview = useMemo(() => computeCostPreview(form), [form]);
 
   const onToggleGraphNode = (node: InfraNode) => {
     const existing = flowNodeById.get(node.id);
@@ -589,99 +533,15 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
               <option value="compliance">compliance</option>
               <option value="internal">internal</option>
             </select>
-
-            <div className="grid grid-cols-3 gap-2 rounded-md border p-2 text-sm">
-              <button
-                type="button"
-                className={`rounded px-2 py-1 ${costMethod === 'annual' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                onClick={() => setCostMethod('annual')}
-              >
-                Annual rev
-              </button>
-              <button
-                type="button"
-                className={`rounded px-2 py-1 ${costMethod === 'transactional' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                onClick={() => setCostMethod('transactional')}
-              >
-                Transactional
-              </button>
-              <button
-                type="button"
-                className={`rounded px-2 py-1 ${costMethod === 'direct' ? 'bg-primary text-primary-foreground' : 'bg-muted'}`}
-                onClick={() => setCostMethod('direct')}
-              >
-                Direct
-              </button>
-            </div>
-
-            {costMethod === 'annual' && (
-              <>
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.annualRevenue}
-                  onChange={(event) => setForm((prev) => ({ ...prev, annualRevenue: event.target.value }))}
-                  placeholder="Annual revenue"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    type="number"
-                    min={1}
-                    max={7}
-                    value={form.operatingDaysPerWeek}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, operatingDaysPerWeek: event.target.value }))
-                    }
-                    placeholder="Days/week"
-                  />
-                  <Input
-                    type="number"
-                    min={1}
-                    max={24}
-                    value={form.operatingHoursPerDay}
-                    onChange={(event) =>
-                      setForm((prev) => ({ ...prev, operatingHoursPerDay: event.target.value }))
-                    }
-                    placeholder="Hours/day"
-                  />
-                </div>
-              </>
-            )}
-
-            {costMethod === 'transactional' && (
-              <div className="grid grid-cols-2 gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.transactionsPerHour}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, transactionsPerHour: event.target.value }))
-                  }
-                  placeholder="Transactions/hour"
-                />
-                <Input
-                  type="number"
-                  min={0}
-                  value={form.revenuePerTransaction}
-                  onChange={(event) =>
-                    setForm((prev) => ({ ...prev, revenuePerTransaction: event.target.value }))
-                  }
-                  placeholder="Revenue/transaction"
-                />
-              </div>
-            )}
-
-            {costMethod === 'direct' && (
-              <Input
-                type="number"
-                min={0}
-                value={form.estimatedCostPerHour}
-                onChange={(event) =>
-                  setForm((prev) => ({ ...prev, estimatedCostPerHour: event.target.value }))
-                }
-                placeholder="Direct cost/hour"
-              />
-            )}
+            <Input
+              type="number"
+              min={0}
+              value={form.estimatedCostPerHour}
+              onChange={(event) =>
+                setForm((prev) => ({ ...prev, estimatedCostPerHour: event.target.value }))
+              }
+              placeholder="Cout downtime/h (manuel)"
+            />
 
             <div className="rounded-md border p-3">
               <p className="mb-2 text-sm font-medium">Peak hours</p>

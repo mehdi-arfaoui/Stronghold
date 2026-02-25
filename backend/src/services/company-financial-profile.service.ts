@@ -1,16 +1,12 @@
-import type { OrganizationProfile, PrismaClient } from '@prisma/client';
+﻿import type { OrganizationProfile, PrismaClient } from '@prisma/client';
 import type { SupportedCurrency } from '../constants/market-financial-data.js';
 import { SUPPORTED_CURRENCIES } from '../constants/market-financial-data.js';
 import {
   DEFAULT_CURRENCY,
-  DEFAULT_DR_BUDGET_PERCENT,
-  DOWNTIME_MEDIAN_BY_EMPLOYEE_SIZE,
   DR_FINANCIAL_SOURCES,
   DR_STRATEGY_COST_FACTORS,
   DR_STRATEGY_PROFILES,
   INCIDENT_PROBABILITIES,
-  INFRA_SIZE_HEURISTICS,
-  IT_BUDGET_PERCENT_BY_SECTOR,
   RESOURCE_MONTHLY_COST_REFERENCES,
   type CostSourceKey,
   type DrStrategyKey,
@@ -28,8 +24,11 @@ import {
   resolveServiceResolution,
   type CloudServiceResolution,
 } from './dr-recommendation-engine/recommendationEngine.js';
+import { cloudPricingService } from './pricing/cloudPricingService.js';
+import type { PricingResult } from './pricing/pricingTypes.js';
 
 export type CompanyFinancialProfileSource = 'user_input' | 'inferred' | 'hybrid';
+export type FinancialComputationMode = 'infra_only' | 'business_profile';
 
 export type FinancialFieldTrace = {
   source: ProfileValueSourceKey;
@@ -37,9 +36,22 @@ export type FinancialFieldTrace = {
   note: string;
 };
 
+export type CriticalBusinessHours = {
+  start: string;
+  end: string;
+  timezone: string;
+};
+
+export type FinancialServiceOverride = {
+  nodeId: string;
+  customDowntimeCostPerHour?: number;
+  customCriticalityTier?: 'critical' | 'high' | 'medium' | 'low';
+};
+
 export type ResolvedCompanyFinancialProfile = {
   tenantId: string;
   source: CompanyFinancialProfileSource;
+  mode: FinancialComputationMode;
   confidence: number;
   annualRevenue: number | null;
   employeeCount: number | null;
@@ -52,18 +64,26 @@ export type ResolvedCompanyFinancialProfile = {
   fieldSources: Record<string, FinancialFieldTrace>;
   sourceDisclaimer: string;
   inferenceBanner: string | null;
+  reviewBanner: string | null;
+  requiresReview: boolean;
   sizeCategory: string;
   verticalSector: string | null;
   customDowntimeCostPerHour: number | null;
   customCurrency: SupportedCurrency;
   strongholdPlanId: string | null;
   strongholdMonthlyCost: number | null;
+  numberOfCustomers: number | null;
+  criticalBusinessHours: CriticalBusinessHours | null;
+  regulatoryConstraints: string[];
+  serviceOverrides: FinancialServiceOverride[];
   isConfigured: boolean;
 };
 
 export type ServiceMonthlyCostEstimate = {
   estimatedMonthlyCost: number;
   costSource: CostSourceKey;
+  pricingSource: PricingResult['source'];
+  pricingSourceLabel: PricingResult['sourceLabel'];
   confidence: number;
   currency: SupportedCurrency;
   note: string;
@@ -155,39 +175,6 @@ function extractBiaHourlyCost(financialImpact: unknown): number | null {
     toPositiveNumber(payload.hourlyDowntimeCost) ??
     toPositiveNumber(payload.totalCostPerHour)
   );
-}
-
-function pickInfraHeuristic(nodeCount: number) {
-  const matched = INFRA_SIZE_HEURISTICS.find(
-    (item) => nodeCount >= item.minNodes && nodeCount <= item.maxNodes,
-  );
-  if (matched) return matched;
-
-  const fallback = INFRA_SIZE_HEURISTICS[INFRA_SIZE_HEURISTICS.length - 1];
-  if (fallback) return fallback;
-
-  return {
-    minNodes: 0,
-    maxNodes: Number.MAX_SAFE_INTEGER,
-    sizeLabel: 'sme_mid',
-    inferredEmployees: 200,
-    inferredAnnualRevenue: 20_000_000,
-    confidence: 0.35,
-  } as const;
-}
-
-function inferDowntimeMedianFromEmployees(employeeCount: number | null): number {
-  const employees = employeeCount && employeeCount > 0 ? employeeCount : 250;
-  const bucket =
-    DOWNTIME_MEDIAN_BY_EMPLOYEE_SIZE.find(
-      (item) => employees >= item.minEmployees && employees <= item.maxEmployees,
-    ) ??
-    DOWNTIME_MEDIAN_BY_EMPLOYEE_SIZE[DOWNTIME_MEDIAN_BY_EMPLOYEE_SIZE.length - 1] ?? {
-      minEmployees: 251,
-      maxEmployees: 1_000,
-      hourlyCost: 100_000,
-    };
-  return bucket.hourlyCost;
 }
 
 function inferCriticalityBucket(node: {
@@ -375,6 +362,58 @@ function readPersistedFieldSources(
   return parsed;
 }
 
+function readProfileMetadataObject(profile: OrganizationProfile | null): Record<string, unknown> {
+  if (!profile?.profileMetadata) return {};
+  if (typeof profile.profileMetadata !== 'object' || Array.isArray(profile.profileMetadata)) {
+    return {};
+  }
+  return profile.profileMetadata as Record<string, unknown>;
+}
+
+function parseCriticalBusinessHours(rawValue: unknown): CriticalBusinessHours | null {
+  if (!rawValue || typeof rawValue !== 'object' || Array.isArray(rawValue)) return null;
+  const payload = rawValue as Record<string, unknown>;
+  const start = readString(payload.start);
+  const end = readString(payload.end);
+  const timezone = readString(payload.timezone);
+  if (!start || !end || !timezone) return null;
+  return { start, end, timezone };
+}
+
+function parseRegulatoryConstraints(rawValue: unknown): string[] {
+  if (!Array.isArray(rawValue)) return [];
+  return rawValue
+    .map((value) => readString(value))
+    .filter((value): value is string => Boolean(value));
+}
+
+function parseServiceOverrides(rawValue: unknown): FinancialServiceOverride[] {
+  if (!Array.isArray(rawValue)) return [];
+  const overrides: FinancialServiceOverride[] = [];
+
+  for (const rawItem of rawValue) {
+    if (!rawItem || typeof rawItem !== 'object' || Array.isArray(rawItem)) continue;
+    const payload = rawItem as Record<string, unknown>;
+    const nodeId = readString(payload.nodeId);
+    if (!nodeId) continue;
+
+    const customDowntime = toPositiveNumber(payload.customDowntimeCostPerHour);
+    const tierRaw = readString(payload.customCriticalityTier)?.toLowerCase();
+    const customCriticalityTier =
+      tierRaw === 'critical' || tierRaw === 'high' || tierRaw === 'medium' || tierRaw === 'low'
+        ? tierRaw
+        : undefined;
+
+    overrides.push({
+      nodeId,
+      ...(customDowntime != null ? { customDowntimeCostPerHour: customDowntime } : {}),
+      ...(customCriticalityTier ? { customCriticalityTier } : {}),
+    });
+  }
+
+  return overrides;
+}
+
 function isExplicitlyConfigured(profile: OrganizationProfile | null): boolean {
   if (!profile) return false;
   return Boolean(
@@ -396,297 +435,283 @@ export async function resolveCompanyFinancialProfile(
     preferredCurrency?: unknown;
   },
 ): Promise<ResolvedCompanyFinancialProfile> {
-  const [profile, latestBiaReport, nodeCount] = await Promise.all([
-    prismaClient.organizationProfile.findUnique({ where: { tenantId } }),
-    prismaClient.bIAReport2.findFirst({
-      where: { tenantId },
-      orderBy: { createdAt: 'desc' },
-      include: {
-        processes: {
-          where: {
-            validationStatus: 'validated',
-          },
-          select: {
-            financialImpact: true,
-          },
-        },
-      },
-    }),
-    prismaClient.infraNode.count({
-      where: { tenantId },
-    }),
-  ]);
-
-  const currency = normalizeCurrency(options?.preferredCurrency ?? profile?.customCurrency ?? DEFAULT_CURRENCY);
-  const infraHeuristic = pickInfraHeuristic(nodeCount);
-  const fieldSources: Record<string, FinancialFieldTrace> = {};
+  const profile = await prismaClient.organizationProfile.findUnique({ where: { tenantId } });
+  const storedCurrency = normalizeCurrency(profile?.customCurrency ?? DEFAULT_CURRENCY);
+  const currency = normalizeCurrency(options?.preferredCurrency ?? storedCurrency);
   const persistedFieldSources = readPersistedFieldSources(profile);
+  const normalizedProfileSource = String(profile?.profileSource || '').toLowerCase();
+  const metadataObject = readProfileMetadataObject(profile);
+  const numberOfCustomers = toPositiveNumber(metadataObject.numberOfCustomers);
+  const criticalBusinessHours = parseCriticalBusinessHours(metadataObject.criticalBusinessHours);
+  const regulatoryConstraints = parseRegulatoryConstraints(metadataObject.regulatoryConstraints);
+  const serviceOverrides = parseServiceOverrides(metadataObject.serviceOverrides);
 
-  const annualRevenueStored =
-    toPositiveNumber(profile?.annualRevenue) ??
-    (toPositiveNumber(profile?.annualRevenueUSD)
-      ? CurrencyService.convertAmount(profile?.annualRevenueUSD as number, 'USD', currency)
-      : null);
-  const annualRevenueSourceHint =
-    persistedFieldSources.annualRevenue ?? persistedFieldSources.annualRevenueUSD;
-  const annualRevenue = annualRevenueStored
-    ? roundMoney(annualRevenueStored)
-    : roundMoney(CurrencyService.convertAmount(infraHeuristic.inferredAnnualRevenue, 'EUR', currency));
-  fieldSources.annualRevenue = annualRevenueStored
-    ? annualRevenueSourceHint === 'suggested'
-      ? {
-          source: 'suggested',
-          confidence: 0.72,
-          note: 'Valeur suggeree par profil de taille',
-        }
-      : annualRevenueSourceHint === 'inferred'
-        ? {
-            source: 'inferred',
-            confidence: 0.6,
-            note: 'Valeur inferee automatiquement',
-          }
-        : {
-            source: 'user_input',
-            confidence: 0.95,
-            note: 'Valeur fournie manuellement',
-          }
-    : {
-        source: 'inferred_infrastructure',
-        confidence: infraHeuristic.confidence,
-        note: `Inference par taille d infrastructure (${nodeCount} noeuds detectes)`,
-      };
+  const convertFromStoredCurrency = (value: number | null): number | null => {
+    if (value == null) return null;
+    return roundMoney(CurrencyService.convertAmount(value, storedCurrency, currency));
+  };
 
-  const employeeCountStored = toPositiveNumber(profile?.employeeCount);
-  const employeeCountSourceHint = persistedFieldSources.employeeCount;
-  const employeeCount = employeeCountStored ? Math.round(employeeCountStored) : infraHeuristic.inferredEmployees;
-  fieldSources.employeeCount = employeeCountStored
-    ? employeeCountSourceHint === 'suggested'
-      ? {
-          source: 'suggested',
-          confidence: 0.72,
-          note: 'Valeur suggeree par profil de taille',
-        }
-      : employeeCountSourceHint === 'inferred'
-        ? {
-            source: 'inferred',
-            confidence: 0.6,
-            note: 'Valeur inferee automatiquement',
-          }
-        : {
-            source: 'user_input',
-            confidence: 0.95,
-            note: 'Valeur fournie manuellement',
-          }
-    : {
-        source: 'inferred_infrastructure',
-        confidence: infraHeuristic.confidence,
-        note: `Inference par taille d infrastructure (${nodeCount} noeuds detectes)`,
-      };
-
-  const industrySector = normalizeSector(profile?.industrySector ?? profile?.verticalSector) ?? null;
-  const industrySourceHint = persistedFieldSources.industrySector ?? persistedFieldSources.verticalSector;
-  fieldSources.industrySector = industrySector
-    ? industrySourceHint === 'suggested'
-      ? {
-          source: 'suggested',
-          confidence: 0.7,
-          note: 'Secteur suggere automatiquement',
-        }
-      : industrySourceHint === 'inferred'
-        ? {
-            source: 'inferred',
-            confidence: 0.55,
-            note: 'Secteur infere automatiquement',
-          }
-        : {
-            source: profile?.industrySector ? 'user_input' : 'inferred_infrastructure',
-            confidence: profile?.industrySector ? 0.9 : 0.5,
-            note: profile?.industrySector
-              ? 'Secteur fourni manuellement'
-              : 'Secteur derive de la configuration verticale',
-          }
-    : {
-        source: 'market_reference',
-        confidence: 0.35,
-        note: 'Aucun secteur explicite: hypothese generaliste',
-      };
-
-  const annualItBudgetStored = toPositiveNumber(profile?.annualITBudget);
-  const annualITBudgetSourceHint = persistedFieldSources.annualITBudget;
-  const itBudgetSectorRatio = industrySector ? IT_BUDGET_PERCENT_BY_SECTOR[industrySector] : undefined;
-  const annualITBudget = annualItBudgetStored
-    ? roundMoney(annualItBudgetStored)
-    : annualRevenue
-      ? roundMoney(annualRevenue * (itBudgetSectorRatio ?? 0.05))
-      : null;
-  fieldSources.annualITBudget = annualItBudgetStored
-    ? annualITBudgetSourceHint === 'suggested'
-      ? {
-          source: 'suggested',
-          confidence: 0.72,
-          note: 'Budget IT suggere automatiquement',
-        }
-      : annualITBudgetSourceHint === 'inferred'
-        ? {
-            source: 'inferred',
-            confidence: 0.6,
-            note: 'Budget IT infere automatiquement',
-          }
-        : {
-            source: 'user_input',
-            confidence: 0.95,
-            note: 'Budget IT fourni manuellement',
-          }
-    : {
-        source: 'inferred_infrastructure',
-        confidence: 0.45,
-        note: `Estimation a partir du CA et du secteur (${Math.round((itBudgetSectorRatio ?? 0.05) * 100)}%)`,
-      };
-
-  const drBudgetPercentStored = toPositiveNumber(profile?.drBudgetPercent);
-  const drBudgetPercentSourceHint = persistedFieldSources.drBudgetPercent;
-  const drBudgetPercent = drBudgetPercentStored
-    ? roundMoney(drBudgetPercentStored)
-    : DEFAULT_DR_BUDGET_PERCENT;
-  fieldSources.drBudgetPercent = drBudgetPercentStored
-    ? drBudgetPercentSourceHint === 'suggested'
-      ? {
-          source: 'suggested',
-          confidence: 0.72,
-          note: 'Pourcentage DR suggere automatiquement',
-        }
-      : drBudgetPercentSourceHint === 'inferred'
-        ? {
-            source: 'inferred',
-            confidence: 0.6,
-            note: 'Pourcentage DR infere automatiquement',
-          }
-        : {
-            source: 'user_input',
-            confidence: 0.95,
-            note: 'Pourcentage DR fourni manuellement',
-          }
-    : {
-        source: 'market_reference',
-        confidence: 0.4,
-        note: 'Valeur conservative de reference (3-5%)',
-      };
-
-  const biaHourlyDowntime = (latestBiaReport?.processes || [])
-    .map((process) => extractBiaHourlyCost(process.financialImpact))
-    .filter((value): value is number => Number.isFinite(value as number) && Number(value) > 0)
-    .reduce((sum, value) => sum + value, 0);
-
-  const storedHourlyDowntime =
-    toPositiveNumber(profile?.customDowntimeCostPerHour) ??
-    toPositiveNumber(profile?.hourlyDowntimeCost);
-  const hourlySourceHint =
-    persistedFieldSources.hourlyDowntimeCost ?? persistedFieldSources.customDowntimeCostPerHour;
-  const userHourlyDowntime =
-    storedHourlyDowntime && (hourlySourceHint === 'user_input' || !hourlySourceHint)
-      ? storedHourlyDowntime
-      : null;
-  const suggestedHourlyDowntime =
-    storedHourlyDowntime && hourlySourceHint === 'suggested' ? storedHourlyDowntime : null;
-  const inferredHourlyDowntime =
-    storedHourlyDowntime && hourlySourceHint === 'inferred' ? storedHourlyDowntime : null;
-  const fallbackMedianEur = inferDowntimeMedianFromEmployees(employeeCount);
-  const fallbackMedian = CurrencyService.convertAmount(fallbackMedianEur, 'EUR', currency);
-
-  const hourlyDowntimeCost = roundMoney(
-    userHourlyDowntime ??
-      (biaHourlyDowntime > 0
-        ? CurrencyService.convertAmount(biaHourlyDowntime, 'EUR', currency)
-        : suggestedHourlyDowntime ?? inferredHourlyDowntime ?? fallbackMedian),
+  const annualRevenueFromAnnualField = toPositiveNumber(profile?.annualRevenue);
+  const annualRevenueFromUsdField = toPositiveNumber(profile?.annualRevenueUSD)
+    ? CurrencyService.convertAmount(profile?.annualRevenueUSD as number, 'USD', currency)
+    : null;
+  const annualRevenueResolved = roundMoney(
+    convertFromStoredCurrency(annualRevenueFromAnnualField) ?? annualRevenueFromUsdField ?? 0,
   );
 
-  if (userHourlyDowntime) {
-    fieldSources.hourlyDowntimeCost = {
-      source: 'user_input',
-      confidence: 0.95,
-      note: 'Cout d indisponibilite fourni manuellement',
-    };
-  } else if (biaHourlyDowntime > 0) {
-    fieldSources.hourlyDowntimeCost = {
-      source: 'bia_validated',
-      confidence: 0.85,
-      note: `${latestBiaReport?.processes.length || 0} processus BIA valides agrege(s)`,
-    };
-  } else if (suggestedHourlyDowntime) {
-    fieldSources.hourlyDowntimeCost = {
-      source: 'suggested',
-      confidence: 0.72,
-      note: 'Cout horaire suggere automatiquement',
-    };
-  } else if (inferredHourlyDowntime) {
-    fieldSources.hourlyDowntimeCost = {
-      source: 'inferred',
-      confidence: 0.6,
-      note: 'Cout horaire infere automatiquement',
-    };
-  } else {
-    fieldSources.hourlyDowntimeCost = {
-      source: 'market_reference',
-      confidence: 0.4,
-      note: 'Medianes conservatives derivees des references marche',
-    };
-  }
+  const employeeCountResolved = toPositiveNumber(profile?.employeeCount)
+    ? Math.round(Number(profile?.employeeCount))
+    : null;
+  const industrySectorResolved = normalizeSector(profile?.industrySector ?? profile?.verticalSector) ?? null;
+  const annualITBudgetResolved = roundMoney(convertFromStoredCurrency(toPositiveNumber(profile?.annualITBudget)) || 0);
+  const drBudgetPercentResolved = roundMoney(toPositiveNumber(profile?.drBudgetPercent) || 0);
+  const hourlyDowntimeStored =
+    toPositiveNumber(profile?.customDowntimeCostPerHour) ??
+    toPositiveNumber(profile?.hourlyDowntimeCost);
+  const hourlyDowntimeResolved = roundMoney(convertFromStoredCurrency(hourlyDowntimeStored) || 0);
 
+  const annualRevenueSourceHint = persistedFieldSources.annualRevenue ?? persistedFieldSources.annualRevenueUSD;
+  const downtimeSourceHint =
+    persistedFieldSources.customDowntimeCostPerHour ??
+    persistedFieldSources.hourlyDowntimeCost;
+
+  const sourceIsUser = (hint: ProfileValueSourceKey | undefined, hasValue: boolean): boolean => {
+    if (!hasValue) return false;
+    return hint === 'user_input';
+  };
+
+  const annualRevenueIsUser = sourceIsUser(annualRevenueSourceHint, annualRevenueResolved > 0);
+  const downtimeIsUser = sourceIsUser(downtimeSourceHint, hourlyDowntimeResolved > 0);
+  const annualITBudgetIsUser = sourceIsUser(
+    persistedFieldSources.annualITBudget,
+    annualITBudgetResolved > 0,
+  );
+  const drBudgetPercentIsUser = sourceIsUser(
+    persistedFieldSources.drBudgetPercent,
+    drBudgetPercentResolved > 0,
+  );
+  const hasBusinessCoreInputs = annualRevenueIsUser && downtimeIsUser;
+
+  const hasMissingSourceWithBusinessValue =
+    Boolean(profile) &&
+    (
+      (annualRevenueResolved > 0 && !annualRevenueSourceHint) ||
+      (hourlyDowntimeResolved > 0 && !downtimeSourceHint) ||
+      (annualITBudgetResolved > 0 && !persistedFieldSources.annualITBudget) ||
+      (drBudgetPercentResolved > 0 && !persistedFieldSources.drBudgetPercent)
+    );
+
+  const hasLegacyInferredData =
+    Boolean(profile) &&
+    (
+      normalizedProfileSource === 'inferred' ||
+      annualRevenueSourceHint === 'suggested' ||
+      annualRevenueSourceHint === 'inferred' ||
+      annualRevenueSourceHint === 'inferred_infrastructure' ||
+      downtimeSourceHint === 'suggested' ||
+      downtimeSourceHint === 'inferred' ||
+      downtimeSourceHint === 'inferred_infrastructure' ||
+      hasMissingSourceWithBusinessValue
+    );
+
+  const fieldSources: Record<string, FinancialFieldTrace> = {};
+  const buildTrace = (
+    sourceHint: ProfileValueSourceKey | undefined,
+    hasValue: boolean,
+    manualLabel: string,
+  ): FinancialFieldTrace => {
+    if (!hasValue) {
+      return {
+        source: 'market_reference',
+        confidence: 0,
+        note: 'Valeur non renseignee',
+      };
+    }
+    if (sourceHint === 'suggested') {
+      return {
+        source: 'suggested',
+        confidence: 0.4,
+        note: 'Valeur pre-remplie automatiquement - verification requise',
+      };
+    }
+    if (sourceHint === 'inferred' || sourceHint === 'inferred_infrastructure') {
+      return {
+        source: 'inferred',
+        confidence: 0.2,
+        note: 'Valeur inferee automatiquement - verification requise',
+      };
+    }
+    if (sourceHint === 'bia_validated') {
+      return {
+        source: 'bia_validated',
+        confidence: 0.85,
+        note: 'Valeur validee via processus BIA',
+      };
+    }
+    if (sourceHint === 'user_input') {
+      return {
+        source: 'user_input',
+        confidence: 0.95,
+        note: manualLabel,
+      };
+    }
+    return {
+      source: 'inferred',
+      confidence: 0.2,
+      note: 'Valeur presente sans source verifiee - confirmation manuelle requise',
+    };
+  };
+
+  fieldSources.annualRevenue = buildTrace(
+    annualRevenueSourceHint,
+    annualRevenueResolved > 0,
+    'Valeur fournie manuellement',
+  );
+  fieldSources.employeeCount = buildTrace(
+    persistedFieldSources.employeeCount,
+    (employeeCountResolved || 0) > 0,
+    'Valeur fournie manuellement',
+  );
+  fieldSources.industrySector = buildTrace(
+    persistedFieldSources.industrySector ?? persistedFieldSources.verticalSector,
+    Boolean(industrySectorResolved),
+    'Secteur fourni manuellement',
+  );
+  fieldSources.annualITBudget = buildTrace(
+    persistedFieldSources.annualITBudget,
+    annualITBudgetResolved > 0,
+    'Budget IT fourni manuellement',
+  );
+  fieldSources.drBudgetPercent = buildTrace(
+    persistedFieldSources.drBudgetPercent,
+    drBudgetPercentResolved > 0,
+    'Pourcentage DR fourni manuellement',
+  );
+  fieldSources.hourlyDowntimeCost = buildTrace(
+    downtimeSourceHint,
+    hourlyDowntimeResolved > 0,
+    'Cout d indisponibilite fourni manuellement',
+  );
+
+  const annualRevenue = hasBusinessCoreInputs ? annualRevenueResolved : null;
+  const hourlyDowntimeCost = hasBusinessCoreInputs ? hourlyDowntimeResolved : 0;
+  const customDowntimeCostPerHour =
+    hasBusinessCoreInputs && toPositiveNumber(profile?.customDowntimeCostPerHour)
+      ? roundMoney(
+          CurrencyService.convertAmount(profile?.customDowntimeCostPerHour as number, storedCurrency, currency),
+        )
+      : null;
+
+  const annualITBudget = annualITBudgetIsUser ? annualITBudgetResolved : null;
+  const drBudgetPercent = drBudgetPercentIsUser ? drBudgetPercentResolved : null;
   const estimatedDrBudgetAnnual =
-    annualITBudget && drBudgetPercent ? roundMoney((annualITBudget * drBudgetPercent) / 100) : null;
+    annualITBudget && drBudgetPercent
+      ? roundMoney((annualITBudget * drBudgetPercent) / 100)
+      : null;
 
   const sourceKinds = listFieldSourceKinds(fieldSources);
   const hasUser = sourceKinds.has('user_input');
-  const hasInferred =
+  const hasNonUser =
     sourceKinds.has('suggested') ||
     sourceKinds.has('inferred') ||
     sourceKinds.has('inferred_infrastructure') ||
     sourceKinds.has('market_reference');
-  const hasBia = sourceKinds.has('bia_validated');
 
   const source: CompanyFinancialProfileSource =
-    hasUser && (hasInferred || hasBia) ? 'hybrid' : hasUser ? 'user_input' : 'inferred';
-
-  const confidenceValues = Object.values(fieldSources)
-    .map((trace) => trace.confidence)
-    .filter((value) => Number.isFinite(value));
-  const confidence = roundPercent(
-    confidenceValues.length > 0
-      ? confidenceValues.reduce((sum, value) => sum + value, 0) / confidenceValues.length
-      : 0.4,
-  );
+    hasUser && hasNonUser ? 'hybrid' : hasUser ? 'user_input' : 'inferred';
+  const confidence = hasBusinessCoreInputs ? 0.95 : hasUser ? 0.7 : 0.35;
+  const mode: FinancialComputationMode = hasBusinessCoreInputs ? 'business_profile' : 'infra_only';
+  const requiresReview = hasLegacyInferredData && !hasBusinessCoreInputs;
+  const reviewBanner = requiresReview
+    ? 'Profil financier detecte comme auto-estime. Verification manuelle requise avant utilisation.'
+    : null;
+  const inferenceBanner =
+    !hasBusinessCoreInputs && !requiresReview
+      ? 'Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.'
+      : null;
 
   return {
     tenantId,
     source,
-    confidence,
-    annualRevenue: annualRevenue || null,
-    employeeCount: employeeCount || null,
-    industrySector,
-    annualITBudget: annualITBudget || null,
-    drBudgetPercent: drBudgetPercent || null,
-    hourlyDowntimeCost: hourlyDowntimeCost || 0,
+    mode,
+    confidence: roundPercent(confidence),
+    annualRevenue,
+    employeeCount: employeeCountResolved,
+    industrySector: industrySectorResolved,
+    annualITBudget,
+    drBudgetPercent,
+    hourlyDowntimeCost,
     currency,
     estimatedDrBudgetAnnual,
     fieldSources,
     sourceDisclaimer:
-      source === 'user_input'
+      mode === 'business_profile'
         ? DR_FINANCIAL_SOURCES.downtimeCost
-        : `${DR_FINANCIAL_SOURCES.downtimeCost}. ${DR_FINANCIAL_SOURCES.strategyMatrix}.`,
-    inferenceBanner:
-      source === 'inferred'
-        ? 'Profil financier estime automatiquement - Personnalisez vos donnees pour des resultats plus precis'
-        : source === 'hybrid'
-          ? 'Profil financier mixte (saisie + inference) - Verifiez les valeurs inferees'
-          : null,
+        : 'Calculs bases sur les couts d infrastructure uniquement.',
+    inferenceBanner,
+    reviewBanner,
+    requiresReview,
     sizeCategory: profile?.sizeCategory || 'midMarket',
     verticalSector: profile?.verticalSector || null,
-    customDowntimeCostPerHour: userHourlyDowntime ? roundMoney(userHourlyDowntime) : null,
+    customDowntimeCostPerHour,
     customCurrency: currency,
     strongholdPlanId: profile?.strongholdPlanId || null,
     strongholdMonthlyCost: toPositiveNumber(profile?.strongholdMonthlyCost),
-    isConfigured: isExplicitlyConfigured(profile),
+    numberOfCustomers,
+    criticalBusinessHours,
+    regulatoryConstraints,
+    serviceOverrides,
+    isConfigured: hasBusinessCoreInputs,
   };
+}
+
+export async function resolveServiceMonthlyProductionCost(
+  node: {
+    type: string;
+    provider?: string | null;
+    metadata?: unknown;
+    preferredCurrency?: SupportedCurrency;
+  },
+): Promise<PricingResult> {
+  return cloudPricingService.getResourceMonthlyCost({
+    nodeType: node.type,
+    provider: node.provider ?? null,
+    metadata: node.metadata,
+    preferredCurrency: node.preferredCurrency,
+  });
+}
+
+export async function estimateServiceMonthlyProductionCostAsync(
+  node: {
+    type: string;
+    provider?: string | null;
+    metadata?: unknown;
+    criticalityScore?: number | null;
+    impactCategory?: string | null;
+  },
+  currency: SupportedCurrency = DEFAULT_CURRENCY,
+): Promise<ServiceMonthlyCostEstimate> {
+  const pricing = await resolveServiceMonthlyProductionCost({
+    type: node.type,
+    ...(node.provider !== undefined ? { provider: node.provider } : {}),
+    metadata: node.metadata,
+    preferredCurrency: currency,
+  });
+
+  if (pricing.monthlyCost > 0 || pricing.source === 'static-table') {
+    return {
+      estimatedMonthlyCost: roundMoney(pricing.monthlyCost),
+      costSource: 'cloud_type_reference',
+      pricingSource: pricing.source,
+      pricingSourceLabel: pricing.sourceLabel,
+      confidence: pricing.confidence,
+      currency,
+      note: pricing.note,
+      sourceReference: pricing.note,
+    };
+  }
+
+  return estimateServiceMonthlyProductionCost(node, currency);
 }
 
 export function estimateServiceMonthlyProductionCost(
@@ -706,6 +731,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(override),
       costSource: 'user_override',
+      pricingSource: 'cost-explorer',
+      pricingSourceLabel: '[Prix reel ✓✓]',
       confidence: 0.95,
       currency,
       note: 'Override utilisateur applique',
@@ -729,6 +756,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(observedInCurrency),
       costSource: 'cloud_type_reference',
+      pricingSource: 'cost-explorer',
+      pricingSourceLabel: '[Prix reel ✓✓]',
       confidence: 0.95,
       currency,
       note: 'Cout observe via metadonnees cloud billing',
@@ -744,6 +773,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.95,
       currency,
       note: 'Service tiers externe (pas de redondance infra DR directe)',
@@ -766,7 +797,9 @@ export function estimateServiceMonthlyProductionCost(
         convertEstimateToCurrency(providerEstimate, currency),
       ),
       costSource: 'cloud_type_reference',
-      confidence: 0.82,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: 0.75,
       currency,
       note: `Reference ${providerLabel} (${resolution.kind})`,
       sourceReference: providerEstimate.source,
@@ -777,6 +810,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.9,
       currency,
       note: 'Serverless pay-per-use (standby quasi nul)',
@@ -791,6 +826,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.9,
       currency,
       note: 'Queue/topic managed (cout operationnel minimal)',
@@ -802,9 +839,11 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.9,
       currency,
-      note: 'DynamoDB pay-per-request (pas de base DR infra dediee)',
+      note: 'DynamoDB/Firestore pay-per-use',
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
     };
   }
@@ -817,7 +856,9 @@ export function estimateServiceMonthlyProductionCost(
       return {
         estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
         costSource: 'cloud_type_reference',
-        confidence: 0.75,
+        pricingSource: 'static-table',
+        pricingSourceLabel: '[Estimation ≈]',
+        confidence: 0.7,
         currency,
         note: 'Reference Elasticsearch/OpenSearch',
         sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
@@ -832,7 +873,9 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
-      confidence: 0.78,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: 0.7,
       currency,
       note: `Reference DB ${instanceSize}`,
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
@@ -844,9 +887,11 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
-      confidence: 0.75,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: 0.7,
       currency,
-      note: 'Reference cache manag e',
+      note: 'Reference cache manage',
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
     };
   }
@@ -863,6 +908,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(tb * midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.7,
       currency,
       note: 'Reference stockage',
@@ -875,7 +922,9 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
-      confidence: 0.72,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: 0.7,
       currency,
       note: 'Reference load balancer',
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
@@ -887,6 +936,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.7,
       currency,
       note: 'Reference API Gateway/DNS',
@@ -899,7 +950,9 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
-      confidence: 0.72,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: 0.7,
       currency,
       note: 'Reference CDN',
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
@@ -911,6 +964,8 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
       confidence: 0.7,
       currency,
       note: 'Reference messaging queue',
@@ -950,7 +1005,9 @@ export function estimateServiceMonthlyProductionCost(
     return {
       estimatedMonthlyCost: roundMoney(base),
       costSource: 'cloud_type_reference',
-      confidence: provider === 'on_premise' ? 0.5 : 0.72,
+      pricingSource: 'static-table',
+      pricingSourceLabel: '[Estimation ≈]',
+      confidence: provider === 'on_premise' ? 0.5 : 0.7,
       currency,
       note: `Reference compute ${instanceSize} x${replicas}`,
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
@@ -967,6 +1024,8 @@ export function estimateServiceMonthlyProductionCost(
   return {
     estimatedMonthlyCost: roundMoney(fallback),
     costSource: 'criticality_fallback',
+    pricingSource: 'static-table',
+    pricingSourceLabel: '[Estimation ≈]',
     confidence: 0.45,
     currency,
     note: `Fallback criticite (${criticality})`,
@@ -974,6 +1033,11 @@ export function estimateServiceMonthlyProductionCost(
   };
 }
 
+export function isBusinessProfileConfigured(
+  profile: Pick<ResolvedCompanyFinancialProfile, 'annualRevenue' | 'hourlyDowntimeCost' | 'mode'>,
+): boolean {
+  return profile.mode === 'business_profile' && Number(profile.annualRevenue) > 0 && Number(profile.hourlyDowntimeCost) > 0;
+}
 function getDefaultStrategyFromCriticality(
   criticality: 'critical' | 'high' | 'medium' | 'low',
 ): DrStrategyKey {
@@ -1370,3 +1434,4 @@ export function buildFinancialDisclaimers() {
     serviceCost: DR_FINANCIAL_SOURCES.serviceCost,
   };
 }
+

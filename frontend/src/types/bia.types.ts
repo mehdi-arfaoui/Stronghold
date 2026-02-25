@@ -30,7 +30,7 @@ export interface BIAEntry {
   effectiveRpo?: number;
   effectiveMtpd?: number;
   validated: boolean;
-  financialImpactPerHour?: number;
+  financialImpactPerHour?: number | null;
   financialConfidence?: 'user_defined' | 'estimated' | 'low_confidence';
   financialSources?: string[];
   financialIsOverride?: boolean;
@@ -39,7 +39,11 @@ export interface BIAEntry {
     | 'business_flow_not_validated'
     | 'override_user'
     | 'estimation_enriched'
-    | 'estimation_base';
+    | 'estimation_base'
+    | 'profile_global'
+    | 'not_configured';
+  financialScope?: 'not_configured' | 'profile_global' | 'custom';
+  financialScopeLabel?: string;
   financialOverride?: {
     customCostPerHour: number;
     justification?: string | null;
