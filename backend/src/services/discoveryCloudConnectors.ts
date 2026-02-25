@@ -13,6 +13,15 @@ import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/cl
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
 import { LambdaClient, ListFunctionsCommand } from "@aws-sdk/client-lambda";
+import {
+  ElastiCacheClient,
+  DescribeCacheClustersCommand,
+  DescribeReplicationGroupsCommand,
+} from "@aws-sdk/client-elasticache";
+import { DynamoDBClient, ListTablesCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
+import { S3Client, ListBucketsCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
+import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } from "@aws-sdk/client-sqs";
+import { SNSClient, ListTopicsCommand, GetTopicAttributesCommand } from "@aws-sdk/client-sns";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CostExplorerClient, GetCostAndUsageCommand } from "@aws-sdk/client-cost-explorer";
 import {
@@ -31,7 +40,7 @@ import { ContainerServiceClient } from "@azure/arm-containerservice";
 import { StorageManagementClient } from "@azure/arm-storage";
 import { SqlManagementClient } from "@azure/arm-sql";
 
-import { InstancesClient, type protos } from "@google-cloud/compute";
+import { InstanceGroupManagersClient, InstancesClient, type protos } from "@google-cloud/compute";
 import { ClusterManagerClient } from "@google-cloud/container";
 import { SqlInstancesServiceClient } from "@google-cloud/sql";
 
@@ -91,6 +100,19 @@ function toBusinessTagMap(rawTags: unknown): Record<string, string> {
   }
 
   return businessTags;
+}
+
+function parseGcpInstanceGroupManagerPath(
+  value: string | null | undefined,
+): { zone: string; name: string } | null {
+  if (!value) return null;
+  const normalized = value.trim();
+  const match = normalized.match(/\/zones\/([^/]+)\/instanceGroupManagers\/([^/]+)/i);
+  if (!match) return null;
+  const zone = match[1];
+  const name = match[2];
+  if (!zone || !name) return null;
+  return { zone, name };
 }
 
 // Rate limiting: max concurrent region scans
@@ -425,6 +447,12 @@ function buildResource(input: Partial<DiscoveredResource> & { source: string; ex
   } satisfies DiscoveredResource;
 }
 
+function normalizeS3Region(locationConstraint: string | null | undefined): string {
+  if (!locationConstraint) return "us-east-1";
+  if (locationConstraint === "EU") return "eu-west-1";
+  return locationConstraint;
+}
+
 /**
  * Scan a single AWS region for resources.
  * @internal
@@ -434,8 +462,9 @@ async function scanAwsRegion(
   credentials: DiscoveryCredentials,
   options?: {
     collectCloudWatchMetrics?: boolean;
+    includeGlobalServices?: boolean;
   },
-): Promise<DiscoveredResource[]> {
+): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
   const credentialProvider = credentials.aws?.roleArn
     ? fromTemporaryCredentials({
         params: {
@@ -457,23 +486,48 @@ async function scanAwsRegion(
   const asg = new AutoScalingClient({ region, credentials: credentialProvider as any });
   const elb = new ElasticLoadBalancingV2Client({ region, credentials: credentialProvider as any });
   const eks = new EKSClient({ region, credentials: credentialProvider as any });
+  const elasticache = new ElastiCacheClient({ region, credentials: credentialProvider as any });
+  const dynamodb = new DynamoDBClient({ region, credentials: credentialProvider as any });
+  const sqs = new SQSClient({ region, credentials: credentialProvider as any });
+  const sns = new SNSClient({ region, credentials: credentialProvider as any });
 
   const resources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
   const metricTargets: AwsMetricTarget[] = [];
+
+  const extractDeadLetterArnFromRedrivePolicy = (rawPolicy: string | undefined): string | undefined => {
+    if (!rawPolicy || rawPolicy.trim().length === 0) return undefined;
+    try {
+      const parsed = JSON.parse(rawPolicy) as Record<string, unknown>;
+      return typeof parsed.deadLetterTargetArn === "string" ? parsed.deadLetterTargetArn : undefined;
+    } catch {
+      return undefined;
+    }
+  };
 
   // EC2 Instances
   const instances = await ec2.send(new DescribeInstancesCommand({}));
   instances.Reservations?.forEach((reservation) => {
     reservation.Instances?.forEach((instance) => {
+      const awsTags = Object.fromEntries(
+        (instance.Tags || [])
+          .filter((tag): tag is { Key: string; Value?: string } => Boolean(tag?.Key))
+          .map((tag) => [tag.Key, tag.Value ?? ""])
+      );
+      const nameFromTag = typeof awsTags.Name === "string" && awsTags.Name.trim().length > 0
+        ? awsTags.Name.trim()
+        : null;
+
       resources.push(
         buildResource({
           source: "aws",
           externalId: instance.InstanceId || "ec2",
-          name: instance.InstanceId || "ec2",
+          name: nameFromTag || instance.InstanceId || "ec2",
           kind: "infra",
           type: "EC2",
           ip: instance.PrivateIpAddress || null,
           hostname: instance.PrivateDnsName || null,
+          tags: Object.entries(awsTags).map(([key, value]) => `${key}:${value}`),
           metadata: {
             state: instance.State?.Name,
             instanceType: instance.InstanceType,
@@ -483,6 +537,8 @@ async function scanAwsRegion(
             vpcId: instance.VpcId,
             architecture: instance.Architecture,
             platformDetails: instance.PlatformDetails,
+            displayName: nameFromTag || instance.InstanceId || "ec2",
+            awsTags,
           },
         })
       );
@@ -506,6 +562,24 @@ async function scanAwsRegion(
           [tag.Key]: tag.Value ?? "",
         },
       };
+
+      if (tag.Key === "Name") {
+        const taggedName = (tag.Value || "").trim();
+        if (taggedName.length > 0) {
+          const currentName = String(resource.name || "").trim();
+          if (
+            currentName.length === 0 ||
+            currentName === resource.externalId ||
+            currentName.startsWith("i-")
+          ) {
+            resource.name = taggedName;
+          }
+          resource.metadata = {
+            ...(resource.metadata || {}),
+            displayName: taggedName,
+          };
+        }
+      }
     });
   }
 
@@ -523,8 +597,13 @@ async function scanAwsRegion(
       typeof awsTags["aws:autoscaling:groupName"] === "string"
         ? awsTags["aws:autoscaling:groupName"]
         : undefined;
+    const nameFromTag = typeof awsTags.Name === "string" ? awsTags.Name.trim() : "";
+    if (nameFromTag.length > 0 && (!resource.name || resource.name === resource.externalId || resource.name.startsWith("i-"))) {
+      resource.name = nameFromTag;
+    }
     resource.metadata = {
       ...metadata,
+      ...(nameFromTag.length > 0 ? { displayName: nameFromTag } : {}),
       ...(autoScalingGroupName ? { autoScalingGroupName } : {}),
       ...(Object.keys(businessTags).length > 0 ? { businessTags } : {}),
     };
@@ -543,7 +622,10 @@ async function scanAwsRegion(
         type: "RDS",
         ip: db.Endpoint?.Address || null,
         metadata: {
+          dbIdentifier,
           engine: db.Engine,
+          dbInstanceClass: db.DBInstanceClass,
+          instanceClass: db.DBInstanceClass,
           status: db.DBInstanceStatus,
           region,
           multiAz: Boolean(db.MultiAZ),
@@ -553,6 +635,7 @@ async function scanAwsRegion(
           replicaCount: db.ReadReplicaDBInstanceIdentifiers?.length || 0,
           publiclyAccessible: db.PubliclyAccessible,
           availabilityZone: db.AvailabilityZone,
+          displayName: dbIdentifier,
         },
       })
     );
@@ -593,6 +676,216 @@ async function scanAwsRegion(
       });
     }
   });
+
+  // ElastiCache Clusters
+  try {
+    const replicationGroups = await elasticache.send(new DescribeReplicationGroupsCommand({}));
+    const memberClusterCountByReplicationGroup = new Map<string, number>();
+    for (const group of replicationGroups.ReplicationGroups || []) {
+      if (!group.ReplicationGroupId) continue;
+      memberClusterCountByReplicationGroup.set(
+        group.ReplicationGroupId,
+        group.MemberClusters?.length || 0
+      );
+    }
+
+    const cacheClusters = await elasticache.send(new DescribeCacheClustersCommand({ ShowCacheNodeInfo: true }));
+    for (const cluster of cacheClusters.CacheClusters || []) {
+      const clusterId = cluster.CacheClusterId || "elasticache";
+      const replicationGroupId = cluster.ReplicationGroupId;
+      const replicationGroupClusterCount = replicationGroupId
+        ? memberClusterCountByReplicationGroup.get(replicationGroupId) || 0
+        : 0;
+      const replicaCountFromGroup = replicationGroupClusterCount > 0 ? Math.max(0, replicationGroupClusterCount - 1) : 0;
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: cluster.ARN || clusterId,
+          name: clusterId,
+          kind: "infra",
+          type: "ELASTICACHE",
+          metadata: {
+            region,
+            cacheClusterId: clusterId,
+            engine: cluster.Engine,
+            status: cluster.CacheClusterStatus,
+            cacheNodeType: cluster.CacheNodeType,
+            numCacheNodes: cluster.NumCacheNodes ?? undefined,
+            num_cache_nodes: cluster.NumCacheNodes ?? undefined,
+            replicationGroupId: replicationGroupId ?? undefined,
+            replicationGroup: replicationGroupId ?? undefined,
+            replicaCount: replicaCountFromGroup,
+            availabilityZone: cluster.PreferredAvailabilityZone,
+            subnetGroup: cluster.CacheSubnetGroupName,
+            displayName: clusterId,
+          },
+        })
+      );
+    }
+  } catch {
+    warnings.push(`ElastiCache scan skipped in ${region} (insufficient permissions or unavailable API).`);
+  }
+
+  // DynamoDB Tables
+  try {
+    const tables = await dynamodb.send(new ListTablesCommand({}));
+    for (const tableName of tables.TableNames || []) {
+      const details = await dynamodb.send(new DescribeTableCommand({ TableName: tableName }));
+      const table = details.Table;
+      if (!table) continue;
+      const replicaCount = table.Replicas?.length || 0;
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: table.TableArn || table.TableId || table.TableName || tableName,
+          name: table.TableName || tableName,
+          kind: "infra",
+          type: "DYNAMODB",
+          metadata: {
+            region,
+            tableName: table.TableName,
+            tableArn: table.TableArn,
+            status: table.TableStatus,
+            billingMode: table.BillingModeSummary?.BillingMode,
+            itemCount: table.ItemCount,
+            sizeBytes: table.TableSizeBytes,
+            streamArn: table.LatestStreamArn,
+            replicaCount,
+            globalTable: replicaCount > 0,
+            displayName: table.TableName || tableName,
+          },
+        })
+      );
+    }
+  } catch {
+    warnings.push(`DynamoDB scan skipped in ${region} (insufficient permissions or unavailable API).`);
+  }
+
+  // SQS Queues
+  try {
+    const queueList = await sqs.send(new ListQueuesCommand({}));
+    for (const queueUrl of queueList.QueueUrls || []) {
+      const queueAttributes = await sqs.send(
+        new GetQueueAttributesCommand({
+          QueueUrl: queueUrl,
+          AttributeNames: ["All"],
+        })
+      );
+      const attrs = queueAttributes.Attributes || {};
+      const queueArn = attrs.QueueArn || queueUrl;
+      const queueName = queueArn.split(":").pop() || queueUrl.split("/").pop() || "queue";
+      const redrivePolicy = attrs.RedrivePolicy;
+      const deadLetterTargetArn = extractDeadLetterArnFromRedrivePolicy(redrivePolicy);
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: queueArn,
+          name: queueName,
+          kind: "infra",
+          type: "SQS_QUEUE",
+          metadata: {
+            region,
+            queueUrl,
+            queueArn,
+            queueName,
+            fifoQueue: attrs.FifoQueue === "true",
+            visibilityTimeout: attrs.VisibilityTimeout ? Number(attrs.VisibilityTimeout) : undefined,
+            messageRetentionSeconds: attrs.MessageRetentionPeriod ? Number(attrs.MessageRetentionPeriod) : undefined,
+            kmsMasterKeyId: attrs.KmsMasterKeyId || undefined,
+            redrivePolicy: redrivePolicy || undefined,
+            deadLetterTargetArn,
+            dlqArn: deadLetterTargetArn,
+            displayName: queueName,
+          },
+        })
+      );
+    }
+  } catch {
+    warnings.push(`SQS scan skipped in ${region} (insufficient permissions or unavailable API).`);
+  }
+
+  // SNS Topics
+  try {
+    const topicList = await sns.send(new ListTopicsCommand({}));
+    for (const topic of topicList.Topics || []) {
+      if (!topic.TopicArn) continue;
+      const attributes = await sns.send(new GetTopicAttributesCommand({ TopicArn: topic.TopicArn }));
+      const attrs = attributes.Attributes || {};
+      const topicName = topic.TopicArn.split(":").pop() || "topic";
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: topic.TopicArn,
+          name: topicName,
+          kind: "infra",
+          type: "SNS_TOPIC",
+          metadata: {
+            region,
+            topicArn: topic.TopicArn,
+            topicName,
+            fifoTopic: attrs.FifoTopic === "true",
+            kmsMasterKeyId: attrs.KmsMasterKeyId || undefined,
+            subscriptionsConfirmed: attrs.SubscriptionsConfirmed
+              ? Number(attrs.SubscriptionsConfirmed)
+              : undefined,
+            subscriptionsPending: attrs.SubscriptionsPending
+              ? Number(attrs.SubscriptionsPending)
+              : undefined,
+            subscriptionsDeleted: attrs.SubscriptionsDeleted
+              ? Number(attrs.SubscriptionsDeleted)
+              : undefined,
+            displayName: topicName,
+          },
+        })
+      );
+    }
+  } catch {
+    warnings.push(`SNS scan skipped in ${region} (insufficient permissions or unavailable API).`);
+  }
+
+  // S3 Buckets (global inventory, queried once per full scan)
+  if (options?.includeGlobalServices) {
+    try {
+      const s3 = new S3Client({ region: "us-east-1", credentials: credentialProvider as any });
+      const buckets = await s3.send(new ListBucketsCommand({}));
+
+      for (const bucket of buckets.Buckets || []) {
+        if (!bucket.Name) continue;
+        const bucketName = bucket.Name;
+
+        let bucketRegion = "us-east-1";
+        try {
+          const location = await s3.send(new GetBucketLocationCommand({ Bucket: bucketName }));
+          bucketRegion = normalizeS3Region(location.LocationConstraint as string | undefined);
+        } catch {
+          // Keep default us-east-1 when bucket location is unavailable.
+        }
+
+        resources.push(
+          buildResource({
+            source: "aws",
+            externalId: `arn:aws:s3:::${bucketName}`,
+            name: bucketName,
+            kind: "infra",
+            type: "S3_BUCKET",
+            metadata: {
+              region: bucketRegion,
+              bucketName,
+              bucketArn: `arn:aws:s3:::${bucketName}`,
+              creationDate: bucket.CreationDate?.toISOString(),
+              displayName: bucketName,
+            },
+          })
+        );
+      }
+    } catch {
+      warnings.push("S3 scan skipped (insufficient permissions or unavailable API).");
+    }
+  }
 
   // Auto Scaling Groups
   const groups = await asg.send(new DescribeAutoScalingGroupsCommand({}));
@@ -793,7 +1086,7 @@ async function scanAwsRegion(
     }
   }
 
-  return resources;
+  return { resources, warnings };
 }
 
 export type AwsScanOptions = {
@@ -844,25 +1137,30 @@ export async function scanAws(
   const warnings: string[] = [];
   let completed = 0;
   let remainingCloudWatchCalls = AWS_CLOUDWATCH_MAX_CALLS_PER_SCAN;
+  const regionScanInputs = regionsToScan.map((region, index) => ({ region, index }));
 
   // Scan regions with rate limiting (max concurrent)
-  const results = await processInBatches(regionsToScan, AWS_MAX_CONCURRENT_REGIONS, async (region) => {
+  const results = await processInBatches(regionScanInputs, AWS_MAX_CONCURRENT_REGIONS, async ({ region, index }) => {
     const collectCloudWatchMetrics = remainingCloudWatchCalls > 0;
     if (collectCloudWatchMetrics) {
       remainingCloudWatchCalls -= 1;
     }
-    const resources = await scanAwsRegion(region, credentials, {
+    const regionScan = await scanAwsRegion(region, credentials, {
       collectCloudWatchMetrics,
+      includeGlobalServices: index === 0,
     });
     completed++;
     options.onProgress?.(completed, regionsToScan.length, region);
-    return { region, resources };
+    return { region, ...regionScan };
   });
 
   // Aggregate results
   for (const result of results) {
     if (result.status === "fulfilled") {
       allResources.push(...result.value.resources);
+      if (result.value.warnings.length > 0) {
+        warnings.push(...result.value.warnings);
+      }
     } else {
       // Extract region from error if possible
       const errorMsg = result.reason?.message || String(result.reason);
@@ -903,6 +1201,7 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
 
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
+  const vmssCapacityById = new Map<string, number>();
 
   for await (const resource of resourceClient.resources.list()) {
     resources.push(
@@ -921,7 +1220,25 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
     );
   }
 
+  try {
+    for await (const vmss of computeClient.virtualMachineScaleSets.listAll()) {
+      if (!vmss.id) continue;
+      vmssCapacityById.set(vmss.id, Number(vmss.sku?.capacity || 0));
+    }
+  } catch {
+    warnings.push("Failed to list Azure VM scale sets");
+  }
+
   for await (const vm of computeClient.virtualMachines.listAll()) {
+    const vmssId =
+      (vm as any)?.virtualMachineScaleSet?.id ||
+      (vm.id && vm.id.includes('/virtualMachineScaleSets/')
+        ? vm.id.split('/virtualMachines/')[0]
+        : null);
+    const availabilityZone =
+      Array.isArray(vm.zones) && vm.zones.length > 0
+        ? vm.zones[0]
+        : null;
     resources.push(
       buildResource({
         source: "azure",
@@ -929,7 +1246,17 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
         name: vm.name || "vm",
         kind: "infra",
         type: "AZURE_VM",
-        metadata: { size: vm.hardwareProfile?.vmSize, osType: vm.storageProfile?.osDisk?.osType },
+        metadata: {
+          size: vm.hardwareProfile?.vmSize,
+          vmSize: vm.hardwareProfile?.vmSize,
+          osType: vm.storageProfile?.osDisk?.osType,
+          location: vm.location,
+          availabilityZone,
+          availabilityZones: vm.zones || [],
+          availabilitySetId: vm.availabilitySet?.id || null,
+          vmssId: vmssId || null,
+          vmssInstanceCount: vmssId ? vmssCapacityById.get(vmssId) || 0 : 0,
+        },
       })
     );
   }
@@ -942,7 +1269,27 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
         name: cluster.name || "aks",
         kind: "infra",
         type: "AKS",
-        metadata: { kubernetesVersion: cluster.kubernetesVersion },
+        metadata: {
+          kubernetesVersion: cluster.kubernetesVersion,
+          location: cluster.location,
+          agentPoolProfilesCount: cluster.agentPoolProfiles?.length || 0,
+          agentPoolNodeCount: (cluster.agentPoolProfiles || []).reduce(
+            (sum: number, pool: any) => sum + Number(pool.count || 0),
+            0,
+          ),
+          availabilityZones: Array.from(
+            new Set(
+              (cluster.agentPoolProfiles || []).flatMap((pool: any) =>
+                Array.isArray(pool.availabilityZones) ? pool.availabilityZones : [],
+              ),
+            ),
+          ),
+          agentPoolProfiles: (cluster.agentPoolProfiles || []).map((pool: any) => ({
+            name: pool.name,
+            count: pool.count,
+            availabilityZones: pool.availabilityZones || [],
+          })),
+        },
       })
     );
   }
@@ -955,7 +1302,12 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
         name: account.name || "storage",
         kind: "infra",
         type: "STORAGE",
-        metadata: { location: account.location, kind: account.kind },
+        metadata: {
+          location: account.location,
+          kind: account.kind,
+          replication: account.sku?.name || null,
+          skuName: account.sku?.name || null,
+        },
       })
     );
   }
@@ -987,7 +1339,25 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
       const resourceGroup = server.id?.split("/")[4];
       if (resourceGroup && server.name) {
         try {
+          const failoverGroupByDatabase = new Map<string, string>();
+          try {
+            for await (const group of sqlClient.failoverGroups.listByServer(resourceGroup, server.name)) {
+              const groupId = group.id || group.name || null;
+              const databases = Array.isArray((group as any).databases) ? (group as any).databases : [];
+              for (const databaseRef of databases) {
+                const ref = String(databaseRef || '');
+                const dbName = ref.split('/').pop() || ref;
+                if (dbName && groupId) {
+                  failoverGroupByDatabase.set(dbName, groupId);
+                }
+              }
+            }
+          } catch {
+            warnings.push(`Failed to list failover groups for SQL server: ${serverName}`);
+          }
+
           for await (const db of sqlClient.databases.listByServer(resourceGroup, server.name)) {
+            const dbName = String(db.name || '');
             resources.push(
               buildResource({
                 source: "azure",
@@ -1006,6 +1376,9 @@ export async function scanAzure(credentials: DiscoveryCredentials): Promise<Disc
                   zoneRedundant: db.zoneRedundant,
                   readScale: db.readScale,
                   currentServiceObjectiveName: db.currentServiceObjectiveName,
+                  failoverGroupId: failoverGroupByDatabase.get(dbName) || null,
+                  geoReplicationLinks: db.secondaryType ? 1 : 0,
+                  highAvailabilityMode: db.zoneRedundant ? 'ZoneRedundant' : 'Disabled',
                 },
               })
             );
@@ -1028,6 +1401,7 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
   }
 
   const resources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
   const projectId = credentials.gcp.projectId;
   const clientEmail = credentials.gcp.clientEmail;
   const privateKey = credentials.gcp.privateKey;
@@ -1036,11 +1410,47 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
     credentials: { client_email: clientEmail, private_key: privateKey },
     projectId,
   });
+  const instanceGroupManagersClient = new InstanceGroupManagersClient({
+    credentials: { client_email: clientEmail, private_key: privateKey },
+    projectId,
+  });
+  const migSizeByRef = new Map<string, number>();
+
   const aggregatedIterable: AsyncIterable<
     [string, protos.google.cloud.compute.v1.IInstancesScopedList]
   > = instancesClient.aggregatedListAsync({ project: projectId });
+
   for await (const [zone, response] of aggregatedIterable) {
-    response.instances?.forEach((instance: any) => {
+    const zoneName = String(zone || '').split('/').pop() || String(zone || '');
+    for (const instance of response.instances || []) {
+      const metadataItems = Array.isArray(instance.metadata?.items) ? instance.metadata.items : [];
+      const createdByItem = metadataItems.find((item: any) => item?.key === 'created-by');
+      const migRef =
+        typeof createdByItem?.value === 'string' &&
+        createdByItem.value.includes('/instanceGroupManagers/')
+          ? createdByItem.value
+          : null;
+
+      if (migRef && !migSizeByRef.has(migRef)) {
+        const parsed = parseGcpInstanceGroupManagerPath(migRef);
+        if (parsed) {
+          try {
+            const [group] = await instanceGroupManagersClient.get({
+              project: projectId,
+              zone: parsed.zone,
+              instanceGroupManager: parsed.name,
+            });
+            migSizeByRef.set(migRef, Number((group as any)?.targetSize || 0));
+          } catch {
+            migSizeByRef.set(migRef, 0);
+            warnings.push(`Failed to read GCP managed instance group: ${parsed.name}`);
+          }
+        } else {
+          migSizeByRef.set(migRef, 0);
+        }
+      }
+
+      const machineType = String(instance.machineType || '').split('/').pop() || instance.machineType || null;
       resources.push(
         buildResource({
           source: "gcp",
@@ -1051,14 +1461,18 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
           ip: instance.networkInterfaces?.[0]?.networkIP || null,
           hostname: instance.hostname || null,
           metadata: {
-            zone,
+            zone: zoneName,
+            machineType,
+            instanceType: machineType,
+            instanceGroupManager: migRef,
+            instanceGroupSize: migRef ? migSizeByRef.get(migRef) || 0 : 0,
             status: instance.status,
             labels: instance.labels || null,
             businessTags: toBusinessTagMap(instance.labels || {}),
           },
         })
       );
-    });
+    }
   }
 
   const containerClient = new ClusterManagerClient({
@@ -1076,6 +1490,16 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
         metadata: {
           endpoint: cluster.endpoint,
           version: cluster.currentMasterVersion,
+          location: cluster.location,
+          locations: cluster.locations || [],
+          nodePoolLocations: (cluster.nodePools || []).flatMap((pool) =>
+            Array.isArray(pool.locations) ? pool.locations : [],
+          ),
+          nodePoolsConfig: (cluster.nodePools || []).map((pool) => ({
+            name: pool.name,
+            locations: pool.locations || [],
+            nodeCount: pool.initialNodeCount || null,
+          })),
           labels: cluster.resourceLabels || null,
           businessTags: toBusinessTagMap(cluster.resourceLabels || {}),
         },
@@ -1098,6 +1522,9 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
         metadata: {
           region: instance.region,
           databaseVersion: instance.databaseVersion,
+          availabilityType: instance.settings?.availabilityType,
+          replicaNames: instance.replicaNames || [],
+          tier: instance.settings?.tier || null,
           labels: instance.settings?.userLabels || null,
           businessTags: toBusinessTagMap(instance.settings?.userLabels || {}),
         },
@@ -1105,5 +1532,5 @@ export async function scanGcp(credentials: DiscoveryCredentials): Promise<Discov
     );
   });
 
-  return { resources, flows: [], warnings: [] };
+  return { resources, flows: [], warnings };
 }

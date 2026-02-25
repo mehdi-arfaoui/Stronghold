@@ -11,6 +11,17 @@ import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 
 const router = Router();
 
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function resolveNodeTypeLabel(nodeType: string, metadata: Record<string, unknown> | undefined): string {
+  const metadataLabel = readString(metadata?.awsService) ?? readString(metadata?.subType);
+  return metadataLabel || nodeType;
+}
+
 // ─── POST /analysis/resilience — Run full graph analysis ──────────
 router.post('/', async (req: TenantRequest, res) => {
   try {
@@ -219,10 +230,28 @@ router.get('/spofs', async (req: TenantRequest, res) => {
     }
 
     const report = latest.report as any;
+    const rawSpofs = Array.isArray(report.spofs) ? report.spofs : [];
+    const spofNodeIds = rawSpofs
+      .map((spof: any) => spof?.nodeId)
+      .filter((id: unknown): id is string => typeof id === 'string' && id.length > 0);
+    const infraNodes = spofNodeIds.length > 0
+      ? await prisma.infraNode.findMany({
+          where: { tenantId, id: { in: spofNodeIds } },
+          select: { id: true, metadata: true },
+        })
+      : [];
+    const metadataByNodeId = new Map<string, Record<string, unknown>>();
+    for (const node of infraNodes) {
+      if (node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)) {
+        metadataByNodeId.set(node.id, node.metadata as Record<string, unknown>);
+      }
+    }
+
     let spofs = (report.spofs || []).map((s: any) => ({
       nodeId: s.nodeId,
       nodeName: s.nodeName,
-      nodeType: s.nodeType,
+      nodeType: resolveNodeTypeLabel(s.nodeType, metadataByNodeId.get(s.nodeId)),
+      nodeTypeRaw: s.nodeType,
       blastRadius: s.blastRadius ?? 0,
       severity: s.severity,
       reasons: s.failedChecks?.map((c: any) => c.check || c) || [s.recommendation || 'SPOF detected'],
@@ -317,7 +346,8 @@ router.get('/redundancy-issues', async (req: TenantRequest, res) => {
       return {
         nodeId: issue.nodeId,
         nodeName: issue.nodeName,
-        nodeType: issue.nodeType,
+        nodeType: resolveNodeTypeLabel(issue.nodeType, metadata),
+        nodeTypeRaw: issue.nodeType,
         redundancyScore: issue.redundancyScore ?? 0,
         multiAZ: hasFailedCheck('multi_az', 'no_multi_az') ? false : (metadataMultiAz ?? true),
         replicas: Math.max(0, Math.floor(replicas)),

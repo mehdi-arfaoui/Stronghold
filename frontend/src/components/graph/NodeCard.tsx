@@ -9,6 +9,7 @@ import type { NodeType, NodeStatus } from '@/types/graph.types';
 export interface InfraNodeData {
   label: string;
   nodeType: NodeType;
+  nodeTypeLabel?: string;
   provider?: string;
   region?: string;
   isSPOF?: boolean;
@@ -39,6 +40,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
   const {
     label,
     nodeType,
+    nodeTypeLabel,
     provider,
     region,
     isSPOF,
@@ -136,7 +138,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
       </div>
 
       <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-        <span>{nodeType}</span>
+        <span>{nodeTypeLabel || nodeType}</span>
         {region && (
           <>
             <span className="text-muted-foreground/50">&middot;</span>
@@ -176,4 +178,3 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
     </div>
   );
 });
-

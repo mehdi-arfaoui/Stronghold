@@ -20,6 +20,14 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
 
   const relatedEdges = edges.filter((e) => e.source === node.id || e.target === node.id);
   const nodeMap = new Map(allNodes.map((n) => [n.id, n]));
+  const metadata = node.metadata && typeof node.metadata === 'object'
+    ? (node.metadata as Record<string, unknown>)
+    : {};
+  const displayType = typeof metadata.awsService === 'string'
+    ? metadata.awsService
+    : typeof metadata.subType === 'string'
+      ? metadata.subType
+      : node.type;
 
   return (
     <div className="flex h-full w-[400px] flex-col border-l bg-card">
@@ -40,7 +48,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Type</span>
-              <span className="font-medium">{node.type}</span>
+              <span className="font-medium">{displayType}</span>
             </div>
             {node.provider && (
               <div className="flex justify-between">

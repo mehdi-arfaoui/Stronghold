@@ -316,6 +316,8 @@ async function loadFinancialContext(tenantId: string) {
       validatedRPO: node.validatedRPO,
       suggestedMTPD: node.suggestedMTPD,
       validatedMTPD: node.validatedMTPD,
+      metadata: node.metadata,
+      estimatedMonthlyCost: node.estimatedMonthlyCost,
       dependentsCount: node.inEdges.length,
       inEdges: node.inEdges,
       outEdges: node.outEdges,

@@ -16,6 +16,12 @@ import { BusinessFlowFinancialEngineService } from '../services/business-flow-fi
 const router = Router();
 const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
 
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
 // ─── POST /bia-resilience/auto-generate — Generate BIA from graph ──────────
 router.post('/auto-generate', async (req: TenantRequest, res) => {
   try {
@@ -242,12 +248,21 @@ router.get('/entries', async (req: TenantRequest, res) => {
                 : ['Estimation de base Stronghold'];
 
         const validated = p.validationStatus === 'validated';
+        const metadataRecord =
+          node?.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+            ? (node.metadata as Record<string, unknown>)
+            : undefined;
+        const serviceTypeLabel =
+          readString(metadataRecord?.awsService) ??
+          readString(metadataRecord?.subType) ??
+          p.serviceType;
 
         return {
           id: p.id,
           nodeId: p.serviceNodeId,
           serviceName: p.serviceName,
           serviceType: p.serviceType,
+          serviceTypeLabel,
           tier: p.recoveryTier,
           rto: p.validatedRTO ?? null,
           rpo: p.validatedRPO ?? null,

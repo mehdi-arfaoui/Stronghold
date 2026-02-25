@@ -161,7 +161,7 @@ export function BIATable({
               >
                 <TableCell className="font-medium">{entry.serviceName}</TableCell>
                 <TableCell>
-                  <Badge variant="outline" className="text-xs">{entry.serviceType}</Badge>
+                  <Badge variant="outline" className="text-xs">{entry.serviceTypeLabel ?? entry.serviceType}</Badge>
                 </TableCell>
                 <TableCell className="text-center">
                   <Badge variant={entry.tier === 1 ? 'destructive' : entry.tier === 2 ? 'default' : 'secondary'}>

@@ -87,6 +87,8 @@ function toFinancialNodeInput(node: InfraNodeWithEdges): FinancialNodeInput {
     validatedRPO: node.validatedRPO,
     suggestedMTPD: node.suggestedMTPD,
     validatedMTPD: node.validatedMTPD,
+    metadata: node.metadata,
+    estimatedMonthlyCost: node.estimatedMonthlyCost,
     dependentsCount: node.inEdges.length,
     inEdges: node.inEdges,
     outEdges: node.outEdges,
@@ -480,6 +482,9 @@ async function buildWarRoomFinancial(
         criticality,
         monthlyProductionCost,
         overrideStrategy: resolveStrategyOverride(node.metadata),
+        nodeType: node.type,
+        provider: node.provider,
+        metadata: node.metadata,
       });
       const recoveryActivationFactor = resolveRecoveryActivationFactor(strategySelection.strategy);
       const recoveryCost = roundAmount(strategySelection.monthlyDrCost * recoveryActivationFactor);

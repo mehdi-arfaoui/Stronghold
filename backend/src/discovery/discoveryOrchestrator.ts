@@ -7,6 +7,7 @@
 import type { PrismaClient } from '@prisma/client';
 import type { IngestReport } from '../graph/types.js';
 import * as GraphService from '../graph/graphService.js';
+import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { inferDependencies } from '../graph/dependencyInferenceEngine.js';
 import { transformToScanResult } from './graphBridge.js';
 import { validateScanConsistency } from '../services/discoveryHealthService.js';
@@ -120,6 +121,45 @@ export async function updateScanJobProgress(
   });
 }
 
+async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string): Promise<void> {
+  const graph = await GraphService.getGraph(prisma, tenantId);
+  if (graph.order === 0) return;
+
+  const report = await analyzeFullGraph(graph);
+  await prisma.graphAnalysis.create({
+    data: {
+      resilienceScore: report.resilienceScore,
+      totalNodes: report.totalNodes,
+      totalEdges: report.totalEdges,
+      spofCount: report.spofs.length,
+      report: JSON.parse(JSON.stringify({
+        spofs: report.spofs,
+        redundancyIssues: report.redundancyIssues,
+        regionalRisks: report.regionalRisks,
+        circularDeps: report.circularDeps,
+        cascadeChains: report.cascadeChains.slice(0, 20),
+        criticalityScores: Object.fromEntries(report.criticalityScores),
+      })),
+      tenantId,
+    },
+  });
+
+  const spofIds = new Set(report.spofs.map((spof) => spof.nodeId));
+  await Promise.all(
+    Array.from(report.criticalityScores.entries()).map(async ([nodeId, score]) => {
+      const blast = GraphService.getBlastRadius(graph, nodeId);
+      await prisma.infraNode.updateMany({
+        where: { id: nodeId, tenantId },
+        data: {
+          criticalityScore: score,
+          isSPOF: spofIds.has(nodeId),
+          blastRadius: blast.length,
+        },
+      });
+    })
+  );
+}
+
 /**
  * Processes discovered resources from any source and ingests them
  * into the resilience graph.
@@ -147,7 +187,10 @@ export async function ingestDiscoveredResources(
   // 3. Ingest into the resilience graph via GraphService
   const report = await GraphService.ingestScanResults(prisma, tenantId, scanResult);
 
-  // 4. Run post-scan validation checks automatically
+  // 4. Refresh resilience analysis so dashboard metrics stay in sync with latest scan.
+  await persistLatestGraphAnalysis(prisma, tenantId);
+
+  // 5. Run post-scan validation checks automatically
   const validation = await validateScanConsistency(prisma, tenantId);
 
   return {

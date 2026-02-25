@@ -6,6 +6,7 @@ import {
   DEFAULT_DR_BUDGET_PERCENT,
   DOWNTIME_MEDIAN_BY_EMPLOYEE_SIZE,
   DR_FINANCIAL_SOURCES,
+  DR_STRATEGY_COST_FACTORS,
   DR_STRATEGY_PROFILES,
   INCIDENT_PROBABILITIES,
   INFRA_SIZE_HEURISTICS,
@@ -17,6 +18,16 @@ import {
   type ProfileValueSourceKey,
 } from '../constants/dr-financial-reference-data.js';
 import { CurrencyService } from './currency.service.js';
+import {
+  buildProviderServiceRecommendation,
+  convertEstimateToCurrency,
+  lookupEstimatedMonthlyReference,
+  resolveProviderFloorStrategy,
+  resolveProviderIncidentProbability,
+  resolveProviderNativeCostFactor,
+  resolveServiceResolution,
+  type CloudServiceResolution,
+} from './dr-recommendation-engine/recommendationEngine.js';
 
 export type CompanyFinancialProfileSource = 'user_input' | 'inferred' | 'hybrid';
 
@@ -66,6 +77,12 @@ export type StrategySelectionResult = {
   budgetWarning: string | null;
   strategySource: 'recommended' | 'user_override' | 'budget_adjusted';
   rationale: string[];
+};
+
+export type ServiceSpecificRecommendation = {
+  action: string;
+  resilienceImpact: string;
+  text: string;
 };
 
 export type RecommendationRoiResult = {
@@ -225,6 +242,66 @@ function inferInstanceSize(metadata: Record<string, unknown>): 'small' | 'medium
 
 function midpoint(min: number, max: number): number {
   return (min + max) / 2;
+}
+
+function readBoolean(value: unknown): boolean | null {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') return true;
+    if (normalized === 'false') return false;
+  }
+  return null;
+}
+
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function asMetadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function readPositiveNumberFromKeys(
+  metadata: Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const parsed = toPositiveNumber(metadata[key]);
+    if (parsed != null) return parsed;
+  }
+  return null;
+}
+
+function readStringFromKeys(
+  metadata: Record<string, unknown>,
+  keys: string[],
+): string | null {
+  for (const key of keys) {
+    const value = readString(metadata[key]);
+    if (value) return value;
+  }
+  return null;
+}
+
+function resolveCloudContext(
+  nodeType: string,
+  provider: string | null | undefined,
+  metadata: Record<string, unknown>,
+): CloudServiceResolution {
+  return resolveServiceResolution({
+    nodeType,
+    provider: provider ?? null,
+    metadata,
+  });
+}
+
+function formatMonthlyCost(amount: number, currency: SupportedCurrency): string {
+  return `${roundMoney(Math.max(0, amount)).toFixed(2)} ${currency}/mois`;
 }
 
 function classifyPaybackLabel(paybackMonths: number | null): string {
@@ -622,10 +699,7 @@ export function estimateServiceMonthlyProductionCost(
   },
   currency: SupportedCurrency = DEFAULT_CURRENCY,
 ): ServiceMonthlyCostEstimate {
-  const metadata =
-    node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
-      ? (node.metadata as Record<string, unknown>)
-      : {};
+  const metadata = asMetadataRecord(node.metadata);
 
   const override = toPositiveNumber(metadata.drMonthlyCostOverride);
   if (override) {
@@ -639,26 +713,33 @@ export function estimateServiceMonthlyProductionCost(
     };
   }
 
-  const cloudCost =
-    metadata.cloudCost && typeof metadata.cloudCost === 'object' && !Array.isArray(metadata.cloudCost)
-      ? (metadata.cloudCost as Record<string, unknown>)
-      : null;
-  const observedMonthlyUsd = toPositiveNumber(cloudCost?.monthlyTotalUSD);
-  if (observedMonthlyUsd) {
+  const cloudCost = asMetadataRecord(metadata.cloudCost);
+  const observedMonthlyUsd =
+    toPositiveNumber(cloudCost.monthlyTotalUSD) ??
+    toPositiveNumber(metadata.monthlyCostUSD) ??
+    toPositiveNumber(metadata.observedMonthlyCostUSD);
+  const observedMonthlyEur =
+    toPositiveNumber(cloudCost.monthlyTotalEUR) ??
+    toPositiveNumber(metadata.monthlyCostEUR) ??
+    toPositiveNumber(metadata.observedMonthlyCostEUR);
+  if (observedMonthlyUsd || observedMonthlyEur) {
+    const observedInCurrency = observedMonthlyUsd
+      ? CurrencyService.convertAmount(observedMonthlyUsd, 'USD', currency)
+      : CurrencyService.convertAmount(observedMonthlyEur || 0, 'EUR', currency);
     return {
-      estimatedMonthlyCost: roundMoney(
-        CurrencyService.convertAmount(observedMonthlyUsd, 'USD', currency),
-      ),
+      estimatedMonthlyCost: roundMoney(observedInCurrency),
       costSource: 'cloud_type_reference',
-      confidence: 0.92,
+      confidence: 0.95,
       currency,
-      note: 'Cout observe via metadonnees cloudCost',
+      note: 'Cout observe via metadonnees cloud billing',
       sourceReference: 'Observed cloud billing metadata',
     };
   }
 
   const nodeType = String(node.type || '').toUpperCase();
   const provider = String(node.provider || '').toLowerCase();
+  const resolution = resolveCloudContext(nodeType, provider, metadata);
+
   if (nodeType === 'THIRD_PARTY_API' || nodeType === 'SAAS_SERVICE') {
     return {
       estimatedMonthlyCost: 0,
@@ -666,6 +747,64 @@ export function estimateServiceMonthlyProductionCost(
       confidence: 0.95,
       currency,
       note: 'Service tiers externe (pas de redondance infra DR directe)',
+      sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
+    };
+  }
+
+  const providerEstimate = lookupEstimatedMonthlyReference(resolution);
+  if (providerEstimate) {
+    const providerLabel =
+      resolution.provider === 'aws'
+        ? 'AWS eu-west-3'
+        : resolution.provider === 'azure'
+          ? 'Azure westeurope/francecentral'
+          : resolution.provider === 'gcp'
+            ? 'GCP europe-west1/europe-west9'
+            : resolution.provider;
+    return {
+      estimatedMonthlyCost: roundMoney(
+        convertEstimateToCurrency(providerEstimate, currency),
+      ),
+      costSource: 'cloud_type_reference',
+      confidence: 0.82,
+      currency,
+      note: `Reference ${providerLabel} (${resolution.kind})`,
+      sourceReference: providerEstimate.source,
+    };
+  }
+
+  if (nodeType === 'SERVERLESS') {
+    return {
+      estimatedMonthlyCost: 0,
+      costSource: 'cloud_type_reference',
+      confidence: 0.9,
+      currency,
+      note: 'Serverless pay-per-use (standby quasi nul)',
+      sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
+    };
+  }
+
+  if (
+    nodeType === 'MESSAGE_QUEUE' &&
+    ['sqs', 'sns', 'pubsub', 'cloudTasks', 'eventGrid'].includes(resolution.kind)
+  ) {
+    return {
+      estimatedMonthlyCost: 0,
+      costSource: 'cloud_type_reference',
+      confidence: 0.9,
+      currency,
+      note: 'Queue/topic managed (cout operationnel minimal)',
+      sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
+    };
+  }
+
+  if (nodeType === 'DATABASE' && ['dynamodb', 'firestore'].includes(resolution.kind)) {
+    return {
+      estimatedMonthlyCost: 0,
+      costSource: 'cloud_type_reference',
+      confidence: 0.9,
+      currency,
+      note: 'DynamoDB pay-per-request (pas de base DR infra dediee)',
       sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
     };
   }
@@ -779,18 +918,6 @@ export function estimateServiceMonthlyProductionCost(
     };
   }
 
-  if (nodeType === 'SERVERLESS') {
-    const range = RESOURCE_MONTHLY_COST_REFERENCES.compute.serverless;
-    return {
-      estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
-      costSource: 'cloud_type_reference',
-      confidence: 0.68,
-      currency,
-      note: 'Reference serverless',
-      sourceReference: DR_FINANCIAL_SOURCES.serviceCost,
-    };
-  }
-
   if (
     [
       'VM',
@@ -833,10 +960,10 @@ export function estimateServiceMonthlyProductionCost(
   const criticality = inferCriticalityBucket(node);
   const fallback =
     criticality === 'critical' || criticality === 'high'
-      ? 300
+      ? 120
       : criticality === 'medium'
-        ? 150
-        : 50;
+        ? 60
+        : 20;
   return {
     estimatedMonthlyCost: roundMoney(fallback),
     costSource: 'criticality_fallback',
@@ -855,8 +982,52 @@ function getDefaultStrategyFromCriticality(
   return 'backup_restore';
 }
 
+type DrStrategyContext = {
+  nodeType?: string | undefined;
+  provider?: string | null | undefined;
+  metadata?: unknown | undefined;
+};
+
+function resolveServiceFloorStrategy(
+  criticality: 'critical' | 'high' | 'medium' | 'low',
+  context?: DrStrategyContext,
+): DrStrategyKey {
+  const defaultFloor = getDefaultStrategyFromCriticality(criticality);
+  if (!context) {
+    return defaultFloor;
+  }
+
+  const nodeType = String(context.nodeType || '').toUpperCase();
+  const metadata = asMetadataRecord(context.metadata);
+  const resolution = resolveCloudContext(nodeType, context.provider, metadata);
+  return resolveProviderFloorStrategy({
+    criticality,
+    defaultFloor,
+    resolution,
+  });
+}
+
+function resolveServiceNativeCostFactor(
+  strategy: DrStrategyKey,
+  context?: DrStrategyContext,
+): number | null {
+  if (!context) return null;
+
+  const nodeType = String(context.nodeType || '').toUpperCase();
+  const metadata = asMetadataRecord(context.metadata);
+  const resolution = resolveCloudContext(nodeType, context.provider, metadata);
+  return resolveProviderNativeCostFactor({
+    strategy,
+    resolution,
+  });
+}
+
 function strategyOrder(strategy: DrStrategyKey): number {
   return DR_STRATEGY_PROFILES[strategy].order;
+}
+
+function strongestStrategy(left: DrStrategyKey, right: DrStrategyKey): DrStrategyKey {
+  return strategyOrder(left) >= strategyOrder(right) ? left : right;
 }
 
 function orderedStrategies(): DrStrategyKey[] {
@@ -868,12 +1039,16 @@ function orderedStrategies(): DrStrategyKey[] {
 export function estimateStrategyMonthlyDrCost(
   monthlyProductionCost: number,
   strategy: DrStrategyKey,
+  context?: DrStrategyContext,
 ): number {
-  const profile = DR_STRATEGY_PROFILES[strategy];
-  const multiplierCost = Math.max(0, monthlyProductionCost) * profile.productionCostMultiplier;
-  return roundMoney(
-    Math.max(multiplierCost, profile.monthlyCostFloor),
-  );
+  const baseMonthly = Math.max(0, monthlyProductionCost);
+  const nativeFactor = resolveServiceNativeCostFactor(strategy, context);
+  if (nativeFactor != null) {
+    return roundMoney(baseMonthly * nativeFactor);
+  }
+
+  const strategyFactor = DR_STRATEGY_COST_FACTORS[strategy]?.default ?? DR_STRATEGY_PROFILES[strategy].productionCostMultiplier;
+  return roundMoney(baseMonthly * strategyFactor);
 }
 
 export function findNextImprovingStrategy(
@@ -918,11 +1093,23 @@ export function selectDrStrategyForService(options: {
   monthlyProductionCost: number;
   budgetRemainingMonthly?: number | null;
   overrideStrategy?: string | null;
+  nodeType?: string;
+  provider?: string | null;
+  metadata?: unknown;
 }): StrategySelectionResult {
+  const strategyContext: DrStrategyContext = {
+    nodeType: options.nodeType,
+    provider: options.provider,
+    metadata: options.metadata,
+  };
   const overrideKey = String(options.overrideStrategy || '').toLowerCase().replace(/[-\s]/g, '_');
   if (overrideKey in DR_STRATEGY_PROFILES) {
     const strategy = overrideKey as DrStrategyKey;
-    const monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, strategy);
+    const monthlyDrCost = estimateStrategyMonthlyDrCost(
+      options.monthlyProductionCost,
+      strategy,
+      strategyContext,
+    );
     return {
       strategy,
       monthlyDrCost,
@@ -938,45 +1125,55 @@ export function selectDrStrategyForService(options: {
   const targetRto = toPositiveNumber(options.targetRtoMinutes);
   const targetRpo = toPositiveNumber(options.targetRpoMinutes);
 
+  const floorByServiceAndCriticality = resolveServiceFloorStrategy(options.criticality, strategyContext);
   let selected: DrStrategyKey | null = null;
   const rationale: string[] = [];
 
   if (targetRto && targetRpo) {
     const targetBased = pickLeastCostStrategyForTargets(targetRto, targetRpo);
-    const floorByCriticality = getDefaultStrategyFromCriticality(options.criticality);
-    selected =
-      strategyOrder(targetBased) >= strategyOrder(floorByCriticality)
-        ? targetBased
-        : floorByCriticality;
+    selected = strongestStrategy(targetBased, floorByServiceAndCriticality);
     rationale.push(
       `Cible RTO/RPO ${targetRto}min/${targetRpo}min -> ${targetBased}`,
-      `Contrainte criticite ${options.criticality} -> minimum ${floorByCriticality}`,
+      `Contrainte criticite/service ${options.criticality} -> minimum ${floorByServiceAndCriticality}`,
     );
   }
 
   if (!selected) {
-    selected = getDefaultStrategyFromCriticality(options.criticality);
-    rationale.push(`Fallback criticite ${options.criticality}`);
+    selected = floorByServiceAndCriticality;
+    rationale.push(`Fallback criticite/service ${options.criticality}`);
   }
 
-  let monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, selected);
+  let monthlyDrCost = estimateStrategyMonthlyDrCost(
+    options.monthlyProductionCost,
+    selected,
+    strategyContext,
+  );
   let strategySource: StrategySelectionResult['strategySource'] = 'recommended';
   let budgetWarning: string | null = null;
 
   const budgetRemaining = toPositiveNumber(options.budgetRemainingMonthly);
   if (budgetRemaining && monthlyDrCost > budgetRemaining) {
-    const selectedIndex = sorted.indexOf(selected);
-    if (selectedIndex > 0) {
-      const downgraded = sorted[selectedIndex - 1] as DrStrategyKey;
-      selected = downgraded;
+    let selectedIndex = sorted.indexOf(selected);
+    const floorIndex = sorted.indexOf(floorByServiceAndCriticality);
+
+    while (monthlyDrCost > budgetRemaining && selectedIndex > floorIndex) {
+      selectedIndex -= 1;
+      selected = sorted[selectedIndex] as DrStrategyKey;
       strategySource = 'budget_adjusted';
-      monthlyDrCost = estimateStrategyMonthlyDrCost(options.monthlyProductionCost, selected);
-      budgetWarning =
-        'Budget depasse: strategie ajustee au niveau inferieur pour respecter le budget DR estime';
+      monthlyDrCost = estimateStrategyMonthlyDrCost(
+        options.monthlyProductionCost,
+        selected,
+        strategyContext,
+      );
       rationale.push('Ajustement budget');
-    } else {
+    }
+
+    if (monthlyDrCost > budgetRemaining) {
       budgetWarning =
         'Budget depasse: aucune strategie inferieure disponible, verification budget recommandee';
+    } else if (strategySource === 'budget_adjusted') {
+      budgetWarning =
+        'Budget depasse: strategie ajustee au niveau inferieur pour respecter le budget DR estime';
     }
   }
 
@@ -993,19 +1190,95 @@ export function selectDrStrategyForService(options: {
 export function resolveIncidentProbabilityForNodeType(
   nodeType: string,
   customProbabilities?: Partial<Record<IncidentProbabilityKey, number>>,
+  metadata?: unknown,
 ): { key: IncidentProbabilityKey; probabilityAnnual: number; source: string } {
   const type = String(nodeType || '').toUpperCase();
+  const meta = asMetadataRecord(metadata);
+  const providerHint =
+    readString(meta.provider) ??
+    readString(meta.cloudProvider) ??
+    readString(meta.source) ??
+    null;
+  const resolution = resolveCloudContext(type, providerHint, meta);
   let key: IncidentProbabilityKey = 'infrastructure';
-  if (type === 'DATABASE') key = 'database';
-  else if (type === 'THIRD_PARTY_API' || type === 'SAAS_SERVICE') key = 'third_party';
-  else if (type === 'DNS' || type === 'LOAD_BALANCER' || type === 'API_GATEWAY') key = 'dns_network';
+  let probabilityAnnual = 0.1;
+  let source = 'Stronghold default ARO profile';
+
+  const providerProbability = resolveProviderIncidentProbability(resolution);
+  if (providerProbability) {
+    key = providerProbability.key;
+    probabilityAnnual = providerProbability.probabilityAnnual;
+    source = providerProbability.source;
+  } else if (type === 'DATABASE') {
+    key = 'database';
+    probabilityAnnual = 0.05;
+    source = 'Default ARO baseline for single-zone relational databases';
+  } else if (type === 'THIRD_PARTY_API' || type === 'SAAS_SERVICE') {
+    key = 'third_party';
+    probabilityAnnual = INCIDENT_PROBABILITIES.third_party.probabilityAnnual;
+    source = INCIDENT_PROBABILITIES.third_party.source;
+  } else if (type === 'DNS' || type === 'LOAD_BALANCER' || type === 'API_GATEWAY') {
+    key = 'dns_network';
+    probabilityAnnual = INCIDENT_PROBABILITIES.dns_network.probabilityAnnual;
+    source = INCIDENT_PROBABILITIES.dns_network.source;
+  }
 
   const override = toPositiveNumber(customProbabilities?.[key]);
-  const base = INCIDENT_PROBABILITIES[key];
   return {
     key,
-    probabilityAnnual: override ?? base.probabilityAnnual,
-    source: override ? 'User-adjusted incident probability' : base.source,
+    probabilityAnnual: override ?? probabilityAnnual,
+    source: override ? 'User-adjusted incident probability' : source,
+  };
+}
+
+export function buildServiceSpecificRecommendation(options: {
+  serviceName: string;
+  nodeType: string;
+  provider?: string | null;
+  metadata?: unknown;
+  strategy: DrStrategyKey;
+  monthlyDrCost: number;
+  currency: SupportedCurrency;
+}): ServiceSpecificRecommendation {
+  const metadata = asMetadataRecord(options.metadata);
+  const resolution = resolveCloudContext(options.nodeType, options.provider, metadata);
+  const monthlyLabel = formatMonthlyCost(options.monthlyDrCost, options.currency);
+  const providerSpecific = buildProviderServiceRecommendation({
+    serviceName: options.serviceName,
+    monthlyLabel,
+    resolution,
+    strategy: options.strategy,
+  });
+  if (providerSpecific) {
+    return providerSpecific;
+  }
+
+  if (
+    resolution.category === 'serverless' ||
+    (resolution.category === 'messaging' && options.monthlyDrCost <= 0.01) ||
+    (resolution.category === 'storage' && options.monthlyDrCost <= 0.01)
+  ) {
+    const action =
+      'Aucune infrastructure DR lourde requise; conserver les mecanismes natifs du service manage.';
+    const resilienceImpact =
+      resolution.category === 'storage'
+        ? 'Optionnel: activer la replication cross-region si un objectif multi-region est requis.'
+        : 'Le service est multi-AZ par conception, une optimisation de configuration suffit.';
+    return {
+      action,
+      resilienceImpact,
+      text: `${action} ${resilienceImpact} Cout additionnel estime: ${monthlyLabel}.`,
+    };
+  }
+
+  const strategyLabel = DR_STRATEGY_PROFILES[options.strategy].label;
+  const action = `Appliquer la strategie ${strategyLabel} sur ${options.serviceName}.`;
+  const resilienceImpact =
+    'Ameliore le RTO/RPO selon la criticite du service avec une approche proportionnelle.';
+  return {
+    action,
+    resilienceImpact,
+    text: `${action} ${resilienceImpact} Cout additionnel estime: ${monthlyLabel}.`,
   };
 }
 

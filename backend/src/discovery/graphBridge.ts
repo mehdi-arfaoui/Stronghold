@@ -30,9 +30,9 @@ function mapResourceTypeToNodeType(source: string, type: string, metadata?: Reco
     if (lower.includes('ecs') || lower.includes('fargate')) return NodeType.CONTAINER;
     if (lower.includes('eks')) return NodeType.KUBERNETES_CLUSTER;
     if (lower.includes('elb') || lower.includes('load') || lower.includes('alb') || lower.includes('nlb')) return NodeType.LOAD_BALANCER;
-    if (lower.includes('s3')) return NodeType.OBJECT_STORAGE;
-    if (lower.includes('elasticache') || lower.includes('redis') || lower.includes('memcache')) return NodeType.CACHE;
-    if (lower.includes('sqs') || lower.includes('sns') || lower.includes('kinesis')) return NodeType.MESSAGE_QUEUE;
+    if (lower.includes('s3') || lower.includes('bucket')) return NodeType.OBJECT_STORAGE;
+    if (lower.includes('elasticache') || lower.includes('cache') || lower.includes('redis') || lower.includes('memcache')) return NodeType.CACHE;
+    if (lower.includes('sqs') || lower.includes('sns') || lower.includes('kinesis') || lower.includes('queue') || lower.includes('topic')) return NodeType.MESSAGE_QUEUE;
     if (lower.includes('cloudfront')) return NodeType.CDN;
     if (lower.includes('route53') || lower.includes('dns')) return NodeType.DNS;
     if (lower.includes('apigateway') || lower.includes('api-gateway')) return NodeType.API_GATEWAY;
@@ -60,14 +60,24 @@ function mapResourceTypeToNodeType(source: string, type: string, metadata?: Reco
   if (source === 'azure') {
     if (lower.includes('virtual') && lower.includes('machine')) return NodeType.VM;
     if (lower.includes('aks') || lower.includes('kubernetes')) return NodeType.KUBERNETES_CLUSTER;
-    if (lower.includes('sql') || lower.includes('cosmos') || lower.includes('database')) return NodeType.DATABASE;
+    if (
+      lower.includes('sql') ||
+      lower.includes('cosmos') ||
+      lower.includes('database') ||
+      lower.includes('postgres') ||
+      lower.includes('mysql')
+    ) {
+      return NodeType.DATABASE;
+    }
     if (lower.includes('storage')) return NodeType.OBJECT_STORAGE;
     if (lower.includes('redis')) return NodeType.CACHE;
     if (lower.includes('function') || lower.includes('logic')) return NodeType.SERVERLESS;
     if (lower.includes('app-service') || lower.includes('webapp')) return NodeType.APPLICATION;
     if (lower.includes('load-balancer') || lower.includes('application-gateway')) return NodeType.LOAD_BALANCER;
     if (lower.includes('vnet') || lower.includes('virtual-network')) return NodeType.VPC;
-    if (lower.includes('service-bus') || lower.includes('event-hub')) return NodeType.MESSAGE_QUEUE;
+    if (lower.includes('service-bus') || lower.includes('event-hub') || lower.includes('event-grid')) {
+      return NodeType.MESSAGE_QUEUE;
+    }
     if (lower.includes('cdn')) return NodeType.CDN;
     if (lower.includes('dns')) return NodeType.DNS;
     return NodeType.VM;
@@ -82,7 +92,9 @@ function mapResourceTypeToNodeType(source: string, type: string, metadata?: Reco
     if (lower.includes('memorystore') || lower.includes('redis')) return NodeType.CACHE;
     if (lower.includes('function') || lower.includes('run')) return NodeType.SERVERLESS;
     if (lower.includes('lb') || lower.includes('load')) return NodeType.LOAD_BALANCER;
-    if (lower.includes('pubsub') || lower.includes('pub/sub')) return NodeType.MESSAGE_QUEUE;
+    if (lower.includes('pubsub') || lower.includes('pub/sub') || lower.includes('cloudtasks')) {
+      return NodeType.MESSAGE_QUEUE;
+    }
     if (lower.includes('cdn')) return NodeType.CDN;
     if (lower.includes('dns')) return NodeType.DNS;
     return NodeType.VM;
@@ -105,9 +117,10 @@ function mapResourceTypeToNodeType(source: string, type: string, metadata?: Reco
   }
 
   // Generic mapping
-  if (lower.includes('database') || lower.includes('db')) return NodeType.DATABASE;
+  if (lower.includes('database') || lower.includes('db') || lower.includes('dynamodb')) return NodeType.DATABASE;
   if (lower.includes('cache') || lower.includes('redis')) return NodeType.CACHE;
-  if (lower.includes('queue') || lower.includes('mq')) return NodeType.MESSAGE_QUEUE;
+  if (lower.includes('s3') || lower.includes('bucket') || lower.includes('storage')) return NodeType.OBJECT_STORAGE;
+  if (lower.includes('queue') || lower.includes('topic') || lower.includes('mq') || lower.includes('sqs') || lower.includes('sns')) return NodeType.MESSAGE_QUEUE;
   if (lower.includes('load') || lower.includes('lb')) return NodeType.LOAD_BALANCER;
   if (lower.includes('container') || lower.includes('docker')) return NodeType.CONTAINER;
   if (lower.includes('server')) return NodeType.PHYSICAL_SERVER;
@@ -153,6 +166,88 @@ function extractAZ(resource: DiscoveredResource): string | null {
   return null;
 }
 
+function readString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function toEngineLabel(engine: string | null): string | null {
+  if (!engine) return null;
+  const lower = engine.toLowerCase();
+  if (lower.includes('postgres')) return 'PostgreSQL';
+  if (lower.includes('mysql')) return 'MySQL';
+  if (lower.includes('mariadb')) return 'MariaDB';
+  if (lower.includes('oracle')) return 'Oracle';
+  if (lower.includes('sqlserver') || lower.includes('sql-server')) return 'SQL Server';
+  if (lower.includes('redis')) return 'Redis';
+  if (lower.includes('memcache')) return 'Memcached';
+  return engine;
+}
+
+function inferAwsServiceLabel(
+  nodeType: string,
+  sourceType: string,
+  metadata: Record<string, unknown>
+): string | undefined {
+  const sourceLower = sourceType.toLowerCase();
+  const engine = toEngineLabel(readString(metadata.engine));
+
+  if (nodeType === NodeType.VM) return 'EC2 Instance';
+  if (nodeType === NodeType.SERVERLESS) return 'Lambda Function';
+  if (nodeType === NodeType.CACHE) {
+    if (sourceLower.includes('elasticache')) return `ElastiCache ${engine || 'Cache'}`;
+    return engine ? `${engine} Cache` : 'Cache Service';
+  }
+  if (nodeType === NodeType.DATABASE) {
+    if (sourceLower.includes('dynamodb')) return 'DynamoDB Table';
+    if (sourceLower.includes('rds')) return `RDS ${engine || 'Database'}`;
+    return engine ? `${engine} Database` : 'Database Service';
+  }
+  if (nodeType === NodeType.OBJECT_STORAGE) {
+    if (sourceLower.includes('s3') || sourceLower.includes('bucket')) return 'S3 Bucket';
+    return 'Object Storage';
+  }
+  if (nodeType === NodeType.MESSAGE_QUEUE) {
+    if (sourceLower.includes('sns') || sourceLower.includes('topic')) return 'SNS Topic';
+    if (sourceLower.includes('sqs') || sourceLower.includes('queue')) return 'SQS Queue';
+    return 'Messaging Service';
+  }
+  if (nodeType === NodeType.LOAD_BALANCER && (sourceLower.includes('elb') || sourceLower.includes('alb') || sourceLower.includes('nlb'))) {
+    return 'Elastic Load Balancer';
+  }
+
+  return undefined;
+}
+
+function resolveDisplayName(
+  resource: DiscoveredResource,
+  tags: Record<string, string>,
+  metadata: Record<string, unknown>
+): string {
+  const tagName = readString(tags.Name) || readString(tags.name);
+  if (tagName) return tagName;
+
+  const sourceType = String(resource.type || '').toLowerCase();
+  const metadataName =
+    readString(metadata.displayName) ??
+    readString(metadata.dbIdentifier) ??
+    readString(metadata.cacheClusterId) ??
+    readString(metadata.tableName) ??
+    readString(metadata.bucketName) ??
+    readString(metadata.queueName) ??
+    readString(metadata.topicName);
+  if (metadataName) return metadataName;
+
+  if (sourceType.includes('topic')) {
+    const topicArn = readString(metadata.topicArn) ?? resource.externalId;
+    const inferredTopic = topicArn.split(':').pop();
+    if (inferredTopic) return inferredTopic;
+  }
+
+  return resource.name || resource.externalId;
+}
+
 /**
  * Transforms an array of DiscoveredResource into the ScanResult format
  * expected by GraphService.ingestScanResults().
@@ -184,11 +279,18 @@ export function transformToScanResult(
       }
     }
 
-    const meta = resource.metadata || {};
+    const meta =
+      resource.metadata && typeof resource.metadata === 'object'
+        ? (resource.metadata as Record<string, unknown>)
+        : {};
+    const displayName = resolveDisplayName(resource, tags, meta);
+    const awsServiceLabel = providerName === 'aws'
+      ? inferAwsServiceLabel(nodeType, resource.type, meta)
+      : undefined;
 
     const node: InfraNodeAttrs = {
       id: resource.externalId,
-      name: resource.name,
+      name: displayName,
       type: nodeType,
       provider: providerName,
       region: extractRegion(resource) ?? null,
@@ -200,6 +302,9 @@ export function transformToScanResult(
         sourceType: resource.type,
         ip: resource.ip ?? undefined,
         hostname: resource.hostname ?? undefined,
+        displayName,
+        subType: awsServiceLabel ?? undefined,
+        awsService: awsServiceLabel ?? undefined,
         openPorts: resource.openPorts ?? undefined,
         isMultiAZ:
           meta.multiAz === true ||

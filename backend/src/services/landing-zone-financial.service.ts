@@ -15,6 +15,7 @@ import {
   type ResolvedNodeFinancialCostInput,
 } from './financial-engine.service.js';
 import {
+  buildServiceSpecificRecommendation,
   buildFinancialDisclaimers,
   estimateStrategyMonthlyDrCost,
   estimateServiceMonthlyProductionCost,
@@ -261,6 +262,7 @@ function toFinancialProfileInput(
     customCurrency: profile.currency,
     strongholdPlanId: profile.strongholdPlanId,
     strongholdMonthlyCost: profile.strongholdMonthlyCost,
+    isConfigured: profile.isConfigured,
   };
 }
 
@@ -301,6 +303,8 @@ async function loadFinancialContext(prismaClient: PrismaClient, tenantId: string
       validatedRPO: node.validatedRPO,
       suggestedMTPD: node.suggestedMTPD,
       validatedMTPD: node.validatedMTPD,
+      metadata: node.metadata,
+      estimatedMonthlyCost: node.estimatedMonthlyCost,
       dependentsCount: node.inEdges.length,
       inEdges: node.inEdges,
       outEdges: node.outEdges,
@@ -507,7 +511,7 @@ export async function buildLandingZoneFinancialContext(
   );
   const infrastructureNodeCount = Math.max(1, financialContext.analysisResult.nodes.length);
   const budgetDerivedMonthlyCostPerNode =
-    profile.annualITBudget && profile.annualITBudget > 0
+    profile.isConfigured && profile.annualITBudget && profile.annualITBudget > 0
       ? roundMoney(profile.annualITBudget / 12 / infrastructureNodeCount)
       : null;
 
@@ -559,6 +563,9 @@ export async function buildLandingZoneFinancialContext(
       monthlyProductionCost: estimatedProductionMonthlyCost,
       budgetRemainingMonthly,
       overrideStrategy: resolveStrategyOverride(node?.metadata),
+      nodeType: node?.type || 'APPLICATION',
+      provider: node?.provider || 'unknown',
+      metadata: node?.metadata || {},
     });
     const adjustedStrategy = findNextImprovingStrategy(selected.strategy, currentRtoMinutes);
     if (!adjustedStrategy) {
@@ -574,7 +581,11 @@ export async function buildLandingZoneFinancialContext(
 
     const strategyUpgraded = adjustedStrategy !== selected.strategy;
     const monthlyDrCost = strategyUpgraded
-      ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, adjustedStrategy)
+      ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, adjustedStrategy, {
+          nodeType: node?.type || 'APPLICATION',
+          provider: node?.provider || 'unknown',
+          metadata: node?.metadata || {},
+        })
       : selected.monthlyDrCost;
     const annualDrCost = roundMoney(monthlyDrCost * 12);
     const calibrationWarning = budgetCalibrationApplied
@@ -595,7 +606,20 @@ export async function buildLandingZoneFinancialContext(
     }
 
     const strategy = strategyKeyToLegacySlug(adjustedStrategy);
-    const probability = resolveIncidentProbabilityForNodeType(node?.type || recommendation.serviceName);
+    const probability = resolveIncidentProbabilityForNodeType(
+      node?.type || recommendation.serviceName,
+      undefined,
+      node?.metadata || {},
+    );
+    const serviceSpecificRecommendation = buildServiceSpecificRecommendation({
+      serviceName: recommendation.serviceName,
+      nodeType: node?.type || 'APPLICATION',
+      provider: node?.provider || 'unknown',
+      metadata: node?.metadata || {},
+      strategy: adjustedStrategy,
+      monthlyDrCost,
+      currency: profile.currency,
+    });
 
     recommendationSeeds.push({
       id: recommendation.serviceId,
@@ -611,7 +635,7 @@ export async function buildLandingZoneFinancialContext(
       costConfidence: budgetCalibrationApplied
         ? Math.max(monthlyCostEstimate.confidence, 0.7)
         : monthlyCostEstimate.confidence,
-      description: recommendation.strategy.description,
+      description: serviceSpecificRecommendation.text,
       priority: recommendation.priorityScore,
       notes: state.notes,
       status: state.status,

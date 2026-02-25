@@ -14,6 +14,8 @@ import {
 import { CurrencyService } from './currency.service.js';
 import {
   calculateRecommendationRoi,
+  estimateServiceMonthlyProductionCost,
+  estimateStrategyMonthlyDrCost,
   resolveIncidentProbabilityForNodeType,
   strategyTargetRtoMinutes,
 } from './company-financial-profile.service.js';
@@ -26,6 +28,8 @@ export type FinancialNodeInput = {
   type: string;
   provider?: string | null;
   region?: string | null;
+  metadata?: unknown;
+  estimatedMonthlyCost?: number | null;
   isSPOF?: boolean;
   criticalityScore?: number | null;
   redundancyScore?: number | null;
@@ -97,6 +101,7 @@ export type FinancialOrganizationProfileInput = {
   verticalSector?: string | null;
   customDowntimeCostPerHour?: number | null;
   hourlyDowntimeCost?: number | null;
+  isConfigured?: boolean | null;
   annualITBudget?: number | null;
   drBudgetPercent?: number | null;
   customCurrency?: string | null;
@@ -367,30 +372,30 @@ function resolveProbability(node: FinancialNodeInput): {
   source: string;
 } {
   const isSPOF = Boolean(node.isSPOF);
-  const redundancy = normalizeRedundancy(node.redundancyScore);
   const criticality = normalizeCriticality(node.criticalityScore);
-
-  if (isSPOF && redundancy <= 0.3) {
-    return {
-      probability: 0.15,
-      rationale: 'SPOF with low redundancy',
-      source: 'Uptime Institute 2024-2025 average infrastructure failure rates',
-    };
-  }
+  const metadata =
+    node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+      ? (node.metadata as Record<string, unknown>)
+      : {};
+  const probabilityByType = resolveIncidentProbabilityForNodeType(
+    node.type,
+    undefined,
+    metadata,
+  );
 
   if (isSPOF) {
     return {
-      probability: 0.05,
-      rationale: 'SPOF with partial redundancy',
-      source: 'Uptime Institute 2024-2025 average infrastructure failure rates',
+      probability: probabilityByType.probabilityAnnual,
+      rationale: 'SPOF probability calibrated by workload type',
+      source: probabilityByType.source,
     };
   }
 
-  if (criticality > 0.7) {
+  if (criticality > 0.85) {
     return {
-      probability: 0.03,
-      rationale: 'Non-SPOF but high criticality component',
-      source: 'Uptime Institute 2024-2025 average infrastructure failure rates',
+      probability: Math.max(0.01, probabilityByType.probabilityAnnual * 0.25),
+      rationale: 'Residual risk on non-SPOF critical component',
+      source: `Derived from ${probabilityByType.source}`,
     };
   }
 
@@ -438,20 +443,43 @@ function recommendationDefaultStrategy(
 
 function strategyAnnualCost(
   strategy: ExtendedRecoveryStrategyKey,
-  targetNodeCount: number,
-  fxMultiplier: number,
+  targetNodes: string[],
+  nodeLookup: Map<string, FinancialNodeInput>,
+  currency: SupportedCurrency,
 ): number {
-  if (strategy === 'hot_standby') {
-    const warmMonthly = RECOVERY_STRATEGY_COSTS.warm_standby.monthlyEstimateUSD;
-    const activeMonthly = RECOVERY_STRATEGY_COSTS.active_active.monthlyEstimateUSD;
-    const medianMonthly =
-      (warmMonthly.max + activeMonthly.min) / 2;
-    return roundAmount(medianMonthly * 12 * Math.max(1, targetNodeCount) * fxMultiplier);
-  }
-  const monthly = RECOVERY_STRATEGY_COSTS[strategy].monthlyEstimateUSD;
-  const medianMonthly = (monthly.min + monthly.max) / 2;
-  const normalizedTargetCount = Math.max(1, targetNodeCount);
-  return roundAmount(medianMonthly * 12 * normalizedTargetCount * fxMultiplier);
+  const fallbackMonthlyProduction = 50;
+  const scopedTargets = targetNodes.length > 0 ? targetNodes : ['__fallback__'];
+  const monthlyTotal = scopedTargets.reduce((sum, nodeId) => {
+    const node = nodeLookup.get(nodeId);
+    const estimatedMonthlyProduction =
+      node && node.estimatedMonthlyCost && node.estimatedMonthlyCost > 0
+        ? node.estimatedMonthlyCost
+        : node
+          ? estimateServiceMonthlyProductionCost(
+              {
+                type: node.type,
+                provider: node.provider ?? null,
+                metadata: node.metadata,
+                criticalityScore: node.criticalityScore ?? null,
+                impactCategory: node.impactCategory ?? null,
+              },
+              currency,
+            ).estimatedMonthlyCost
+          : fallbackMonthlyProduction;
+    return (
+      sum +
+      estimateStrategyMonthlyDrCost(
+        estimatedMonthlyProduction,
+        strategy as Parameters<typeof estimateStrategyMonthlyDrCost>[1],
+        {
+        nodeType: node?.type,
+        provider: node?.provider,
+        metadata: node?.metadata,
+      },
+      )
+    );
+  }, 0);
+  return roundAmount(monthlyTotal * 12);
 }
 
 function classifyGlobalRoi(
@@ -516,6 +544,24 @@ function ensureProfileDefaults(
   };
 }
 
+function hasConfiguredFinancialProfile(
+  profile: FinancialOrganizationProfileInput,
+): boolean {
+  if (typeof profile.isConfigured === 'boolean') return profile.isConfigured;
+  return Boolean(
+    (profile.customDowntimeCostPerHour || 0) > 0 ||
+      (profile.hourlyDowntimeCost || 0) > 0 ||
+      (profile.annualITBudget || 0) > 0,
+  );
+}
+
+function sleMultiplierByRecoveryTier(tier: number): number {
+  if (tier <= 1) return 12;
+  if (tier === 2) return 6;
+  if (tier === 3) return 2;
+  return 0.5;
+}
+
 function buildNodeLossContributions(
   analysisResult: AnalysisResultInput,
   biaResult: BIAResultInput,
@@ -526,6 +572,8 @@ function buildNodeLossContributions(
   const processMap = new Map(
     (biaResult.processes || []).map((process) => [process.serviceNodeId, process]),
   );
+  const currency = normalizeCurrency(orgProfile.customCurrency);
+  const useDowntimeDrivenSle = hasConfiguredFinancialProfile(orgProfile);
 
   const losses: InternalNodeLoss[] = [];
   const sources: string[] = [];
@@ -555,18 +603,41 @@ function buildNodeLossContributions(
     const costConfidence = String(resolvedCost?.confidence ?? impact?.confidence ?? 'low_confidence');
     const fallbackEstimate = resolvedCost?.fallbackEstimate ?? null;
 
+    const recoveryTier = getTierFromNode(node, processMap);
     const downtimeHours = getRtoHours(node, processMap);
-    const ale = probabilityRule.probability * downtimeHours * costPerHour;
+    const downtimeDrivenSle = downtimeHours * costPerHour;
+    const monthlyCostEstimate = estimateServiceMonthlyProductionCost(
+      {
+        type: node.type,
+        provider: node.provider ?? null,
+        metadata: node.metadata,
+        criticalityScore: node.criticalityScore ?? null,
+        impactCategory: node.impactCategory ?? null,
+      },
+      currency,
+    );
+    const proxySle = monthlyCostEstimate.estimatedMonthlyCost * sleMultiplierByRecoveryTier(recoveryTier);
+    const hasNodeSpecificFinancialSignal =
+      (resolvedCostPerHour != null && resolvedCostPerHour > 0) ||
+      impact?.confidence === 'user_defined';
+    const singleLossExpectancy = useDowntimeDrivenSle || hasNodeSpecificFinancialSignal
+      ? downtimeDrivenSle
+      : proxySle > 0
+        ? proxySle
+        : downtimeDrivenSle;
+    const ale = probabilityRule.probability * singleLossExpectancy;
+    const normalizedCostPerHour =
+      downtimeHours > 0 ? roundAmount(singleLossExpectancy / downtimeHours) : roundAmount(costPerHour);
 
     losses.push({
       nodeId: node.id,
       nodeName: node.name,
       nodeType: node.type,
       isSPOF: Boolean(node.isSPOF),
-      recoveryTier: getTierFromNode(node, processMap),
+      recoveryTier,
       probability: probabilityRule.probability,
       estimatedDowntimeHours: downtimeHours,
-      costPerHour,
+      costPerHour: normalizedCostPerHour,
       dependentsCount: countDependents(node),
       ale,
       costMethod,
@@ -578,6 +649,7 @@ function buildNodeLossContributions(
       probabilityRule.source,
       ...(impact?.sources || []),
       ...(resolvedCost?.sources || []),
+      monthlyCostEstimate.sourceReference,
     );
   }
 
@@ -773,7 +845,6 @@ export class FinancialEngineService {
   ): ROIResult {
     const profile = ensureProfileDefaults(orgProfile);
     const currency = normalizeCurrency(profile.customCurrency);
-    const fxMultiplier = resolveFxMultiplier(currency);
 
     const { losses, sources } = buildNodeLossContributions(
       analysisResult,
@@ -818,7 +889,7 @@ export class FinancialEngineService {
           ? recommendation.annualCost
           : recommendation.monthlyCost && recommendation.monthlyCost > 0
             ? recommendation.monthlyCost * 12
-            : strategyAnnualCost(strategy, targetNodes.length || 1, fxMultiplier),
+            : strategyAnnualCost(strategy, targetNodes, nodeLookup, currency),
       );
 
       const targetRtoMinutes =

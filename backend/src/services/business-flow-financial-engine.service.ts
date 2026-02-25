@@ -443,6 +443,8 @@ export class BusinessFlowFinancialEngineService {
         validatedRPO: infraNode.validatedRPO,
         suggestedMTPD: infraNode.suggestedMTPD,
         validatedMTPD: infraNode.validatedMTPD,
+        metadata: infraNode.metadata,
+        estimatedMonthlyCost: infraNode.estimatedMonthlyCost,
         dependentsCount: infraNode.inEdges.length,
         inEdges: infraNode.inEdges,
         outEdges: infraNode.outEdges,
@@ -479,7 +481,11 @@ export class BusinessFlowFinancialEngineService {
       const rtoHours = resolveRtoHours(flow, financialNode, validatedProcess);
       rtoHoursValues.push(rtoHours);
 
-      const incidentProbability = resolveIncidentProbabilityForNodeType(infraNode.type).probabilityAnnual;
+      const incidentProbability = resolveIncidentProbabilityForNodeType(
+        infraNode.type,
+        undefined,
+        infraNode.metadata,
+      ).probabilityAnnual;
       if (incidentProbability > 0) {
         incidentProbabilityValues.push(incidentProbability);
       }
@@ -829,6 +835,8 @@ export class BusinessFlowFinancialEngineService {
       validatedRPO: infraNode.validatedRPO,
       suggestedMTPD: infraNode.suggestedMTPD,
       validatedMTPD: infraNode.validatedMTPD,
+      metadata: infraNode.metadata,
+      estimatedMonthlyCost: infraNode.estimatedMonthlyCost,
       dependentsCount: infraNode.inEdges.length,
       inEdges: infraNode.inEdges,
       outEdges: infraNode.outEdges,

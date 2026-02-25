@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
+  buildServiceSpecificRecommendation,
   calculateRecommendationRoi,
   estimateServiceMonthlyProductionCost,
   findNextImprovingStrategy,
@@ -31,8 +32,8 @@ test('selectDrStrategyForService picks least costly strategy that satisfies stri
   });
 
   assert.equal(selected.strategy, 'hot_standby');
-  assert.equal(selected.monthlyDrCost, 700);
-  assert.equal(selected.annualDrCost, 8_400);
+  assert.equal(selected.monthlyDrCost, 1_200);
+  assert.equal(selected.annualDrCost, 14_400);
 });
 
 test('selectDrStrategyForService applies criticality fallback when RTO/RPO are missing', () => {
@@ -42,8 +43,8 @@ test('selectDrStrategyForService applies criticality fallback when RTO/RPO are m
   });
 
   assert.equal(selected.strategy, 'warm_standby');
-  assert.equal(selected.monthlyDrCost, 400);
-  assert.equal(selected.annualDrCost, 4_800);
+  assert.equal(selected.monthlyDrCost, 900);
+  assert.equal(selected.annualDrCost, 10_800);
 });
 
 test('selectDrStrategyForService maps medium RTO/RPO objectives to pilot light', () => {
@@ -55,8 +56,8 @@ test('selectDrStrategyForService maps medium RTO/RPO objectives to pilot light',
   });
 
   assert.equal(selected.strategy, 'pilot_light');
-  assert.equal(selected.monthlyDrCost, 150);
-  assert.equal(selected.annualDrCost, 1_800);
+  assert.equal(selected.monthlyDrCost, 400);
+  assert.equal(selected.annualDrCost, 4_800);
 });
 
 test('selectDrStrategyForService maps relaxed objectives to backup and restore', () => {
@@ -68,11 +69,11 @@ test('selectDrStrategyForService maps relaxed objectives to backup and restore',
   });
 
   assert.equal(selected.strategy, 'backup_restore');
-  assert.equal(selected.monthlyDrCost, 50);
-  assert.equal(selected.annualDrCost, 600);
+  assert.equal(selected.monthlyDrCost, 100);
+  assert.equal(selected.annualDrCost, 1_200);
 });
 
-test('selectDrStrategyForService enforces minimum monthly DR cost floors for low-cost services', () => {
+test('selectDrStrategyForService keeps DR cost proportional for low-cost services', () => {
   const backup = selectDrStrategyForService({
     targetRtoMinutes: 480,
     targetRpoMinutes: 180,
@@ -87,9 +88,9 @@ test('selectDrStrategyForService enforces minimum monthly DR cost floors for low
   });
 
   assert.equal(backup.strategy, 'backup_restore');
-  assert.equal(backup.monthlyDrCost, 20);
+  assert.equal(backup.monthlyDrCost, 1);
   assert.equal(active.strategy, 'active_active');
-  assert.equal(active.monthlyDrCost, 1_050);
+  assert.equal(active.monthlyDrCost, 18);
 });
 
 test('selectDrStrategyForService yields a mixed strategy set across varied service objectives', () => {
@@ -122,9 +123,46 @@ test('selectDrStrategyForService downgrades strategy when DR budget is exceeded'
 
   assert.equal(selected.strategy, 'warm_standby');
   assert.equal(selected.strategySource, 'budget_adjusted');
-  assert.equal(selected.monthlyDrCost, 400);
-  assert.equal(selected.annualDrCost, 4_800);
+  assert.equal(selected.monthlyDrCost, 900);
+  assert.equal(selected.annualDrCost, 10_800);
   assert.ok(selected.budgetWarning?.length);
+});
+
+test('selectDrStrategyForService applies service-native EC2 scaling cost for AWS single instance', () => {
+  const selected = selectDrStrategyForService({
+    criticality: 'high',
+    monthlyProductionCost: 9.5,
+    nodeType: 'VM',
+    provider: 'aws',
+    metadata: {
+      sourceType: 'EC2',
+      instanceType: 't3.micro',
+      availabilityZone: 'eu-west-3a',
+    },
+  });
+
+  assert.equal(selected.strategy, 'pilot_light');
+  assert.equal(selected.monthlyDrCost, 9.5);
+  assert.equal(selected.annualDrCost, 114);
+});
+
+test('selectDrStrategyForService applies service-native Multi-AZ uplift for single-AZ RDS', () => {
+  const selected = selectDrStrategyForService({
+    criticality: 'medium',
+    monthlyProductionCost: 16,
+    nodeType: 'DATABASE',
+    provider: 'aws',
+    metadata: {
+      sourceType: 'RDS',
+      dbInstanceClass: 'db.t3.micro',
+      multi_az: false,
+      replicaCount: 0,
+    },
+  });
+
+  assert.equal(selected.strategy, 'warm_standby');
+  assert.equal(selected.monthlyDrCost, 16);
+  assert.equal(selected.annualDrCost, 192);
 });
 
 test('calculateRecommendationRoi returns explicit non-applicable ROI when no risk is avoided', () => {
@@ -148,7 +186,153 @@ test('calculateRecommendationRoi returns explicit non-applicable ROI when no ris
 test('resolveIncidentProbabilityForNodeType maps DATABASE to database outage probability', () => {
   const probability = resolveIncidentProbabilityForNodeType('DATABASE');
   assert.equal(probability.key, 'database');
-  assert.equal(probability.probabilityAnnual, 0.12);
+  assert.equal(probability.probabilityAnnual, 0.05);
+});
+
+test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for known instance types', () => {
+  const ec2Cost = estimateServiceMonthlyProductionCost(
+    {
+      type: 'VM',
+      provider: 'aws',
+      metadata: { sourceType: 'EC2', instanceType: 't3.micro' },
+    },
+    'USD',
+  );
+
+  assert.equal(ec2Cost.estimatedMonthlyCost, 9.5);
+  assert.equal(ec2Cost.costSource, 'cloud_type_reference');
+  assert.ok(ec2Cost.note.includes('eu-west-3'));
+
+  const rdsCost = estimateServiceMonthlyProductionCost(
+    {
+      type: 'DATABASE',
+      provider: 'aws',
+      metadata: { sourceType: 'aws_rds_instance', dbInstanceClass: 'db.t3.micro' },
+    },
+    'USD',
+  );
+
+  assert.equal(rdsCost.estimatedMonthlyCost, 16);
+  assert.ok(rdsCost.note.includes('(rds)'));
+
+  const cacheCost = estimateServiceMonthlyProductionCost(
+    {
+      type: 'CACHE',
+      provider: 'aws',
+      metadata: { sourceType: 'aws_elasticache_cluster', cacheNodeType: 'cache.t3.micro' },
+    },
+    'USD',
+  );
+
+  assert.equal(cacheCost.estimatedMonthlyCost, 13);
+  assert.ok(cacheCost.note.includes('(elasticache)'));
+});
+
+test('buildServiceSpecificRecommendation returns actionable AWS EC2 guidance with explicit cost', () => {
+  const recommendation = buildServiceSpecificRecommendation({
+    serviceName: 'api-server',
+    nodeType: 'VM',
+    provider: 'aws',
+    metadata: { sourceType: 'EC2', instanceType: 't3.micro' },
+    strategy: 'pilot_light',
+    monthlyDrCost: 9.5,
+    currency: 'EUR',
+  });
+
+  assert.ok(recommendation.action.includes('Auto Scaling Group'));
+  assert.ok(recommendation.resilienceImpact.length > 20);
+  assert.ok(recommendation.text.includes('9.50 EUR/mois'));
+});
+
+test('estimateServiceMonthlyProductionCost supports Azure and GCP provider pricing references', () => {
+  const azureVmCost = estimateServiceMonthlyProductionCost(
+    {
+      type: 'VM',
+      provider: 'azure',
+      metadata: {
+        sourceType: 'Microsoft.Compute/virtualMachines',
+        vmSize: 'Standard_B1s',
+      },
+    },
+    'EUR',
+  );
+  assert.equal(azureVmCost.estimatedMonthlyCost, 8.5);
+  assert.equal(azureVmCost.costSource, 'cloud_type_reference');
+  assert.ok(azureVmCost.note.toLowerCase().includes('azure'));
+
+  const gcpComputeCost = estimateServiceMonthlyProductionCost(
+    {
+      type: 'VM',
+      provider: 'gcp',
+      metadata: {
+        sourceType: 'compute.googleapis.com/Instance',
+        machineType: 'e2-micro',
+      },
+    },
+    'EUR',
+  );
+  assert.equal(gcpComputeCost.estimatedMonthlyCost, 7.5);
+  assert.equal(gcpComputeCost.costSource, 'cloud_type_reference');
+  assert.ok(gcpComputeCost.note.toLowerCase().includes('gcp'));
+});
+
+test('selectDrStrategyForService applies Azure/GCP native DR cost factors proportionally', () => {
+  const azureVm = selectDrStrategyForService({
+    criticality: 'high',
+    monthlyProductionCost: 8.5,
+    nodeType: 'VM',
+    provider: 'azure',
+    metadata: {
+      sourceType: 'Microsoft.Compute/virtualMachines',
+      vmSize: 'Standard_B1s',
+    },
+  });
+  assert.equal(azureVm.strategy, 'pilot_light');
+  assert.equal(azureVm.monthlyDrCost, 8.5);
+
+  const gcpCloudSql = selectDrStrategyForService({
+    criticality: 'critical',
+    monthlyProductionCost: 10,
+    nodeType: 'DATABASE',
+    provider: 'gcp',
+    metadata: {
+      sourceType: 'CLOUD_SQL',
+      availabilityType: 'ZONAL',
+      tier: 'db-f1-micro',
+    },
+  });
+  assert.equal(gcpCloudSql.strategy, 'warm_standby');
+  assert.equal(gcpCloudSql.monthlyDrCost, 10);
+});
+
+test('buildServiceSpecificRecommendation returns provider-specific Azure/GCP remediation text', () => {
+  const azureRecommendation = buildServiceSpecificRecommendation({
+    serviceName: 'vm-app',
+    nodeType: 'VM',
+    provider: 'azure',
+    metadata: {
+      sourceType: 'Microsoft.Compute/virtualMachines',
+      vmSize: 'Standard_B1s',
+    },
+    strategy: 'pilot_light',
+    monthlyDrCost: 8.5,
+    currency: 'EUR',
+  });
+  assert.ok(azureRecommendation.text.includes('VMSS'));
+
+  const gcpRecommendation = buildServiceSpecificRecommendation({
+    serviceName: 'orders-sql',
+    nodeType: 'DATABASE',
+    provider: 'gcp',
+    metadata: {
+      sourceType: 'CLOUD_SQL',
+      availabilityType: 'ZONAL',
+    },
+    strategy: 'warm_standby',
+    monthlyDrCost: 10,
+    currency: 'EUR',
+  });
+  assert.ok(gcpRecommendation.text.includes('availability_type=REGIONAL'));
 });
 
 test('strategyTargetRtoMinutes uses strategy typical RTO values (not worst-case max)', () => {

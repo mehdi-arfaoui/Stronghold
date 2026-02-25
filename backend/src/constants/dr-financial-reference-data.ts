@@ -111,6 +111,73 @@ export const DR_STRATEGY_PROFILES: Record<
   },
 };
 
+export const DR_STRATEGY_COST_FACTORS: Record<
+  DrStrategyKey,
+  {
+    min: number;
+    max: number;
+    default: number;
+  }
+> = {
+  backup_restore: {
+    min: 0.05,
+    max: 0.15,
+    default: 0.1,
+  },
+  pilot_light: {
+    min: 0.3,
+    max: 0.5,
+    default: 0.4,
+  },
+  warm_standby: {
+    min: 0.8,
+    max: 1.0,
+    default: 0.9,
+  },
+  hot_standby: {
+    min: 1.0,
+    max: 1.4,
+    default: 1.2,
+  },
+  active_active: {
+    min: 1.5,
+    max: 2.0,
+    default: 1.8,
+  },
+};
+
+export const AWS_PRICING_ESTIMATES_EU_WEST_3 = {
+  ec2: {
+    't3.micro': 9.5,
+    't3.small': 19,
+    't3.medium': 38,
+    't3.large': 76,
+    't3.xlarge': 152,
+    'm5.large': 89,
+    'm5.xlarge': 178,
+    default: 50,
+  },
+  rds: {
+    'db.t3.micro': 16,
+    'db.t3.small': 32,
+    'db.t3.medium': 64,
+    'db.r5.large': 210,
+    default: 60,
+  },
+  elasticache: {
+    'cache.t3.micro': 13,
+    'cache.t3.small': 26,
+    'cache.t3.medium': 52,
+    'cache.r5.large': 180,
+    default: 40,
+  },
+  lambda: { default: 0 },
+  dynamodb: { default: 0 },
+  s3: { default: 2 },
+  sqs: { default: 0 },
+  sns: { default: 0 },
+} as const;
+
 export const INCIDENT_PROBABILITIES: Record<
   IncidentProbabilityKey,
   {

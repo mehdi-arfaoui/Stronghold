@@ -116,6 +116,14 @@ function toFlowNode(
   statuses?: Map<string, NodeStatus>,
   getNodeDataOverrides?: (node: InfraNode) => Partial<InfraNodeData>,
 ): Node {
+  const metadata = node.metadata && typeof node.metadata === 'object'
+    ? (node.metadata as Record<string, unknown>)
+    : {};
+  const nodeTypeLabel = typeof metadata.awsService === 'string'
+    ? metadata.awsService
+    : typeof metadata.subType === 'string'
+      ? metadata.subType
+      : node.type;
   const overrides = getNodeDataOverrides?.(node) || {};
   return {
     ...(overrides.dimmed ? { draggable: false } : {}),
@@ -125,6 +133,7 @@ function toFlowNode(
     data: {
       label: node.name,
       nodeType: node.type,
+      nodeTypeLabel,
       provider: node.provider,
       region: node.region,
       isSPOF: node.isSPOF,
