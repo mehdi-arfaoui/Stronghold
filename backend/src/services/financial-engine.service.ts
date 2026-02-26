@@ -567,6 +567,40 @@ function hasConfiguredFinancialProfile(
   return isConfigured;
 }
 
+function extractBlastImpactRatio(node: FinancialNodeInput): number | null {
+  const metadata =
+    node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+      ? (node.metadata as Record<string, unknown>)
+      : null;
+  if (!metadata) return null;
+
+  const blastDetails =
+    metadata.blastRadiusDetails &&
+    typeof metadata.blastRadiusDetails === 'object' &&
+    !Array.isArray(metadata.blastRadiusDetails)
+      ? (metadata.blastRadiusDetails as Record<string, unknown>)
+      : null;
+  if (!blastDetails) return null;
+
+  const impactRatio = Number(blastDetails.impactRatio);
+  if (!Number.isFinite(impactRatio)) return null;
+  return Math.max(0, Math.min(1, impactRatio));
+}
+
+function criticalityBonusForNode(node: FinancialNodeInput): number {
+  const impact = String(node.impactCategory || '').toLowerCase();
+  if (impact.includes('tier1') || impact.includes('critical') || impact.includes('mission')) return 0.15;
+  if (impact.includes('tier2') || impact.includes('high') || impact.includes('business')) return 0.08;
+  if (impact.includes('tier3') || impact.includes('medium') || impact.includes('important')) return 0.03;
+  if (impact.includes('tier4') || impact.includes('low')) return 0;
+
+  const criticality = normalizeCriticality(node.criticalityScore);
+  if (criticality >= 0.85) return 0.15;
+  if (criticality >= 0.65) return 0.08;
+  if (criticality >= 0.45) return 0.03;
+  return 0;
+}
+
 function pricingSourceLabelFromKey(source: string): string {
   if (source === 'cost-explorer') return '[Prix reel ✓✓]';
   if (source === 'pricing-api') return '[Prix API ✓]';
@@ -827,6 +861,33 @@ export class FinancialEngineService {
     }
 
     if (hasConfiguredFinancialProfile(profile) && organizationDowntimeCost > 0) {
+      const blastImpactRatio = extractBlastImpactRatio(node);
+      if (blastImpactRatio != null) {
+        const rawFactor = blastImpactRatio + criticalityBonusForNode(node);
+        const impactFactor = Math.max(0.05, Math.min(0.9, rawFactor));
+        const blastDistributedCost = roundAmount(organizationDowntimeCost * impactFactor);
+
+        return {
+          estimatedCostPerHour: blastDistributedCost,
+          confidence: 'estimated',
+          breakdown: {
+            nodeType,
+            typeMultiplier: 0,
+            dependentsCount,
+            orgSizeMultiplier: ORG_SIZE_MULTIPLIERS[sizeCategory],
+            baseCost: 0,
+            verticalAdjustedCost: null,
+            organizationOverrideAdjustedCost: roundAmount(organizationDowntimeCost),
+            finalCost: blastDistributedCost,
+            currency,
+          },
+          sources: [
+            `Blast radius distribution (${Math.round(impactFactor * 100)}% du downtime global)`,
+            'Global downtime cost from manually configured financial profile',
+          ],
+        };
+      }
+
       return {
         estimatedCostPerHour: roundAmount(organizationDowntimeCost),
         confidence: 'user_defined',

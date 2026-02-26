@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { buildChunks, buildChromaCollectionName, pushChunksToChroma } = require("../src/services/documentIntelligenceService");
+const { buildChunks, buildChromaCollectionName, pushChunksToChroma } = require("../src/services/documentIntelligenceService.ts");
 
 test("buildChunks keeps metadata and chunks are unique", () => {
   const base = { classification: "ARCHI", declaredDocType: "CMDB", documentId: "doc-1" };

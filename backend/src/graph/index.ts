@@ -6,4 +6,5 @@ export * as BIAEngine from './biaEngine.js';
 export * as RiskDetectionEngine from './riskDetectionEngine.js';
 export * as SimulationEngine from './simulationEngine.js';
 export * as DependencyInferenceEngine from './dependencyInferenceEngine.js';
+export * as BlastRadiusEngine from './blastRadiusEngine.js';
 export * as LandingZoneService from './landingZoneService.js';

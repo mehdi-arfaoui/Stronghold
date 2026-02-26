@@ -22,6 +22,8 @@ import { recommendationsApi } from '@/api/recommendations.api';
 import { praExercisesApi } from '@/api/pra-exercises.api';
 import { financialApi } from '@/api/financial.api';
 import { reportsApi } from '@/api/reports.api';
+import { discoveryApi } from '@/api/discovery.api';
+import { biaApi } from '@/api/bia.api';
 import { api } from '@/api/client';
 
 vi.mock('sonner', () => ({
@@ -90,6 +92,18 @@ vi.mock('@/api/reports.api', () => ({
     generate: vi.fn(),
     getPreview: vi.fn(),
     generateExecutiveFinancialSummary: vi.fn(),
+  },
+}));
+
+vi.mock('@/api/discovery.api', () => ({
+  discoveryApi: {
+    getGraph: vi.fn(),
+  },
+}));
+
+vi.mock('@/api/bia.api', () => ({
+  biaApi: {
+    getEntries: vi.fn(),
   },
 }));
 
@@ -188,6 +202,52 @@ describe('Operational UX QA flows', () => {
         sources: ['Uptime Institute 2025'],
         disclaimer: 'test',
         generatedAt: '2026-02-16T10:00:00.000Z',
+      },
+    } as any);
+
+    vi.mocked(discoveryApi.getGraph).mockResolvedValue({
+      data: {
+        nodes: [
+          {
+            id: 'node-1',
+            name: 'payment-service',
+            type: 'APPLICATION',
+            provider: 'aws',
+            region: 'eu-west-3',
+          },
+        ],
+        edges: [],
+      },
+    } as any);
+
+    vi.mocked(biaApi.getEntries).mockResolvedValue({
+      data: {
+        entries: [
+          {
+            id: 'bia-1',
+            nodeId: 'node-1',
+            serviceName: 'payment-service',
+            serviceType: 'APPLICATION',
+            tier: 1,
+            rto: 120,
+            rpo: 30,
+            mtpd: 480,
+            rtoSuggested: 120,
+            rpoSuggested: 30,
+            mtpdSuggested: 480,
+            validated: true,
+            downtimeCostPerHour: 4500,
+            downtimeCostSourceLabel: '50% - 1 service impacte',
+            blastRadius: {
+              directDependents: 1,
+              transitiveDependents: 1,
+              totalServices: 3,
+              impactedServices: ['node-2'],
+            },
+            dependencies: [],
+          },
+        ],
+        tiers: {},
       },
     } as any);
   });
@@ -1000,23 +1060,30 @@ describe('Operational UX QA flows', () => {
       </QueryClientProvider>,
     );
 
+    await screen.findByText('ROI & Finance');
+    await user.click(screen.getByRole('button', { name: /Configurer le profil financier/i }));
     await screen.findByText('Assistant de configuration financiere');
     const wizardDialog = await screen.findByRole('dialog');
 
-    const step1Selects = wizardDialog.querySelectorAll('select');
-    fireEvent.change(step1Selects[0], { target: { value: 'midMarket' } });
-    fireEvent.change(step1Selects[1], { target: { value: 'banking_finance' } });
+    const step1NumberInputs = within(wizardDialog).getAllByRole('spinbutton');
+    fireEvent.change(step1NumberInputs[0], { target: { value: '5000000' } });
+    fireEvent.change(step1NumberInputs[1], { target: { value: '10000' } });
     await user.click(within(wizardDialog).getByRole('button', { name: /Continuer/i }));
 
-    await screen.findByText(/Pour votre profil, le cout moyen de downtime est estime entre/i);
+    await screen.findByText(/Donnees complementaires \(optionnelles\)/i);
     const step2Dialog = await screen.findByRole('dialog');
-    await user.click(within(step2Dialog).getAllByRole('radio')[0]);
+    const step2Selects = step2Dialog.querySelectorAll('select');
+    fireEvent.change(step2Selects[0], { target: { value: 'midMarket' } });
+    fireEvent.change(step2Selects[1], { target: { value: 'banking_finance' } });
     await user.click(within(step2Dialog).getByRole('button', { name: /Continuer/i }));
 
+    await screen.findByText(/Overrides par service/i);
     const step3Dialog = await screen.findByRole('dialog');
-    const step3Select = step3Dialog.querySelector('select') as HTMLSelectElement;
-    fireEvent.change(step3Select, { target: { value: 'EUR' } });
-    await user.click(within(step3Dialog).getByRole('button', { name: /Terminer/i }));
+    const step3Select = step3Dialog.querySelector('select') as HTMLSelectElement | null;
+    if (step3Select) {
+      fireEvent.change(step3Select, { target: { value: 'EUR' } });
+    }
+    await user.click(within(step3Dialog).getByRole('button', { name: /Enregistrer/i }));
 
     await waitFor(() => {
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

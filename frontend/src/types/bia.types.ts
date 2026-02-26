@@ -38,12 +38,24 @@ export interface BIAEntry {
     | 'business_flow_validated'
     | 'business_flow_not_validated'
     | 'override_user'
+    | 'blast_radius'
+    | 'fallback_criticality'
     | 'estimation_enriched'
     | 'estimation_base'
     | 'profile_global'
     | 'not_configured';
-  financialScope?: 'not_configured' | 'profile_global' | 'custom';
+  financialScope?: 'not_configured' | 'profile_global' | 'custom' | 'blast_radius' | 'fallback_criticality';
   financialScopeLabel?: string;
+  downtimeCostPerHour?: number;
+  downtimeCostSource?: 'blast_radius' | 'override' | 'not_configured' | 'fallback_criticality';
+  downtimeCostSourceLabel?: string;
+  downtimeCostRationale?: string;
+  blastRadius?: {
+    directDependents: number;
+    transitiveDependents: number;
+    totalServices: number;
+    impactedServices: string[];
+  };
   financialOverride?: {
     customCostPerHour: number;
     justification?: string | null;

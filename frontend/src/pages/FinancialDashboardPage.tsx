@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+﻿import { memo, useEffect, useMemo, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -87,7 +87,7 @@ function formatDate(dateString: string): string {
   });
 }
 
-function KpiCard(props: {
+const KpiCard = memo(function KpiCard(props: {
   title: string;
   value: ReactNode;
   subtitle: string;
@@ -119,7 +119,7 @@ function KpiCard(props: {
       </CardContent>
     </Card>
   );
-}
+});
 
 function FinancialDashboardInner() {
   const queryClient = useQueryClient();
@@ -842,4 +842,5 @@ export function FinancialDashboardPage() {
     </ModuleErrorBoundary>
   );
 }
+
 

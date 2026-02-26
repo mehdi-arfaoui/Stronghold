@@ -1,13 +1,12 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const riskRoutesModule = require("../src/routes/riskRoutes");
+const riskRoutesModule = require("../src/routes/riskRoutes.ts");
 const riskRoutes = riskRoutesModule.default ?? riskRoutesModule;
 const { __test__ } = riskRoutesModule;
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 test("risk scoring maps score to level", () => {

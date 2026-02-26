@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { summarizePricing } = require("../src/clients/pricingTypes");
+const { summarizePricing } = require("../src/clients/pricingTypes.ts");
 
 test("summarizePricing applies exchange rate and discount", () => {
   const items = [

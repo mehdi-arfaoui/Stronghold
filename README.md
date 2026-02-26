@@ -89,6 +89,21 @@ Note securite dependances discovery:
 - Statut actuel: risque accepte temporairement (surface limitee aux workers de discovery).
 - Plan: remplacement de `node-nmap` et `node-wmi` par des adaptateurs maintenus sans `xml2js`.
 
+Permissions AWS minimales recommandees pour le scan de dependances:
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "lambda:ListEventSourceMappings",
+    "lambda:GetFunction",
+    "sns:ListSubscriptionsByTopic",
+    "sqs:GetQueueAttributes",
+    "ec2:DescribeSecurityGroups"
+  ],
+  "Resource": "*"
+}
+```
+
 Payload JSON attendu pour `/discovery/scan` :
 ```json
 {

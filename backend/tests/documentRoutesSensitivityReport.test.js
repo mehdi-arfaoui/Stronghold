@@ -1,12 +1,11 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const documentRoutesModule = require("../src/routes/documentRoutes");
+const documentRoutesModule = require("../src/routes/documentRoutes.ts");
 const documentRoutes = documentRoutesModule.default ?? documentRoutesModule;
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 function setupDocumentMocks(t, tenantId) {

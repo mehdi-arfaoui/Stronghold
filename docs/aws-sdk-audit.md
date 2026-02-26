@@ -13,10 +13,12 @@ All 11 AWS SDK packages in the backend are actively used and should be retained.
 |---------|---------|------|----------|-------------------|
 | `@aws-sdk/client-ec2` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | EC2Client, DescribeInstancesCommand, DescribeTagsCommand, DescribeRegionsCommand, DescribeVpcsCommand, DescribeSubnetsCommand, DescribeSecurityGroupsCommand |
 | `@aws-sdk/client-rds` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | RDSClient, DescribeDBInstancesCommand |
-| `@aws-sdk/client-lambda` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | LambdaClient, ListFunctionsCommand |
+| `@aws-sdk/client-lambda` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | LambdaClient, ListFunctionsCommand, GetFunctionCommand, ListEventSourceMappingsCommand |
 | `@aws-sdk/client-auto-scaling` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | AutoScalingClient, DescribeAutoScalingGroupsCommand |
 | `@aws-sdk/client-elastic-load-balancing-v2` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand |
 | `@aws-sdk/client-eks` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | EKSClient, ListClustersCommand, DescribeClusterCommand, ListNodegroupsCommand, DescribeNodegroupCommand |
+| `@aws-sdk/client-sqs` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | SQSClient, ListQueuesCommand, GetQueueAttributesCommand |
+| `@aws-sdk/client-sns` | ^3.967.0 | Yes | `src/services/discoveryCloudConnectors.ts` | SNSClient, ListTopicsCommand, GetTopicAttributesCommand, ListSubscriptionsByTopicCommand |
 | `@aws-sdk/client-pricing` | ^3.967.0 | Yes | `src/services/awsPricingService.ts` | PricingClient, GetProductsCommand |
 | `@aws-sdk/client-s3` | ^3.956.0 | Yes | `src/clients/s3Client.ts` | S3Client, HeadBucketCommand, CreateBucketCommand, PutObjectCommand, GetObjectCommand |
 | `@aws-sdk/client-textract` | ^3.965.0 | Yes | `src/services/ocrService.ts` | TextractClient, DetectDocumentTextCommand |

@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -299,7 +299,7 @@ function buildClusteredFlow(
   return { nodes, edges };
 }
 
-export function InfraGraph({
+function InfraGraphComponent({
   infraNodes,
   infraEdges,
   onNodeClick,
@@ -422,3 +422,5 @@ export function InfraGraph({
     </ReactFlow>
   );
 }
+
+export const InfraGraph = memo(InfraGraphComponent);

@@ -1,8 +1,7 @@
 import { appLogger } from "../utils/logger.js";
 import * as fs from "fs";
 import * as path from "path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
+import AdmZip from "adm-zip";
 import { PDFParse } from "pdf-parse";
 import * as ExcelJS from "exceljs";
 import prisma from "../prismaClient.js";
@@ -27,8 +26,6 @@ import { recordExtractionResult } from "../observability/metrics.js";
 import { extractTextWithOcr } from "./ocrService.js";
 import { upsertDocumentSensitivityReport } from "./documentSensitivityReportService.js";
 import { documentIngestionQueue } from "../queues/documentIngestionQueue.js";
-
-const execFileAsync = promisify(execFile);
 
 async function fileExists(filePath: string) {
   try {
@@ -159,20 +156,20 @@ function assertSafeZipEntryPath(entryPath: string): void {
 
 async function unzipEntry(filePath: string, entryPath: string): Promise<string> {
   assertSafeZipEntryPath(entryPath);
-  const { stdout } = await execFileAsync("unzip", ["-p", "--", filePath, entryPath], {
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return stdout.toString();
+  const zip = new AdmZip(filePath);
+  const entry = zip.getEntry(entryPath);
+  if (!entry) {
+    throw new Error(`Zip entry not found: ${entryPath}`);
+  }
+  return entry.getData().toString("utf8");
 }
 
 async function listZipEntries(filePath: string): Promise<string[]> {
-  const { stdout } = await execFileAsync("unzip", ["-Z1", "--", filePath], {
-    maxBuffer: 10 * 1024 * 1024,
-  });
-  return stdout
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 0);
+  const zip = new AdmZip(filePath);
+  return zip
+    .getEntries()
+    .map((entry: { entryName?: string }) => (entry.entryName || "").trim())
+    .filter((entryName: string) => entryName.length > 0);
 }
 
 async function extractTextFromDocx(filePath: string): Promise<string> {

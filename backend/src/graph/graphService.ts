@@ -52,7 +52,7 @@ const logInfo = (event: string, metadata: Record<string, unknown> = {}) => {
 };
 
 function createGraph(): GraphInstance {
-  return new GraphClass({ type: 'directed', multi: false, allowSelfLoops: false }) as GraphInstance;
+  return new GraphClass({ type: 'directed', multi: true, allowSelfLoops: false }) as GraphInstance;
 }
 
 // --- Load graph from DB ---
@@ -195,10 +195,25 @@ export async function ingestScanResults(
     if (!sourceId || !targetId) continue;
 
     const existing = await prisma.infraEdge.findFirst({
-      where: { sourceId, targetId, type: edge.type },
+      where: { tenantId, sourceId, targetId, type: edge.type },
     });
 
     if (existing) {
+      await prisma.infraEdge.update({
+        where: { id: existing.id },
+        data: {
+          confidence: edge.confidence ?? existing.confidence,
+          inferenceMethod: edge.inferenceMethod ?? existing.inferenceMethod,
+          metadata: (
+            edge.metadata && typeof edge.metadata === 'object'
+              ? ({
+                  ...((existing.metadata as Record<string, unknown> | null) || {}),
+                  ...edge.metadata,
+                } as Record<string, unknown>)
+              : existing.metadata
+          ) as any,
+        },
+      });
       report.edgesUpdated++;
     } else {
       await prisma.infraEdge.create({
@@ -208,6 +223,7 @@ export async function ingestScanResults(
           type: edge.type,
           confidence: edge.confidence ?? 1.0,
           inferenceMethod: edge.inferenceMethod ?? null,
+          metadata: (edge.metadata || {}) as any,
           tenantId,
         },
       });

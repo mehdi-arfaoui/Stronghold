@@ -1,4 +1,3 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test, mock } = require("node:test");
 const { getOrCreateDelegate } = require("./testUtils");
@@ -6,10 +5,10 @@ const { getOrCreateDelegate } = require("./testUtils");
 const {
   LicenseService,
   LicenseNotFoundError,
-} = require("../src/services/licenseService");
-const prismaModule = require("../src/prismaClient");
+} = require("../src/services/licenseService.ts");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
-const redisModule = require("../src/lib/redis");
+const redisModule = require("../src/lib/redis.ts");
 const redis = redisModule.redis ?? redisModule.default;
 
 // Helper to create a mock license

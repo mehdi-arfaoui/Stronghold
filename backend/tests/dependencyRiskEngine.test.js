@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { buildDependencyRisks } = require("../src/analysis/dependencyRiskEngine");
+const { buildDependencyRisks } = require("../src/analysis/dependencyRiskEngine.ts");
 
 const services = [
   {

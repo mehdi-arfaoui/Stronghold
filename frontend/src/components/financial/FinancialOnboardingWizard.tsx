@@ -4,6 +4,7 @@ import { Building2, CircleDollarSign, Coins } from 'lucide-react';
 import { toast } from 'sonner';
 import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
 import { discoveryApi } from '@/api/discovery.api';
+import { biaApi } from '@/api/bia.api';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import { Button } from '@/components/ui/button';
 import {
@@ -142,6 +143,13 @@ function describeServiceNode(node: {
   return parts.join(' - ') || 'Service detecte';
 }
 
+function formatDowntimeCost(amount: number | null | undefined, currency: string): string {
+  if (!Number.isFinite(amount as number) || Number(amount) <= 0) return '—';
+  return `${new Intl.NumberFormat('fr-FR', {
+    maximumFractionDigits: 0,
+  }).format(Number(amount))} ${currency}/h`;
+}
+
 export function FinancialOnboardingWizard({
   open,
   onOpenChange,
@@ -172,6 +180,28 @@ export function FinancialOnboardingWizard({
     staleTime: 60_000,
     queryFn: async () => (await discoveryApi.getGraph()).data,
   });
+
+  const biaEntriesQuery = useQuery({
+    queryKey: ['financial-onboarding-bia-entries'],
+    enabled: open,
+    staleTime: 30_000,
+    queryFn: async () => (await biaApi.getEntries()).data.entries,
+  });
+
+  const biaEntryByNodeId = useMemo(
+    () =>
+      new Map(
+        (biaEntriesQuery.data || []).map((entry) => [
+          entry.nodeId,
+          {
+            blastRadius: entry.blastRadius,
+            downtimeCostPerHour: entry.downtimeCostPerHour ?? entry.financialImpactPerHour ?? null,
+            downtimeCostSourceLabel: entry.downtimeCostSourceLabel ?? entry.financialScopeLabel ?? '—',
+          },
+        ]),
+      ),
+    [biaEntriesQuery.data],
+  );
 
   const detectedServiceNodes = useMemo(() => {
     const excludedTypes = new Set(['REGION', 'AVAILABILITY_ZONE', 'VPC', 'SUBNET', 'FIREWALL']);
@@ -350,7 +380,7 @@ export function FinancialOnboardingWizard({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Cout downtime/h ({currency}/h)</label>
+                <label className="text-sm font-medium">Cout de downtime global par heure ({currency})</label>
                 <Input
                   type="number"
                   min={0}
@@ -358,6 +388,10 @@ export function FinancialOnboardingWizard({
                   onChange={(event) => setHourlyDowntimeCost(event.target.value)}
                   placeholder="Ex: 10000"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Si toute votre infrastructure etait indisponible simultanement, combien cela couterait-il par heure ?
+                  Ce montant sera distribue automatiquement sur chaque service selon son impact (blast radius), puis ajustable a l etape 3.
+                </p>
               </div>
             </div>
 
@@ -548,16 +582,20 @@ export function FinancialOnboardingWizard({
             ) : (
               <div className="rounded-md border">
                 <div className="max-h-[300px] overflow-auto">
-                  <table className="w-full min-w-[720px] text-sm">
+                  <table className="w-full min-w-[980px] text-sm">
                     <colgroup>
-                      <col style={{ width: '35%' }} />
-                      <col style={{ width: '25%' }} />
-                      <col style={{ width: '25%' }} />
+                      <col style={{ width: '28%' }} />
+                      <col style={{ width: '14%' }} />
+                      <col style={{ width: '16%' }} />
+                      <col style={{ width: '17%' }} />
                       <col style={{ width: '15%' }} />
+                      <col style={{ width: '10%' }} />
                     </colgroup>
                     <thead className="sticky top-0 bg-muted/80 backdrop-blur">
                       <tr className="border-b">
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Service</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Blast radius</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Cout/h calcule</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">
                           Downtime/h override ({currency}/h)
                         </th>
@@ -568,6 +606,12 @@ export function FinancialOnboardingWizard({
                     <tbody>
                       {detectedServiceNodes.map((node) => {
                         const draft = serviceOverrideDrafts[node.id] || EMPTY_OVERRIDE_DRAFT;
+                        const biaEntry = biaEntryByNodeId.get(node.id);
+                        const transitive = Number(biaEntry?.blastRadius?.transitiveDependents ?? 0);
+                        const totalServices = Number(biaEntry?.blastRadius?.totalServices ?? 0);
+                        const blastDenominator = Math.max(1, totalServices - 1);
+                        const blastPercent =
+                          totalServices > 1 ? Math.round((transitive / blastDenominator) * 100) : null;
                         const hasOverride =
                           toNumberOrNull(draft.customDowntimeCostPerHour) != null || !!draft.customCriticalityTier;
 
@@ -577,6 +621,19 @@ export function FinancialOnboardingWizard({
                               <p className="font-medium">{node.name || node.id}</p>
                               <p className="text-xs text-muted-foreground">{describeServiceNode(node)}</p>
                               <p className="text-[11px] text-muted-foreground">ID: {node.id}</p>
+                            </td>
+                            <td className="px-3 py-2">
+                              <p className="font-medium">
+                                {blastPercent != null ? `${blastPercent}% (${transitive}/${blastDenominator})` : '—'}
+                              </p>
+                              <p className="text-[11px] text-muted-foreground">
+                                {biaEntry?.downtimeCostSourceLabel || 'BIA non genere'}
+                              </p>
+                            </td>
+                            <td className="px-3 py-2">
+                              <p className="font-medium">
+                                {formatDowntimeCost(biaEntry?.downtimeCostPerHour, currency)}
+                              </p>
                             </td>
                             <td className="px-3 py-2">
                               <Input

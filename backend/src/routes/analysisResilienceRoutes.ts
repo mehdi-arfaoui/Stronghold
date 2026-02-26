@@ -8,6 +8,8 @@ import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
+import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
+import type { InfraNodeAttrs } from '../graph/types.js';
 
 const router = Router();
 
@@ -55,17 +57,49 @@ router.post('/', async (req: TenantRequest, res) => {
       },
     });
 
+    const graphNodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as InfraNodeAttrs);
+    const graphEdges = graph.edges().map((edgeKey) => {
+      const attrs = graph.getEdgeAttributes(edgeKey) as { type?: string };
+      return {
+        sourceId: graph.source(edgeKey),
+        targetId: graph.target(edgeKey),
+        type: String(attrs.type || ''),
+      };
+    });
+    const blastByNodeId = new Map(
+      calculateBlastRadius(graphNodes, graphEdges).map((entry) => [entry.nodeId, entry]),
+    );
+
     // Update node scores in DB
     for (const [nodeId, score] of report.criticalityScores) {
       const spof = report.spofs.find(s => s.nodeId === nodeId);
-      const blast = GraphService.getBlastRadius(graph, nodeId);
+      const blast = blastByNodeId.get(nodeId);
+      const existingNode = graph.getNodeAttributes(nodeId) as InfraNodeAttrs;
+      const existingMetadata =
+        existingNode.metadata && typeof existingNode.metadata === 'object' && !Array.isArray(existingNode.metadata)
+          ? (existingNode.metadata as Record<string, unknown>)
+          : {};
 
       await prisma.infraNode.updateMany({
         where: { id: nodeId, tenantId },
         data: {
           criticalityScore: score,
           isSPOF: !!spof,
-          blastRadius: blast.length,
+          blastRadius: blast?.transitiveDependents ?? 0,
+          metadata: {
+            ...existingMetadata,
+            blastRadiusDetails: blast
+              ? {
+                  directDependents: blast.directDependents,
+                  transitiveDependents: blast.transitiveDependents,
+                  totalServices: blast.totalServices,
+                  impactRatio: blast.impactRatio,
+                  impactedServices: blast.impactedServices,
+                  rationale: blast.rationale,
+                  calculatedAt: new Date().toISOString(),
+                }
+              : undefined,
+          } as any,
         },
       });
     }
@@ -210,6 +244,37 @@ router.get('/score', async (req: TenantRequest, res) => {
     });
   } catch (error) {
     appLogger.error('Error fetching resilience score:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /analysis/resilience/blast-radius — Blast radius par service ──────────
+router.get('/blast-radius', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    if (graph.order === 0) {
+      return res.json([]);
+    }
+
+    const graphNodes = graph.nodes().map((id) => graph.getNodeAttributes(id) as InfraNodeAttrs);
+    const graphEdges = graph.edges().map((edgeKey) => {
+      const attrs = graph.getEdgeAttributes(edgeKey) as { type?: string };
+      return {
+        sourceId: graph.source(edgeKey),
+        targetId: graph.target(edgeKey),
+        type: String(attrs.type || ''),
+      };
+    });
+
+    const blast = calculateBlastRadius(graphNodes, graphEdges)
+      .sort((left, right) => right.transitiveDependents - left.transitiveDependents);
+
+    return res.json(blast);
+  } catch (error) {
+    appLogger.error('Error fetching blast radius:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

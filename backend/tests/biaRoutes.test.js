@@ -1,13 +1,12 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const biaRoutesModule = require("../src/routes/biaRoutes");
+const biaRoutesModule = require("../src/routes/biaRoutes.ts");
 const biaRoutes = biaRoutesModule.default ?? biaRoutesModule;
 const { __test__ } = biaRoutesModule;
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 test("bia scoring combines impact and time sensitivity", () => {

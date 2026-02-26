@@ -605,6 +605,7 @@ const routes = [
   { path: "/license", handler: licenseRoutes, name: "licenseRoutes" },
   { path: "/resilience", handler: resilienceGraphRoutes, name: "resilienceGraphRoutes" },
   { path: "/analysis/resilience", handler: analysisResilienceRoutes, name: "analysisResilienceRoutes" },
+  { path: "/api/analysis/resilience", handler: analysisResilienceRoutes, name: "analysisResilienceRoutesApi" },
   { path: "/bia-resilience", handler: biaResilienceRoutes, name: "biaResilienceRoutes" },
   { path: "/simulations", handler: simulationRoutes, name: "simulationRoutes" },
   { path: "/risks-resilience", handler: riskResilienceRoutes, name: "riskResilienceRoutes" },

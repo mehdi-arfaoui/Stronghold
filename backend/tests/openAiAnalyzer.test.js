@@ -1,11 +1,10 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const {
   analyzeExtractedFacts,
   OpenAiCallError,
-} = require("../src/ai/extractedFactsAnalyzer");
+} = require("../src/ai/extractedFactsAnalyzer.ts");
 
 process.env.OPENAI_API_KEY = "test-key";
 

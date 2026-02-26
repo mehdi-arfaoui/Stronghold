@@ -1,12 +1,11 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const exerciseRoutesModule = require("../src/routes/exerciseRoutes");
+const exerciseRoutesModule = require("../src/routes/exerciseRoutes.ts");
 const exerciseRoutes = exerciseRoutesModule.default ?? exerciseRoutesModule;
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 test("POST /exercises plans a test and seeds checklist items", async (t) => {

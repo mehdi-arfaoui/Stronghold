@@ -1,15 +1,14 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, withServer } = require("./testUtils");
 
-const documentRoutesModule = require("../src/routes/documentRoutes");
+const documentRoutesModule = require("../src/routes/documentRoutes.ts");
 const documentRoutes = documentRoutesModule.default ?? documentRoutesModule;
 
-const scenarioRoutesModule = require("../src/routes/scenarioRoutes");
+const scenarioRoutesModule = require("../src/routes/scenarioRoutes.ts");
 const scenarioRoutes = scenarioRoutesModule.default ?? scenarioRoutesModule;
 
-const analysisRoutesModule = require("../src/routes/analysisRoutes");
+const analysisRoutesModule = require("../src/routes/analysisRoutes.ts");
 const analysisRoutes = analysisRoutesModule.default ?? analysisRoutesModule;
 
 async function expectTenantRequired(baseUrl, path) {

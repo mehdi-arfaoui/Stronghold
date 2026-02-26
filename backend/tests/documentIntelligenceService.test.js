@@ -1,10 +1,9 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const {
   deriveMetadataMappings,
-} = require("../src/services/documentIntelligenceService");
+} = require("../src/services/documentIntelligenceService.ts");
 
 test("deriveMetadataMappings captures services, infra and dependencies", () => {
   const metadata = {

@@ -1,4 +1,4 @@
-﻿import { useMemo, useState, type ReactNode } from 'react';
+﻿import { memo, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import {
@@ -579,16 +579,16 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   );
 }
 
-function Metric({ label, value, color }: { label: string; value: ReactNode; color?: string }) {
+const Metric = memo(function Metric({ label, value, color }: { label: string; value: ReactNode; color?: string }) {
   return (
     <div className="rounded-lg border p-3">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className={cn('mt-1 text-lg font-semibold', color)}>{value}</p>
     </div>
   );
-}
+});
 
-function MiniMetric({
+const MiniMetric = memo(function MiniMetric({
   icon: Icon,
   label,
   value,
@@ -606,5 +606,6 @@ function MiniMetric({
       <p className="mt-1 text-sm font-medium">{value}</p>
     </div>
   );
-}
+});
+
 

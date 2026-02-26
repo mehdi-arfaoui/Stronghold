@@ -357,6 +357,7 @@ export function transformToScanResult(
   // Infer edges from metadata references (VPC, subnet, security groups)
   const vpcNodes = nodes.filter(n => n.type === NodeType.VPC);
   const subnetNodes = nodes.filter(n => n.type === NodeType.SUBNET);
+  const securityGroupNodes = nodes.filter(n => n.type === NodeType.FIREWALL);
 
   for (const node of nodes) {
     // Subnet → VPC (CONTAINS)
@@ -372,7 +373,26 @@ export function transformToScanResult(
       const subnet = subnetNodes.find(s => s.id.includes(String(node.metadata!.subnetId)));
       if (subnet) {
         edges.push({ source: node.id, target: subnet.id, type: EdgeType.RUNS_ON, confidence: 0.9, inferenceMethod: 'metadata' });
+        edges.push({ source: node.id, target: subnet.id, type: EdgeType.PLACED_IN, confidence: 0.9, inferenceMethod: 'metadata' });
       }
+    }
+
+    const attachedSecurityGroups = Array.isArray(node.metadata?.securityGroups)
+      ? (node.metadata?.securityGroups as unknown[])
+          .map((value) => (typeof value === 'string' ? value : null))
+          .filter((value): value is string => Boolean(value))
+      : [];
+    for (const sgId of attachedSecurityGroups) {
+      const securityGroup = securityGroupNodes.find((candidate) => candidate.id.includes(sgId));
+      if (!securityGroup) continue;
+      edges.push({
+        source: node.id,
+        target: securityGroup.id,
+        type: EdgeType.SECURED_BY,
+        confidence: 1.0,
+        inferenceMethod: 'metadata',
+        metadata: { securityGroupId: sgId },
+      });
     }
   }
 

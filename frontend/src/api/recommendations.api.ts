@@ -58,6 +58,16 @@ export interface Recommendation {
     };
   };
   sources?: string[];
+  downtimeCostPerHour?: number;
+  downtimeCostSource?: 'blast_radius' | 'override' | 'not_configured' | 'fallback_criticality' | string;
+  downtimeCostSourceLabel?: string;
+  downtimeCostRationale?: string;
+  blastRadius?: {
+    directDependents: number;
+    transitiveDependents: number;
+    totalServices: number;
+    impactedServices: string[];
+  };
 }
 
 export interface RecommendationsSummary {

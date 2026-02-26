@@ -36,8 +36,11 @@ RUN npx prisma generate
 RUN npm run build
 
 # Stage 4: Production dependencies
-FROM build AS prod-deps
-RUN npm prune --production
+FROM base AS prod-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci --omit=dev --no-audit --fund=false --ignore-scripts
 
 # Stage 5: Migration
 FROM base AS migrate
@@ -55,8 +58,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/package*.json ./
 COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/scripts ./scripts
 EXPOSE 4000
 CMD ["node", "dist/index.js"]

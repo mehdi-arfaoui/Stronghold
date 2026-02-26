@@ -1,8 +1,7 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } = require("../src/ai/ragRanking");
+const { fuseChunkScores, rerankChunksCrossEncoder, rerankChunksRrf } = require("../src/ai/ragRanking.ts");
 
 test("fuseChunkScores blends BM25 and vector scores via alpha", () => {
   const candidates = [

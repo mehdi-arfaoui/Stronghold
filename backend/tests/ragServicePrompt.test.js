@@ -1,8 +1,7 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
-const { buildRagPrompt, draftAnswerFromContext } = require("../src/ai/ragService");
+const { buildRagPrompt, draftAnswerFromContext } = require("../src/ai/ragService.ts");
 
 test("draftAnswerFromContext construit une réponse à partir du contexte", () => {
   const context = {

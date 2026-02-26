@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { __test__, extractTextWithOcr } = require("../src/services/ocrService");
+const { __test__, extractTextWithOcr } = require("../src/services/ocrService.ts");
 
 test("resolveProvider respecte OCR_PROVIDER", (t) => {
   const original = { ...process.env };

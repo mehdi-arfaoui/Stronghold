@@ -1,13 +1,12 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const incidentRoutesModule = require("../src/routes/incidentRoutes");
+const incidentRoutesModule = require("../src/routes/incidentRoutes.ts");
 const incidentRoutes = incidentRoutesModule.default ?? incidentRoutesModule;
-const notificationService = require("../src/services/incidentNotificationService");
+const notificationService = require("../src/services/incidentNotificationService.ts");
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 test("POST /incidents creates an incident and triggers notifications", async (t) => {

@@ -29,7 +29,15 @@ export type EdgeType =
   | 'CONTAINS'
   | 'ROUTES_TO'
   | 'REPLICATES_TO'
-  | 'BACKS_UP_TO';
+  | 'BACKS_UP_TO'
+  | 'network_access'
+  | 'triggers'
+  | 'uses'
+  | 'dead_letter'
+  | 'publishes_to'
+  | 'placed_in'
+  | 'secured_by'
+  | 'iam_access';
 
 export interface InfraNode {
   id: string;

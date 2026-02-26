@@ -8,10 +8,16 @@ import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
+import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
+import {
+  calculateServiceDowntimeCosts,
+  normalizeCriticalityLevel,
+  type ServiceDowntimeCost,
+} from '../services/pricing/downtimeDistribution.js';
 
 const router = Router();
 
@@ -21,7 +27,19 @@ function readString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-type BiaFinancialScope = 'not_configured' | 'profile_global' | 'custom';
+type BiaFinancialScope =
+  | 'not_configured'
+  | 'profile_global'
+  | 'custom'
+  | 'blast_radius'
+  | 'fallback_criticality';
+
+type FinancialOverrideEntry = {
+  customCostPerHour: number;
+  justification: string | null;
+  validatedBy: string | null;
+  validatedAt: Date | null;
+};
 
 function resolveConfiguredDowntimeCost(
   profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>,
@@ -32,45 +50,166 @@ function resolveConfiguredDowntimeCost(
   return value;
 }
 
+function resolveProcessCriticalityLevel(input: {
+  process: {
+    criticalityScore: number;
+    impactCategory: string | null;
+    recoveryTier: number;
+  };
+  node?: InfraNodeAttrs;
+}): 'critical' | 'high' | 'medium' | 'low' {
+  const impactCategory = String(input.process.impactCategory || '').toLowerCase();
+  if (impactCategory.includes('tier1') || impactCategory.includes('mission') || impactCategory.includes('critical')) {
+    return 'critical';
+  }
+  if (impactCategory.includes('tier2') || impactCategory.includes('business') || impactCategory.includes('high')) {
+    return 'high';
+  }
+  if (impactCategory.includes('tier3') || impactCategory.includes('important') || impactCategory.includes('medium')) {
+    return 'medium';
+  }
+  if (impactCategory.includes('tier4') || impactCategory.includes('low')) {
+    return 'low';
+  }
+  if (input.process.recoveryTier === 1) return 'critical';
+  if (input.process.recoveryTier === 2) return 'high';
+  if (input.process.recoveryTier === 3) return 'medium';
+  if (input.process.recoveryTier === 4) return 'low';
+
+  const nodeCriticality = normalizeCriticalityLevel(input.node?.impactCategory || input.node?.metadata?.criticality);
+  if (nodeCriticality) return nodeCriticality;
+  return normalizeCriticalityLevel(input.process.criticalityScore);
+}
+
+function buildDowntimeCostMapForProcesses(input: {
+  graph: Awaited<ReturnType<typeof GraphService.getGraph>>;
+  processes: Array<{
+    serviceNodeId: string;
+    serviceName: string;
+    criticalityScore: number;
+    impactCategory: string | null;
+    recoveryTier: number;
+  }>;
+  profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>;
+  overrideByNodeId: Map<string, FinancialOverrideEntry>;
+}): Map<string, ServiceDowntimeCost> {
+  const graphNodes = input.graph.nodes().map((id) => input.graph.getNodeAttributes(id) as InfraNodeAttrs);
+  const graphEdges = input.graph.edges().map((edgeKey) => {
+    const edgeAttrs = input.graph.getEdgeAttributes(edgeKey) as { type?: string };
+    return {
+      sourceId: input.graph.source(edgeKey),
+      targetId: input.graph.target(edgeKey),
+      type: String(edgeAttrs.type || ''),
+    };
+  });
+  const blastResults = calculateBlastRadius(graphNodes, graphEdges);
+  const graphNodeById = new Map(graphNodes.map((node) => [node.id, node]));
+
+  const services = input.processes.map((process) => {
+    const node = graphNodeById.get(process.serviceNodeId);
+    const criticality = node
+      ? resolveProcessCriticalityLevel({ process, node })
+      : resolveProcessCriticalityLevel({ process });
+    return {
+      nodeId: process.serviceNodeId,
+      name: process.serviceName,
+      criticality,
+    };
+  });
+
+  const serviceOverrides = Array.from(input.overrideByNodeId.entries()).map(([nodeId, override]) => ({
+    nodeId,
+    customDowntimeCostPerHour: override.customCostPerHour,
+  }));
+  const distributed = calculateServiceDowntimeCosts(blastResults, services, {
+    estimatedDowntimeCostPerHour: resolveConfiguredDowntimeCost(input.profile),
+    serviceOverrides,
+  });
+
+  return new Map(distributed.map((item) => [item.serviceNodeId, item]));
+}
+
 function resolveBiaFinancialForService(input: {
   nodeId: string;
-  profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>;
-  overrideByNodeId: Map<
-    string,
-    {
-      customCostPerHour: number;
-      justification: string | null;
-      validatedBy: string | null;
-      validatedAt: Date | null;
-    }
-  >;
+  costByNodeId: Map<string, ServiceDowntimeCost>;
 }): {
   financialImpactPerHour: number | null;
   financialScope: BiaFinancialScope;
   financialScopeLabel: string;
   financialConfidence: 'user_defined' | 'estimated' | 'low_confidence';
   financialSources: string[];
+  downtimeCostSource: ServiceDowntimeCost['source'];
+  downtimeCostPerHour: number;
+  downtimeCostRationale: string;
+  blastRadius?: ServiceDowntimeCost['blastRadius'];
 } {
-  const override = input.overrideByNodeId.get(input.nodeId);
-  const overrideCost = Number(override?.customCostPerHour || 0);
-  if (Number.isFinite(overrideCost) && overrideCost > 0) {
+  const resolved = input.costByNodeId.get(input.nodeId);
+  if (!resolved) {
     return {
-      financialImpactPerHour: overrideCost,
-      financialScope: 'custom',
-      financialScopeLabel: 'personnalise',
-      financialConfidence: 'user_defined',
-      financialSources: ['Valeur personnalisee sur ce service'],
+      financialImpactPerHour: null,
+      financialScope: 'not_configured',
+      financialScopeLabel: 'non configure',
+      financialConfidence: 'low_confidence',
+      financialSources: ['Non estime - configurez le profil financier'],
+      downtimeCostSource: 'not_configured',
+      downtimeCostPerHour: 0,
+      downtimeCostRationale: 'Profil financier non configure',
     };
   }
 
-  const profileCost = resolveConfiguredDowntimeCost(input.profile);
-  if (profileCost != null) {
+  if (resolved.source === 'override') {
     return {
-      financialImpactPerHour: profileCost,
-      financialScope: 'profile_global',
-      financialScopeLabel: 'profil global',
+      financialImpactPerHour: resolved.downtimeCostPerHour,
+      financialScope: 'custom',
+      financialScopeLabel: resolved.sourceLabel,
       financialConfidence: 'user_defined',
-      financialSources: ['Profil financier global (downtime cost/h)'],
+      financialSources: [resolved.rationale],
+      downtimeCostSource: resolved.source,
+      downtimeCostPerHour: resolved.downtimeCostPerHour,
+      downtimeCostRationale: resolved.rationale,
+      ...(resolved.blastRadius ? { blastRadius: resolved.blastRadius } : {}),
+    };
+  }
+
+  if (resolved.source === 'blast_radius') {
+    return {
+      financialImpactPerHour: resolved.downtimeCostPerHour,
+      financialScope: 'blast_radius',
+      financialScopeLabel: resolved.sourceLabel,
+      financialConfidence: 'estimated',
+      financialSources: [resolved.rationale],
+      downtimeCostSource: resolved.source,
+      downtimeCostPerHour: resolved.downtimeCostPerHour,
+      downtimeCostRationale: resolved.rationale,
+      ...(resolved.blastRadius ? { blastRadius: resolved.blastRadius } : {}),
+    };
+  }
+
+  if (resolved.source === 'fallback_criticality') {
+    return {
+      financialImpactPerHour: resolved.downtimeCostPerHour,
+      financialScope: 'fallback_criticality',
+      financialScopeLabel: resolved.sourceLabel,
+      financialConfidence: 'low_confidence',
+      financialSources: [resolved.rationale],
+      downtimeCostSource: resolved.source,
+      downtimeCostPerHour: resolved.downtimeCostPerHour,
+      downtimeCostRationale: resolved.rationale,
+      ...(resolved.blastRadius ? { blastRadius: resolved.blastRadius } : {}),
+    };
+  }
+
+  if (resolved.source === 'not_configured') {
+    return {
+      financialImpactPerHour: null,
+      financialScope: 'not_configured',
+      financialScopeLabel: resolved.sourceLabel,
+      financialConfidence: 'low_confidence',
+      financialSources: [resolved.rationale],
+      downtimeCostSource: resolved.source,
+      downtimeCostPerHour: 0,
+      downtimeCostRationale: resolved.rationale,
+      ...(resolved.blastRadius ? { blastRadius: resolved.blastRadius } : {}),
     };
   }
 
@@ -80,6 +219,9 @@ function resolveBiaFinancialForService(input: {
     financialScopeLabel: 'non configure',
     financialConfidence: 'low_confidence',
     financialSources: ['Non estime - configurez le profil financier'],
+    downtimeCostSource: 'not_configured',
+    downtimeCostPerHour: 0,
+    downtimeCostRationale: 'Profil financier non configure',
   };
 }
 
@@ -211,6 +353,18 @@ router.get('/entries', async (req: TenantRequest, res) => {
       }),
     ]);
     const overridesByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: report.processes.map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId: overridesByNodeId,
+    });
 
     const entries = await Promise.all(
       report.processes.map(async (p) => {
@@ -236,8 +390,7 @@ router.get('/entries', async (req: TenantRequest, res) => {
         const financialOverride = overridesByNodeId.get(p.serviceNodeId);
         const financialResolution = resolveBiaFinancialForService({
           nodeId: p.serviceNodeId,
-          profile,
-          overrideByNodeId: overridesByNodeId,
+          costByNodeId: downtimeCostByNodeId,
         });
 
         const validated = p.validationStatus === 'validated';
@@ -275,11 +428,20 @@ router.get('/entries', async (req: TenantRequest, res) => {
           financialPrecisionBadge:
             financialResolution.financialScope === 'custom'
               ? 'override_user'
+              : financialResolution.financialScope === 'blast_radius'
+                ? 'blast_radius'
+                : financialResolution.financialScope === 'fallback_criticality'
+                  ? 'fallback_criticality'
               : financialResolution.financialScope === 'profile_global'
                 ? 'profile_global'
                 : 'not_configured',
           financialScope: financialResolution.financialScope,
           financialScopeLabel: financialResolution.financialScopeLabel,
+          downtimeCostPerHour: financialResolution.downtimeCostPerHour,
+          downtimeCostSource: financialResolution.downtimeCostSource,
+          downtimeCostSourceLabel: financialResolution.financialScopeLabel,
+          downtimeCostRationale: financialResolution.downtimeCostRationale,
+          blastRadius: financialResolution.blastRadius,
           financialOverride: financialOverride
             ? {
                 customCostPerHour: financialOverride.customCostPerHour,
@@ -312,7 +474,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -329,6 +491,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
 
     if (!report) {
@@ -351,6 +514,18 @@ router.get('/summary', async (req: TenantRequest, res) => {
       4: 'Non-Critical',
     };
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: report.processes.map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     const tiers = [1, 2, 3, 4].map(tier => {
       const procs = report.processes.filter(p => p.recoveryTier === tier);
@@ -360,8 +535,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
       const totalFinancialImpact = procs.reduce((sum, process) => {
         const resolved = resolveBiaFinancialForService({
           nodeId: process.serviceNodeId,
-          profile,
-          overrideByNodeId,
+          costByNodeId: downtimeCostByNodeId,
         });
         return sum + (resolved.financialImpactPerHour || 0);
       }, 0);
@@ -391,7 +565,7 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -408,16 +582,28 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: (report?.processes || []).map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     const header = 'Service,Type,Tier,Suggested RTO,Suggested RPO,Suggested MTPD,Validated RTO,Validated RPO,Validated MTPD,Impact Category,Criticality Score,Financial Impact/h,Status\n';
     const rows = (report?.processes || [])
       .map((p) => {
         const resolvedFinancial = resolveBiaFinancialForService({
           nodeId: p.serviceNodeId,
-          profile,
-          overrideByNodeId,
+          costByNodeId: downtimeCostByNodeId,
         });
         return [
           `"${p.serviceName}"`,
@@ -452,7 +638,7 @@ router.get('/export/json', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -469,14 +655,26 @@ router.get('/export/json', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: (report?.processes || []).map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     const processes = (report?.processes || []).map((p) => {
       const resolvedFinancial = resolveBiaFinancialForService({
         nodeId: p.serviceNodeId,
-        profile,
-        overrideByNodeId,
+        costByNodeId: downtimeCostByNodeId,
       });
       return {
         serviceName: p.serviceName,
@@ -493,6 +691,11 @@ router.get('/export/json', async (req: TenantRequest, res) => {
         financialImpactPerHour: resolvedFinancial.financialImpactPerHour,
         financialScope: resolvedFinancial.financialScope,
         financialScopeLabel: resolvedFinancial.financialScopeLabel,
+        downtimeCostPerHour: resolvedFinancial.downtimeCostPerHour,
+        downtimeCostSource: resolvedFinancial.downtimeCostSource,
+        downtimeCostSourceLabel: resolvedFinancial.financialScopeLabel,
+        downtimeCostRationale: resolvedFinancial.downtimeCostRationale,
+        blastRadius: resolvedFinancial.blastRadius,
         validationStatus: p.validationStatus,
       };
     });
@@ -510,7 +713,7 @@ router.get('/export/xlsx', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -527,16 +730,28 @@ router.get('/export/xlsx', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: (report?.processes || []).map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     const header = 'Service\tType\tTier\tSuggested RTO\tSuggested RPO\tSuggested MTPD\tValidated RTO\tValidated RPO\tValidated MTPD\tImpact Category\tCriticality Score\tFinancial Impact/h\tStatus\n';
     const rows = (report?.processes || [])
       .map((p) => {
         const resolvedFinancial = resolveBiaFinancialForService({
           nodeId: p.serviceNodeId,
-          profile,
-          overrideByNodeId,
+          costByNodeId: downtimeCostByNodeId,
         });
         return [
           p.serviceName,
@@ -571,7 +786,7 @@ router.get('/export/pdf', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -588,8 +803,21 @@ router.get('/export/pdf', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: (report?.processes || []).map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     // Build text content for PDF
     const lines = [
@@ -599,8 +827,7 @@ router.get('/export/pdf', async (req: TenantRequest, res) => {
       ...((report?.processes || []).map((p) => {
         const resolvedFinancial = resolveBiaFinancialForService({
           nodeId: p.serviceNodeId,
-          profile,
-          overrideByNodeId,
+          costByNodeId: downtimeCostByNodeId,
         });
         const impact =
           resolvedFinancial.financialImpactPerHour != null
@@ -803,7 +1030,7 @@ router.get('/matrix', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const [report, profile, overrides] = await Promise.all([
+    const [report, profile, overrides, graph] = await Promise.all([
       prisma.bIAReport2.findFirst({
         where: { tenantId },
         orderBy: { createdAt: 'desc' },
@@ -820,12 +1047,25 @@ router.get('/matrix', async (req: TenantRequest, res) => {
           validatedAt: true,
         },
       }),
+      GraphService.getGraph(prisma, tenantId),
     ]);
 
     if (!report) {
       return res.json({ tiers: [], message: 'No BIA report generated yet' });
     }
     const overrideByNodeId = new Map(overrides.map((entry) => [entry.nodeId, entry]));
+    const downtimeCostByNodeId = buildDowntimeCostMapForProcesses({
+      graph,
+      processes: report.processes.map((process) => ({
+        serviceNodeId: process.serviceNodeId,
+        serviceName: process.serviceName,
+        criticalityScore: process.criticalityScore,
+        impactCategory: process.impactCategory,
+        recoveryTier: process.recoveryTier,
+      })),
+      profile,
+      overrideByNodeId,
+    });
 
     const tierNames: Record<number, string> = {
       1: 'Mission Critical',
@@ -843,8 +1083,7 @@ router.get('/matrix', async (req: TenantRequest, res) => {
         totalImpact: procs.reduce((sum, process) => {
           const resolvedFinancial = resolveBiaFinancialForService({
             nodeId: process.serviceNodeId,
-            profile,
-            overrideByNodeId,
+            costByNodeId: downtimeCostByNodeId,
           });
           return sum + (resolvedFinancial.financialImpactPerHour || 0);
         }, 0),

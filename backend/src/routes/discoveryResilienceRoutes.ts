@@ -21,6 +21,7 @@ import { buildScanHealthReport } from '../services/discoveryHealthService.js';
 import { scanConfigHasPlaintextCredentials } from '../services/scanConfigSecurityService.js';
 import { encryptDiscoveryCredentials } from '../services/discoveryService.js';
 import { scanAws, scanAzure, scanGcp } from '../services/discoveryCloudConnectors.js';
+import * as GraphService from '../graph/graphService.js';
 import type {
   DiscoveryConnectorResult,
   DiscoveryCredentials,
@@ -952,6 +953,22 @@ router.get('/schedules', async (req: TenantRequest, res) => {
     return res.json({ schedules });
   } catch (error) {
     appLogger.error('Error listing scan schedules:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// ─── GET /discovery/graph — Graph export shortcut for validation scripts ──────────
+router.get('/graph', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    const data = GraphService.exportForVisualization(graph);
+    const stats = GraphService.getGraphStats(graph);
+    return res.json({ ...data, stats });
+  } catch (error) {
+    appLogger.error('Error fetching discovery graph shortcut:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

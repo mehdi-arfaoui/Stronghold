@@ -59,6 +59,14 @@ export enum EdgeType {
   MONITORS = 'MONITORS',
   PUBLISHES_TO = 'PUBLISHES_TO',
   SUBSCRIBES_TO = 'SUBSCRIBES_TO',
+  NETWORK_ACCESS = 'network_access',
+  TRIGGERS = 'triggers',
+  USES = 'uses',
+  DEAD_LETTER = 'dead_letter',
+  PUBLISHES_TO_APPLICATIVE = 'publishes_to',
+  PLACED_IN = 'placed_in',
+  SECURED_BY = 'secured_by',
+  IAM_ACCESS = 'iam_access',
 }
 
 // --- Node Attributes (stored on graphology nodes) ---
@@ -118,6 +126,7 @@ export interface ScanEdge {
   type: string;
   confidence?: number;
   inferenceMethod?: string;
+  metadata?: Record<string, unknown>;
 }
 
 // --- Reconciliation ---

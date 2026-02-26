@@ -1,4 +1,3 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
@@ -6,7 +5,7 @@ const {
   buildClassificationCacheKey,
   classifyDocumentFacts,
   computeDocumentHash,
-} = require("../src/services/classificationService");
+} = require("../src/services/classificationService.ts");
 
 test("classifyDocumentFacts returns cached facts when available", async () => {
   const cacheStore = new Map();
@@ -122,7 +121,7 @@ test("updateCachedClassification met à jour une entrée en cache", async () => 
     })
   );
 
-  const { updateCachedClassification } = require("../src/services/classificationService");
+  const { updateCachedClassification } = require("../src/services/classificationService.ts");
 
   const updated = await updateCachedClassification({
     tenantId,

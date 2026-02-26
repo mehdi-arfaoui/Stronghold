@@ -1,11 +1,10 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const {
   DocumentNotFoundError,
   MissingExtractedTextError,
   getOrCreateExtractedFacts,
-} = require("../src/services/extractedFactService");
+} = require("../src/services/extractedFactService.ts");
 
 const baseDocument = {
   id: "doc-1",

@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { getSuggestedDRStrategy } = require("../src/analysis/drStrategyEngine");
+const { getSuggestedDRStrategy } = require("../src/analysis/drStrategyEngine.ts");
 
 const sampleServices = [
   {

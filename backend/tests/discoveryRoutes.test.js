@@ -1,14 +1,13 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { test } = require("node:test");
 const { createTestApp, getOrCreateDelegate, withServer } = require("./testUtils");
 
-const discoveryRoutesModule = require("../src/routes/discoveryRoutes");
+const discoveryRoutesModule = require("../src/routes/discoveryRoutes.ts");
 const discoveryRoutes = discoveryRoutesModule.default ?? discoveryRoutesModule;
 
-const prismaModule = require("../src/prismaClient");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 function loadFixture(name) {

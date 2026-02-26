@@ -43,4 +43,55 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
   },
+  build: {
+    chunkSizeWarningLimit: 500,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalizedId = id.replace(/\\/g, '/');
+          if (!normalizedId.includes('/node_modules/')) return undefined;
+          if (
+            normalizedId.includes('/node_modules/react/') ||
+            normalizedId.includes('/node_modules/react-dom/') ||
+            normalizedId.includes('/node_modules/react-router-dom/')
+          ) {
+            return 'react-vendor';
+          }
+          if (normalizedId.includes('/node_modules/@radix-ui/')) {
+            return 'radix-vendor';
+          }
+          if (normalizedId.includes('/node_modules/@tanstack/react-query/')) {
+            return 'query-vendor';
+          }
+          if (normalizedId.includes('/node_modules/framer-motion/')) {
+            return 'motion-vendor';
+          }
+          if (normalizedId.includes('/node_modules/lucide-react/')) {
+            return 'icons-vendor';
+          }
+          if (
+            normalizedId.includes('/node_modules/clsx/') ||
+            normalizedId.includes('/node_modules/tailwind-merge/') ||
+            normalizedId.includes('/node_modules/class-variance-authority/') ||
+            normalizedId.includes('/node_modules/sonner/') ||
+            normalizedId.includes('/node_modules/axios/') ||
+            normalizedId.includes('/node_modules/zustand/')
+          ) {
+            return 'ui-utils-vendor';
+          }
+          if (
+            normalizedId.includes('/node_modules/@xyflow/react/') ||
+            normalizedId.includes('/node_modules/d3-force/') ||
+            normalizedId.includes('/node_modules/dagre/')
+          ) {
+            return 'graph-vendor';
+          }
+          if (normalizedId.includes('/node_modules/recharts/')) {
+            return 'chart-vendor';
+          }
+          return undefined;
+        },
+      },
+    },
+  },
 });

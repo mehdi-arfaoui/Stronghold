@@ -1,4 +1,3 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test, mock } = require("node:test");
 
@@ -7,9 +6,9 @@ const {
   requireFeature,
   requireQuota,
   incrementQuotaOnSuccess,
-} = require("../src/middleware/licenseMiddleware");
+} = require("../src/middleware/licenseMiddleware.ts");
 
-const licenseServiceModule = require("../src/services/licenseService");
+const licenseServiceModule = require("../src/services/licenseService.ts");
 const { licenseService } = licenseServiceModule;
 
 // Helper to create mock request/response

@@ -4,7 +4,10 @@ import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { generateLandingZoneRecommendations } from '../graph/landingZoneService.js';
+import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
+import type { InfraNodeAttrs } from '../graph/types.js';
 import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
+import { calculateServiceDowntimeCosts } from './pricing/downtimeDistribution.js';
 import {
   FinancialEngineService,
   type AnalysisResultInput,
@@ -84,6 +87,16 @@ export type LandingZoneFinancialRecommendation = {
     };
   };
   sources: string[];
+  downtimeCostPerHour: number;
+  downtimeCostSource: 'blast_radius' | 'override' | 'not_configured' | 'fallback_criticality';
+  downtimeCostSourceLabel: string;
+  downtimeCostRationale: string;
+  blastRadius?: {
+    directDependents: number;
+    transitiveDependents: number;
+    totalServices: number;
+    impactedServices: string[];
+  };
 };
 
 export type LandingZoneFinancialSummary = {
@@ -141,6 +154,7 @@ type InternalRecommendationSeed = {
   budgetWarning: string | null;
   accepted: boolean | null;
   probabilitySource: string;
+  criticality: 'critical' | 'high' | 'medium' | 'low';
 };
 
 function roundMoney(value: number): number {
@@ -635,6 +649,7 @@ export async function buildLandingZoneFinancialContext(
       budgetWarning: combinedBudgetWarning,
       accepted: acceptedFromStatus(state.status),
       probabilitySource: probability.source,
+      criticality,
     });
   }
 
@@ -693,9 +708,43 @@ export async function buildLandingZoneFinancialContext(
   const breakdownByRecommendationId = new Map(
     roi.breakdownByRecommendation.map((entry) => [entry.recommendationId, entry]),
   );
+  const blastGraphNodes = graph.nodes().map(
+    (id) => graph.getNodeAttributes(id) as InfraNodeAttrs,
+  );
+  const blastGraphEdges = graph.edges().map((edgeKey) => {
+    const attrs = graph.getEdgeAttributes(edgeKey) as { type?: string };
+    return {
+      sourceId: graph.source(edgeKey),
+      targetId: graph.target(edgeKey),
+      type: String(attrs.type || ''),
+    };
+  });
+  const blastResults = calculateBlastRadius(blastGraphNodes, blastGraphEdges);
+  const serviceOverrides = Object.entries(financialContext.overridesByNodeId)
+    .filter(([, override]) => Number(override?.customCostPerHour || 0) > 0)
+    .map(([nodeId, override]) => ({
+      nodeId,
+      customDowntimeCostPerHour: Number(override?.customCostPerHour || 0),
+    }));
+  const downtimeCostByNodeId = new Map(
+    calculateServiceDowntimeCosts(
+      blastResults,
+      recommendationSeeds.map((seed) => ({
+        nodeId: seed.nodeId,
+        name: seed.serviceName,
+        criticality: seed.criticality,
+      })),
+      {
+        estimatedDowntimeCostPerHour:
+          Number(profile.customDowntimeCostPerHour || 0) || Number(profile.hourlyDowntimeCost || 0),
+        serviceOverrides,
+      },
+    ).map((item) => [item.serviceNodeId, item]),
+  );
 
   const recommendations: LandingZoneFinancialRecommendation[] = recommendationSeeds.map((seed) => {
     const breakdown = breakdownByRecommendationId.get(seed.id);
+    const downtimeCost = downtimeCostByNodeId.get(seed.nodeId);
     if (!breakdown) {
       appLogger.warn('landing_zone.recommendation_filtered_missing_breakdown', {
         tenantId,
@@ -765,6 +814,11 @@ export async function buildLandingZoneFinancialContext(
         seed.probabilitySource,
         'Stronghold financial engine',
       ],
+      downtimeCostPerHour: downtimeCost?.downtimeCostPerHour ?? 0,
+      downtimeCostSource: downtimeCost?.source ?? 'not_configured',
+      downtimeCostSourceLabel: downtimeCost?.sourceLabel ?? '—',
+      downtimeCostRationale: downtimeCost?.rationale ?? 'Profil financier non configure',
+      ...(downtimeCost?.blastRadius ? { blastRadius: downtimeCost.blastRadius } : {}),
     };
   });
 

@@ -1,14 +1,16 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const path = require("node:path");
 const fs = require("node:fs");
 const os = require("node:os");
-const { execFile } = require("node:child_process");
-const { promisify } = require("node:util");
+const AdmZip = require("adm-zip");
 const { test } = require("node:test");
-const { __test__ } = require("../src/services/documentIngestionService");
+const { __test__ } = require("../src/services/documentIngestionService.ts");
 
-const execFileAsync = promisify(execFile);
+async function zipFixtureDirectory(root, archivePath) {
+  const zip = new AdmZip();
+  zip.addLocalFolder(root);
+  zip.writeZip(archivePath);
+}
 
 async function createDocxFixture(text) {
   const root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "docx-fixture-"));
@@ -43,7 +45,7 @@ async function createDocxFixture(text) {
   await fs.promises.mkdir(path.join(root, "word"), { recursive: true });
   await fs.promises.writeFile(path.join(root, "word/document.xml"), documentXml);
 
-  await execFileAsync("zip", ["-qr", docxPath, "."], { cwd: root });
+  await zipFixtureDirectory(root, docxPath);
 
   return {
     path: docxPath,
@@ -98,7 +100,7 @@ async function createPptxFixture(text) {
 </p:sld>`;
   await fs.promises.writeFile(path.join(root, "ppt/slides/slide1.xml"), slideXml);
 
-  await execFileAsync("zip", ["-qr", pptxPath, "."], { cwd: root });
+  await zipFixtureDirectory(root, pptxPath);
 
   return {
     path: pptxPath,

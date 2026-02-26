@@ -1,4 +1,4 @@
-﻿import { useMemo, useState } from 'react';
+﻿import { memo, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, Check, CheckCircle2, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
@@ -21,10 +21,42 @@ interface BIATableProps {
 
 type EditableField = 'validatedRTO' | 'validatedRPO' | 'validatedMTPD';
 type SuggestionMetric = 'rto' | 'rpo' | 'mtpd';
+type RowToRender = {
+  entry: BIAEntry;
+  index: number;
+};
+
+const VIRTUAL_ROW_HEIGHT = 92;
+const VIRTUAL_OVERSCAN = 6;
+const VIRTUAL_VISIBLE_ROWS = 14;
 
 function formatHourlyCost(amount: number | null | undefined, currency: string): string {
   if (!Number.isFinite(amount as number) || Number(amount) <= 0) return '—';
   return `${formatCurrency(Number(amount), currency)}/h`;
+}
+
+function resolveBlastRatio(entry: BIAEntry): number {
+  const transitive = Number(entry.blastRadius?.transitiveDependents ?? 0);
+  const totalServices = Number(entry.blastRadius?.totalServices ?? 0);
+  const denominator = Math.max(1, totalServices - 1);
+  if (totalServices > 1) {
+    return Math.max(0, Math.min(1, transitive / denominator));
+  }
+  if (entry.downtimeCostSource === 'fallback_criticality') return 0;
+  return 0;
+}
+
+function blastLabel(entry: BIAEntry): string {
+  const transitive = Number(entry.blastRadius?.transitiveDependents ?? 0);
+  const totalServices = Number(entry.blastRadius?.totalServices ?? 0);
+  const denominator = Math.max(1, totalServices - 1);
+  if (totalServices > 1) {
+    return `${transitive}/${denominator}`;
+  }
+  if (entry.downtimeCostSource === 'fallback_criticality') {
+    return 'fallback';
+  }
+  return '—';
 }
 
 function precisionBadgeModel(entry: BIAEntry): {
@@ -51,6 +83,18 @@ function precisionBadgeModel(entry: BIAEntry): {
         className: 'border-green-300 bg-green-50 text-green-800',
         tooltip: 'Valeur saisie manuellement par utilisateur.',
       };
+    case 'blast_radius':
+      return {
+        label: 'Blast radius',
+        className: 'border-blue-300 bg-blue-50 text-blue-800',
+        tooltip: 'Distribution du cout basee sur le graphe de dependances.',
+      };
+    case 'fallback_criticality':
+      return {
+        label: 'Graphe incomplet',
+        className: 'border-amber-300 bg-amber-50 text-amber-800',
+        tooltip: 'Fallback applique sur la criticite seule.',
+      };
     case 'profile_global':
       return {
         label: 'Profil global',
@@ -71,14 +115,14 @@ function precisionBadgeModel(entry: BIAEntry): {
       };
     default:
       return {
-        label: '⚠️ Estimation',
+        label: 'Estimation',
         className: 'border-red-300 bg-red-50 text-red-800',
         tooltip: 'Estimation de base generique.',
       };
   }
 }
 
-export function BIATable({
+function BIATableComponent({
   entries,
   currency = 'EUR',
   onUpdateEntry,
@@ -95,12 +139,44 @@ export function BIATable({
   const sortedEntries = useMemo(
     () =>
       [...(entries ?? [])].sort((a, b) => {
-        const left = Number.isFinite(a.financialImpactPerHour as number) ? Number(a.financialImpactPerHour) : -1;
-        const right = Number.isFinite(b.financialImpactPerHour as number) ? Number(b.financialImpactPerHour) : -1;
+        const leftValue = a.downtimeCostPerHour ?? a.financialImpactPerHour;
+        const rightValue = b.downtimeCostPerHour ?? b.financialImpactPerHour;
+        const left = Number.isFinite(leftValue as number) ? Number(leftValue) : -1;
+        const right = Number.isFinite(rightValue as number) ? Number(rightValue) : -1;
         return right - left;
       }),
     [entries],
   );
+  const shouldVirtualize = sortedEntries.length > 50;
+  const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const [scrollTop, setScrollTop] = useState(0);
+  const { rowsToRender, paddingTop, paddingBottom } = useMemo(() => {
+    if (!shouldVirtualize) {
+      return {
+        rowsToRender: sortedEntries.map((entry, index) => ({ entry, index })),
+        paddingTop: 0,
+        paddingBottom: 0,
+      };
+    }
+    const firstVisibleIndex = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+    const lastVisibleExclusive = Math.min(
+      sortedEntries.length,
+      firstVisibleIndex + VIRTUAL_VISIBLE_ROWS + VIRTUAL_OVERSCAN * 2,
+    );
+    const rows = sortedEntries
+      .slice(firstVisibleIndex, lastVisibleExclusive)
+      .map((entry, offset) => ({ entry, index: firstVisibleIndex + offset }));
+    return {
+      rowsToRender: rows,
+      paddingTop: firstVisibleIndex * VIRTUAL_ROW_HEIGHT,
+      paddingBottom: Math.max(0, (sortedEntries.length - lastVisibleExclusive) * VIRTUAL_ROW_HEIGHT),
+    };
+  }, [shouldVirtualize, sortedEntries, scrollTop]);
+
+  const handleTableScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    if (!shouldVirtualize) return;
+    setScrollTop(event.currentTarget.scrollTop);
+  };
 
   const startEditing = (id: string, field: EditableField, currentValue: number) => {
     setEditingCell({ id, field });
@@ -120,7 +196,11 @@ export function BIATable({
   const cancelEdit = () => setEditingCell(null);
 
   const openOverridePopover = (entry: BIAEntry) => {
-    const baselineValue = entry.financialOverride?.customCostPerHour ?? entry.financialImpactPerHour ?? 0;
+    const baselineValue =
+      entry.financialOverride?.customCostPerHour ??
+      entry.downtimeCostPerHour ??
+      entry.financialImpactPerHour ??
+      0;
     setOverridePopoverEntry(entry);
     setOverrideValue(String(Math.max(1, Math.round(baselineValue))));
     setOverrideJustification(entry.financialOverride?.justification ?? '');
@@ -158,8 +238,13 @@ export function BIATable({
             </span>
           </span>
         </div>
-        <Table>
-          <TableHeader>
+        <div
+          ref={tableContainerRef}
+          className={cn(shouldVirtualize && 'max-h-[70vh] overflow-auto rounded-md border')}
+          onScroll={handleTableScroll}
+        >
+          <Table>
+          <TableHeader className={cn(shouldVirtualize && 'sticky top-0 z-10 bg-background')}>
             <TableRow>
               <TableHead>Service</TableHead>
               <TableHead>Type</TableHead>
@@ -167,16 +252,27 @@ export function BIATable({
               <TableHead className="text-center">RTO</TableHead>
               <TableHead className="text-center">RPO</TableHead>
               <TableHead className="text-center">MTPD</TableHead>
+              <TableHead className="text-center">Blast</TableHead>
               <TableHead className="text-center">Cout/h indisponibilite</TableHead>
+              <TableHead className="text-center">Source</TableHead>
               <TableHead className="text-center">Valide</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {sortedEntries.map((entry, index) => (
+            {shouldVirtualize && paddingTop > 0 ? (
+              <TableRow aria-hidden>
+                <TableCell colSpan={10} className="p-0" style={{ height: `${paddingTop}px` }} />
+              </TableRow>
+            ) : null}
+            {rowsToRender.map(({ entry, index }: RowToRender) => (
               <TableRow
-                key={entry.id}
+                key={`${entry.id}-${index}`}
                 className={cn(!entry.validated && 'bg-severity-medium/5')}
-                style={{ animation: 'fadeIn 0.35s ease forwards', animationDelay: `${index * 80}ms`, opacity: 0 }}
+                style={
+                  shouldVirtualize
+                    ? undefined
+                    : { animation: 'fadeIn 0.35s ease forwards', animationDelay: `${index * 80}ms`, opacity: 0 }
+                }
               >
                 <TableCell className="font-medium">{entry.serviceName}</TableCell>
                 <TableCell>
@@ -227,6 +323,29 @@ export function BIATable({
                   onCancel={cancelEdit}
                 />
                 <TableCell className="text-center">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="mx-auto w-24">
+                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full bg-sky-500 transition-all"
+                            style={{ width: `${Math.round(resolveBlastRatio(entry) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-[10px] text-muted-foreground">{blastLabel(entry)}</p>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs">
+                      <p>{entry.downtimeCostRationale || 'Blast radius non disponible.'}</p>
+                      {entry.blastRadius?.impactedServices?.length ? (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Impacte: {entry.blastRadius.impactedServices.join(', ')}
+                        </p>
+                      ) : null}
+                    </TooltipContent>
+                  </Tooltip>
+                </TableCell>
+                <TableCell className="text-center">
                   <Popover
                     open={overridePopoverEntry?.nodeId === entry.nodeId}
                     onOpenChange={(open) => {
@@ -244,7 +363,9 @@ export function BIATable({
                           className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
                           onClick={() => openOverridePopover(entry)}
                         >
-                          <span className="font-medium">{formatHourlyCost(entry.financialImpactPerHour, currency)}</span>
+                          <span className="font-medium">
+                            {formatHourlyCost(entry.downtimeCostPerHour ?? entry.financialImpactPerHour, currency)}
+                          </span>
                           {entry.financialScopeLabel && (
                             <span className="text-[10px] text-muted-foreground">
                               ({entry.financialScopeLabel})
@@ -334,6 +455,14 @@ export function BIATable({
                   </Popover>
                 </TableCell>
                 <TableCell className="text-center">
+                  <span className="text-xs text-muted-foreground">
+                    {entry.downtimeCostSourceLabel || entry.financialScopeLabel || '—'}
+                  </span>
+                  {entry.downtimeCostSource === 'fallback_criticality' ? (
+                    <p className="mt-1 text-[10px] text-amber-600">graphe incomplet</p>
+                  ) : null}
+                </TableCell>
+                <TableCell className="text-center">
                   {entry.validated ? (
                     <Check className="mx-auto h-4 w-4 text-resilience-high" />
                   ) : (
@@ -344,12 +473,20 @@ export function BIATable({
                 </TableCell>
               </TableRow>
             ))}
+            {shouldVirtualize && paddingBottom > 0 ? (
+              <TableRow aria-hidden>
+                <TableCell colSpan={10} className="p-0" style={{ height: `${paddingBottom}px` }} />
+              </TableRow>
+            ) : null}
           </TableBody>
         </Table>
+      </div>
       </div>
     </TooltipProvider>
   );
 }
+
+export const BIATable = memo(BIATableComponent);
 
 interface EditableCellProps {
   entry: BIAEntry;
@@ -443,4 +580,8 @@ function EditableCell({
     </TableCell>
   );
 }
+
+
+
+
 

@@ -9,9 +9,11 @@ import type { IngestReport } from '../graph/types.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { inferDependencies } from '../graph/dependencyInferenceEngine.js';
+import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import { transformToScanResult } from './graphBridge.js';
 import { validateScanConsistency } from '../services/discoveryHealthService.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
+import type { InfraNodeAttrs } from '../graph/types.js';
 import {
   encryptScanConfigCredentials,
   sanitizeScanConfig,
@@ -145,15 +147,48 @@ async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string
   });
 
   const spofIds = new Set(report.spofs.map((spof) => spof.nodeId));
+  const graphNodes = graph.nodes().map((nodeId) => graph.getNodeAttributes(nodeId) as InfraNodeAttrs);
+  const graphEdges = graph.edges().map((edgeKey) => {
+    const edgeAttrs = graph.getEdgeAttributes(edgeKey) as { type?: string };
+    return {
+      sourceId: graph.source(edgeKey),
+      targetId: graph.target(edgeKey),
+      type: String(edgeAttrs.type || ''),
+    };
+  });
+  const blastByNodeId = new Map(
+    calculateBlastRadius(graphNodes, graphEdges).map((entry) => [entry.nodeId, entry]),
+  );
+
   await Promise.all(
     Array.from(report.criticalityScores.entries()).map(async ([nodeId, score]) => {
-      const blast = GraphService.getBlastRadius(graph, nodeId);
+      const blast = blastByNodeId.get(nodeId);
+      const existingNode = graph.getNodeAttributes(nodeId) as InfraNodeAttrs;
+      const existingMetadata =
+        existingNode.metadata && typeof existingNode.metadata === 'object' && !Array.isArray(existingNode.metadata)
+          ? (existingNode.metadata as Record<string, unknown>)
+          : {};
+
       await prisma.infraNode.updateMany({
         where: { id: nodeId, tenantId },
         data: {
           criticalityScore: score,
           isSPOF: spofIds.has(nodeId),
-          blastRadius: blast.length,
+          blastRadius: blast?.transitiveDependents ?? 0,
+          metadata: {
+            ...existingMetadata,
+            blastRadiusDetails: blast
+              ? {
+                  directDependents: blast.directDependents,
+                  transitiveDependents: blast.transitiveDependents,
+                  totalServices: blast.totalServices,
+                  impactRatio: blast.impactRatio,
+                  impactedServices: blast.impactedServices,
+                  rationale: blast.rationale,
+                  calculatedAt: new Date().toISOString(),
+                }
+              : undefined,
+          } as any,
         },
       });
     })

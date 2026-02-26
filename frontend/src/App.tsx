@@ -4,12 +4,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/layout/AppShell';
-import { OnboardingPage } from '@/pages/OnboardingPage';
-import { LoginPage } from '@/pages/LoginPage';
 import { LoadingState } from '@/components/common/LoadingState';
 import { useUIStore } from '@/stores/ui.store';
 import { getCredentialScopeKey, isCredentialStorageKey } from '@/lib/credentialStorage';
 
+const OnboardingPage = lazy(async () => ({ default: (await import('@/pages/OnboardingPage')).OnboardingPage }));
+const LoginPage = lazy(async () => ({ default: (await import('@/pages/LoginPage')).LoginPage }));
 const DashboardPage = lazy(async () => ({ default: (await import('@/pages/DashboardPage')).DashboardPage }));
 const DiscoveryPage = lazy(async () => ({ default: (await import('@/pages/DiscoveryPage')).DiscoveryPage }));
 const AnalysisPage = lazy(async () => ({ default: (await import('@/pages/AnalysisPage')).AnalysisPage }));
@@ -51,7 +51,7 @@ const router = createBrowserRouter([
   {
     element: <AppShell />,
     children: [
-      { path: '/', element: <OnboardingPage /> },
+      { path: '/', element: routeElement(<OnboardingPage />) },
       { path: '/settings', element: routeElement(<SettingsPage />) },
       { path: '/dashboard', element: routeElement(<DashboardPage />) },
       { path: '/discovery', element: routeElement(<DiscoveryPage />) },
@@ -72,7 +72,7 @@ const router = createBrowserRouter([
       { path: '/knowledge-base', element: routeElement(<KnowledgeBasePage />) },
     ],
   },
-  { path: '/login', element: <LoginPage /> },
+  { path: '/login', element: routeElement(<LoginPage />) },
 ]);
 
 function ThemeInitializer() {
@@ -124,4 +124,3 @@ export default function App() {
     </GlobalErrorBoundary>
   );
 }
-

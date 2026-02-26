@@ -1,7 +1,6 @@
-require("ts-node/register");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { __test__ } = require("../src/services/sensitiveDataScanService");
+const { __test__ } = require("../src/services/sensitiveDataScanService.ts");
 
 test("scanSensitiveText détecte IBAN, carte bancaire et PII", async () => {
   const text = [

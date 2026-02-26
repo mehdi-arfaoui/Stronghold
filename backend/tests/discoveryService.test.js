@@ -1,4 +1,3 @@
-require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { getOrCreateDelegate } = require("./testUtils");
@@ -8,8 +7,8 @@ const {
   applyDiscoveryImport,
   encryptDiscoveryCredentials,
   DiscoveryImportError,
-} = require("../src/services/discoveryService");
-const prismaModule = require("../src/prismaClient");
+} = require("../src/services/discoveryService.ts");
+const prismaModule = require("../src/prismaClient.ts");
 const prisma = prismaModule.default ?? prismaModule;
 
 test("parseDiscoveryImport accepte un CSV valide", () => {

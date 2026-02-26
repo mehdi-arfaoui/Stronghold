@@ -12,7 +12,12 @@ import {
 import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from "@aws-sdk/client-auto-scaling";
 import { ElasticLoadBalancingV2Client, DescribeLoadBalancersCommand } from "@aws-sdk/client-elastic-load-balancing-v2";
 import { RDSClient, DescribeDBInstancesCommand } from "@aws-sdk/client-rds";
-import { LambdaClient, ListFunctionsCommand } from "@aws-sdk/client-lambda";
+import {
+  LambdaClient,
+  ListFunctionsCommand,
+  GetFunctionCommand,
+  ListEventSourceMappingsCommand,
+} from "@aws-sdk/client-lambda";
 import {
   ElastiCacheClient,
   DescribeCacheClustersCommand,
@@ -21,7 +26,12 @@ import {
 import { DynamoDBClient, ListTablesCommand, DescribeTableCommand } from "@aws-sdk/client-dynamodb";
 import { S3Client, ListBucketsCommand, GetBucketLocationCommand } from "@aws-sdk/client-s3";
 import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } from "@aws-sdk/client-sqs";
-import { SNSClient, ListTopicsCommand, GetTopicAttributesCommand } from "@aws-sdk/client-sns";
+import {
+  SNSClient,
+  ListTopicsCommand,
+  GetTopicAttributesCommand,
+  ListSubscriptionsByTopicCommand,
+} from "@aws-sdk/client-sns";
 import { CloudWatchClient, GetMetricDataCommand } from "@aws-sdk/client-cloudwatch";
 import { CostExplorerClient, GetCostAndUsageCommand } from "@aws-sdk/client-cost-explorer";
 import {
@@ -453,6 +463,65 @@ function normalizeS3Region(locationConstraint: string | null | undefined): strin
   return locationConstraint;
 }
 
+const LAMBDA_ENV_ARN_PATTERN = /arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:[A-Za-z0-9\-_/.:]+/g;
+const LAMBDA_ENV_SQS_URL_PATTERN = /https:\/\/sqs\.[a-z0-9-]+\.amazonaws\.com\/\d{12}\/[A-Za-z0-9\-_]+/g;
+const LAMBDA_ENV_RDS_ENDPOINT_PATTERN = /[A-Za-z0-9\-]+\.[A-Za-z0-9\-]+\.[A-Za-z0-9-]+\.rds\.amazonaws\.com/g;
+const LAMBDA_ENV_CACHE_ENDPOINT_PATTERN = /[A-Za-z0-9\-]+\.[A-Za-z0-9\-]+\.cache\.amazonaws\.com/g;
+
+type LambdaEnvReference = {
+  varName: string;
+  referenceType: string;
+  value: string;
+};
+
+function extractLambdaEnvironmentReferences(
+  envVars: Record<string, string>,
+): LambdaEnvReference[] {
+  const references: LambdaEnvReference[] = [];
+
+  for (const [varName, rawValue] of Object.entries(envVars)) {
+    if (typeof rawValue !== "string") continue;
+    const value = rawValue.trim();
+    if (!value) continue;
+    let matchedExplicitReference = false;
+
+    for (const match of value.match(LAMBDA_ENV_ARN_PATTERN) || []) {
+      references.push({ varName, referenceType: "arn", value: match });
+      matchedExplicitReference = true;
+    }
+
+    for (const match of value.match(LAMBDA_ENV_SQS_URL_PATTERN) || []) {
+      references.push({ varName, referenceType: "sqs_url", value: match });
+      matchedExplicitReference = true;
+    }
+
+    for (const match of value.match(LAMBDA_ENV_RDS_ENDPOINT_PATTERN) || []) {
+      references.push({ varName, referenceType: "rds_endpoint", value: match });
+      matchedExplicitReference = true;
+    }
+
+    for (const match of value.match(LAMBDA_ENV_CACHE_ENDPOINT_PATTERN) || []) {
+      references.push({ varName, referenceType: "cache_endpoint", value: match });
+      matchedExplicitReference = true;
+    }
+
+    const upperName = varName.toUpperCase();
+    if (!matchedExplicitReference) {
+      if (upperName.includes("TABLE")) {
+        references.push({ varName, referenceType: "dynamodb_table", value });
+      } else if (upperName.includes("BUCKET")) {
+        references.push({ varName, referenceType: "s3_bucket", value });
+      } else if (upperName.includes("QUEUE")) {
+        references.push({ varName, referenceType: "queue_name", value });
+      } else if (upperName.includes("TOPIC")) {
+        references.push({ varName, referenceType: "topic_name", value });
+      }
+    }
+  }
+
+  return references;
+}
+
 /**
  * Scan a single AWS region for resources.
  * @internal
@@ -505,6 +574,17 @@ async function scanAwsRegion(
     }
   };
 
+  const extractMaxReceiveCountFromRedrivePolicy = (rawPolicy: string | undefined): number | undefined => {
+    if (!rawPolicy || rawPolicy.trim().length === 0) return undefined;
+    try {
+      const parsed = JSON.parse(rawPolicy) as Record<string, unknown>;
+      const value = Number(parsed.maxReceiveCount);
+      return Number.isFinite(value) ? value : undefined;
+    } catch {
+      return undefined;
+    }
+  };
+
   // EC2 Instances
   const instances = await ec2.send(new DescribeInstancesCommand({}));
   instances.Reservations?.forEach((reservation) => {
@@ -535,6 +615,9 @@ async function scanAwsRegion(
             availabilityZone: instance.Placement?.AvailabilityZone,
             subnetId: instance.SubnetId,
             vpcId: instance.VpcId,
+            securityGroups: (instance.SecurityGroups || [])
+              .map((group) => group.GroupId)
+              .filter((groupId): groupId is string => Boolean(groupId)),
             architecture: instance.Architecture,
             platformDetails: instance.PlatformDetails,
             displayName: nameFromTag || instance.InstanceId || "ec2",
@@ -623,6 +706,7 @@ async function scanAwsRegion(
         ip: db.Endpoint?.Address || null,
         metadata: {
           dbIdentifier,
+          dbArn: db.DBInstanceArn,
           engine: db.Engine,
           dbInstanceClass: db.DBInstanceClass,
           instanceClass: db.DBInstanceClass,
@@ -635,6 +719,13 @@ async function scanAwsRegion(
           replicaCount: db.ReadReplicaDBInstanceIdentifiers?.length || 0,
           publiclyAccessible: db.PubliclyAccessible,
           availabilityZone: db.AvailabilityZone,
+          endpointAddress: db.Endpoint?.Address,
+          endpointPort: db.Endpoint?.Port,
+          subnetId: db.DBSubnetGroup?.Subnets?.[0]?.SubnetIdentifier,
+          vpcId: db.DBSubnetGroup?.VpcId,
+          securityGroups: (db.VpcSecurityGroups || [])
+            .map((group) => group.VpcSecurityGroupId)
+            .filter((groupId): groupId is string => Boolean(groupId)),
           displayName: dbIdentifier,
         },
       })
@@ -652,30 +743,98 @@ async function scanAwsRegion(
   });
 
   // Lambda Functions
-  const lambdas = await lambda.send(new ListFunctionsCommand({}));
-  lambdas.Functions?.forEach((fn) => {
-    const functionExternalId = fn.FunctionArn || fn.FunctionName || "lambda";
-    resources.push(
-      buildResource({
-        source: "aws",
-        externalId: functionExternalId,
-        name: fn.FunctionName || "lambda",
-        kind: "service",
-        type: "LAMBDA",
-        metadata: { runtime: fn.Runtime, handler: fn.Handler, region },
-      })
-    );
+  try {
+    const lambdas = await lambda.send(new ListFunctionsCommand({}));
+    for (const fn of lambdas.Functions || []) {
+      const functionExternalId = fn.FunctionArn || fn.FunctionName || "lambda";
+      let environmentReferences: LambdaEnvReference[] = [];
+      let environmentVariableNames: string[] = [];
+      let eventSourceMappings: Array<Record<string, unknown>> = [];
+      let functionRoleArn: string | undefined;
+      let vpcId: string | undefined;
+      let subnetIds: string[] = [];
+      let securityGroups: string[] = [];
 
-    if (fn.FunctionName) {
-      metricTargets.push({
-        resourceExternalId: functionExternalId,
-        kind: "lambda",
-        namespace: "AWS/Lambda",
-        metricName: "Invocations",
-        dimensions: [{ Name: "FunctionName", Value: fn.FunctionName }],
-      });
+      try {
+        const details = await lambda.send(
+          new GetFunctionCommand({
+            FunctionName: fn.FunctionName || fn.FunctionArn,
+          }),
+        );
+        const variables = (details.Configuration?.Environment?.Variables || {}) as Record<string, string>;
+        environmentVariableNames = Object.keys(variables);
+        environmentReferences = extractLambdaEnvironmentReferences(variables);
+        functionRoleArn = details.Configuration?.Role;
+        vpcId = details.Configuration?.VpcConfig?.VpcId;
+        subnetIds = (details.Configuration?.VpcConfig?.SubnetIds || []).filter(
+          (subnetId): subnetId is string => Boolean(subnetId),
+        );
+        securityGroups = (details.Configuration?.VpcConfig?.SecurityGroupIds || []).filter(
+          (securityGroupId): securityGroupId is string => Boolean(securityGroupId),
+        );
+      } catch {
+        warnings.push(
+          `Lambda details unavailable for ${fn.FunctionName || functionExternalId} in ${region}.`,
+        );
+      }
+
+      try {
+        const mappings = await lambda.send(
+          new ListEventSourceMappingsCommand({
+            FunctionName: fn.FunctionName || fn.FunctionArn,
+          }),
+        );
+        eventSourceMappings = (mappings.EventSourceMappings || []).map((mapping) => ({
+          uuid: mapping.UUID,
+          eventSourceArn: mapping.EventSourceArn,
+          batchSize: mapping.BatchSize,
+          enabled: mapping.State === "Enabled",
+          state: mapping.State,
+        }));
+      } catch {
+        warnings.push(
+          `Lambda event source mappings unavailable for ${fn.FunctionName || functionExternalId} in ${region}.`,
+        );
+      }
+
+      resources.push(
+        buildResource({
+          source: "aws",
+          externalId: functionExternalId,
+          name: fn.FunctionName || "lambda",
+          kind: "service",
+          type: "LAMBDA",
+          metadata: {
+            runtime: fn.Runtime,
+            handler: fn.Handler,
+            functionName: fn.FunctionName,
+            functionArn: fn.FunctionArn,
+            roleArn: functionRoleArn,
+            region,
+            vpcId,
+            subnetId: subnetIds[0],
+            subnetIds,
+            securityGroups,
+            environmentVariableNames,
+            environmentReferences,
+            eventSourceMappings,
+          },
+        }),
+      );
+
+      if (fn.FunctionName) {
+        metricTargets.push({
+          resourceExternalId: functionExternalId,
+          kind: "lambda",
+          namespace: "AWS/Lambda",
+          metricName: "Invocations",
+          dimensions: [{ Name: "FunctionName", Value: fn.FunctionName }],
+        });
+      }
     }
-  });
+  } catch {
+    warnings.push(`Lambda scan skipped in ${region} (insufficient permissions or unavailable API).`);
+  }
 
   // ElastiCache Clusters
   try {
@@ -708,6 +867,7 @@ async function scanAwsRegion(
           metadata: {
             region,
             cacheClusterId: clusterId,
+            cacheClusterArn: cluster.ARN,
             engine: cluster.Engine,
             status: cluster.CacheClusterStatus,
             cacheNodeType: cluster.CacheNodeType,
@@ -718,6 +878,15 @@ async function scanAwsRegion(
             replicaCount: replicaCountFromGroup,
             availabilityZone: cluster.PreferredAvailabilityZone,
             subnetGroup: cluster.CacheSubnetGroupName,
+            securityGroups: (cluster.SecurityGroups || [])
+              .map((group) => group.SecurityGroupId)
+              .filter((groupId): groupId is string => Boolean(groupId)),
+            endpointAddress:
+              cluster.ConfigurationEndpoint?.Address || cluster.CacheNodes?.[0]?.Endpoint?.Address,
+            endpointPort:
+              cluster.ConfigurationEndpoint?.Port || cluster.CacheNodes?.[0]?.Endpoint?.Port,
+            configurationEndpoint: cluster.ConfigurationEndpoint?.Address,
+            primaryEndpoint: cluster.CacheNodes?.[0]?.Endpoint?.Address,
             displayName: clusterId,
           },
         })
@@ -778,6 +947,7 @@ async function scanAwsRegion(
       const queueName = queueArn.split(":").pop() || queueUrl.split("/").pop() || "queue";
       const redrivePolicy = attrs.RedrivePolicy;
       const deadLetterTargetArn = extractDeadLetterArnFromRedrivePolicy(redrivePolicy);
+      const maxReceiveCount = extractMaxReceiveCountFromRedrivePolicy(redrivePolicy);
 
       resources.push(
         buildResource({
@@ -798,6 +968,7 @@ async function scanAwsRegion(
             redrivePolicy: redrivePolicy || undefined,
             deadLetterTargetArn,
             dlqArn: deadLetterTargetArn,
+            maxReceiveCount,
             displayName: queueName,
           },
         })
@@ -815,6 +986,25 @@ async function scanAwsRegion(
       const attributes = await sns.send(new GetTopicAttributesCommand({ TopicArn: topic.TopicArn }));
       const attrs = attributes.Attributes || {};
       const topicName = topic.TopicArn.split(":").pop() || "topic";
+      let subscriptions: Array<{ protocol: string; endpoint: string }> = [];
+
+      try {
+        const subscriptionsResult = await sns.send(
+          new ListSubscriptionsByTopicCommand({ TopicArn: topic.TopicArn }),
+        );
+        subscriptions = (subscriptionsResult.Subscriptions || [])
+          .map((subscription) => ({
+            protocol: String(subscription.Protocol || "").toLowerCase(),
+            endpoint: String(subscription.Endpoint || ""),
+          }))
+          .filter(
+            (subscription) =>
+              Boolean(subscription.endpoint) &&
+              (subscription.protocol === "lambda" || subscription.protocol === "sqs"),
+          );
+      } catch {
+        warnings.push(`SNS subscriptions unavailable for topic ${topicName} in ${region}.`);
+      }
 
       resources.push(
         buildResource({
@@ -838,6 +1028,7 @@ async function scanAwsRegion(
             subscriptionsDeleted: attrs.SubscriptionsDeleted
               ? Number(attrs.SubscriptionsDeleted)
               : undefined,
+            subscriptions,
             displayName: topicName,
           },
         })
@@ -1052,6 +1243,7 @@ async function scanAwsRegion(
         type: "SECURITY_GROUP",
         metadata: {
           region,
+          groupId: sg.GroupId,
           vpcId: sg.VpcId,
           description: sg.Description,
           inboundRulesCount: sg.IpPermissions?.length || 0,
