@@ -116,6 +116,28 @@ export interface FinancialFlowCoverageResponse {
   unvalidatedFlows: number;
 }
 
+export interface PricingHealthProviderStatus {
+  configured: boolean;
+  status: 'unknown' | 'ok' | 'failed' | 'skipped';
+  message: string;
+  checkedAt: string | null;
+  latencyMs: number | null;
+  details: Record<string, unknown>;
+}
+
+export interface PricingHealthResponse {
+  checkedAt: string | null;
+  requestTimeoutMs: number;
+  providers: {
+    azure: PricingHealthProviderStatus;
+    aws: PricingHealthProviderStatus;
+    gcp: PricingHealthProviderStatus;
+  };
+  refreshed: boolean;
+  checkedByTenantId: string;
+  generatedAt: string;
+}
+
 export interface OrganizationFinancialProfile {
   tenantId?: string;
   mode?: 'infra_only' | 'business_profile';
@@ -370,6 +392,9 @@ export const financialApi = {
 
   getFlowCoverage: () =>
     api.get<FinancialFlowCoverageResponse>('/financial/flows-coverage'),
+
+  getPricingHealth: (params?: { refresh?: boolean }) =>
+    api.get<PricingHealthResponse>('/financial/pricing/health', { params }),
 
   upsertNodeOverride: (
     nodeId: string,

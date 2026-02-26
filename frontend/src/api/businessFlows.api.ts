@@ -63,6 +63,18 @@ export interface BusinessFlow {
   mutualExclusionGroup: string | null;
   precisionBadge?: string;
   currency?: string;
+  downtimeCostPerHour?: number | null;
+  downtimeCostSource?: 'blast_radius_max' | 'not_configured' | string;
+  downtimeCostSourceLabel?: string;
+  downtimeCostMessage?: string | null;
+  financialProfileConfigured?: boolean;
+  contributingServices?: Array<{
+    serviceId: string;
+    serviceName: string;
+    downtimeCostPerHour: number;
+    downtimeCostSourceLabel: string;
+    isMax: boolean;
+  }>;
   financialImpact?: {
     hourlyDowntimeCost: number;
     aleAnnual: number;

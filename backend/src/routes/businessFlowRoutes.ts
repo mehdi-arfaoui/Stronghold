@@ -21,6 +21,14 @@ import {
 import { CloudEnrichmentService } from '../services/cloud-enrichment.service.js';
 import { AIFlowSuggesterService, type FlowSuggestion } from '../services/ai-flow-suggester.service.js';
 import { CurrencyService } from '../services/currency.service.js';
+import * as GraphService from '../graph/graphService.js';
+import type { InfraNodeAttrs } from '../graph/types.js';
+import { calculateBlastRadius, type BlastRadiusResult } from '../graph/blastRadiusEngine.js';
+import {
+  calculateServiceDowntimeCosts,
+  type ServiceDowntimeCost,
+} from '../services/pricing/downtimeDistribution.js';
+import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
 
 const router = Router();
 const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
@@ -44,6 +52,271 @@ type AISuggestionInsight = {
   optimizationHints: string[];
   spofAlerts: string[];
 };
+
+type FlowForDowntime = {
+  id: string;
+  flowNodes: Array<{
+    infraNodeId: string;
+  }>;
+};
+
+type FlowDowntimeCostSource = 'blast_radius_max' | 'not_configured';
+
+type FlowContributingService = {
+  serviceId: string;
+  serviceName: string;
+  downtimeCostPerHour: number;
+  downtimeCostSourceLabel: string;
+  isMax: boolean;
+};
+
+type FlowDowntimeCost = {
+  flowId: string;
+  downtimeCostPerHour: number | null;
+  downtimeCostSource: FlowDowntimeCostSource;
+  downtimeCostSourceLabel: string;
+  contributingServices: FlowContributingService[];
+  message: string | null;
+};
+
+type FlowDowntimeContext = {
+  profileConfigured: boolean;
+  byFlowId: Map<string, FlowDowntimeCost>;
+};
+
+function toNodeCriticality(node: {
+  criticalityScore: number | null;
+  impactCategory: string | null;
+}): 'critical' | 'high' | 'medium' | 'low' {
+  const impact = String(node.impactCategory || '').toLowerCase();
+  if (impact.includes('tier1') || impact.includes('critical') || impact.includes('mission')) {
+    return 'critical';
+  }
+  if (impact.includes('tier2') || impact.includes('high') || impact.includes('business')) {
+    return 'high';
+  }
+  if (impact.includes('tier3') || impact.includes('medium') || impact.includes('important')) {
+    return 'medium';
+  }
+
+  const score = Number(node.criticalityScore);
+  if (Number.isFinite(score)) {
+    const normalized = score > 1 ? score / 100 : score;
+    if (normalized >= 0.85) return 'critical';
+    if (normalized >= 0.65) return 'high';
+    if (normalized >= 0.45) return 'medium';
+  }
+  return 'low';
+}
+
+function buildFlowDowntimeUnavailable(
+  flowId: string,
+  label: string,
+  message: string,
+): FlowDowntimeCost {
+  return {
+    flowId,
+    downtimeCostPerHour: null,
+    downtimeCostSource: 'not_configured',
+    downtimeCostSourceLabel: label,
+    contributingServices: [],
+    message,
+  };
+}
+
+async function buildFlowDowntimeContext(
+  tenantId: string,
+  flows: FlowForDowntime[],
+): Promise<FlowDowntimeContext> {
+  const byFlowId = new Map<string, FlowDowntimeCost>();
+  if (flows.length === 0) {
+    return {
+      profileConfigured: false,
+      byFlowId,
+    };
+  }
+
+  const profile = await resolveCompanyFinancialProfile(prisma, tenantId);
+  const profileConfigured = profile.isConfigured;
+  const uniqueNodeIds = Array.from(
+    new Set(
+      flows.flatMap((flow) => flow.flowNodes.map((node) => node.infraNodeId).filter(Boolean)),
+    ),
+  );
+
+  if (!profileConfigured) {
+    for (const flow of flows) {
+      const hasServices = flow.flowNodes.length > 0;
+      byFlowId.set(
+        flow.id,
+        hasServices
+          ? buildFlowDowntimeUnavailable(
+              flow.id,
+              'Profil financier non configure',
+              'Configurez votre profil financier pour calculer le cout/h de ce flux.',
+            )
+          : buildFlowDowntimeUnavailable(
+              flow.id,
+              'Aucun service associe',
+              'Aucun service associe a ce flux metier.',
+            ),
+      );
+    }
+    return {
+      profileConfigured,
+      byFlowId,
+    };
+  }
+
+  if (uniqueNodeIds.length === 0) {
+    for (const flow of flows) {
+      byFlowId.set(
+        flow.id,
+        buildFlowDowntimeUnavailable(
+          flow.id,
+          'Aucun service associe',
+          'Aucun service associe a ce flux metier.',
+        ),
+      );
+    }
+    return {
+      profileConfigured,
+      byFlowId,
+    };
+  }
+
+  const [nodeSnapshots, overrides] = await Promise.all([
+    prisma.infraNode.findMany({
+      where: {
+        tenantId,
+        id: { in: uniqueNodeIds },
+      },
+      select: {
+        id: true,
+        name: true,
+        criticalityScore: true,
+        impactCategory: true,
+      },
+    }),
+    prisma.nodeFinancialOverride.findMany({
+      where: {
+        tenantId,
+        nodeId: { in: uniqueNodeIds },
+      },
+      select: {
+        nodeId: true,
+        customCostPerHour: true,
+      },
+    }),
+  ]);
+
+  const serviceOverrides = overrides
+    .filter((entry) => Number(entry.customCostPerHour) > 0)
+    .map((entry) => ({
+      nodeId: entry.nodeId,
+      customDowntimeCostPerHour: Number(entry.customCostPerHour),
+    }));
+
+  let blastResults: BlastRadiusResult[] = [];
+  try {
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    const blastGraphNodes = graph.nodes().map(
+      (id) => graph.getNodeAttributes(id) as InfraNodeAttrs,
+    );
+    const blastGraphEdges = graph.edges().map((edgeKey) => {
+      const attrs = graph.getEdgeAttributes(edgeKey) as { type?: string };
+      return {
+        sourceId: graph.source(edgeKey),
+        targetId: graph.target(edgeKey),
+        type: String(attrs.type || ''),
+      };
+    });
+    blastResults = calculateBlastRadius(blastGraphNodes, blastGraphEdges);
+  } catch (error) {
+    appLogger.warn('business_flow.downtime.blast_radius_unavailable', {
+      tenantId,
+      reason: error instanceof Error ? error.message : 'unknown_error',
+    });
+  }
+
+  const downtimeByNodeId = new Map<string, ServiceDowntimeCost>(
+    calculateServiceDowntimeCosts(
+      blastResults,
+      nodeSnapshots.map((node) => ({
+        nodeId: node.id,
+        name: node.name,
+        criticality: toNodeCriticality(node),
+      })),
+      {
+        estimatedDowntimeCostPerHour: Number(profile.hourlyDowntimeCost || 0),
+        serviceOverrides,
+      },
+    ).map((item) => [item.serviceNodeId, item]),
+  );
+
+  for (const flow of flows) {
+    const flowNodeIds = Array.from(
+      new Set(flow.flowNodes.map((node) => node.infraNodeId).filter(Boolean)),
+    );
+
+    if (flowNodeIds.length === 0) {
+      byFlowId.set(
+        flow.id,
+        buildFlowDowntimeUnavailable(
+          flow.id,
+          'Aucun service associe',
+          'Aucun service associe a ce flux metier.',
+        ),
+      );
+      continue;
+    }
+
+    const serviceCosts = flowNodeIds
+      .map((nodeId) => downtimeByNodeId.get(nodeId))
+      .filter((item): item is ServiceDowntimeCost => Boolean(item));
+
+    if (serviceCosts.length === 0) {
+      byFlowId.set(
+        flow.id,
+        buildFlowDowntimeUnavailable(
+          flow.id,
+          'Aucun cout service',
+          'Aucun service du flux ne dispose d un cout d indisponibilite calcule.',
+        ),
+      );
+      continue;
+    }
+
+    const maxCostService = serviceCosts.reduce((best, current) =>
+      current.downtimeCostPerHour > best.downtimeCostPerHour ? current : best,
+    );
+
+    const contributingServices = serviceCosts
+      .slice()
+      .sort((left, right) => right.downtimeCostPerHour - left.downtimeCostPerHour)
+      .map((serviceCost) => ({
+        serviceId: serviceCost.serviceNodeId,
+        serviceName: serviceCost.serviceName,
+        downtimeCostPerHour: serviceCost.downtimeCostPerHour,
+        downtimeCostSourceLabel: serviceCost.sourceLabel,
+        isMax: serviceCost.serviceNodeId === maxCostService.serviceNodeId,
+      }));
+
+    byFlowId.set(flow.id, {
+      flowId: flow.id,
+      downtimeCostPerHour: maxCostService.downtimeCostPerHour,
+      downtimeCostSource: 'blast_radius_max',
+      downtimeCostSourceLabel: `Base sur ${maxCostService.serviceName} (${maxCostService.sourceLabel})`,
+      contributingServices,
+      message: null,
+    });
+  }
+
+  return {
+    profileConfigured,
+    byFlowId,
+  };
+}
 
 function isAllowedAICategory(value: string): boolean {
   return ['revenue', 'operations', 'compliance', 'internal'].includes(value);
@@ -384,10 +657,31 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
 }
 
 async function serializeFlow(
-  flow: Awaited<ReturnType<typeof prisma.businessFlow.findFirstOrThrow>>,
+  flow: Awaited<ReturnType<typeof prisma.businessFlow.findFirstOrThrow>> & {
+    flowNodes: Array<{ infraNodeId: string }>;
+  },
   currency: SupportedCurrency,
   tenantId: string,
+  downtimeContext?: FlowDowntimeContext,
 ) {
+  const effectiveDowntimeContext =
+    downtimeContext ??
+    (await buildFlowDowntimeContext(tenantId, [
+      {
+        id: flow.id,
+        flowNodes: flow.flowNodes.map((node) => ({
+          infraNodeId: node.infraNodeId,
+        })),
+      },
+    ]));
+  const flowDowntime =
+    effectiveDowntimeContext.byFlowId.get(flow.id) ??
+    buildFlowDowntimeUnavailable(
+      flow.id,
+      'Aucun cout service',
+      'Aucun service du flux ne dispose d un cout d indisponibilite calcule.',
+    );
+
   let snapshot = null;
   try {
     snapshot = await businessFlowFinancialEngine.calculateFlowFinancialSnapshot({
@@ -436,6 +730,12 @@ async function serializeFlow(
     ...flow,
     computedCost: computed,
     currency,
+    downtimeCostPerHour: flowDowntime.downtimeCostPerHour,
+    downtimeCostSource: flowDowntime.downtimeCostSource,
+    downtimeCostSourceLabel: flowDowntime.downtimeCostSourceLabel,
+    contributingServices: flowDowntime.contributingServices,
+    downtimeCostMessage: flowDowntime.message,
+    financialProfileConfigured: effectiveDowntimeContext.profileConfigured,
     precisionBadge: flow.validatedByUser ? 'business_flow_validated' : 'business_flow_not_validated',
     financialImpact,
     financialImpactMessage: snapshot?.message ?? null,
@@ -485,14 +785,28 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
         select: { sourceId: true, targetId: true },
       }),
     ]);
-    const flows = await Promise.all(
+    const hydratedFlows = (
+      await Promise.all(
       suggestions.map(async (suggestion) => {
         const flow = await prisma.businessFlow.findFirst({
           where: { id: suggestion.flowId, tenantId },
           include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
         });
-        return flow ? serializeFlow(flow, currency, tenantId) : null;
+        return flow ?? null;
       }),
+      )
+    ).filter((flow): flow is NonNullable<typeof flow> => Boolean(flow));
+    const downtimeContext = await buildFlowDowntimeContext(
+      tenantId,
+      hydratedFlows.map((flow) => ({
+        id: flow.id,
+        flowNodes: flow.flowNodes.map((node) => ({
+          infraNodeId: node.infraNodeId,
+        })),
+      })),
+    );
+    const flows = await Promise.all(
+      hydratedFlows.map((flow) => serializeFlow(flow, currency, tenantId, downtimeContext)),
     );
     const suggestionInsights = buildAISuggestionInsights({
       suggestions,
@@ -502,7 +816,7 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
 
     return res.json({
       suggestionsCreated: suggestions.length,
-      suggestions: flows.filter((flow): flow is NonNullable<typeof flow> => Boolean(flow)),
+      suggestions: flows,
       suggestionInsights,
     });
   } catch (error) {
@@ -611,7 +925,18 @@ router.get('/', requireRole('READER'), async (req: TenantRequest, res) => {
       orderBy: { updatedAt: 'desc' },
     });
 
-    const result = await Promise.all(flows.map((flow) => serializeFlow(flow, currency, tenantId)));
+    const downtimeContext = await buildFlowDowntimeContext(
+      tenantId,
+      flows.map((flow) => ({
+        id: flow.id,
+        flowNodes: flow.flowNodes.map((node) => ({
+          infraNodeId: node.infraNodeId,
+        })),
+      })),
+    );
+    const result = await Promise.all(
+      flows.map((flow) => serializeFlow(flow, currency, tenantId, downtimeContext)),
+    );
     return res.json(result);
   } catch (error) {
     appLogger.error('Error listing business flows', error);

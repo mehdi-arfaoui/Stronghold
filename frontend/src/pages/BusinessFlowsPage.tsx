@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Cloud, Pencil, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { businessFlowsApi, type FlowSuggestionResponse } from '@/api/businessFlows.api';
+import { financialApi } from '@/api/financial.api';
 import { BusinessFlowDetailEditor } from '@/components/business-flows/BusinessFlowDetailEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -30,6 +32,7 @@ function formatMoney(value: number, currency: string = 'EUR') {
 
 export function BusinessFlowsPage() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const tenantScope = getCredentialScopeKey();
 
   const [selectedFlowId, setSelectedFlowId] = useState<string | null>(null);
@@ -49,6 +52,10 @@ export function BusinessFlowsPage() {
   const coverageQuery = useQuery({
     queryKey: ['flows-coverage', tenantScope],
     queryFn: async () => (await businessFlowsApi.getCoverage()).data,
+  });
+  const orgProfileQuery = useQuery({
+    queryKey: ['financial-org-profile', tenantScope],
+    queryFn: async () => (await financialApi.getOrgProfile()).data,
   });
 
   const refreshFlows = async () => {
@@ -120,13 +127,24 @@ export function BusinessFlowsPage() {
   const flows = flowsQuery.data || [];
   const coverage = coverageQuery.data;
   const lowCoverage = (coverage?.coveragePercent || 0) < 50;
+  const businessProfileConfigured = orgProfileQuery.data?.isConfigured === true;
 
   const sortedFlows = useMemo(
     () =>
       [...flows].sort(
-        (a, b) =>
-          (b.computedCost?.totalCostPerHour || b.calculatedCostPerHour || 0) -
-          (a.computedCost?.totalCostPerHour || a.calculatedCostPerHour || 0),
+        (a, b) => {
+          const leftDowntime =
+            typeof a.downtimeCostPerHour === 'number' ? a.downtimeCostPerHour : -1;
+          const rightDowntime =
+            typeof b.downtimeCostPerHour === 'number' ? b.downtimeCostPerHour : -1;
+          if (leftDowntime !== rightDowntime) {
+            return rightDowntime - leftDowntime;
+          }
+          return (
+            (b.computedCost?.totalCostPerHour || b.calculatedCostPerHour || 0) -
+            (a.computedCost?.totalCostPerHour || a.calculatedCostPerHour || 0)
+          );
+        },
       ),
     [flows],
   );
@@ -215,6 +233,25 @@ export function BusinessFlowsPage() {
         </CardContent>
       </Card>
 
+      {!businessProfileConfigured && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm font-medium">
+              {orgProfileQuery.data?.inferenceBanner ||
+                'Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.'}
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
+              onClick={() => navigate('/financial')}
+            >
+              Configurer le profil financier
+            </Button>
+          </div>
+        </div>
+      )}
+
       {latestSuggestionInsights.length > 0 && (
         <Card className="border-muted/60">
           <CardHeader>
@@ -269,10 +306,9 @@ export function BusinessFlowsPage() {
 
       <div className="space-y-3">
         {sortedFlows.map((flow) => {
-          const total = flow.computedCost?.totalCostPerHour || flow.calculatedCostPerHour || 0;
-          const peak = flow.computedCost?.peakCostPerHour || total * (flow.peakHoursMultiplier || 1);
-          const aleAnnual = flow.financialImpact?.aleAnnual || 0;
           const flowCurrency = String(flow.currency || flow.computedCost?.currency || 'EUR').toUpperCase();
+          const downtimeCostPerHour =
+            typeof flow.downtimeCostPerHour === 'number' ? flow.downtimeCostPerHour : null;
           const isValidated = flow.validatedByUser;
           return (
             <Card key={flow.id}>
@@ -286,14 +322,37 @@ export function BusinessFlowsPage() {
                     {flow.source !== 'manual' && <Badge variant="secondary">{flow.source}</Badge>}
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {flow.flowNodes.length} node(s) • cost/h {formatMoney(total, flowCurrency)} • peak {formatMoney(peak, flowCurrency)}
+                    {flow.flowNodes.length} service(s) • cout/h indisponibilite{' '}
+                    {downtimeCostPerHour != null
+                      ? formatMoney(downtimeCostPerHour, flowCurrency)
+                      : '—'}
                   </p>
-                  {flow.financialImpactMessage ? (
-                    <p className="text-xs text-amber-700">{flow.financialImpactMessage}</p>
-                  ) : (
-                    <p className="text-xs text-muted-foreground">
-                      ALE estime: {formatMoney(aleAnnual, flowCurrency)} / an
-                    </p>
+                  <p className="text-xs text-muted-foreground">
+                    {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || '—'}
+                  </p>
+                  {flow.downtimeCostMessage && (
+                    <p className="text-xs text-amber-700">{flow.downtimeCostMessage}</p>
+                  )}
+                  {Array.isArray(flow.contributingServices) && flow.contributingServices.length > 0 && (
+                    <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+                      <summary className="cursor-pointer font-medium">
+                        Services contributeurs ({flow.contributingServices.length})
+                      </summary>
+                      <div className="mt-2 space-y-1">
+                        {flow.contributingServices.map((service) => (
+                          <div
+                            key={`${flow.id}-${service.serviceId}`}
+                            className="flex items-center justify-between gap-2"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span>{service.serviceName}</span>
+                              {service.isMax && <Badge variant="secondary">MAX</Badge>}
+                            </div>
+                            <span>{formatMoney(service.downtimeCostPerHour, flowCurrency)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
                   )}
                 </div>
                 <div className="flex flex-wrap gap-2">

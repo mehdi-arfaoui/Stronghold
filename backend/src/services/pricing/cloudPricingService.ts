@@ -37,6 +37,29 @@ type CachedPricingResult = {
   expiresAt: number;
 };
 
+type LivePricingFallbackReason = 'no_live_match' | 'error';
+
+type PricingSelfTestStatus = 'unknown' | 'ok' | 'failed' | 'skipped';
+
+export type PricingConnectivityProviderStatus = {
+  configured: boolean;
+  status: PricingSelfTestStatus;
+  message: string;
+  checkedAt: string | null;
+  latencyMs: number | null;
+  details: Record<string, unknown>;
+};
+
+export type PricingConnectivityStatus = {
+  checkedAt: string | null;
+  requestTimeoutMs: number;
+  providers: {
+    azure: PricingConnectivityProviderStatus;
+    aws: PricingConnectivityProviderStatus;
+    gcp: PricingConnectivityProviderStatus;
+  };
+};
+
 function normalizeCurrency(rawCurrency: unknown): SupportedCurrency {
   if (typeof rawCurrency === 'string') {
     const normalized = rawCurrency.toUpperCase();
@@ -51,6 +74,10 @@ function toPositiveNumber(value: unknown): number | null {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return null;
   return parsed;
+}
+
+function metadataDebugKeys(metadata: Record<string, unknown>): string[] {
+  return Object.keys(metadata).slice(0, 12);
 }
 
 function buildPricingResult(input: {
@@ -142,7 +169,10 @@ export class CloudPricingService {
 
   private readonly requestTimeoutMs = 5_000;
 
+  private connectivityStatus: PricingConnectivityStatus;
+
   constructor() {
+    this.connectivityStatus = this.buildInitialConnectivityStatus();
     appLogger.info('financial.live_pricing.initialized', {
       awsPricingConfigured: Boolean(
         process.env.AWS_PRICING_ACCESS_KEY_ID && process.env.AWS_PRICING_SECRET_ACCESS_KEY,
@@ -154,6 +184,49 @@ export class CloudPricingService {
       cacheTtlHours: this.cacheTtlMs / (60 * 60 * 1000),
       requestTimeoutMs: this.requestTimeoutMs,
     });
+  }
+
+  private buildInitialConnectivityStatus(): PricingConnectivityStatus {
+    const awsConfigured = Boolean(
+      String(process.env.AWS_PRICING_ACCESS_KEY_ID || '').trim() &&
+        String(process.env.AWS_PRICING_SECRET_ACCESS_KEY || '').trim(),
+    );
+    const gcpConfigured = Boolean(String(process.env.GCP_PRICING_API_KEY || '').trim());
+
+    return {
+      checkedAt: null,
+      requestTimeoutMs: this.requestTimeoutMs,
+      providers: {
+        azure: {
+          configured: true,
+          status: 'unknown',
+          message: 'Self-test not run yet',
+          checkedAt: null,
+          latencyMs: null,
+          details: {},
+        },
+        aws: {
+          configured: awsConfigured,
+          status: awsConfigured ? 'unknown' : 'skipped',
+          message: awsConfigured
+            ? 'Self-test not run yet'
+            : 'Missing AWS pricing credentials',
+          checkedAt: null,
+          latencyMs: null,
+          details: {},
+        },
+        gcp: {
+          configured: gcpConfigured,
+          status: gcpConfigured ? 'unknown' : 'skipped',
+          message: gcpConfigured
+            ? 'Self-test not run yet'
+            : 'Missing GCP pricing API key',
+          checkedAt: null,
+          latencyMs: null,
+          details: {},
+        },
+      },
+    };
   }
 
   async getResourceMonthlyCost(input: CloudPricingInput): Promise<PricingResult> {
@@ -179,6 +252,11 @@ export class CloudPricingService {
 
     const observedMonthlyCostUsd = resolveObservedMonthlyCostUsd(metadata);
     if (observedMonthlyCostUsd != null) {
+      appLogger.info('financial.live_pricing.source.cost_explorer', {
+        provider: resolution.provider,
+        kind: resolution.kind,
+        monthlyCostUsd: Number(observedMonthlyCostUsd.toFixed(4)),
+      });
       const result = buildPricingResult({
         monthlyCostUsd: observedMonthlyCostUsd,
         source: 'cost-explorer',
@@ -190,10 +268,12 @@ export class CloudPricingService {
       return result;
     }
 
+    let fallbackReason: LivePricingFallbackReason = 'no_live_match';
     try {
       appLogger.info('financial.live_pricing.fetch_attempt', {
         provider: resolution.provider,
         kind: resolution.kind,
+        metadataKeys: metadataDebugKeys(metadata),
       });
       const liveMonthlyCostUsd = await withTimeout(
         this.fetchLiveMonthlyCostUsd(resolution),
@@ -201,6 +281,11 @@ export class CloudPricingService {
       );
       if (liveMonthlyCostUsd != null) {
         appLogger.info('financial.live_pricing.fetch_success', {
+          provider: resolution.provider,
+          kind: resolution.kind,
+          monthlyCostUsd: Number(liveMonthlyCostUsd.toFixed(4)),
+        });
+        appLogger.info('financial.live_pricing.source.api_live', {
           provider: resolution.provider,
           kind: resolution.kind,
           monthlyCostUsd: Number(liveMonthlyCostUsd.toFixed(4)),
@@ -215,7 +300,13 @@ export class CloudPricingService {
         this.cache.set(cacheKey, { result, expiresAt: now + this.cacheTtlMs });
         return result;
       }
+      appLogger.warn('financial.live_pricing.no_live_match', {
+        provider: resolution.provider,
+        kind: resolution.kind,
+        metadataKeys: metadataDebugKeys(metadata),
+      });
     } catch (error) {
+      fallbackReason = 'error';
       appLogger.warn('financial.live_pricing.unavailable', {
         provider: resolution.provider,
         kind: resolution.kind,
@@ -228,9 +319,255 @@ export class CloudPricingService {
       provider: resolution.provider,
       kind: resolution.kind,
       note: fallback.note,
+      fallbackReason,
+    });
+    appLogger.info('financial.live_pricing.source.static', {
+      provider: resolution.provider,
+      kind: resolution.kind,
+      monthlyCostUsd: Number(fallback.monthlyCostUsd.toFixed(4)),
+      fallbackReason,
     });
     this.cache.set(cacheKey, { result: fallback, expiresAt: now + this.cacheTtlMs });
     return fallback;
+  }
+
+  getConnectivityStatus(): PricingConnectivityStatus {
+    return JSON.parse(JSON.stringify(this.connectivityStatus)) as PricingConnectivityStatus;
+  }
+
+  async runConnectivitySelfTest(): Promise<PricingConnectivityStatus> {
+    const checkedAt = new Date().toISOString();
+    const azureUrl =
+      "https://prices.azure.com/api/retail/prices?%24filter=serviceName%20eq%20%27Virtual%20Machines%27&%24top=1";
+
+    let azureStatus: PricingConnectivityProviderStatus = {
+      configured: true,
+      status: 'unknown',
+      message: 'Self-test pending',
+      checkedAt,
+      latencyMs: null,
+      details: {},
+    };
+
+    const azureStartedAt = Date.now();
+    try {
+      const response = await withTimeout(fetch(azureUrl), this.requestTimeoutMs);
+      const latencyMs = Date.now() - azureStartedAt;
+      if (!response.ok) {
+        azureStatus = {
+          configured: true,
+          status: 'failed',
+          message: `HTTP ${response.status}`,
+          checkedAt,
+          latencyMs,
+          details: { status: response.status },
+        };
+        appLogger.warn('pricing.selftest.azure.failed', {
+          status: response.status,
+        });
+      } else {
+        const payload = (await response.json()) as { Items?: unknown[] };
+        const itemCount = Array.isArray(payload.Items) ? payload.Items.length : 0;
+        if (itemCount > 0) {
+          azureStatus = {
+            configured: true,
+            status: 'ok',
+            message: 'Connectivity OK',
+            checkedAt,
+            latencyMs,
+            details: { itemCount },
+          };
+          appLogger.info('pricing.selftest.azure.ok', { itemCount });
+        } else {
+          azureStatus = {
+            configured: true,
+            status: 'failed',
+            message: 'Empty response',
+            checkedAt,
+            latencyMs,
+            details: { itemCount },
+          };
+          appLogger.warn('pricing.selftest.azure.empty', { itemCount });
+        }
+      }
+    } catch (error) {
+      azureStatus = {
+        configured: true,
+        status: 'failed',
+        message: error instanceof Error ? error.message : 'unknown_error',
+        checkedAt,
+        latencyMs: Date.now() - azureStartedAt,
+        details: {},
+      };
+      appLogger.error('pricing.selftest.azure.failed', {
+        error: error instanceof Error ? error.message : 'unknown_error',
+      });
+    }
+
+    const awsAccessKey = String(process.env.AWS_PRICING_ACCESS_KEY_ID || '').trim();
+    const awsSecretKey = String(process.env.AWS_PRICING_SECRET_ACCESS_KEY || '').trim();
+    const awsConfigured = Boolean(awsAccessKey && awsSecretKey);
+    let awsStatus: PricingConnectivityProviderStatus = {
+      configured: awsConfigured,
+      status: 'unknown',
+      message: 'Self-test pending',
+      checkedAt,
+      latencyMs: null,
+      details: {},
+    };
+    if (!awsConfigured) {
+      awsStatus = {
+        configured: false,
+        status: 'skipped',
+        message: 'Missing AWS pricing credentials',
+        checkedAt,
+        latencyMs: null,
+        details: {},
+      };
+      appLogger.info('pricing.selftest.aws.skipped', {
+        reason: 'missing_credentials',
+      });
+    } else {
+      const awsStartedAt = Date.now();
+      try {
+        const monthlyCost = await withTimeout(
+          getAwsEc2MonthlyPriceUsd({
+            instanceType: 't3.micro',
+            region: process.env.AWS_PRICING_REGION || 'us-east-1',
+          }),
+          this.requestTimeoutMs,
+        );
+
+        if (Number.isFinite(monthlyCost) && Number(monthlyCost) > 0) {
+          awsStatus = {
+            configured: true,
+            status: 'ok',
+            message: 'Connectivity OK',
+            checkedAt,
+            latencyMs: Date.now() - awsStartedAt,
+            details: {
+              monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+            },
+          };
+          appLogger.info('pricing.selftest.aws.ok', {
+            monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+          });
+        } else {
+          awsStatus = {
+            configured: true,
+            status: 'failed',
+            message: 'Empty pricing response',
+            checkedAt,
+            latencyMs: Date.now() - awsStartedAt,
+            details: {
+              monthlyCostUsd: monthlyCost,
+            },
+          };
+          appLogger.warn('pricing.selftest.aws.empty', {
+            monthlyCostUsd: monthlyCost,
+          });
+        }
+      } catch (error) {
+        awsStatus = {
+          configured: true,
+          status: 'failed',
+          message: error instanceof Error ? error.message : 'unknown_error',
+          checkedAt,
+          latencyMs: Date.now() - awsStartedAt,
+          details: {},
+        };
+        appLogger.warn('pricing.selftest.aws.failed', {
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+      }
+    }
+
+    const gcpConfigured = Boolean(String(process.env.GCP_PRICING_API_KEY || '').trim());
+    let gcpStatus: PricingConnectivityProviderStatus = {
+      configured: gcpConfigured,
+      status: 'unknown',
+      message: 'Self-test pending',
+      checkedAt,
+      latencyMs: null,
+      details: {},
+    };
+    if (!gcpConfigured) {
+      gcpStatus = {
+        configured: false,
+        status: 'skipped',
+        message: 'Missing GCP pricing API key',
+        checkedAt,
+        latencyMs: null,
+        details: {},
+      };
+      appLogger.info('pricing.selftest.gcp.skipped', {
+        reason: 'missing_api_key',
+      });
+    } else {
+      const gcpStartedAt = Date.now();
+      try {
+        const monthlyCost = await withTimeout(
+          getGcpComputeMonthlyPriceUsd({
+            machineType: 'n1-standard-1',
+            zone: 'europe-west1-b',
+          }),
+          this.requestTimeoutMs,
+        );
+        if (Number.isFinite(monthlyCost) && Number(monthlyCost) > 0) {
+          gcpStatus = {
+            configured: true,
+            status: 'ok',
+            message: 'Connectivity OK',
+            checkedAt,
+            latencyMs: Date.now() - gcpStartedAt,
+            details: {
+              monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+            },
+          };
+          appLogger.info('pricing.selftest.gcp.ok', {
+            monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+          });
+        } else {
+          gcpStatus = {
+            configured: true,
+            status: 'failed',
+            message: 'Empty pricing response',
+            checkedAt,
+            latencyMs: Date.now() - gcpStartedAt,
+            details: {
+              monthlyCostUsd: monthlyCost,
+            },
+          };
+          appLogger.warn('pricing.selftest.gcp.empty', {
+            monthlyCostUsd: monthlyCost,
+          });
+        }
+      } catch (error) {
+        gcpStatus = {
+          configured: true,
+          status: 'failed',
+          message: error instanceof Error ? error.message : 'unknown_error',
+          checkedAt,
+          latencyMs: Date.now() - gcpStartedAt,
+          details: {},
+        };
+        appLogger.warn('pricing.selftest.gcp.failed', {
+          error: error instanceof Error ? error.message : 'unknown_error',
+        });
+      }
+    }
+
+    this.connectivityStatus = {
+      checkedAt,
+      requestTimeoutMs: this.requestTimeoutMs,
+      providers: {
+        azure: azureStatus,
+        aws: awsStatus,
+        gcp: gcpStatus,
+      },
+    };
+
+    return this.getConnectivityStatus();
   }
 
   private async fetchLiveMonthlyCostUsd(resolution: CloudServiceResolution): Promise<number | null> {

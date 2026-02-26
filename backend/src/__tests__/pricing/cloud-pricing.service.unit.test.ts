@@ -154,3 +154,38 @@ test('CloudPricingService enforces timeout and falls back to static pricing', as
   assert.ok(elapsedMs < 150, `expected timeout fallback to be fast, got ${elapsedMs}ms`);
 });
 
+test('CloudPricingService exposes pricing connectivity status for health endpoint', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalAwsAccess = process.env.AWS_PRICING_ACCESS_KEY_ID;
+  const originalAwsSecret = process.env.AWS_PRICING_SECRET_ACCESS_KEY;
+  const originalGcpApiKey = process.env.GCP_PRICING_API_KEY;
+
+  process.env.AWS_PRICING_ACCESS_KEY_ID = '';
+  process.env.AWS_PRICING_SECRET_ACCESS_KEY = '';
+  process.env.GCP_PRICING_API_KEY = '';
+
+  globalThis.fetch = (async () =>
+    ({
+      ok: true,
+      status: 200,
+      json: async () => ({ Items: [{}] }),
+    }) as any) as typeof fetch;
+
+  try {
+    const service = new CloudPricingService();
+    const initial = service.getConnectivityStatus();
+    assert.equal(initial.providers.azure.status, 'unknown');
+
+    const status = await service.runConnectivitySelfTest();
+    assert.equal(status.providers.azure.status, 'ok');
+    assert.equal(status.providers.aws.status, 'skipped');
+    assert.equal(status.providers.gcp.status, 'skipped');
+    assert.ok(typeof status.checkedAt === 'string' && status.checkedAt.length > 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+    process.env.AWS_PRICING_ACCESS_KEY_ID = originalAwsAccess;
+    process.env.AWS_PRICING_SECRET_ACCESS_KEY = originalAwsSecret;
+    process.env.GCP_PRICING_API_KEY = originalGcpApiKey;
+  }
+});
+

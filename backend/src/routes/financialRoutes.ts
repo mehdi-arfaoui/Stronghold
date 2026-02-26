@@ -32,6 +32,7 @@ import {
 } from '../services/financial-dashboard.service.js';
 import { CurrencyService } from '../services/currency.service.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
+import { cloudPricingService } from '../services/pricing/cloudPricingService.js';
 import { toPrismaJson } from '../utils/prismaJson.js';
 
 const router = Router();
@@ -1008,6 +1009,34 @@ router.get('/trend', async (req: TenantRequest, res) => {
     return res.json(trend);
   } catch (error) {
     appLogger.error('Error building financial trend', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+router.get('/pricing/health', requireRole('READER'), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const refresh = String(req.query.refresh || '').toLowerCase() === 'true';
+    if (refresh && !checkCalcRateLimit(tenantId)) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded. Maximum 10 pricing health refreshes per minute.',
+      });
+    }
+
+    const status = refresh
+      ? await cloudPricingService.runConnectivitySelfTest()
+      : cloudPricingService.getConnectivityStatus();
+
+    return res.json({
+      ...status,
+      refreshed: refresh,
+      checkedByTenantId: tenantId,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    appLogger.error('Error building pricing health status', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

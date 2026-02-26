@@ -73,6 +73,7 @@ import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { loadValidatedEnv } from "./config/env.validation.js";
 import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
+import { cloudPricingService } from "./services/pricing/cloudPricingService.js";
 
 const envCandidates = [
   path.resolve(process.cwd(), ".env"),
@@ -681,6 +682,10 @@ server.listen(Number(PORT), HOST, () => {
       appLogger.info(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
     }
   }
+
+  setImmediate(() => {
+    void cloudPricingService.runConnectivitySelfTest();
+  });
 
   setImmediate(() => {
     void startBackgroundServices();

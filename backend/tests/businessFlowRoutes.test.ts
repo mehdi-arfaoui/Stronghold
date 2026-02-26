@@ -75,9 +75,19 @@ test('GET /business-flows applies tenant isolation in Prisma query', async () =>
     await withServer(app, async (baseUrl) => {
       const response = await fetch(`${baseUrl}/business-flows`);
       assert.equal(response.status, 200);
-      const body = (await response.json()) as Array<{ id: string }>;
+      const body = (await response.json()) as Array<{
+        id: string;
+        downtimeCostPerHour: number | null;
+        downtimeCostSource: string;
+        downtimeCostSourceLabel: string;
+        contributingServices: unknown[];
+      }>;
       assert.equal(body.length, 1);
       assert.equal(body[0]?.id, 'flow-1');
+      assert.equal(body[0]?.downtimeCostPerHour, null);
+      assert.equal(body[0]?.downtimeCostSource, 'not_configured');
+      assert.equal(typeof body[0]?.downtimeCostSourceLabel, 'string');
+      assert.ok(Array.isArray(body[0]?.contributingServices));
     });
 
     assert.deepEqual(capturedWhere, { tenantId: 'tenant-x' });
