@@ -58,6 +58,13 @@ function formatPaybackMonths(paybackMonths: number | null | undefined, paybackLa
   return `${paybackMonths.toFixed(1)} mois`;
 }
 
+function formatMonthlyCostLabel(monthlyCost: number, currency: string): string {
+  if (!Number.isFinite(monthlyCost) || monthlyCost <= 0) {
+    return 'Inclus dans le service manage';
+  }
+  return `${money(monthlyCost, currency)}/mois`;
+}
+
 function resolveConsistentPayback(input: {
   paybackMonths: number | null | undefined;
   paybackLabel?: string | null;
@@ -77,22 +84,22 @@ function resolveConsistentPayback(input: {
     return { paybackMonths: providedMonths };
   }
 
+  if (input.riskAvoidedAnnual > 0 && input.annualCost > 0) {
+    const derived = input.annualCost / (input.riskAvoidedAnnual / 12);
+    if (!Number.isFinite(derived) || derived <= 0) {
+      return { paybackMonths: null, paybackLabel: 'Non rentable' };
+    }
+
+    const rounded = Math.round(derived * 10) / 10;
+    if (rounded > 60) return { paybackMonths: rounded, paybackLabel: '> 60 mois' };
+    return { paybackMonths: rounded };
+  }
+
   if ((input.roiPercent ?? 0) <= 0) {
     return { paybackMonths: null, paybackLabel: 'Non rentable' };
   }
 
-  if (!(input.riskAvoidedAnnual > 0) || !(input.annualCost > 0)) {
-    return { paybackMonths: null, paybackLabel: 'Non rentable' };
-  }
-
-  const derived = input.annualCost / (input.riskAvoidedAnnual / 12);
-  if (!Number.isFinite(derived) || derived <= 0) {
-    return { paybackMonths: null, paybackLabel: 'Non rentable' };
-  }
-
-  const rounded = Math.round(derived * 10) / 10;
-  if (rounded > 60) return { paybackMonths: rounded, paybackLabel: '> 60 mois' };
-  return { paybackMonths: rounded };
+  return { paybackMonths: null, paybackLabel: 'Non rentable' };
 }
 
 function formatRoiPercent(value: number | null | undefined): { label: string; tooltip?: string } {
@@ -129,6 +136,19 @@ function mapCostSourceLabel(costSource: string | undefined): string {
   return 'Estimation Stronghold';
 }
 
+function resolveCompactCostSourceLabel(input: {
+  costSource?: string;
+  costSourceLabel?: string;
+}): string | null {
+  const explicit = input.costSourceLabel?.trim();
+  if (explicit && explicit.startsWith('[')) {
+    return explicit;
+  }
+  if (!input.costSource) return null;
+  const mapped = mapCostSourceLabel(input.costSource);
+  return mapped.startsWith('[') ? mapped : null;
+}
+
 function roiToneClass(status: string | undefined, roi: number | null | undefined): string {
   if (status === 'strongly_recommended') return 'text-green-700';
   if (status === 'rentable') return 'text-amber-700';
@@ -140,12 +160,13 @@ function roiToneClass(status: string | undefined, roi: number | null | undefined
   return 'text-red-700';
 }
 
-function priorityWeight(priority: Recommendation['priority']): number {
-  if (typeof priority === 'number') return priority;
-  if (priority === 'P0') return 0;
-  if (priority === 'P1') return 1;
-  if (priority === 'P2') return 2;
-  return 3;
+type RecommendationCriticality = 'critical' | 'high' | 'medium' | 'low';
+
+function resolveCriticalityFromTier(tier: number | null | undefined): RecommendationCriticality {
+  if (tier === 1) return 'critical';
+  if (tier === 2) return 'high';
+  if (tier === 3) return 'medium';
+  return 'low';
 }
 
 interface RecommendationsEngineProps {
@@ -197,30 +218,24 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     staleTime: 60_000,
   });
 
-  const recommendations = useMemo(
-    () =>
-      [...(recommendationsQuery.data ?? [])].sort(
-        (left, right) => priorityWeight(left.priority) - priorityWeight(right.priority),
-      ),
-    [recommendationsQuery.data],
-  );
+  const baseRecommendations = recommendationsQuery.data ?? [];
   const roiPayloadDigest = useMemo(
     () =>
-      recommendations
+      baseRecommendations
         .map((recommendation) => `${recommendation.id}:${recommendation.estimatedCost ?? 0}:${recommendation.strategy ?? 'default'}`)
         .join('|'),
-    [recommendations],
+    [baseRecommendations],
   );
 
   const roiQuery = useQuery({
     queryKey: ['financial-recommendations-roi', tenantScope, currency, roiPayloadDigest],
-    enabled: recommendations.length > 0,
+    enabled: baseRecommendations.length > 0,
     staleTime: 5 * 60 * 1000,
     queryFn: async () =>
       (
         await financialApi.calculateROI({
           currency,
-          recommendations: recommendations.map((recommendation) => ({
+          recommendations: baseRecommendations.map((recommendation) => ({
             recommendationId: recommendation.id,
             strategy: normalizeStrategy(recommendation.strategy),
             targetNodes: recommendation.nodeId
@@ -251,6 +266,67 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     return new Map(breakdown.map((entry) => [entry.recommendationId, entry]));
   }, [roiQuery.data]);
 
+  const recommendationCards = useMemo(() => {
+    const criticalityOrder: Record<RecommendationCriticality, number> = {
+      critical: 0,
+      high: 1,
+      medium: 2,
+      low: 3,
+    };
+
+    return [...baseRecommendations]
+      .map((recommendation) => {
+        const breakdown = breakdownByRecommendationId.get(recommendation.id);
+        const monthlyCost = recommendation.estimatedCost ?? (breakdown ? breakdown.annualCost / 12 : 0);
+        const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
+        const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
+        const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
+        const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
+        const paybackLabel = recommendation.paybackLabel ?? breakdown?.paybackLabel;
+        const resolvedPayback =
+          annualCost > 0
+            ? resolveConsistentPayback({
+                paybackMonths,
+                paybackLabel,
+                roiPercent: individualROI,
+                riskAvoidedAnnual: annualSavings,
+                annualCost,
+              })
+            : { paybackMonths: null as number | null };
+
+        return {
+          recommendation,
+          breakdown,
+          monthlyCost,
+          annualCost,
+          annualSavings,
+          individualROI,
+          roiStatus: recommendation.roiStatus ?? breakdown?.roiStatus,
+          roiMessage: recommendation.roiMessage ?? breakdown?.roiMessage,
+          resolvedPayback,
+          criticality: resolveCriticalityFromTier(recommendation.tier),
+        };
+      })
+      .sort((left, right) => {
+        const savingsDiff = (right.annualSavings ?? 0) - (left.annualSavings ?? 0);
+        if (savingsDiff !== 0) return savingsDiff;
+
+        const costDiff = (right.annualCost ?? 0) - (left.annualCost ?? 0);
+        if (costDiff !== 0) return costDiff;
+
+        return (criticalityOrder[left.criticality] ?? 99) - (criticalityOrder[right.criticality] ?? 99);
+      });
+  }, [baseRecommendations, breakdownByRecommendationId]);
+
+  const prioritizedRecommendations = useMemo(
+    () => recommendationCards.filter((card) => card.annualCost > 0 || card.annualSavings > 0),
+    [recommendationCards],
+  );
+  const informativeRecommendations = useMemo(
+    () => recommendationCards.filter((card) => card.annualCost <= 0 && card.annualSavings <= 0),
+    [recommendationCards],
+  );
+
   const summaryRiskAvoided =
     recommendationsSummaryQuery.data?.riskAvoidedAnnual ?? roiQuery.data?.riskReductionAmount ?? 0;
   const summaryAnnualCost =
@@ -261,7 +337,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     recommendationsSummaryQuery.data?.paybackMonths ?? roiQuery.data?.paybackMonths ?? null;
   const summaryPaybackLabel = recommendationsSummaryQuery.data?.paybackLabel ?? roiQuery.data?.paybackLabel;
   const summaryTotalRecommendations =
-    recommendationsSummaryQuery.data?.totalRecommendations ?? recommendations.length;
+    recommendationsSummaryQuery.data?.totalRecommendations ?? recommendationCards.length;
   const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
   const summaryRiskAvoidedDisplay =
     summaryRiskAvoided < 0 ? 'Aucun gain - service deja protege' : money(summaryRiskAvoided, currency);
@@ -281,7 +357,190 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         ? 'Recommandation validee'
         : status === 'rejected'
           ? 'Recommandation rejetee'
-          : 'Recommandation reouverte',
+        : 'Recommandation reouverte',
+    );
+  };
+
+  const renderRecommendationCard = (card: (typeof recommendationCards)[number]) => {
+    const recommendation = card.recommendation;
+    const individualRoiDisplay = formatRoiPercent(card.individualROI);
+    const isQuickWin =
+      card.resolvedPayback.paybackLabel === 'Quick win' ||
+      ((card.individualROI ?? 0) > 500 && card.monthlyCost < 500);
+    const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
+    const strategyLabel = STRATEGY_LABELS[String(recommendation.strategy)] ?? recommendation.strategy;
+    const costSourceBadge = resolveCompactCostSourceLabel({
+      costSource: recommendation.costSource,
+      costSourceLabel: recommendation.costSourceLabel,
+    });
+
+    return (
+      <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
+        <CardContent className="p-4 space-y-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <h3 className="font-semibold">{recommendation.serviceName ?? recommendation.title ?? recommendation.id}</h3>
+            <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
+            {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
+            {isQuickWin && <Badge className="bg-green-500/10 text-green-700 border-green-500/20">Quick Win</Badge>}
+            {card.roiMessage && (
+              <Badge
+                className={cn(
+                  'border',
+                  card.roiStatus === 'strongly_recommended' && 'border-green-300 bg-green-50 text-green-800',
+                  card.roiStatus === 'rentable' && 'border-amber-300 bg-amber-50 text-amber-800',
+                  card.roiStatus === 'cost_exceeds_avoided_risk' && 'border-red-300 bg-red-50 text-red-800',
+                  card.roiStatus === 'non_applicable' && 'border-muted bg-muted/20 text-muted-foreground',
+                )}
+              >
+                {card.roiMessage}
+              </Badge>
+            )}
+          </div>
+
+          <p className="text-sm text-muted-foreground">{recommendation.description}</p>
+          {recommendation.budgetWarning && (
+            <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <span className="inline-flex items-center gap-1 font-medium">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {recommendation.budgetWarning}
+              </span>
+            </div>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-4">
+            <MiniMetric
+              icon={DollarSign}
+              label="Cout estime"
+              value={
+                <span className="inline-flex flex-wrap items-center gap-1">
+                  {formatMonthlyCostLabel(card.monthlyCost, currency)}
+                  {costSourceBadge && (
+                    <Badge variant="outline" className="text-[10px] leading-none">
+                      {costSourceBadge}
+                    </Badge>
+                  )}
+                </span>
+              }
+            />
+            <MiniMetric icon={DollarSign} label="Cout annuel DR" value={money(card.annualCost, currency)} />
+            <MiniMetric
+              icon={TrendingUp}
+              label="Economie annuelle estimee"
+              value={card.annualSavings < 0 ? 'Aucun gain - service deja protege' : money(card.annualSavings, currency)}
+            />
+            <MiniMetric
+              icon={Clock}
+              label={card.individualROI == null ? 'ROI individuel' : card.individualROI >= 0 ? 'ROI individuel' : 'ROI negatif'}
+              value={
+                <span title={individualRoiDisplay.tooltip}>
+                  {individualRoiDisplay.label}
+                </span>
+              }
+            />
+          </div>
+          {card.annualCost > 0 && (
+            <div className="text-xs text-muted-foreground">
+              Payback:{' '}
+              <span className="font-medium">
+                {formatPaybackMonths(card.resolvedPayback.paybackMonths, card.resolvedPayback.paybackLabel)}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-center justify-end gap-2">
+            <Badge
+              variant={status === 'validated' ? 'default' : status === 'rejected' ? 'secondary' : 'outline'}
+            >
+              {recommendationStatusLabel(status)}
+            </Badge>
+            {status === 'pending' ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRecommendationStatus(recommendation, 'validated')}
+                  disabled={updateMutation.isPending}
+                >
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  Accepter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setRecommendationStatus(recommendation, 'rejected')}
+                  disabled={updateMutation.isPending}
+                >
+                  <X className="mr-1 h-3.5 w-3.5" />
+                  Rejeter
+                </Button>
+              </>
+            ) : status === 'validated' ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setRecommendationStatus(recommendation, 'rejected')}
+                  disabled={updateMutation.isPending}
+                >
+                  <X className="mr-1 h-3.5 w-3.5" />
+                  Rejeter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRecommendationStatus(recommendation, 'pending')}
+                  disabled={updateMutation.isPending}
+                >
+                  Reouvrir
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRecommendationStatus(recommendation, 'validated')}
+                  disabled={updateMutation.isPending}
+                >
+                  <Check className="mr-1 h-3.5 w-3.5" />
+                  Accepter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setRecommendationStatus(recommendation, 'pending')}
+                  disabled={updateMutation.isPending}
+                >
+                  Reouvrir
+                </Button>
+              </>
+            )}
+          </div>
+          {recommendation.calculation && (
+            <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-medium">Comment c est calcule</summary>
+              <div className="mt-2 space-y-1 text-muted-foreground">
+                <p>{recommendation.calculation.formula}</p>
+                <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
+                <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
+                <p>
+                  Risque evite annuel:{' '}
+                  {recommendation.calculation.riskAvoidedAnnual < 0
+                    ? 'Aucun gain - service deja protege'
+                    : money(recommendation.calculation.riskAvoidedAnnual, currency)}
+                </p>
+                <p>Cout annuel DR: {money(recommendation.calculation.annualDrCost, currency)}</p>
+                <p>
+                  Inputs: cout downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
+                  RTO actuel {recommendation.calculation.inputs.currentRtoHours}h,
+                  RTO cible {recommendation.calculation.inputs.targetRtoHours}h,
+                  proba {recommendation.calculation.inputs.incidentProbabilityAnnual}
+                </p>
+              </div>
+            </details>
+          )}
+        </CardContent>
+      </Card>
     );
   };
 
@@ -385,7 +644,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </div>
       )}
 
-      {!recommendationsQuery.isLoading && recommendations.length === 0 && (
+      {!recommendationsQuery.isLoading && recommendationCards.length === 0 && (
         <Card>
           <CardContent className="py-10 text-center">
             <p className="font-medium">Aucune recommandation disponible</p>
@@ -394,187 +653,31 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </Card>
       )}
 
-      <div className="space-y-3">
-        {recommendations.map((recommendation) => {
-          const breakdown = breakdownByRecommendationId.get(recommendation.id);
-          const monthlyCost = recommendation.estimatedCost ?? (breakdown ? breakdown.annualCost / 12 : 0);
-          const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
-          const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
-          const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
-          const individualRoiDisplay = formatRoiPercent(individualROI);
-          const roiStatus = recommendation.roiStatus ?? breakdown?.roiStatus;
-          const roiMessage = recommendation.roiMessage ?? breakdown?.roiMessage;
-          const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
-          const paybackLabel = recommendation.paybackLabel ?? breakdown?.paybackLabel;
-          const isQuickWin = paybackLabel === 'Quick win' || ((individualROI ?? 0) > 500 && monthlyCost < 500);
-          const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
-          const strategyLabel = STRATEGY_LABELS[String(recommendation.strategy)] ?? recommendation.strategy;
+      {!recommendationsQuery.isLoading && recommendationCards.length > 0 && (
+        <div className="space-y-4">
+          <div className="rounded-md border px-3 py-2 bg-muted/10">
+            <p className="text-sm font-semibold">
+              Recommandations prioritaires ({prioritizedRecommendations.length})
+            </p>
+          </div>
+          <div className="space-y-3">
+            {prioritizedRecommendations.map(renderRecommendationCard)}
+          </div>
 
-          return (
-            <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
-              <CardContent className="p-4 space-y-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="font-semibold">{recommendation.serviceName ?? recommendation.title ?? recommendation.id}</h3>
-                  <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
-                  {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
-                  {recommendation.costSource && recommendation.costSource !== 'user_override' && (
-                    <Badge variant="outline">
-                      {recommendation.costSourceLabel || mapCostSourceLabel(recommendation.costSource)}
-                    </Badge>
-                  )}
-                  {isQuickWin && <Badge className="bg-green-500/10 text-green-700 border-green-500/20">Quick Win</Badge>}
-                  {roiMessage && (
-                    <Badge
-                      className={cn(
-                        'border',
-                        roiStatus === 'strongly_recommended' && 'border-green-300 bg-green-50 text-green-800',
-                        roiStatus === 'rentable' && 'border-amber-300 bg-amber-50 text-amber-800',
-                        roiStatus === 'cost_exceeds_avoided_risk' && 'border-red-300 bg-red-50 text-red-800',
-                        roiStatus === 'non_applicable' && 'border-muted bg-muted/20 text-muted-foreground',
-                      )}
-                    >
-                      {roiMessage}
-                    </Badge>
-                  )}
-                </div>
-
-                <p className="text-sm text-muted-foreground">{recommendation.description}</p>
-                {recommendation.budgetWarning && (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    <span className="inline-flex items-center gap-1 font-medium">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {recommendation.budgetWarning}
-                    </span>
-                  </div>
-                )}
-
-                <div className="grid gap-3 sm:grid-cols-4">
-                  <MiniMetric icon={DollarSign} label="Cout estime" value={`${money(monthlyCost, currency)}/mois`} />
-                  <MiniMetric icon={DollarSign} label="Cout annuel DR" value={money(annualCost, currency)} />
-                  <MiniMetric
-                    icon={TrendingUp}
-                    label="Economie annuelle estimee"
-                    value={annualSavings < 0 ? 'Aucun gain - service deja protege' : money(annualSavings, currency)}
-                  />
-                  <MiniMetric
-                    icon={Clock}
-                    label={individualROI == null ? 'ROI individuel' : individualROI >= 0 ? 'ROI individuel' : 'ROI negatif'}
-                    value={
-                      <span title={individualRoiDisplay.tooltip}>
-                        {individualRoiDisplay.label}
-                      </span>
-                    }
-                  />
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  Payback: <span className="font-medium">{formatPaybackMonths(paybackMonths, paybackLabel)}</span>
-                </div>
-
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs text-muted-foreground">
-                    Source cout: {recommendation.costSourceLabel || mapCostSourceLabel(recommendation.costSource)}
-                    {typeof recommendation.costConfidence === 'number'
-                      ? ` (confiance ${(recommendation.costConfidence * 100).toFixed(0)}%)`
-                      : ''}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Badge
-                      variant={status === 'validated' ? 'default' : status === 'rejected' ? 'secondary' : 'outline'}
-                    >
-                      {recommendationStatusLabel(status)}
-                    </Badge>
-                    {status === 'pending' ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRecommendationStatus(recommendation, 'validated')}
-                          disabled={updateMutation.isPending}
-                        >
-                          <Check className="mr-1 h-3.5 w-3.5" />
-                          Accepter
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setRecommendationStatus(recommendation, 'rejected')}
-                          disabled={updateMutation.isPending}
-                        >
-                          <X className="mr-1 h-3.5 w-3.5" />
-                          Rejeter
-                        </Button>
-                      </>
-                    ) : status === 'validated' ? (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setRecommendationStatus(recommendation, 'rejected')}
-                          disabled={updateMutation.isPending}
-                        >
-                          <X className="mr-1 h-3.5 w-3.5" />
-                          Rejeter
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRecommendationStatus(recommendation, 'pending')}
-                          disabled={updateMutation.isPending}
-                        >
-                          Reouvrir
-                        </Button>
-                      </>
-                    ) : (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRecommendationStatus(recommendation, 'validated')}
-                          disabled={updateMutation.isPending}
-                        >
-                          <Check className="mr-1 h-3.5 w-3.5" />
-                          Accepter
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setRecommendationStatus(recommendation, 'pending')}
-                          disabled={updateMutation.isPending}
-                        >
-                          Reouvrir
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </div>
-                {recommendation.calculation && (
-                  <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
-                    <summary className="cursor-pointer font-medium">Comment c est calcule</summary>
-                    <div className="mt-2 space-y-1 text-muted-foreground">
-                      <p>{recommendation.calculation.formula}</p>
-                      <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
-                      <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
-                      <p>
-                        Risque evite annuel:{' '}
-                        {recommendation.calculation.riskAvoidedAnnual < 0
-                          ? 'Aucun gain - service deja protege'
-                          : money(recommendation.calculation.riskAvoidedAnnual, currency)}
-                      </p>
-                      <p>Cout annuel DR: {money(recommendation.calculation.annualDrCost, currency)}</p>
-                      <p>
-                        Inputs: cout downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
-                        RTO actuel {recommendation.calculation.inputs.currentRtoHours}h,
-                        RTO cible {recommendation.calculation.inputs.targetRtoHours}h,
-                        proba {recommendation.calculation.inputs.incidentProbabilityAnnual}
-                      </p>
-                    </div>
-                  </details>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
+          <details className="rounded-md border bg-muted/20">
+            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
+              Recommandations informatives ({informativeRecommendations.length})
+            </summary>
+            <div className="space-y-3 p-3 pt-0">
+              {informativeRecommendations.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune recommandation informative.</p>
+              ) : (
+                informativeRecommendations.map(renderRecommendationCard)
+              )}
+            </div>
+          </details>
+        </div>
+      )}
     </div>
   );
 }
@@ -603,7 +706,7 @@ const MiniMetric = memo(function MiniMetric({
         <Icon className="h-3.5 w-3.5" />
         {label}
       </div>
-      <p className="mt-1 text-sm font-medium">{value}</p>
+      <div className="mt-1 text-sm font-medium">{value}</div>
     </div>
   );
 });
