@@ -27,7 +27,7 @@ export function IncidentsPage() {
     queryFn: async () => (await incidentsApi.getAll()).data,
   });
 
-  if (query.isLoading) return <LoadingState message="Chargement des incidents..." />;
+  if (query.isLoading) return <LoadingState variant="skeleton" message="Chargement des incidents..." count={5} />;
 
   const incidents = query.data ?? [];
 

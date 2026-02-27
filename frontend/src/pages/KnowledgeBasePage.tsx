@@ -291,7 +291,7 @@ export function KnowledgeBasePage() {
   }, [articleParam, allArticles, articles, selectedArticle?.id]);
 
   if (kbQuery.isLoading && !articles.length) {
-    return <LoadingState message="Chargement de la base de connaissances..." />;
+    return <LoadingState variant="skeleton" message="Chargement de la base de connaissances..." count={6} />;
   }
 
   return (

@@ -105,7 +105,7 @@ export function AnalysisPage() {
   const regional = regionalQuery.data ?? [];
 
   if (biaQuery.isLoading || risksQuery.isLoading) {
-    return <LoadingState message="Chargement de l'analyse..." />;
+    return <LoadingState variant="skeleton" message="Chargement de l'analyse..." count={5} />;
   }
 
   return (

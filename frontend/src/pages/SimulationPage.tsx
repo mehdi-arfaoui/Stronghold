@@ -173,7 +173,7 @@ export function SimulationPage() {
   };
 
   if (simulationsLoading) {
-    return <LoadingState message="Chargement des simulations..." />;
+    return <LoadingState variant="skeleton" message="Chargement des simulations..." count={5} />;
   }
 
   return (

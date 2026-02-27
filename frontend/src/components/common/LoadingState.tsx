@@ -11,10 +11,12 @@ export function LoadingState({ variant = 'spinner', message, count = 3 }: Loadin
   if (variant === 'skeleton') {
     return (
       <div className="space-y-4 p-4">
+        {message && <p className="text-sm text-muted-foreground">{message}</p>}
         {Array.from({ length: count }).map((_, i) => (
-          <div key={i} className="space-y-2">
-            <Skeleton className="h-4 w-[250px]" />
-            <Skeleton className="h-4 w-[200px]" />
+          <div key={i} className="space-y-2 rounded-lg border bg-card p-4">
+            <Skeleton className="h-4 w-[220px]" />
+            <Skeleton className="h-4 w-[180px]" />
+            <Skeleton className="h-4 w-[140px]" />
           </div>
         ))}
       </div>

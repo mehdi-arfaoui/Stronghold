@@ -313,7 +313,7 @@ export function DiscoveryPage() {
   }, []);
 
   if (graphLoading && !isScanning) {
-    return <LoadingState message="Chargement du graphe..." />;
+    return <LoadingState variant="skeleton" message="Chargement du graphe..." count={5} />;
   }
 
   // Scanning phase

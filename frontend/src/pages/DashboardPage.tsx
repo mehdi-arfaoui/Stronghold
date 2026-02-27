@@ -48,7 +48,7 @@ export function DashboardPage() {
   const hasData = scoreQuery.data !== undefined;
 
   if (isLoading) {
-    return <LoadingState message="Chargement du tableau de bord..." />;
+    return <LoadingState variant="skeleton" message="Chargement du tableau de bord..." count={4} />;
   }
 
   if (!hasData) {

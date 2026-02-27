@@ -1,6 +1,26 @@
 import { useMemo, useState } from 'react';
-import * as Icons from 'lucide-react';
-import type { LucideIcon } from 'lucide-react';
+import {
+  Bug,
+  Building,
+  CloudCog,
+  CloudLightning,
+  CloudOff,
+  Database,
+  DatabaseZap,
+  Flame,
+  FlameKindling,
+  Globe,
+  Lock,
+  Network,
+  PackageX,
+  PowerOff,
+  Rocket,
+  ShieldAlert,
+  Trash2,
+  UserRoundX,
+  Webcam,
+  type LucideIcon,
+} from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -26,6 +46,28 @@ const CATEGORIES: Array<{ key: 'all' | ScenarioTemplate['category']; label: stri
   { key: 'natural', label: 'Naturel' },
   { key: 'human', label: 'Humain' },
 ];
+
+const SCENARIO_ICONS: Record<string, LucideIcon> = {
+  Bug,
+  Building,
+  CloudCog,
+  CloudLightning,
+  CloudOff,
+  Database,
+  DatabaseZap,
+  Flame,
+  FlameKindling,
+  Globe,
+  Lock,
+  Network,
+  PackageX,
+  PowerOff,
+  Rocket,
+  ShieldAlert,
+  Trash2,
+  UserRoundX,
+  Webcam,
+};
 
 export function ScenarioSelector({
   templates,
@@ -73,9 +115,7 @@ export function ScenarioSelector({
   };
 
   const getIcon = (iconName: string): LucideIcon => {
-    const key = iconName as keyof typeof Icons;
-    const icon = Icons[key] as unknown as LucideIcon;
-    return icon ?? Icons.ShieldAlert;
+    return SCENARIO_ICONS[iconName] ?? ShieldAlert;
   };
 
   if (isLoading) {

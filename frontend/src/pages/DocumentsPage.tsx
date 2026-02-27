@@ -47,7 +47,7 @@ export function DocumentsPage() {
     files.forEach((file) => uploadMutation.mutate(file));
   }, [uploadMutation]);
 
-  if (query.isLoading) return <LoadingState message="Chargement des documents..." />;
+  if (query.isLoading) return <LoadingState variant="skeleton" message="Chargement des documents..." count={4} />;
 
   const documents = query.data ?? [];
 
