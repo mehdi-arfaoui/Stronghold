@@ -244,7 +244,7 @@ export function BusinessFlowsPage() {
               size="sm"
               variant="outline"
               className="border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
-              onClick={() => navigate('/financial')}
+              onClick={() => navigate('/settings?tab=finance')}
             >
               Configurer le profil financier
             </Button>

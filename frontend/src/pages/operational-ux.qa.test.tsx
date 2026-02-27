@@ -860,7 +860,7 @@ describe('Operational UX QA flows', () => {
     expect((amountInput as HTMLInputElement).value).toBe('4500');
   });
 
-  it('Parcours 5 - Nouveau utilisateur end-to-end (wizard, export, ROI, override, runbook active)', async () => {
+  it('Parcours 5 - Nouveau utilisateur end-to-end (export, ROI, override, runbook active)', async () => {
     const user = userEvent.setup();
 
     const pdfBlob = new Blob([new Uint8Array(4096)], { type: 'application/pdf' });
@@ -1055,39 +1055,11 @@ describe('Operational UX QA flows', () => {
         <MemoryRouter initialEntries={['/finance']}>
           <Routes>
             <Route path="/finance" element={<FinancialDashboardPage />} />
+            <Route path="/settings" element={<div>Settings Finance</div>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
     );
-
-    await screen.findByText('ROI & Finance');
-    await user.click(screen.getByRole('button', { name: /Configurer le profil financier/i }));
-    await screen.findByText('Assistant de configuration financiere');
-    const wizardDialog = await screen.findByRole('dialog');
-
-    const step1NumberInputs = within(wizardDialog).getAllByRole('spinbutton');
-    fireEvent.change(step1NumberInputs[0], { target: { value: '5000000' } });
-    fireEvent.change(step1NumberInputs[1], { target: { value: '10000' } });
-    await user.click(within(wizardDialog).getByRole('button', { name: /Continuer/i }));
-
-    await screen.findByText(/Donnees complementaires \(optionnelles\)/i);
-    const step2Dialog = await screen.findByRole('dialog');
-    const step2Selects = step2Dialog.querySelectorAll('select');
-    fireEvent.change(step2Selects[0], { target: { value: 'midMarket' } });
-    fireEvent.change(step2Selects[1], { target: { value: 'banking_finance' } });
-    await user.click(within(step2Dialog).getByRole('button', { name: /Continuer/i }));
-
-    await screen.findByText(/Overrides par service/i);
-    const step3Dialog = await screen.findByRole('dialog');
-    const step3Select = step3Dialog.querySelector('select') as HTMLSelectElement | null;
-    if (step3Select) {
-      fireEvent.change(step3Select, { target: { value: 'EUR' } });
-    }
-    await user.click(within(step3Dialog).getByRole('button', { name: /Enregistrer/i }));
-
-    await waitFor(() => {
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    });
 
     await screen.findByText('ROI & Finance');
     expect(screen.getByText(/847/)).toBeInTheDocument();
@@ -1111,6 +1083,9 @@ describe('Operational UX QA flows', () => {
     expect(exportedBlob).not.toBeNull();
     expect((exportedBlob as Blob).size).toBeGreaterThan(3 * 1024);
     expect(revokeObjectUrlSpy).toHaveBeenCalledTimes(1);
+    const configureButtons = screen.getAllByRole('button', { name: /Configurer le profil financier/i });
+    await user.click(configureButtons[0]!);
+    await screen.findByText('Settings Finance');
     financeRender.unmount();
 
     const recRender = render(

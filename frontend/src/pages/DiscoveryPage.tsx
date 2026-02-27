@@ -14,6 +14,15 @@ import { ProgressBar } from '@/components/common/ProgressBar';
 import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { useGraph } from '@/hooks/useGraph';
 import { useDiscovery } from '@/hooks/useDiscovery';
 import { useGraphStore } from '@/stores/graph.store';
@@ -60,7 +69,11 @@ export function DiscoveryPage() {
   const [colorByBusinessFlow, setColorByBusinessFlow] = useState(false);
   const [graphViewMode, setGraphViewMode] = useState<GraphViewMode>('auto');
   const [showMiniMap, setShowMiniMap] = useState(false);
+  const [showPostScanOnboarding, setShowPostScanOnboarding] = useState(false);
+  const [financialWizardOpen, setFinancialWizardOpen] = useState(false);
+  const [postScanStep, setPostScanStep] = useState<1 | 2 | 3>(1);
   const graphContainerRef = useRef<HTMLDivElement | null>(null);
+  const processedCompletedJobRef = useRef<string | null>(null);
   const cloudProviderConfigs = useMemo(() => loadCloudProviderConfigs(tenantScope), [tenantScope]);
   const cloudScanProviders = useMemo(
     () => buildCloudProviderScanPayload(cloudProviderConfigs),
@@ -254,6 +267,24 @@ export function DiscoveryPage() {
   }, []);
 
   const inferredCount = allEdges.filter((e) => e.inferred && !e.confirmed).length;
+  const spofCount = allNodes.filter((node) => node.isSPOF).length;
+  const financeOnboardingDoneKey = `stronghold:finance-onboarding:done:${tenantScope}`;
+
+  useEffect(() => {
+    if (currentJob?.status !== 'completed' || !currentJob.id) return;
+    if (processedCompletedJobRef.current === currentJob.id) return;
+    processedCompletedJobRef.current = currentJob.id;
+
+    if (localStorage.getItem(financeOnboardingDoneKey) === '1') return;
+    setPostScanStep(1);
+    setShowPostScanOnboarding(true);
+  }, [currentJob?.id, currentJob?.status, financeOnboardingDoneKey]);
+
+  const completeFinanceOnboarding = useCallback(() => {
+    localStorage.setItem(financeOnboardingDoneKey, '1');
+    setPostScanStep(3);
+    setFinancialWizardOpen(false);
+  }, [financeOnboardingDoneKey]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {
@@ -541,6 +572,78 @@ export function DiscoveryPage() {
           </Button>
         )}
       </div>
+
+      <Dialog open={showPostScanOnboarding} onOpenChange={setShowPostScanOnboarding}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Onboarding post-scan</DialogTitle>
+            <DialogDescription>
+              Etape {postScanStep} / 3 - Activez l analyse d impact business apres votre premier scan.
+            </DialogDescription>
+          </DialogHeader>
+
+          {postScanStep === 1 && (
+            <div className="space-y-3 text-sm">
+              <p className="font-medium">
+                Scan reussi: {currentJob?.nodesFound ?? allNodes.length} ressources decouvertes, {spofCount} SPOF detectes.
+              </p>
+              <p className="text-muted-foreground">
+                Votre cartographie technique est prete.
+              </p>
+            </div>
+          )}
+
+          {postScanStep === 2 && (
+            <div className="space-y-3 text-sm">
+              <p className="font-medium">Configurez votre profil financier pour activer l impact business.</p>
+              <p className="text-muted-foreground">
+                Le wizard financier est accessible ici pendant l onboarding, puis uniquement dans Settings.
+              </p>
+            </div>
+          )}
+
+          {postScanStep === 3 && (
+            <div className="space-y-3 text-sm">
+              <p className="font-medium">C est pret. Explorez vos resultats.</p>
+              <p className="text-muted-foreground">
+                Vous pourrez modifier le profil financier uniquement depuis Parametres.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            {postScanStep === 1 && (
+              <Button onClick={() => setPostScanStep(2)}>Continuer</Button>
+            )}
+            {postScanStep === 2 && (
+              <div className="flex w-full justify-between gap-2">
+                <Button variant="outline" onClick={() => completeFinanceOnboarding()}>
+                  Configurer plus tard
+                </Button>
+                <Button onClick={() => setFinancialWizardOpen(true)}>
+                  Configurer le profil financier
+                </Button>
+              </div>
+            )}
+            {postScanStep === 3 && (
+              <Button
+                onClick={() => {
+                  setShowPostScanOnboarding(false);
+                  navigate('/dashboard');
+                }}
+              >
+                Explorer le dashboard
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <FinancialOnboardingWizard
+        open={financialWizardOpen}
+        onOpenChange={setFinancialWizardOpen}
+        onCompleted={completeFinanceOnboarding}
+      />
     </div>
   );
 }

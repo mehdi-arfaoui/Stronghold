@@ -1,6 +1,7 @@
-﻿import { memo, useEffect, useMemo, useState } from 'react';
+﻿import { memo, useMemo, useState } from 'react';
 import type { ComponentType, ReactNode } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
+import { useNavigate } from 'react-router-dom';
 import {
   AlertTriangle,
   ArrowDown,
@@ -34,9 +35,7 @@ import { financialApi } from '@/api/financial.api';
 import { recommendationsApi } from '@/api/recommendations.api';
 import { reportsApi } from '@/api/reports.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
-import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
-import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -122,10 +121,8 @@ const KpiCard = memo(function KpiCard(props: {
 });
 
 function FinancialDashboardInner() {
-  const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const tenantScope = getCredentialScopeKey();
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardAutoOpened, setWizardAutoOpened] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
   const orgProfileQuery = useQuery({
@@ -156,18 +153,6 @@ function FinancialDashboardInner() {
     queryFn: async () => (await recommendationsApi.getSummary()).data,
     staleTime: 60_000,
   });
-
-  useEffect(() => {
-    if (!orgProfileQuery.isSuccess || wizardAutoOpened) return;
-    if (orgProfileQuery.data?.requiresReview) {
-      setWizardOpen(true);
-      setWizardAutoOpened(true);
-    }
-  }, [orgProfileQuery.data?.requiresReview, orgProfileQuery.isSuccess, wizardAutoOpened]);
-
-  const refreshFinancialData = async () => {
-    await invalidateFinancialProfileDependentQueries(queryClient);
-  };
 
   const summary = summaryQuery.data;
   const flowCoverage = flowCoverageQuery.data;
@@ -372,19 +357,12 @@ function FinancialDashboardInner() {
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
               <Button onClick={() => summaryQuery.refetch()}>Reessayer</Button>
-              <Button variant="outline" onClick={() => setWizardOpen(true)}>
+              <Button variant="outline" onClick={() => navigate('/settings?tab=finance')}>
                 Configurer le profil financier
               </Button>
             </div>
           </CardContent>
         </Card>
-
-        <FinancialOnboardingWizard
-          open={wizardOpen}
-          onOpenChange={setWizardOpen}
-          initialProfile={orgProfileQuery.data}
-          onCompleted={refreshFinancialData}
-        />
       </>
     );
   }
@@ -413,7 +391,7 @@ function FinancialDashboardInner() {
               )}
               Exporter le rapport executif
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setWizardOpen(true)}>
+            <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=finance')}>
               Configurer le profil financier
             </Button>
           </div>
@@ -441,7 +419,7 @@ function FinancialDashboardInner() {
               size="sm"
               variant="outline"
               className="border-amber-500 bg-amber-100 text-amber-900 hover:bg-amber-200"
-              onClick={() => setWizardOpen(true)}
+              onClick={() => navigate('/settings?tab=finance')}
             >
               Configurer
             </Button>
@@ -456,7 +434,7 @@ function FinancialDashboardInner() {
               size="sm"
               variant="outline"
               className="border-emerald-500 bg-emerald-100 text-emerald-900 hover:bg-emerald-200"
-              onClick={() => setWizardOpen(true)}
+              onClick={() => navigate('/settings?tab=finance')}
             >
               Modifier
             </Button>
@@ -824,13 +802,6 @@ function FinancialDashboardInner() {
           )}
         </CardContent>
       </Card>
-
-      <FinancialOnboardingWizard
-        open={wizardOpen}
-        onOpenChange={setWizardOpen}
-        initialProfile={orgProfileQuery.data}
-        onCompleted={refreshFinancialData}
-      />
     </div>
   );
 }
