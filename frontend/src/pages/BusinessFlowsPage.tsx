@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bot, Cloud, Pencil, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { businessFlowsApi, type FlowSuggestionResponse } from '@/api/businessFlows.api';
+import { businessFlowsApi, type BusinessFlow } from '@/api/businessFlows.api';
 import { financialApi } from '@/api/financial.api';
 import { BusinessFlowDetailEditor } from '@/components/business-flows/BusinessFlowDetailEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -22,12 +22,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 
+type FlowFilter = 'all' | 'pending' | 'validated' | 'rejected';
+
 function formatMoney(value: number, currency: string = 'EUR') {
   return new Intl.NumberFormat('fr-FR', {
     style: 'currency',
     currency,
     maximumFractionDigits: 0,
   }).format(value || 0);
+}
+
+function summarizeFlowServices(flow: BusinessFlow): string {
+  const names = flow.flowNodes
+    .slice(0, 4)
+    .map((node) => node.infraNode?.name || node.infraNodeId)
+    .filter(Boolean);
+  if (names.length === 0) return 'Aucun service associe';
+  const suffix = flow.flowNodes.length > names.length ? ` +${flow.flowNodes.length - names.length}` : '';
+  return `${names.join(', ')}${suffix}`;
 }
 
 export function BusinessFlowsPage() {
@@ -40,9 +52,8 @@ export function BusinessFlowsPage() {
   const [name, setName] = useState('');
   const [category, setCategory] = useState('operations');
   const [estimatedCostPerHour, setEstimatedCostPerHour] = useState('');
-  const [latestSuggestionInsights, setLatestSuggestionInsights] = useState<
-    FlowSuggestionResponse['suggestionInsights']
-  >([]);
+  const [activeFilter, setActiveFilter] = useState<FlowFilter>('all');
+  const [rejectedFlows, setRejectedFlows] = useState<BusinessFlow[]>([]);
 
   const flowsQuery = useQuery({
     queryKey: ['business-flows', tenantScope],
@@ -53,6 +64,7 @@ export function BusinessFlowsPage() {
     queryKey: ['flows-coverage', tenantScope],
     queryFn: async () => (await businessFlowsApi.getCoverage()).data,
   });
+
   const orgProfileQuery = useQuery({
     queryKey: ['financial-org-profile', tenantScope],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
@@ -69,43 +81,45 @@ export function BusinessFlowsPage() {
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => businessFlowsApi.create(payload),
     onSuccess: async () => {
-      toast.success('Business flow created');
+      toast.success('Flux metier cree');
       setCreateOpen(false);
       setName('');
       setEstimatedCostPerHour('');
       await refreshFlows();
     },
-    onError: () => toast.error('Unable to create business flow'),
+    onError: () => toast.error('Creation impossible'),
   });
 
   const validateMutation = useMutation({
     mutationFn: (flowId: string) => businessFlowsApi.validate(flowId),
     onSuccess: async () => {
-      toast.success('Flow validated');
+      toast.success('Flux valide');
       await refreshFlows();
     },
-    onError: () => toast.error('Validation failed'),
+    onError: () => toast.error('Validation impossible'),
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: (flowId: string) => businessFlowsApi.remove(flowId),
-    onSuccess: async () => {
-      toast.success('Flow deleted');
+  const rejectMutation = useMutation({
+    mutationFn: (flow: BusinessFlow) => businessFlowsApi.remove(flow.id),
+    onSuccess: async (_result, flow) => {
+      setRejectedFlows((current) => [
+        { ...flow, validatedByUser: false, validatedAt: null },
+        ...current.filter((entry) => entry.id !== flow.id),
+      ]);
+      toast.success('Flux rejete');
       await refreshFlows();
     },
-    onError: () => toast.error('Deletion failed'),
+    onError: () => toast.error('Rejet impossible'),
   });
 
   const suggestMutation = useMutation({
     mutationFn: () => businessFlowsApi.suggestAI(),
     onSuccess: async (result) => {
-      setLatestSuggestionInsights(result.data.suggestionInsights ?? []);
-      toast.success(
-        `${result.data.suggestionsCreated} suggestion(s) generee(s), ${result.data.suggestionInsights?.length || 0} exploitable(s)`,
-      );
+      toast.success(`${result.data.suggestionsCreated} flux genere(s) par IA`);
+      setActiveFilter('pending');
       await refreshFlows();
     },
-    onError: () => toast.error('AI suggestions unavailable'),
+    onError: () => toast.error('Suggestions IA indisponibles'),
   });
 
   const enrichMutation = useMutation({
@@ -121,7 +135,7 @@ export function BusinessFlowsPage() {
       }
       await refreshFlows();
     },
-    onError: () => toast.error('Cloud enrichment unavailable'),
+    onError: () => toast.error('Enrichissement cloud indisponible'),
   });
 
   const flows = flowsQuery.data || [];
@@ -131,23 +145,35 @@ export function BusinessFlowsPage() {
 
   const sortedFlows = useMemo(
     () =>
-      [...flows].sort(
-        (a, b) => {
-          const leftDowntime =
-            typeof a.downtimeCostPerHour === 'number' ? a.downtimeCostPerHour : -1;
-          const rightDowntime =
-            typeof b.downtimeCostPerHour === 'number' ? b.downtimeCostPerHour : -1;
-          if (leftDowntime !== rightDowntime) {
-            return rightDowntime - leftDowntime;
-          }
-          return (
-            (b.computedCost?.totalCostPerHour || b.calculatedCostPerHour || 0) -
-            (a.computedCost?.totalCostPerHour || a.calculatedCostPerHour || 0)
-          );
-        },
-      ),
+      [...flows].sort((a, b) => {
+        const leftDowntime = typeof a.downtimeCostPerHour === 'number' ? a.downtimeCostPerHour : -1;
+        const rightDowntime = typeof b.downtimeCostPerHour === 'number' ? b.downtimeCostPerHour : -1;
+        if (leftDowntime !== rightDowntime) {
+          return rightDowntime - leftDowntime;
+        }
+        return (
+          (b.computedCost?.totalCostPerHour || b.calculatedCostPerHour || 0) -
+          (a.computedCost?.totalCostPerHour || a.calculatedCostPerHour || 0)
+        );
+      }),
     [flows],
   );
+
+  const pendingFlows = useMemo(
+    () => sortedFlows.filter((flow) => !flow.validatedByUser),
+    [sortedFlows],
+  );
+
+  const validatedFlows = useMemo(
+    () => sortedFlows.filter((flow) => flow.validatedByUser),
+    [sortedFlows],
+  );
+
+  const visibleActiveFlows = useMemo(() => {
+    if (activeFilter === 'pending') return pendingFlows;
+    if (activeFilter === 'validated') return validatedFlows;
+    return sortedFlows;
+  }, [activeFilter, pendingFlows, sortedFlows, validatedFlows]);
 
   const createFlow = () => {
     if (!name.trim()) return;
@@ -157,10 +183,7 @@ export function BusinessFlowsPage() {
       name: name.trim(),
       category,
       source: 'manual',
-      estimatedCostPerHour:
-        Number.isFinite(parsedManualCost) && parsedManualCost > 0
-          ? parsedManualCost
-          : null,
+      estimatedCostPerHour: Number.isFinite(parsedManualCost) && parsedManualCost > 0 ? parsedManualCost : null,
       annualRevenue: null,
       transactionsPerHour: null,
       revenuePerTransaction: null,
@@ -182,9 +205,9 @@ export function BusinessFlowsPage() {
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Business Flows</h1>
+          <h1 className="text-2xl font-bold">Flux metier</h1>
           <p className="text-sm text-muted-foreground">
-            Link technical nodes to business processes to improve financial accuracy.
+            Une seule interface pour valider, rejeter ou modifier les flux.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -194,7 +217,7 @@ export function BusinessFlowsPage() {
             disabled={suggestMutation.isPending}
           >
             <Bot className="mr-2 h-4 w-4" />
-            AI suggestions
+            Generer IA
           </Button>
           <Button
             variant="outline"
@@ -202,31 +225,31 @@ export function BusinessFlowsPage() {
             disabled={enrichMutation.isPending}
           >
             <Cloud className="mr-2 h-4 w-4" />
-            Cloud enrich
+            Enrichir cloud
           </Button>
           <Button onClick={() => setCreateOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            New flow
+            Nouveau flux
           </Button>
         </div>
       </div>
 
       <Card className="border-muted/60">
         <CardHeader>
-          <CardTitle className="text-base">Financial coverage</CardTitle>
+          <CardTitle className="text-base">Couverture financiere</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm">
             {coverage
-              ? `${coverage.coveredCriticalNodes}/${coverage.totalCriticalNodes} critical nodes covered (${coverage.coveragePercent}%)`
-              : 'Loading coverage...'}
+              ? `${coverage.coveredCriticalNodes}/${coverage.totalCriticalNodes} noeuds critiques couverts (${coverage.coveragePercent}%)`
+              : 'Chargement de la couverture...'}
           </p>
           <Progress value={coverage?.coveragePercent || 0} className="h-2" />
           {lowCoverage && (
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4" />
-                Coverage under 50%: ROI estimates still rely heavily on fallback calculations.
+                Couverture inferieure a 50%: les estimations ROI restent partielles.
               </div>
             </div>
           )}
@@ -252,157 +275,162 @@ export function BusinessFlowsPage() {
         </div>
       )}
 
-      {latestSuggestionInsights.length > 0 && (
-        <Card className="border-muted/60">
-          <CardHeader>
-            <CardTitle className="text-base">AI Suggestions (actionnables)</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {latestSuggestionInsights.map((insight) => (
-              <div key={insight.flowId} className="space-y-2 rounded-lg border p-3">
-                <div className="flex items-center gap-2">
-                  <p className="text-sm font-semibold">{insight.label}</p>
-                  <Badge variant="secondary">Suggestion</Badge>
-                </div>
-                <p className="text-sm text-muted-foreground">{insight.proposedAction}</p>
-                <p className="text-xs text-muted-foreground">{insight.rationale}</p>
-                {insight.suggestedServicesToAdd.length > 0 && (
-                  <p className="text-xs">
-                    Services a ajouter: {insight.suggestedServicesToAdd.map((entry) => entry.nodeName).join(', ')}
-                  </p>
-                )}
-                {insight.optimizationHints.length > 0 && (
-                  <p className="text-xs">
-                    Optimisations: {insight.optimizationHints.join(' | ')}
-                  </p>
-                )}
-                {insight.spofAlerts.length > 0 && (
-                  <p className="text-xs text-severity-critical">
-                    Alertes SPOF: {insight.spofAlerts.join(' | ')}
-                  </p>
-                )}
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => validateMutation.mutate(insight.flowId)}
-                    disabled={validateMutation.isPending}
-                  >
-                    Appliquer
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => deleteMutation.mutate(insight.flowId)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    Rejeter
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+      <Card className="border-muted/60">
+        <CardHeader>
+          <CardTitle className="text-base">Flux</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant={activeFilter === 'all' ? 'default' : 'outline'}
+              onClick={() => setActiveFilter('all')}
+            >
+              Tous ({sortedFlows.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={activeFilter === 'pending' ? 'default' : 'outline'}
+              onClick={() => setActiveFilter('pending')}
+            >
+              A valider ({pendingFlows.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={activeFilter === 'validated' ? 'default' : 'outline'}
+              onClick={() => setActiveFilter('validated')}
+            >
+              Valides ({validatedFlows.length})
+            </Button>
+            <Button
+              size="sm"
+              variant={activeFilter === 'rejected' ? 'default' : 'outline'}
+              onClick={() => setActiveFilter('rejected')}
+            >
+              Rejetes ({rejectedFlows.length})
+            </Button>
+          </div>
 
-      <div className="space-y-3">
-        {sortedFlows.map((flow) => {
-          const flowCurrency = String(flow.currency || flow.computedCost?.currency || 'EUR').toUpperCase();
-          const downtimeCostPerHour =
-            typeof flow.downtimeCostPerHour === 'number' ? flow.downtimeCostPerHour : null;
-          const isValidated = flow.validatedByUser;
-          return (
-            <Card key={flow.id}>
-              <CardContent className="flex flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-semibold">{flow.name}</h3>
-                    <Badge variant={isValidated ? 'default' : 'outline'}>
-                      {isValidated ? 'Validated' : 'Not validated'}
-                    </Badge>
-                    {flow.source !== 'manual' && <Badge variant="secondary">{flow.source}</Badge>}
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    {flow.flowNodes.length} service(s) • cout/h indisponibilite{' '}
-                    {downtimeCostPerHour != null
-                      ? formatMoney(downtimeCostPerHour, flowCurrency)
-                      : '—'}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || '—'}
-                  </p>
-                  {flow.downtimeCostMessage && (
-                    <p className="text-xs text-amber-700">{flow.downtimeCostMessage}</p>
-                  )}
-                  {Array.isArray(flow.contributingServices) && flow.contributingServices.length > 0 && (
-                    <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
-                      <summary className="cursor-pointer font-medium">
-                        Services contributeurs ({flow.contributingServices.length})
-                      </summary>
-                      <div className="mt-2 space-y-1">
-                        {flow.contributingServices.map((service) => (
-                          <div
-                            key={`${flow.id}-${service.serviceId}`}
-                            className="flex items-center justify-between gap-2"
-                          >
-                            <div className="flex items-center gap-2">
-                              <span>{service.serviceName}</span>
-                              {service.isMax && <Badge variant="secondary">MAX</Badge>}
-                            </div>
-                            <span>{formatMoney(service.downtimeCostPerHour, flowCurrency)}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </details>
-                  )}
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => setSelectedFlowId(flow.id)}
-                  >
-                    <Pencil className="mr-2 h-4 w-4" />
-                    Edit
-                  </Button>
-                  {!isValidated && (
+          <div className="space-y-3">
+            {activeFilter === 'rejected' && rejectedFlows.map((flow) => (
+              <Card key={`rejected-${flow.id}`} className="border-dashed border-muted">
+                <CardContent className="space-y-2 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-semibold">{flow.name}</h3>
+                      <Badge variant="secondary">Rejete</Badge>
+                    </div>
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => validateMutation.mutate(flow.id)}
-                      disabled={validateMutation.isPending}
+                      onClick={() =>
+                        setRejectedFlows((current) => current.filter((entry) => entry.id !== flow.id))
+                      }
                     >
-                      <CheckCircle2 className="mr-2 h-4 w-4" />
-                      Validate
+                      Retirer
                     </Button>
-                  )}
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => deleteMutation.mutate(flow.id)}
-                    disabled={deleteMutation.isPending}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Flux rejete pendant cette session.
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
 
-        {sortedFlows.length === 0 && (
-          <Card>
-            <CardContent className="p-6 text-sm text-muted-foreground">
-              No business flow yet. Create one manually, or start with AI/cloud suggestions.
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            {activeFilter !== 'rejected' && visibleActiveFlows.map((flow) => {
+              const flowCurrency = String(flow.currency || flow.computedCost?.currency || 'EUR').toUpperCase();
+              const downtimeCostPerHour =
+                typeof flow.downtimeCostPerHour === 'number' ? flow.downtimeCostPerHour : null;
+              const isValidated = flow.validatedByUser;
+              const servicesSummary = summarizeFlowServices(flow);
+
+              return (
+                <Card key={flow.id}>
+                  <CardContent className="space-y-3 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-base font-semibold">{flow.name}</h3>
+                          <Badge variant={isValidated ? 'default' : 'outline'}>
+                            {isValidated ? 'Valide' : 'A valider'}
+                          </Badge>
+                          {flow.source !== 'manual' && (
+                            <Badge variant="secondary">{flow.source}</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          Services: {servicesSummary}
+                        </p>
+                      </div>
+                      <p className="text-sm font-medium">
+                        Cout/h: {downtimeCostPerHour != null ? formatMoney(downtimeCostPerHour, flowCurrency) : '—'}
+                      </p>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || 'Cout indisponibilite non disponible'}
+                    </p>
+
+                    <div className="flex flex-wrap gap-2">
+                      {!isValidated && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => validateMutation.mutate(flow.id)}
+                          disabled={validateMutation.isPending}
+                        >
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                          Valider
+                        </Button>
+                      )}
+                      {!isValidated && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => rejectMutation.mutate(flow)}
+                          disabled={rejectMutation.isPending}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Rejeter
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setSelectedFlowId(flow.id)}
+                      >
+                        <Pencil className="mr-2 h-4 w-4" />
+                        Modifier
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+
+            {activeFilter === 'rejected' && rejectedFlows.length === 0 && (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  Aucun flux rejete sur cette session.
+                </CardContent>
+              </Card>
+            )}
+
+            {activeFilter !== 'rejected' && visibleActiveFlows.length === 0 && (
+              <Card>
+                <CardContent className="p-6 text-sm text-muted-foreground">
+                  Aucun flux dans ce filtre.
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New business flow</DialogTitle>
+            <DialogTitle>Nouveau flux metier</DialogTitle>
             <DialogDescription>
               Configurez un cout downtime/h manuel (optionnel).
             </DialogDescription>
@@ -412,7 +440,7 @@ export function BusinessFlowsPage() {
             <Input
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Ex: Customer payment"
+              placeholder="Ex: Parcours de commande"
             />
             <select
               value={category}
@@ -435,10 +463,10 @@ export function BusinessFlowsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
+              Annuler
             </Button>
             <Button onClick={createFlow} disabled={createMutation.isPending || !name.trim()}>
-              Create
+              Creer
             </Button>
           </DialogFooter>
         </DialogContent>
