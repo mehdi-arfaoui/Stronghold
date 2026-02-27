@@ -54,11 +54,28 @@ export interface AdapterProgress {
 
 export interface DiscoverySchedule {
   id: string;
-  provider: string;
-  regions: string[];
+  tenantId?: string;
   enabled: boolean;
-  lastRun?: string;
-  nextRun?: string;
+  intervalMinutes: number;
+  cronExpression?: string;
+  lastScanAt?: string | null;
+  nextScanAt?: string | null;
+}
+
+export interface ScanTimelineEntry {
+  id: string;
+  jobId: string | null;
+  type: 'scheduled' | 'manual';
+  occurredAt: string;
+  nodes: number;
+  edges: number;
+  spofCount: number;
+  driftCount: number;
+  drifts: Array<{
+    id: string;
+    severity: string;
+    description: string;
+  }>;
 }
 
 export interface CredentialTestResult {

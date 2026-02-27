@@ -261,11 +261,11 @@ export async function detectDrifts(
 export async function runDriftCheck(
   prisma: PrismaClient,
   tenantId: string,
-  options?: { comparisonMode?: DriftComparisonMode },
+  options?: { comparisonMode?: DriftComparisonMode; scanId?: string },
 ): Promise<DriftCheckResult> {
   const comparisonMode = options?.comparisonMode ?? 'baseline';
   const baselineSnapshot = await ensureBaselineSnapshot(prisma, tenantId, 'drift-baseline');
-  const currentSnapshot = await captureSnapshot(prisma, tenantId);
+  const currentSnapshot = await captureSnapshot(prisma, tenantId, options?.scanId);
 
   let comparedSnapshotId: string | null = null;
   if (comparisonMode === 'baseline') {

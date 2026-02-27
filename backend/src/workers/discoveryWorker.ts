@@ -11,6 +11,7 @@ import { runDiscoveryEngine } from "../services/discoveryEngine.js";
 import { resolveVaultCredentials } from "../services/discoveryVaultService.js";
 import { emitDiscoveryProgress } from "../services/discoveryProgressService.js";
 import { CloudEnrichmentService } from "../services/cloud-enrichment.service.js";
+import { runDriftCheck } from "../drift/driftDetectionService.js";
 import { toPrismaJson } from "../utils/prismaJson.js";
 
 export type DiscoveryQueuePayload = {
@@ -247,6 +248,28 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
                 : "cloud enrichment failed";
             appLogger.warn("Cloud enrichment post-scan failed", { tenantId, jobId, message });
           });
+
+        const shouldRunScheduledDrift =
+          jobRecord.jobType === "SCHEDULED_SCAN" || Boolean(job.data.scheduleId);
+        if (shouldRunScheduledDrift) {
+          void runDriftCheck(prisma, tenantId, {
+            comparisonMode: "latest",
+            scanId: jobId,
+          }).then((driftResult) => {
+            appLogger.info("scheduled_scan.drift_complete", {
+              tenantId,
+              jobId,
+              driftCount: driftResult.drifts.length,
+              snapshotId: driftResult.snapshot.id,
+            });
+          }).catch((driftError) => {
+            appLogger.error("scheduled_scan.drift_failed", {
+              tenantId,
+              jobId,
+              message: driftError instanceof Error ? driftError.message : "unknown",
+            });
+          });
+        }
         span.setStatus({ code: SpanStatusCode.OK });
       } catch (error) {
         recordDiscoveryJobResult(false, tenantId);

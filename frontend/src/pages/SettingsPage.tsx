@@ -16,6 +16,10 @@ import { CloudProvidersSettings } from '@/components/settings/CloudProvidersSett
 import { useUIStore } from '@/stores/ui.store';
 import { discoveryApi } from '@/api/discovery.api';
 import { financialApi, type OrganizationFinancialProfile } from '@/api/financial.api';
+import {
+  buildCloudProviderScanPayload,
+  loadCloudProviderConfigs,
+} from '@/lib/cloudProviderConfigs';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 
@@ -76,6 +80,35 @@ function splitConstraints(raw: string): string[] {
     .split(/\r?\n|,/g)
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
+}
+
+type ScheduleFrequency = 'disabled' | 'hourly' | 'daily' | 'weekly';
+
+function intervalToFrequency(intervalMinutes: number | undefined, enabled: boolean): ScheduleFrequency {
+  if (!enabled) return 'disabled';
+  const interval = Number(intervalMinutes || 0);
+  if (interval <= 60) return 'hourly';
+  if (interval <= 24 * 60) return 'daily';
+  return 'weekly';
+}
+
+function frequencyToInterval(frequency: ScheduleFrequency): number {
+  if (frequency === 'hourly') return 60;
+  if (frequency === 'weekly') return 7 * 24 * 60;
+  return 24 * 60;
+}
+
+function formatScheduleDistance(dateValue: string | null | undefined): string {
+  if (!dateValue) return 'Non planifie';
+  const target = new Date(dateValue);
+  if (Number.isNaN(target.getTime())) return 'Non planifie';
+  const diffMs = target.getTime() - Date.now();
+  const future = diffMs >= 0;
+  const totalMinutes = Math.round(Math.abs(diffMs) / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const label = hours > 0 ? `${hours}h ${minutes.toString().padStart(2, '0')}min` : `${minutes}min`;
+  return future ? `dans ${label}` : `il y a ${label}`;
 }
 
 function buildOverrideDrafts(
@@ -160,12 +193,20 @@ export function SettingsPage() {
   const [regulatoryConstraintsText, setRegulatoryConstraintsText] = useState('');
   const [serviceOverrideDrafts, setServiceOverrideDrafts] = useState<Record<string, ServiceOverrideDraft>>({});
   const [customCurrency, setCustomCurrency] = useState('EUR');
+  const [scheduleFrequency, setScheduleFrequency] = useState<ScheduleFrequency>('daily');
 
   const graphQuery = useQuery({
     queryKey: ['settings-financial-overrides-services', tenantScope],
     enabled: activeTab === 'finance',
     staleTime: 60_000,
     queryFn: async () => (await discoveryApi.getGraph()).data,
+  });
+
+  const schedulesQuery = useQuery({
+    queryKey: ['discovery-schedules', tenantScope],
+    enabled: activeTab === 'cloud',
+    staleTime: 30_000,
+    queryFn: async () => (await discoveryApi.getSchedules()).data.schedules,
   });
 
   const detectedServiceNodes = useMemo(() => {
@@ -184,6 +225,16 @@ export function SettingsPage() {
     const knownNodeIds = new Set(detectedServiceNodes.map((node) => node.id));
     return toServiceOverrides(serviceOverrideDrafts).filter((override) => !knownNodeIds.has(override.nodeId)).length;
   }, [detectedServiceNodes, serviceOverrideDrafts]);
+
+  const activeSchedule = useMemo(
+    () => schedulesQuery.data?.[0] || null,
+    [schedulesQuery.data],
+  );
+
+  const scheduledScanProviders = useMemo(
+    () => buildCloudProviderScanPayload(loadCloudProviderConfigs(tenantScope)),
+    [tenantScope, schedulesQuery.dataUpdatedAt],
+  );
 
   const upsertOverrideDraft = (nodeId: string, patch: Partial<ServiceOverrideDraft>) => {
     setServiceOverrideDrafts((current) => ({
@@ -229,6 +280,16 @@ export function SettingsPage() {
     const tabFromQuery = resolveSettingsTab(searchParams.get('tab'));
     setActiveTab((current) => (current === tabFromQuery ? current : tabFromQuery));
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!activeSchedule) {
+      setScheduleFrequency('disabled');
+      return;
+    }
+    setScheduleFrequency(
+      intervalToFrequency(activeSchedule.intervalMinutes, Boolean(activeSchedule.enabled)),
+    );
+  }, [activeSchedule]);
 
   const handleTabChange = (nextTab: string) => {
     const resolved = resolveSettingsTab(nextTab);
@@ -286,6 +347,50 @@ export function SettingsPage() {
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Echec de la mise a jour du profil financier';
       toast.error(message);
+    },
+  });
+
+  const updateScheduleMutation = useMutation({
+    mutationFn: async (frequency: ScheduleFrequency) => {
+      const enabled = frequency !== 'disabled';
+      if (enabled && scheduledScanProviders.length === 0) {
+        throw new Error('Configurez au moins un provider cloud avant d activer le scan planifie.');
+      }
+      await discoveryApi.updateSchedule({
+        enabled,
+        intervalMinutes: frequencyToInterval(frequency),
+        providers: scheduledScanProviders,
+        options: { inferDependencies: true },
+      });
+    },
+    onSuccess: async () => {
+      toast.success('Planification du scan mise a jour');
+      await queryClient.invalidateQueries({ queryKey: ['discovery-schedules', tenantScope] });
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Mise a jour du scan planifie impossible');
+    },
+  });
+
+  const runNowMutation = useMutation({
+    mutationFn: async () => {
+      if (activeSchedule?.enabled) {
+        await discoveryApi.runScheduledScanNow();
+        return;
+      }
+      if (scheduledScanProviders.length === 0) {
+        throw new Error('Configurez au moins un provider cloud avant de lancer un scan.');
+      }
+      await discoveryApi.launchScan({
+        providers: scheduledScanProviders,
+        options: { inferDependencies: true },
+      });
+    },
+    onSuccess: () => {
+      toast.success('Scan lance');
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : 'Lancement du scan impossible');
     },
   });
 
@@ -689,7 +794,59 @@ export function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="cloud">
-          <CloudProvidersSettings tenantScope={tenantScope} />
+          <div className="mx-auto max-w-3xl space-y-6">
+            <CloudProvidersSettings tenantScope={tenantScope} />
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Scan planifie</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="scan-frequency">Frequence</Label>
+                  <select
+                    id="scan-frequency"
+                    value={scheduleFrequency}
+                    onChange={(event) => setScheduleFrequency(event.target.value as ScheduleFrequency)}
+                    className="h-10 w-full rounded-md border bg-background px-3 text-sm"
+                  >
+                    <option value="hourly">Toutes les heures</option>
+                    <option value="daily">Toutes les 24 heures</option>
+                    <option value="weekly">Toutes les semaines</option>
+                    <option value="disabled">Desactive</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  <p>
+                    Dernier scan: {activeSchedule?.lastScanAt ? formatScheduleDistance(activeSchedule.lastScanAt) : 'jamais'}
+                  </p>
+                  <p>
+                    Prochain scan: {activeSchedule?.enabled && activeSchedule?.nextScanAt
+                      ? formatScheduleDistance(activeSchedule.nextScanAt)
+                      : 'desactive'}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => updateScheduleMutation.mutate(scheduleFrequency)}
+                    disabled={updateScheduleMutation.isPending || schedulesQuery.isLoading}
+                  >
+                    {updateScheduleMutation.isPending ? 'Enregistrement...' : 'Enregistrer la planification'}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => runNowMutation.mutate()}
+                    disabled={runNowMutation.isPending}
+                  >
+                    {runNowMutation.isPending ? 'Lancement...' : 'Lancer un scan maintenant'}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
         <TabsContent value="integrations">

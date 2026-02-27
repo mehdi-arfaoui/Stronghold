@@ -65,7 +65,7 @@ import praExerciseRoutes from "./routes/praExerciseRoutes.js";
 import devRoutes from "./routes/devRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
-import { startDiscoveryScheduler } from "./workers/discoveryScheduler.js";
+import { startDiscoveryScheduler } from "./services/scheduledScanService.js";
 import { startApiKeyRotationWorker } from "./workers/apiKeyRotationWorker.js";
 import { startLicenseQuotaResetWorker } from "./workers/licenseQuotaResetWorker.js";
 import { startDriftScheduler } from "./workers/driftScheduler.js";

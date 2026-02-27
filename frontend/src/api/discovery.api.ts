@@ -1,5 +1,12 @@
 import { api } from './client';
-import type { ScanConfig, ScanJob, CredentialTestResult, DiscoverySchedule, ScanHealthReport } from '@/types/discovery.types';
+import type {
+  ScanConfig,
+  ScanJob,
+  CredentialTestResult,
+  DiscoverySchedule,
+  ScanHealthReport,
+  ScanTimelineEntry,
+} from '@/types/discovery.types';
 import type { GraphData } from '@/types/graph.types';
 
 export interface DemoOnboardingPipelineStep {
@@ -96,7 +103,25 @@ export const discoveryApi = {
     api.post<CredentialTestResult>('/discovery-resilience/test-credentials', { provider, credentials }),
 
   getSchedules: () =>
-    api.get<DiscoverySchedule[]>('/discovery-resilience/schedules'),
+    api.get<{ schedules: DiscoverySchedule[] }>('/discovery-resilience/schedules'),
+
+  updateSchedule: (payload: {
+    enabled: boolean;
+    intervalMinutes: number;
+    providers: Array<{ type: string; credentials: Record<string, string>; regions?: string[] }>;
+    kubernetes?: unknown[];
+    onPremise?: { ipRanges: string[] };
+    options?: Record<string, unknown>;
+  }) =>
+    api.post<{ schedule: DiscoverySchedule }>('/discovery-resilience/schedules', payload),
+
+  runScheduledScanNow: () =>
+    api.post<{ jobId: string; status: 'queued' }>('/discovery-resilience/schedules/run-now', {}),
+
+  getScanTimeline: (limit = 20) =>
+    api.get<{ entries: ScanTimelineEntry[] }>('/discovery-resilience/scan-timeline', {
+      params: { limit },
+    }),
 
   getHealth: () =>
     api.get<{ data: ScanHealthReport }>('/discovery/health'),

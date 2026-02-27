@@ -10,6 +10,7 @@ import { RiskMatrix } from '@/components/dashboard/RiskMatrix';
 import { LoadingState } from '@/components/common/LoadingState';
 import { EmptyState } from '@/components/common/EmptyState';
 import { analysisApi } from '@/api/analysis.api';
+import { discoveryApi } from '@/api/discovery.api';
 import { risksApi } from '@/api/risks.api';
 import { financialApi } from '@/api/financial.api';
 import { formatRelativeTime } from '@/lib/formatters';
@@ -34,6 +35,12 @@ export function DashboardPage() {
   const financialProfileQuery = useQuery({
     queryKey: ['financial-org-profile'],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
+    staleTime: 60_000,
+  });
+
+  const timelineQuery = useQuery({
+    queryKey: ['scan-timeline'],
+    queryFn: async () => (await discoveryApi.getScanTimeline(10)).data.entries,
     staleTime: 60_000,
   });
 
@@ -145,6 +152,43 @@ export function DashboardPage() {
 
       {/* Row 3: Risk matrix */}
       {risks.length > 0 && <RiskMatrix risks={risks} />}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historique scans & drifts</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          {timelineQuery.isLoading && (
+            <p className="text-muted-foreground">Chargement de l historique...</p>
+          )}
+          {timelineQuery.isError && (
+            <p className="text-muted-foreground">Impossible de charger l historique des scans.</p>
+          )}
+          {!timelineQuery.isLoading && !timelineQuery.isError && (timelineQuery.data || []).length === 0 && (
+            <p className="text-muted-foreground">
+              Aucun scan historise pour le moment.
+            </p>
+          )}
+          {(timelineQuery.data || []).map((entry) => (
+            <div key={entry.id} className="rounded-md border p-3">
+              <p className="font-medium">
+                {new Date(entry.occurredAt).toLocaleString('fr-FR')} - {entry.type === 'scheduled' ? 'Scan planifie' : 'Scan manuel'}
+              </p>
+              <p className="text-muted-foreground">
+                {entry.nodes} nodes, {entry.edges} edges, {entry.spofCount} SPOF
+              </p>
+              {entry.driftCount > 0 ? (
+                <p className="text-amber-700">
+                  {entry.driftCount} drift(s) detecte(s)
+                  {entry.drifts[0] ? ` - ${entry.drifts[0].description}` : ''}
+                </p>
+              ) : (
+                <p className="text-emerald-700">Aucun drift detecte</p>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
       {/* Row 4: Quick actions */}
       <Card>

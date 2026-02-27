@@ -5,11 +5,10 @@ import { appLogger } from "../utils/logger.js";
 // ============================================================
 
 import { Router } from 'express';
+import { Prisma } from '@prisma/client';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import {
-  createScanSchedule,
-  listScanSchedules,
   ingestDiscoveredResources,
 } from '../discovery/discoveryOrchestrator.js';
 import { discoveryQueue } from '../queues/discoveryQueue.js';
@@ -18,7 +17,10 @@ import {
   runDemoOnboarding,
 } from '../services/demoOnboardingService.js';
 import { buildScanHealthReport } from '../services/discoveryHealthService.js';
-import { scanConfigHasPlaintextCredentials } from '../services/scanConfigSecurityService.js';
+import {
+  encryptScanConfigCredentials,
+  scanConfigHasPlaintextCredentials,
+} from '../services/scanConfigSecurityService.js';
 import { encryptDiscoveryCredentials } from '../services/discoveryService.js';
 import { scanAws, scanAzure, scanGcp } from '../services/discoveryCloudConnectors.js';
 import * as GraphService from '../graph/graphService.js';
@@ -32,6 +34,11 @@ import {
   type DemoFinancialFieldKey,
   type DemoProfileSelectionInput,
 } from '../config/demo-profiles.js';
+import {
+  enqueueScheduledScanRun,
+  intervalToCronExpression,
+  mapScanScheduleForApi,
+} from '../services/scheduledScanService.js';
 
 const router = Router();
 
@@ -584,6 +591,32 @@ function buildAutoScanJobResponse(job: {
   };
 }
 
+function normalizeIntervalMinutes(value: unknown): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 24 * 60;
+  if (parsed <= 60) return 60;
+  if (parsed <= 24 * 60) return 24 * 60;
+  return 7 * 24 * 60;
+}
+
+function hasScheduleSources(scanConfig: Record<string, unknown>): boolean {
+  const providers = Array.isArray(scanConfig.providers) ? scanConfig.providers : [];
+  const hasCloudProviders = providers.length > 0;
+  const hasKubernetes = Array.isArray(scanConfig.kubernetes) && scanConfig.kubernetes.length > 0;
+  const onPremise = isRecord(scanConfig.onPremise) ? scanConfig.onPremise : null;
+  const hasOnPremise =
+    Boolean(onPremise) &&
+    Array.isArray(onPremise.ipRanges) &&
+    onPremise.ipRanges.some((entry) => readTrimmedString(entry));
+  return hasCloudProviders || hasKubernetes || hasOnPremise;
+}
+
+type TimelineSummary = {
+  discoveredResources?: number;
+  discoveredFlows?: number;
+  warnings?: string[];
+};
+
 // ─── POST /discovery/auto-scan — Launch automated scan ──────────
 // ─── POST /discovery/cloud-scan — Scan configured cloud providers now ──────────
 router.post('/cloud-scan', async (req: TenantRequest, res) => {
@@ -877,7 +910,7 @@ router.get('/scan-jobs', async (req: TenantRequest, res) => {
 
     const limit = parseInt(req.query.limit as string) || 20;
     const jobs = await prisma.discoveryJob.findMany({
-      where: { tenantId, jobType: 'AUTO_SCAN' },
+      where: { tenantId, jobType: { in: ['AUTO_SCAN', 'SCHEDULED_SCAN'] } },
       orderBy: { createdAt: 'desc' },
       take: limit,
       select: {
@@ -905,25 +938,27 @@ router.post('/schedules', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const { cronExpression, providers, kubernetes, onPremise, options } = req.body;
+    const { enabled, intervalMinutes, cronExpression, providers, kubernetes, onPremise, options } = req.body || {};
+    const scheduleEnabled = enabled !== false;
     const normalizedProviders = Array.isArray(providers) ? providers : [];
-    const hasCloudProviders = normalizedProviders.length > 0;
-    const hasKubernetes = Array.isArray(kubernetes) && kubernetes.length > 0;
-    const hasOnPremise =
-      Boolean(onPremise) &&
-      Array.isArray(onPremise.ipRanges) &&
-      onPremise.ipRanges.length > 0;
+    const normalizedIntervalMinutes = normalizeIntervalMinutes(intervalMinutes);
+    const effectiveCron = readTrimmedString(cronExpression) || intervalToCronExpression(normalizedIntervalMinutes);
+    const scanConfig = {
+      providers: normalizedProviders,
+      kubernetes,
+      onPremise,
+      options: {
+        ...(isRecord(options) ? options : {}),
+        scanIntervalMinutes: normalizedIntervalMinutes,
+      },
+    };
 
-    if (!cronExpression) {
-      return res.status(400).json({ error: 'cronExpression is required' });
-    }
-    if (!hasCloudProviders && !hasKubernetes && !hasOnPremise) {
+    if (scheduleEnabled && !hasScheduleSources(scanConfig)) {
       return res.status(400).json({
         error: 'At least one discovery source is required (cloud, kubernetes, or on-premise)',
       });
     }
 
-    const scanConfig = { providers: normalizedProviders, kubernetes, onPremise, options };
     if (
       scanConfigHasPlaintextCredentials(scanConfig) &&
       !process.env.CREDENTIAL_ENCRYPTION_KEY
@@ -934,9 +969,56 @@ router.post('/schedules', async (req: TenantRequest, res) => {
       });
     }
 
-    const scheduleId = await createScanSchedule(prisma, tenantId, cronExpression, scanConfig);
+    const encryptedConfig = encryptScanConfigCredentials(scanConfig) as Prisma.InputJsonValue;
+    const existingSchedules = await prisma.scanSchedule.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const primarySchedule = existingSchedules[0] ?? null;
+    const nextRunAt = scheduleEnabled ? new Date(Date.now() + normalizedIntervalMinutes * 60 * 1000) : null;
 
-    return res.status(201).json({ id: scheduleId, cronExpression, status: 'active' });
+    const savedSchedule = primarySchedule
+      ? await (async () => {
+          await prisma.scanSchedule.updateMany({
+            where: {
+              id: primarySchedule.id,
+              tenantId,
+            },
+            data: {
+              cronExpression: effectiveCron,
+              config: encryptedConfig,
+              isActive: scheduleEnabled,
+              nextRunAt,
+            },
+          });
+          return prisma.scanSchedule.findFirstOrThrow({
+            where: {
+              id: primarySchedule.id,
+              tenantId,
+            },
+          });
+        })()
+      : await prisma.scanSchedule.create({
+          data: {
+            tenantId,
+            cronExpression: effectiveCron,
+            config: encryptedConfig,
+            isActive: scheduleEnabled,
+            nextRunAt,
+          },
+        });
+
+    if (existingSchedules.length > 1) {
+      const staleIds = existingSchedules.slice(1).map((schedule) => schedule.id);
+      await prisma.scanSchedule.updateMany({
+        where: { id: { in: staleIds }, tenantId },
+        data: { isActive: false, nextRunAt: null },
+      });
+    }
+
+    return res.status(201).json({
+      schedule: mapScanScheduleForApi(savedSchedule),
+    });
   } catch (error) {
     appLogger.error('Error creating scan schedule:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -949,8 +1031,14 @@ router.get('/schedules', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const schedules = await listScanSchedules(prisma, tenantId);
-    return res.json({ schedules });
+    const schedules = await prisma.scanSchedule.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+    });
+    return res.json({
+      schedules: schedules.map((schedule) => mapScanScheduleForApi(schedule)),
+    });
   } catch (error) {
     appLogger.error('Error listing scan schedules:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -958,6 +1046,122 @@ router.get('/schedules', async (req: TenantRequest, res) => {
 });
 
 // ─── GET /discovery/graph — Graph export shortcut for validation scripts ──────────
+// Trigger an immediate run using the currently active scheduled configuration.
+router.post('/schedules/run-now', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const schedule = await prisma.scanSchedule.findFirst({
+      where: { tenantId, isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    if (!schedule) {
+      return res.status(404).json({ error: 'No active schedule configured' });
+    }
+
+    const jobId = await enqueueScheduledScanRun(schedule, {
+      trigger: 'manual',
+      now: new Date(),
+    });
+    if (!jobId) {
+      return res.status(400).json({
+        error: 'Unable to enqueue scheduled scan. Verify providers and credentials.',
+      });
+    }
+
+    return res.json({ jobId, status: 'queued' });
+  } catch (error) {
+    appLogger.error('Error running scheduled scan now:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Return recent discovery runs with drift summaries for dashboard timeline widgets.
+router.get('/scan-timeline', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const limit = Math.max(1, Math.min(50, Number(req.query.limit || 20)));
+    const history = await prisma.discoveryHistory.findMany({
+      where: { tenantId, status: 'COMPLETED' },
+      orderBy: { createdAt: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        jobId: true,
+        jobType: true,
+        startedAt: true,
+        completedAt: true,
+        createdAt: true,
+        summary: true,
+      },
+    });
+
+    const entries = await Promise.all(history.map(async (entry) => {
+      const summary = (entry.summary && typeof entry.summary === 'object' && !Array.isArray(entry.summary)
+        ? (entry.summary as TimelineSummary)
+        : {}) as TimelineSummary;
+      const referenceDate = entry.completedAt || entry.createdAt;
+
+      const graphSnapshot = await prisma.graphAnalysis.findFirst({
+        where: {
+          tenantId,
+          createdAt: { lte: referenceDate },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: {
+          totalNodes: true,
+          totalEdges: true,
+          spofCount: true,
+        },
+      });
+
+      const snapshot = entry.jobId
+        ? await prisma.infraSnapshot.findFirst({
+            where: {
+              tenantId,
+              scanId: entry.jobId,
+            },
+            orderBy: { capturedAt: 'desc' },
+            select: { id: true },
+          })
+        : null;
+
+      const drifts = snapshot
+        ? await prisma.driftEvent.findMany({
+            where: { tenantId, snapshotId: snapshot.id },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, severity: true, description: true },
+            take: 5,
+          })
+        : [];
+
+      return {
+        id: entry.id,
+        jobId: entry.jobId,
+        type: entry.jobType === 'SCHEDULED_SCAN' ? 'scheduled' : 'manual',
+        occurredAt: referenceDate.toISOString(),
+        nodes: graphSnapshot?.totalNodes ?? Number(summary.discoveredResources || 0),
+        edges: graphSnapshot?.totalEdges ?? Number(summary.discoveredFlows || 0),
+        spofCount: graphSnapshot?.spofCount ?? 0,
+        driftCount: drifts.length,
+        drifts: drifts.map((drift) => ({
+          id: drift.id,
+          severity: drift.severity,
+          description: drift.description,
+        })),
+      };
+    }));
+
+    return res.json({ entries });
+  } catch (error) {
+    appLogger.error('Error fetching scan timeline:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.get('/graph', async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
