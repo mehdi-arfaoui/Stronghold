@@ -23,6 +23,34 @@ export interface BIASuggestion {
 interface SuggestionContext {
   graph: GraphInstance;
   explicitCriticalityScore?: number;
+  tier?: number;
+}
+
+export interface TierConsistencyServiceInput {
+  tier: number;
+  rtoMinutes: number;
+  rpoMinutes: number;
+}
+
+const MAX_RTO_RPO_BY_TIER: Record<number, { rtoMinutes: number; rpoMinutes: number }> = {
+  1: { rtoMinutes: 15, rpoMinutes: 1 },
+  2: { rtoMinutes: 60, rpoMinutes: 15 },
+  3: { rtoMinutes: 240, rpoMinutes: 60 },
+  4: { rtoMinutes: 1440, rpoMinutes: 720 },
+};
+
+export function validateRTORPOConsistency(
+  services: TierConsistencyServiceInput[],
+): TierConsistencyServiceInput[] {
+  const fallback = MAX_RTO_RPO_BY_TIER[4]!;
+  return services.map((service) => {
+    const maxByTier = MAX_RTO_RPO_BY_TIER[service.tier] ?? fallback;
+    return {
+      ...service,
+      rtoMinutes: Math.min(service.rtoMinutes, maxByTier.rtoMinutes),
+      rpoMinutes: Math.min(service.rpoMinutes, maxByTier.rpoMinutes),
+    };
+  });
 }
 
 const clampMinimum = (value: number, min = 1) => Math.max(min, Math.round(value));
@@ -178,6 +206,27 @@ export class BIASuggestionService {
 
     const confidence: BIASuggestion['confidence'] =
       signalCount >= 3 ? 'high' : signalCount === 2 ? 'medium' : 'low';
+
+    if (typeof context.tier === 'number' && Number.isFinite(context.tier)) {
+      const [bounded] = validateRTORPOConsistency([
+        {
+          tier: context.tier,
+          rtoMinutes: rto,
+          rpoMinutes: rpo,
+        },
+      ]);
+
+      if (bounded) {
+        if (bounded.rtoMinutes < rto || bounded.rpoMinutes < rpo) {
+          const maxByTier = MAX_RTO_RPO_BY_TIER[context.tier] ?? MAX_RTO_RPO_BY_TIER[4]!;
+          reasoning.push(
+            `Cohérence tier appliquee (Tier ${context.tier}): RTO <= ${maxByTier.rtoMinutes} min, RPO <= ${maxByTier.rpoMinutes} min.`,
+          );
+        }
+        rto = bounded.rtoMinutes;
+        rpo = bounded.rpoMinutes;
+      }
+    }
 
     return {
       rto,

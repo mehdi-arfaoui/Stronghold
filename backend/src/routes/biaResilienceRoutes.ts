@@ -10,7 +10,7 @@ import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
-import { biaSuggestionService } from '../bia/services/bia-suggestion.service.js';
+import { biaSuggestionService, validateRTORPOConsistency } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
 import {
@@ -48,6 +48,50 @@ function resolveConfiguredDowntimeCost(
   const value = Number(profile.customDowntimeCostPerHour || profile.hourlyDowntimeCost || 0);
   if (!Number.isFinite(value) || value <= 0) return null;
   return value;
+}
+
+function normalizeRecoveryTier(rawTier: number | null | undefined): number {
+  const parsed = Number(rawTier);
+  if (!Number.isFinite(parsed)) return 4;
+  const rounded = Math.round(parsed);
+  if (rounded >= 1 && rounded <= 4) return rounded;
+  return 4;
+}
+
+function capRtoRpoByTier(
+  tier: number | null | undefined,
+  input: { rtoMinutes: number | null | undefined; rpoMinutes: number | null | undefined },
+): { rtoMinutes: number | null; rpoMinutes: number | null } {
+  const normalizedRto =
+    typeof input.rtoMinutes === 'number' && Number.isFinite(input.rtoMinutes)
+      ? Math.max(0, Math.round(input.rtoMinutes))
+      : null;
+  const normalizedRpo =
+    typeof input.rpoMinutes === 'number' && Number.isFinite(input.rpoMinutes)
+      ? Math.max(0, Math.round(input.rpoMinutes))
+      : null;
+
+  if (normalizedRto == null && normalizedRpo == null) {
+    return { rtoMinutes: null, rpoMinutes: null };
+  }
+
+  const [bounded] = validateRTORPOConsistency([
+    {
+      tier: normalizeRecoveryTier(tier),
+      rtoMinutes: normalizedRto ?? 0,
+      rpoMinutes: normalizedRpo ?? 0,
+    },
+  ]);
+  const safeBounded = bounded ?? {
+    tier: normalizeRecoveryTier(tier),
+    rtoMinutes: normalizedRto ?? 0,
+    rpoMinutes: normalizedRpo ?? 0,
+  };
+
+  return {
+    rtoMinutes: normalizedRto == null ? null : safeBounded.rtoMinutes,
+    rpoMinutes: normalizedRpo == null ? null : safeBounded.rpoMinutes,
+  };
 }
 
 function resolveProcessCriticalityLevel(input: {
@@ -242,6 +286,17 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
 
     // Generate BIA
     const biaReport = generateBIA(graph, analysis);
+    const consistentProcesses = biaReport.processes.map((process) => {
+      const bounded = capRtoRpoByTier(process.recoveryTier, {
+        rtoMinutes: process.suggestedRTO,
+        rpoMinutes: process.suggestedRPO,
+      });
+      return {
+        ...process,
+        suggestedRTO: bounded.rtoMinutes ?? process.suggestedRTO,
+        suggestedRPO: bounded.rpoMinutes ?? process.suggestedRPO,
+      };
+    });
 
     // Persist BIA report
     const dbReport = await prisma.bIAReport2.create({
@@ -250,7 +305,7 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
         summary: biaReport.summary as any,
         tenantId,
         processes: {
-          create: biaReport.processes.map(p => ({
+          create: consistentProcesses.map(p => ({
             serviceNodeId: p.serviceNodeId,
             serviceName: p.serviceName,
             serviceType: p.serviceType,
@@ -274,7 +329,7 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
     });
 
     // Also update node BIA data
-    for (const p of biaReport.processes) {
+    for (const p of consistentProcesses) {
       await prisma.infraNode.updateMany({
         where: { id: p.serviceNodeId, tenantId },
         data: {
@@ -382,9 +437,23 @@ router.get('/entries', async (req: TenantRequest, res) => {
           criticalityScore: p.criticalityScore,
         };
 
-        const suggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
+        const rawSuggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
           graph,
           explicitCriticalityScore: p.criticalityScore,
+          tier: p.recoveryTier,
+        });
+        const boundedSuggestion = capRtoRpoByTier(p.recoveryTier, {
+          rtoMinutes: rawSuggestion.rto,
+          rpoMinutes: rawSuggestion.rpo,
+        });
+        const suggestion = {
+          ...rawSuggestion,
+          rto: boundedSuggestion.rtoMinutes ?? rawSuggestion.rto,
+          rpo: boundedSuggestion.rpoMinutes ?? rawSuggestion.rpo,
+        };
+        const boundedValidated = capRtoRpoByTier(p.recoveryTier, {
+          rtoMinutes: p.validatedRTO,
+          rpoMinutes: p.validatedRPO,
         });
 
         const financialOverride = overridesByNodeId.get(p.serviceNodeId);
@@ -410,16 +479,16 @@ router.get('/entries', async (req: TenantRequest, res) => {
           serviceType: p.serviceType,
           serviceTypeLabel,
           tier: p.recoveryTier,
-          rto: p.validatedRTO ?? null,
-          rpo: p.validatedRPO ?? null,
+          rto: boundedValidated.rtoMinutes,
+          rpo: boundedValidated.rpoMinutes,
           mtpd: p.validatedMTPD ?? null,
           rtoSuggested: suggestion.rto,
           rpoSuggested: suggestion.rpo,
           mtpdSuggested: suggestion.mtpd,
           validated,
           suggestion,
-          effectiveRto: p.validatedRTO ?? suggestion.rto,
-          effectiveRpo: p.validatedRPO ?? suggestion.rpo,
+          effectiveRto: boundedValidated.rtoMinutes ?? suggestion.rto,
+          effectiveRpo: boundedValidated.rpoMinutes ?? suggestion.rpo,
           effectiveMtpd: p.validatedMTPD ?? suggestion.mtpd,
           financialImpactPerHour: financialResolution.financialImpactPerHour,
           financialConfidence: financialResolution.financialConfidence,
@@ -530,7 +599,15 @@ router.get('/summary', async (req: TenantRequest, res) => {
     const tiers = [1, 2, 3, 4].map(tier => {
       const procs = report.processes.filter(p => p.recoveryTier === tier);
       const maxRTO = procs.length > 0
-        ? Math.max(...procs.map(p => (p.validatedRTO ?? p.suggestedRTO) || 0))
+        ? Math.max(
+            ...procs.map((p) => {
+              const bounded = capRtoRpoByTier(p.recoveryTier, {
+                rtoMinutes: p.validatedRTO ?? p.suggestedRTO,
+                rpoMinutes: null,
+              });
+              return bounded.rtoMinutes ?? 0;
+            }),
+          )
         : 0;
       const totalFinancialImpact = procs.reduce((sum, process) => {
         const resolved = resolveBiaFinancialForService({
@@ -901,33 +978,61 @@ router.patch('/processes/:processId', async (req: TenantRequest, res) => {
 
     const existingProcess = await prisma.bIAProcess2.findFirst({
       where: { id: processId, tenantId },
-      select: { id: true, serviceNodeId: true },
+      select: { id: true, serviceNodeId: true, recoveryTier: true },
     });
 
     if (!existingProcess) {
       return res.status(404).json({ error: 'BIA process not found' });
     }
 
+    const boundedValidated = capRtoRpoByTier(existingProcess.recoveryTier, {
+      rtoMinutes:
+        validatedRTO === undefined || validatedRTO === null || validatedRTO === ''
+          ? null
+          : Number(validatedRTO),
+      rpoMinutes:
+        validatedRPO === undefined || validatedRPO === null || validatedRPO === ''
+          ? null
+          : Number(validatedRPO),
+    });
+
+    const processUpdateData: Record<string, unknown> = {
+      validationStatus: validationStatus || 'validated',
+    };
+    if (validatedRTO !== undefined) {
+      processUpdateData.validatedRTO = boundedValidated.rtoMinutes;
+    }
+    if (validatedRPO !== undefined) {
+      processUpdateData.validatedRPO = boundedValidated.rpoMinutes;
+    }
+    if (validatedMTPD !== undefined) {
+      processUpdateData.validatedMTPD = validatedMTPD;
+    }
+    if (notes !== undefined) {
+      processUpdateData.notes = notes;
+    }
+
     const process = await prisma.bIAProcess2.update({
       where: { id: existingProcess.id },
-      data: {
-        validatedRTO: validatedRTO ?? undefined,
-        validatedRPO: validatedRPO ?? undefined,
-        validatedMTPD: validatedMTPD ?? undefined,
-        notes: notes ?? undefined,
-        validationStatus: validationStatus || 'validated',
-      },
+      data: processUpdateData as any,
     });
 
     // Also update the infra node
     if (validatedRTO !== undefined || validatedRPO !== undefined || validatedMTPD !== undefined) {
+      const nodeUpdateData: Record<string, unknown> = {};
+      if (validatedRTO !== undefined) {
+        nodeUpdateData.validatedRTO = boundedValidated.rtoMinutes;
+      }
+      if (validatedRPO !== undefined) {
+        nodeUpdateData.validatedRPO = boundedValidated.rpoMinutes;
+      }
+      if (validatedMTPD !== undefined) {
+        nodeUpdateData.validatedMTPD = validatedMTPD;
+      }
+
       await prisma.infraNode.updateMany({
         where: { id: existingProcess.serviceNodeId, tenantId },
-        data: {
-          validatedRTO: validatedRTO ?? undefined,
-          validatedRPO: validatedRPO ?? undefined,
-          validatedMTPD: validatedMTPD ?? undefined,
-        },
+        data: nodeUpdateData as any,
       });
     }
 
@@ -990,6 +1095,12 @@ router.post('/validate-all', async (req: TenantRequest, res) => {
     const results = await prisma.$transaction(
       report.processes.map((process) => {
         const override = overrideMap.get(process.id);
+        const validatedRtoRaw = resolveValidatedValue(override?.validatedRTO, process.suggestedRTO);
+        const validatedRpoRaw = resolveValidatedValue(override?.validatedRPO, process.suggestedRPO);
+        const bounded = capRtoRpoByTier(process.recoveryTier, {
+          rtoMinutes: validatedRtoRaw,
+          rpoMinutes: validatedRpoRaw,
+        });
         const updateData: {
           validationStatus: string;
           validatedRTO: number | null;
@@ -998,8 +1109,8 @@ router.post('/validate-all', async (req: TenantRequest, res) => {
           notes?: string | null;
         } = {
           validationStatus: 'validated',
-          validatedRTO: resolveValidatedValue(override?.validatedRTO, process.suggestedRTO),
-          validatedRPO: resolveValidatedValue(override?.validatedRPO, process.suggestedRPO),
+          validatedRTO: bounded.rtoMinutes,
+          validatedRPO: bounded.rpoMinutes,
           validatedMTPD: resolveValidatedValue(override?.validatedMTPD, process.suggestedMTPD),
         };
 
