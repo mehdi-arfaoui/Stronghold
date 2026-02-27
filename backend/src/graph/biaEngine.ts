@@ -35,6 +35,7 @@ export function generateBIA(
 
     // 3. Calculate metrics
     const metrics = calculateMetrics(service, depChain, analysis);
+    const classifiedTier = extractClassifiedTier(service);
 
     // 4. Financial impact
     const financialImpact = estimateFinancialImpact(service);
@@ -51,9 +52,9 @@ export function generateBIA(
       suggestedRTO: metrics.rto,
       suggestedRPO: metrics.rpo,
       suggestedMBCO: metrics.mbco,
-      impactCategory: metrics.category,
+      impactCategory: classifiedTier != null ? impactCategoryFromTier(classifiedTier) : metrics.category,
       criticalityScore: service.criticalityScore || 0,
-      recoveryTier: 4, // assigned below
+      recoveryTier: classifiedTier ?? 0, // assigned below when classification is absent
       dependencyChain: depChain.nodes.map(n => ({
         id: n.id,
         name: n.name,
@@ -107,6 +108,33 @@ function identifyBusinessServices(graph: GraphInstance): InfraNodeAttrs[] {
   });
 
   return services;
+}
+
+function readMetadataRecord(node: InfraNodeAttrs): Record<string, unknown> {
+  if (!node.metadata || typeof node.metadata !== 'object' || Array.isArray(node.metadata)) return {};
+  return node.metadata as Record<string, unknown>;
+}
+
+function extractClassifiedTier(node: InfraNodeAttrs): number | null {
+  const metadata = readMetadataRecord(node);
+  const rawClassification =
+    metadata.criticalityClassification &&
+    typeof metadata.criticalityClassification === 'object' &&
+    !Array.isArray(metadata.criticalityClassification)
+      ? (metadata.criticalityClassification as Record<string, unknown>)
+      : null;
+  const tier = Number(rawClassification?.tier);
+  if (!Number.isFinite(tier)) return null;
+  const rounded = Math.round(tier);
+  if (rounded < 1 || rounded > 4) return null;
+  return rounded;
+}
+
+function impactCategoryFromTier(tier: number): BIAMetrics['category'] {
+  if (tier <= 1) return 'critical';
+  if (tier === 2) return 'high';
+  if (tier === 3) return 'medium';
+  return 'low';
 }
 
 // =====================================================
@@ -259,10 +287,14 @@ function identifyWeakPoints(
 function assignRecoveryTiers(processes: BIAProcessResult[]): BIAProcessResult[] {
   return processes.map(p => ({
     ...p,
-    recoveryTier:
-      p.suggestedRTO <= 60 ? 1 :
-        p.suggestedRTO <= 240 ? 2 :
-          p.suggestedRTO <= 1440 ? 3 :
-            4,
+    recoveryTier: p.recoveryTier >= 1 && p.recoveryTier <= 4
+      ? p.recoveryTier
+      : p.suggestedRTO <= 60
+        ? 1
+        : p.suggestedRTO <= 240
+          ? 2
+          : p.suggestedRTO <= 1440
+            ? 3
+            : 4,
   }));
 }

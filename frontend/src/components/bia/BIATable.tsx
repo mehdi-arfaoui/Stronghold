@@ -279,9 +279,36 @@ function BIATableComponent({
                   <Badge variant="outline" className="text-xs">{entry.serviceTypeLabel ?? entry.serviceType}</Badge>
                 </TableCell>
                 <TableCell className="text-center">
-                  <Badge variant={entry.tier === 1 ? 'destructive' : entry.tier === 2 ? 'default' : 'secondary'}>
-                    {entry.tier}
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge variant={entry.tier === 1 ? 'destructive' : entry.tier === 2 ? 'default' : 'secondary'}>
+                        {entry.tier}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-sm">
+                      {entry.criticalityClassification ? (
+                        <div className="space-y-1 text-xs">
+                          <p className="font-semibold">
+                            Tier auto: {entry.criticalityClassification.tier}
+                            {entry.criticalityClassification.confidence != null
+                              ? ` (confiance ${Math.round(entry.criticalityClassification.confidence * 100)}%)`
+                              : ''}
+                          </p>
+                          {entry.criticalityClassification.signals.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {entry.criticalityClassification.signals.map((signal, idx) => (
+                                <p key={`${entry.id}-tier-signal-${idx}`}>- {signal}</p>
+                              ))}
+                            </div>
+                          ) : (
+                            <p>Aucun signal de classification disponible.</p>
+                          )}
+                        </div>
+                      ) : (
+                        <p>Tier calcule sans signaux detailles.</p>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
                 </TableCell>
                 <EditableCell
                   entry={entry}

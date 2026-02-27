@@ -160,6 +160,12 @@ function normalizeSuggestionNodes(raw: unknown): FlowSuggestionNode[] {
   return nodes;
 }
 
+function isGenericFlowName(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  if (!normalized) return true;
+  return /^((flow|flux|process|processus)\s*[-_]?\s*\d+)$/.test(normalized);
+}
+
 function normalizeTagKey(key: string): string {
   return key.trim().toLowerCase().replace(/[_\s]+/g, '-');
 }
@@ -587,6 +593,7 @@ export class AIFlowSuggesterService {
     for (const rawSuggestion of rawSuggestions) {
       const name = typeof rawSuggestion.name === 'string' ? rawSuggestion.name.trim() : '';
       if (!name) continue;
+      if (isGenericFlowName(name)) continue;
 
       const normalizedNodes = normalizeSuggestionNodes(rawSuggestion.nodes).filter((node) =>
         validNodeIds.has(node.nodeId),

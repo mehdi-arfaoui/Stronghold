@@ -39,7 +39,34 @@ function toPositiveNumber(value: unknown): number | null {
   return parsed;
 }
 
-function extractOnDemandHourlyUsd(priceList: unknown[]): number | null {
+function readUsdFromPricePerUnit(value: unknown): number | null {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    const payload = value as Record<string, unknown>;
+    return (
+      toPositiveNumber(payload.USD) ??
+      toPositiveNumber(payload.usd) ??
+      toPositiveNumber(payload.EUR) ??
+      toPositiveNumber(payload.eur) ??
+      null
+    );
+  }
+  return toPositiveNumber(value);
+}
+
+type OnDemandExtraction = {
+  hourlyUsd: number | null;
+  fallbackUsd: number | null;
+  scannedDimensions: number;
+  matchedHourlyDimensions: number;
+  unitsSeen: string[];
+};
+
+function extractOnDemandHourlyUsd(priceList: unknown[]): OnDemandExtraction {
+  let fallbackUsd: number | null = null;
+  let scannedDimensions = 0;
+  let matchedHourlyDimensions = 0;
+  const unitsSeen = new Set<string>();
+
   for (const entry of priceList) {
     if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
     const product = entry as Record<string, unknown>;
@@ -59,33 +86,83 @@ function extractOnDemandHourlyUsd(priceList: unknown[]): number | null {
         if (!dimension || typeof dimension !== 'object' || Array.isArray(dimension)) continue;
         const payload = dimension as Record<string, unknown>;
         const unit = String(payload.unit || '').toLowerCase();
-        const usd = toPositiveNumber(
-          (payload.pricePerUnit as Record<string, unknown> | undefined)?.USD,
-        );
+        const usd = readUsdFromPricePerUnit(payload.pricePerUnit);
+        scannedDimensions += 1;
+        if (unit.length > 0) unitsSeen.add(unit);
         if (usd == null) continue;
+        if (fallbackUsd == null) fallbackUsd = usd;
         if (unit.includes('hrs') || unit.includes('hour') || unit.includes('hr')) {
-          return usd;
+          matchedHourlyDimensions += 1;
+          return {
+            hourlyUsd: usd,
+            fallbackUsd,
+            scannedDimensions,
+            matchedHourlyDimensions,
+            unitsSeen: Array.from(unitsSeen),
+          };
         }
       }
     }
   }
 
-  return null;
+  return {
+    hourlyUsd: null,
+    fallbackUsd,
+    scannedDimensions,
+    matchedHourlyDimensions,
+    unitsSeen: Array.from(unitsSeen),
+  };
 }
+
+export type AwsMonthlyPricingDiagnostics = {
+  serviceCode: string;
+  region: string;
+  location: string;
+  filters: AwsPricingFilter[];
+  rawCount: number;
+  parsedEntries: number;
+  scannedDimensions: number;
+  matchedHourlyDimensions: number;
+  unitsSeen: string[];
+  hourlyUsd: number | null;
+  fallbackUsd: number | null;
+};
+
+type AwsMonthlyPricingResult = {
+  monthlyCostUsd: number | null;
+  diagnostics: AwsMonthlyPricingDiagnostics;
+};
 
 async function getAwsMonthlyPriceUsd(options: {
   serviceCode: string;
+  region: string;
+  location: string;
   filters: AwsPricingFilter[];
-}): Promise<number | null> {
+}): Promise<AwsMonthlyPricingResult> {
   const response = await fetchAwsPricingProducts({
     serviceCode: options.serviceCode,
     filters: options.filters,
     maxResults: 20,
     maxPages: 2,
   });
-  const hourly = extractOnDemandHourlyUsd(response.priceList);
-  if (hourly == null) return null;
-  return Number((hourly * HOURS_PER_MONTH).toFixed(4));
+  const extraction = extractOnDemandHourlyUsd(response.priceList);
+  const selectedHourly = extraction.hourlyUsd ?? extraction.fallbackUsd;
+  return {
+    monthlyCostUsd: selectedHourly == null ? null : Number((selectedHourly * HOURS_PER_MONTH).toFixed(4)),
+    diagnostics: {
+      serviceCode: options.serviceCode,
+      region: options.region,
+      location: options.location,
+      filters: options.filters,
+      rawCount: response.rawCount,
+      parsedEntries: response.priceList.length,
+      scannedDimensions: extraction.scannedDimensions,
+      matchedHourlyDimensions: extraction.matchedHourlyDimensions,
+      unitsSeen: extraction.unitsSeen,
+      hourlyUsd: extraction.hourlyUsd,
+      fallbackUsd: extraction.fallbackUsd,
+    },
+  };
 }
 
 function normalizeRdsEngine(rawEngine: string | null | undefined): string {
@@ -109,21 +186,49 @@ export async function getAwsEc2MonthlyPriceUsd(input: {
   instanceType: string;
   region?: string | null;
 }): Promise<number | null> {
+  const result = await getAwsEc2MonthlyPriceUsdWithDiagnostics(input);
+  return result.monthlyCostUsd;
+}
+
+export async function getAwsEc2MonthlyPriceUsdWithDiagnostics(input: {
+  instanceType: string;
+  region?: string | null;
+}): Promise<AwsMonthlyPricingResult> {
   const instanceType = String(input.instanceType || '').trim();
-  if (!instanceType) return null;
+  if (!instanceType) {
+    return {
+      monthlyCostUsd: null,
+      diagnostics: {
+        serviceCode: 'AmazonEC2',
+        region: '',
+        location: '',
+        filters: [],
+        rawCount: 0,
+        parsedEntries: 0,
+        scannedDimensions: 0,
+        matchedHourlyDimensions: 0,
+        unitsSeen: [],
+        hourlyUsd: null,
+        fallbackUsd: null,
+      },
+    };
+  }
   const region = normalizeAwsRegion(input.region);
   const location = awsRegionToLocation(region);
+  const filters: AwsPricingFilter[] = [
+    { field: 'instanceType', value: instanceType },
+    { field: 'location', value: location },
+    { field: 'operatingSystem', value: 'Linux' },
+    { field: 'tenancy', value: 'Shared' },
+    { field: 'preInstalledSw', value: 'NA' },
+    { field: 'capacitystatus', value: 'Used' },
+  ];
 
   return getAwsMonthlyPriceUsd({
     serviceCode: 'AmazonEC2',
-    filters: [
-      { field: 'instanceType', value: instanceType },
-      { field: 'location', value: location },
-      { field: 'operatingSystem', value: 'Linux' },
-      { field: 'tenancy', value: 'Shared' },
-      { field: 'preInstalledSw', value: 'NA' },
-      { field: 'capacitystatus', value: 'Used' },
-    ],
+    region,
+    location,
+    filters,
   });
 }
 
@@ -138,8 +243,10 @@ export async function getAwsRdsMonthlyPriceUsd(input: {
   const location = awsRegionToLocation(region);
   const engine = normalizeRdsEngine(input.engine);
 
-  return getAwsMonthlyPriceUsd({
+  const result = await getAwsMonthlyPriceUsd({
     serviceCode: 'AmazonRDS',
+    region,
+    location,
     filters: [
       { field: 'instanceType', value: instanceClass },
       { field: 'location', value: location },
@@ -147,6 +254,7 @@ export async function getAwsRdsMonthlyPriceUsd(input: {
       { field: 'deploymentOption', value: 'Single-AZ' },
     ],
   });
+  return result.monthlyCostUsd;
 }
 
 export async function getAwsElastiCacheMonthlyPriceUsd(input: {
@@ -160,13 +268,15 @@ export async function getAwsElastiCacheMonthlyPriceUsd(input: {
   const location = awsRegionToLocation(region);
   const engine = normalizeCacheEngine(input.engine);
 
-  return getAwsMonthlyPriceUsd({
+  const result = await getAwsMonthlyPriceUsd({
     serviceCode: 'AmazonElastiCache',
+    region,
+    location,
     filters: [
       { field: 'instanceType', value: nodeType },
       { field: 'location', value: location },
       { field: 'cacheEngine', value: engine },
     ],
   });
+  return result.monthlyCostUsd;
 }
-

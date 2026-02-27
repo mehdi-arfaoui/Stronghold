@@ -12,9 +12,9 @@
 
 import type { PrismaClient, Prisma } from "@prisma/client";
 import * as GraphService from '../graph/graphService.js';
-import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
 import { detectRisks } from '../graph/riskDetectionEngine.js';
+import { runPostIngestionPipeline } from '../discovery/discoveryOrchestrator.js';
 import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
 import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
 import { CurrencyService } from './currency.service.js';
@@ -746,6 +746,7 @@ export async function runDemoSeed(
   let spofCount = 0;
   let biaProcessCount = 0;
   let risksDetected = 0;
+  let runtimeInferredEdges = 0;
   let profileConfigured = false;
   let businessFlowSummary = {
     flowsCreated: 0,
@@ -759,46 +760,21 @@ export async function runDemoSeed(
 
   try {
     appLogger.info('Running post-seed graph analysis...');
-    const graph = await GraphService.loadGraphFromDB(prisma, tenantId);
+    const pipeline = await runPostIngestionPipeline(prisma, tenantId, {
+      inferDependencies: true,
+    });
+    runtimeInferredEdges = pipeline.inferredEdgesPersisted;
 
-    if (graph.order > 0) {
-      const report = await analyzeFullGraph(graph);
+    const graph = await GraphService.getGraph(prisma, tenantId);
 
-      await prisma.graphAnalysis.create({
-        data: {
-          resilienceScore: report.resilienceScore,
-          totalNodes: report.totalNodes,
-          totalEdges: report.totalEdges,
-          spofCount: report.spofs.length,
-          report: JSON.parse(JSON.stringify({
-            spofs: report.spofs,
-            redundancyIssues: report.redundancyIssues,
-            regionalRisks: report.regionalRisks,
-            circularDeps: report.circularDeps,
-            cascadeChains: report.cascadeChains.slice(0, 20),
-            criticalityScores: Object.fromEntries(report.criticalityScores),
-          })),
-          tenantId,
-        },
-      });
-
-      await Promise.all(
-        [...report.criticalityScores.entries()].map(async ([nodeId, score]) => {
-          const spof = report.spofs.find((item) => item.nodeId === nodeId);
-          const blast = GraphService.getBlastRadius(graph, nodeId);
-          await prisma.infraNode.updateMany({
-            where: { id: nodeId, tenantId },
-            data: {
-              criticalityScore: score,
-              isSPOF: Boolean(spof),
-              blastRadius: blast.length,
-            },
-          });
-        })
-      );
+    if (graph.order > 0 && pipeline.analysisReport) {
+      const report = pipeline.analysisReport;
 
       resilienceScore = report.resilienceScore;
       spofCount = report.spofs.length;
+      if (runtimeInferredEdges > 0) {
+        appLogger.info(`Post-seed inference added ${runtimeInferredEdges} edge(s)`);
+      }
       appLogger.info(`Graph analysis complete: score=${resilienceScore}, SPOFs=${spofCount}`);
 
       appLogger.info('Generating BIA...');
@@ -959,9 +935,11 @@ export async function runDemoSeed(
     nodes: generatedInfrastructure.nodes.length,
     confirmedEdges: generatedInfrastructure.confirmedEdges.length,
     inferredEdges: generatedInfrastructure.inferredEdges.length,
+    runtimeInferredEdges,
     totalEdges:
       generatedInfrastructure.confirmedEdges.length +
-      generatedInfrastructure.inferredEdges.length,
+      generatedInfrastructure.inferredEdges.length +
+      runtimeInferredEdges,
     resilienceScore,
     spofCount,
     biaProcesses: biaProcessCount,
@@ -992,7 +970,9 @@ export async function runDemoSeed(
   );
   appLogger.info(`${summary.nodes} infrastructure nodes`);
   appLogger.info(`${summary.confirmedEdges} confirmed dependencies`);
-  appLogger.info(`${summary.inferredEdges} inferred dependencies (to validate)`);
+  appLogger.info(
+    `${summary.inferredEdges} inferred dependencies (seed) + ${summary.runtimeInferredEdges} inferred at runtime`,
+  );
   appLogger.info(`Resilience score: ${resilienceScore}`);
   appLogger.info(`BIA processes: ${biaProcessCount}`);
   appLogger.info(`Auto-detected risks: ${risksDetected}`);

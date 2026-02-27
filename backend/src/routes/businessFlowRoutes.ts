@@ -1051,6 +1051,75 @@ router.delete('/:id', requireRole('OPERATOR'), async (req: TenantRequest, res) =
   }
 });
 
+router.post('/validate-batch', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const payload = (req.body || {}) as Record<string, unknown>;
+    const ids =
+      Array.isArray(payload.ids)
+        ? Array.from(
+            new Set(
+              payload.ids
+                .map((value) => (typeof value === 'string' ? value.trim() : ''))
+                .filter((value) => value.length > 0),
+            ),
+          )
+        : [];
+
+    if (payload.ids !== undefined && !Array.isArray(payload.ids)) {
+      return res.status(400).json({
+        error: 'Payload invalide',
+        details: [{ field: 'ids', message: 'ids doit etre un tableau de string' }],
+      });
+    }
+
+    const pendingFlows = await prisma.businessFlow.findMany({
+      where: {
+        tenantId,
+        validatedByUser: false,
+        ...(ids.length > 0 ? { id: { in: ids } } : {}),
+      },
+      select: { id: true },
+    });
+
+    const pendingIds = pendingFlows.map((flow) => flow.id);
+    if (pendingIds.length === 0) {
+      return res.json({
+        validatedCount: 0,
+        validatedIds: [],
+      });
+    }
+
+    await prisma.businessFlow.updateMany({
+      where: {
+        tenantId,
+        id: { in: pendingIds },
+      },
+      data: {
+        validatedByUser: true,
+        validatedAt: new Date(),
+      },
+    });
+
+    // Keep flow computed costs in sync; failures here should not block validation.
+    await Promise.allSettled(
+      pendingIds.map((flowId) =>
+        businessFlowFinancialEngine.recalculateFlowComputedCost(tenantId, flowId),
+      ),
+    );
+
+    return res.json({
+      validatedCount: pendingIds.length,
+      validatedIds: pendingIds,
+    });
+  } catch (error) {
+    appLogger.error('Error validating business flows in batch', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 router.post('/:id/validate', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;

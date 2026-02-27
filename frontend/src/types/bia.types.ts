@@ -63,6 +63,12 @@ export interface BIAEntry {
     validatedAt?: string | null;
   } | null;
   dependencies: string[];
+  criticalityClassification?: {
+    tier: number;
+    confidence: number | null;
+    signals: string[];
+    impactCategory: string | null;
+  } | null;
 }
 
 export interface BIASummary {

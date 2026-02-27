@@ -96,3 +96,61 @@ test('GET /business-flows applies tenant isolation in Prisma query', async () =>
     prisma.organizationProfile.findUnique = originalProfileFindUnique;
   }
 });
+
+test('POST /business-flows/validate-batch validates only pending flows within tenant scope', async () => {
+  const originalFindMany = prisma.businessFlow.findMany;
+  const originalUpdateMany = prisma.businessFlow.updateMany;
+
+  let capturedFindManyWhere: unknown = null;
+  let capturedUpdateWhere: unknown = null;
+  let capturedUpdateData: unknown = null;
+
+  prisma.businessFlow.findMany = (async (args: any) => {
+    capturedFindManyWhere = args?.where;
+    return [{ id: 'flow-1' }, { id: 'flow-2' }] as any;
+  }) as any;
+
+  prisma.businessFlow.updateMany = (async (args: any) => {
+    capturedUpdateWhere = args?.where;
+    capturedUpdateData = args?.data;
+    return { count: 2 } as any;
+  }) as any;
+
+  const app = express();
+  app.use(express.json());
+  app.use((req: any, _res, next) => {
+    req.tenantId = 'tenant-x';
+    req.apiRole = 'OPERATOR';
+    next();
+  });
+  app.use('/business-flows', businessFlowRoutes);
+
+  try {
+    await withServer(app, async (baseUrl) => {
+      const response = await fetch(`${baseUrl}/business-flows/validate-batch`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ids: ['flow-1', 'flow-2', 'flow-2'] }),
+      });
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as { validatedCount: number; validatedIds: string[] };
+      assert.equal(body.validatedCount, 2);
+      assert.deepEqual(body.validatedIds, ['flow-1', 'flow-2']);
+    });
+
+    assert.deepEqual(capturedFindManyWhere, {
+      tenantId: 'tenant-x',
+      validatedByUser: false,
+      id: { in: ['flow-1', 'flow-2'] },
+    });
+    assert.deepEqual(capturedUpdateWhere, {
+      tenantId: 'tenant-x',
+      id: { in: ['flow-1', 'flow-2'] },
+    });
+    assert.ok(capturedUpdateData && typeof capturedUpdateData === 'object');
+    assert.equal((capturedUpdateData as Record<string, unknown>).validatedByUser, true);
+  } finally {
+    prisma.businessFlow.findMany = originalFindMany;
+    prisma.businessFlow.updateMany = originalUpdateMany;
+  }
+});

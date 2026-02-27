@@ -2,9 +2,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
+import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { RecommendationsEngine } from './RecommendationsEngine';
 import { recommendationsApi } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
+import type { FinancialROIResult, OrganizationFinancialProfile } from '@/api/financial.api';
+import type { Recommendation, RecommendationsSummary } from '@/api/recommendations.api';
 
 vi.mock('sonner', () => ({
   toast: {
@@ -28,8 +31,14 @@ vi.mock('@/api/financial.api', () => ({
   },
 }));
 
-function asApiResult<T>(data: T): Promise<{ data: T }> {
-  return Promise.resolve({ data });
+function asApiResult<T>(data: T): Promise<AxiosResponse<T>> {
+  return Promise.resolve({
+    data,
+    status: 200,
+    statusText: 'OK',
+    headers: {},
+    config: { headers: {} } as InternalAxiosRequestConfig,
+  });
 }
 
 function createQueryClient() {
@@ -49,7 +58,7 @@ describe('RecommendationsEngine', () => {
       asApiResult({
         customCurrency: 'EUR',
         isConfigured: true,
-      } as any),
+      } as OrganizationFinancialProfile),
     );
 
     vi.mocked(recommendationsApi.getAll).mockImplementation(async () =>
@@ -119,7 +128,7 @@ describe('RecommendationsEngine', () => {
             },
           },
         },
-      ] as any),
+      ] as Recommendation[]),
     );
 
     vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
@@ -129,19 +138,28 @@ describe('RecommendationsEngine', () => {
         riskAvoidedAnnual: 15000,
         roiPercent: 316.6,
         paybackMonths: 2.9,
-      } as any),
+      } as RecommendationsSummary),
     );
 
     vi.mocked(financialApi.calculateROI).mockImplementation(async () =>
       asApiResult({
+        currentALE: 18000,
+        projectedALE: 3000,
+        riskReduction: 0.833,
         annualRemediationCost: 3600,
         riskReductionAmount: 15000,
+        netAnnualSavings: 11400,
         roiPercent: 316.6,
         paybackMonths: 2.9,
+        strongholdSubscriptionAnnual: 0,
         breakdownByRecommendation: [
           {
             recommendationId: 'rec-managed',
+            strategy: 'backup-restore',
+            targetNodes: ['rec-managed'],
             annualCost: 0,
+            currentALE: 0,
+            projectedALE: 0,
             riskReduction: 0,
             individualROI: 0,
             paybackMonths: null,
@@ -150,7 +168,11 @@ describe('RecommendationsEngine', () => {
           },
           {
             recommendationId: 'rec-top',
+            strategy: 'warm-standby',
+            targetNodes: ['rec-top'],
             annualCost: 2400,
+            currentALE: 12000,
+            projectedALE: 2400,
             riskReduction: 9600,
             individualROI: 300,
             paybackMonths: null,
@@ -159,7 +181,11 @@ describe('RecommendationsEngine', () => {
           },
           {
             recommendationId: 'rec-second',
+            strategy: 'pilot-light',
+            targetNodes: ['rec-second'],
             annualCost: 1200,
+            currentALE: 6600,
+            projectedALE: 1200,
             riskReduction: 5400,
             individualROI: 350,
             paybackMonths: null,
@@ -167,7 +193,12 @@ describe('RecommendationsEngine', () => {
             roiStatus: 'rentable',
           },
         ],
-      } as any),
+        methodology: 'test-method',
+        sources: ['test'],
+        disclaimer: 'test-disclaimer',
+        currency: 'EUR',
+        calculatedAt: new Date().toISOString(),
+      } as FinancialROIResult),
     );
   });
 

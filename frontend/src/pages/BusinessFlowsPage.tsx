@@ -99,6 +99,20 @@ export function BusinessFlowsPage() {
     onError: () => toast.error('Validation impossible'),
   });
 
+  const validateBatchMutation = useMutation({
+    mutationFn: (ids: string[]) => businessFlowsApi.validateBatch(ids),
+    onSuccess: async (result) => {
+      const validatedCount = Number(result.data?.validatedCount || 0);
+      toast.success(
+        validatedCount > 0
+          ? `${validatedCount} flux valides`
+          : 'Aucun flux en attente a valider',
+      );
+      await refreshFlows();
+    },
+    onError: () => toast.error('Validation batch impossible'),
+  });
+
   const rejectMutation = useMutation({
     mutationFn: (flow: BusinessFlow) => businessFlowsApi.remove(flow.id),
     onSuccess: async (_result, flow) => {
@@ -174,6 +188,24 @@ export function BusinessFlowsPage() {
     if (activeFilter === 'validated') return validatedFlows;
     return sortedFlows;
   }, [activeFilter, pendingFlows, sortedFlows, validatedFlows]);
+
+  const pendingIdsForBulkValidation = useMemo(() => {
+    if (activeFilter === 'pending') return pendingFlows.map((flow) => flow.id);
+    if (activeFilter === 'all') return pendingFlows.map((flow) => flow.id);
+    return [];
+  }, [activeFilter, pendingFlows]);
+
+  const canValidateAll =
+    pendingIdsForBulkValidation.length > 0 &&
+    (activeFilter === 'pending' || activeFilter === 'all');
+
+  const validateAllPendingFlows = () => {
+    if (!canValidateAll) return;
+    const count = pendingIdsForBulkValidation.length;
+    const confirmed = window.confirm(`Valider les ${count} flux en attente ?`);
+    if (!confirmed) return;
+    validateBatchMutation.mutate(pendingIdsForBulkValidation);
+  };
 
   const createFlow = () => {
     if (!name.trim()) return;
@@ -280,35 +312,48 @@ export function BusinessFlowsPage() {
           <CardTitle className="text-base">Flux</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant={activeFilter === 'all' ? 'default' : 'outline'}
-              onClick={() => setActiveFilter('all')}
-            >
-              Tous ({sortedFlows.length})
-            </Button>
-            <Button
-              size="sm"
-              variant={activeFilter === 'pending' ? 'default' : 'outline'}
-              onClick={() => setActiveFilter('pending')}
-            >
-              A valider ({pendingFlows.length})
-            </Button>
-            <Button
-              size="sm"
-              variant={activeFilter === 'validated' ? 'default' : 'outline'}
-              onClick={() => setActiveFilter('validated')}
-            >
-              Valides ({validatedFlows.length})
-            </Button>
-            <Button
-              size="sm"
-              variant={activeFilter === 'rejected' ? 'default' : 'outline'}
-              onClick={() => setActiveFilter('rejected')}
-            >
-              Rejetes ({rejectedFlows.length})
-            </Button>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                variant={activeFilter === 'all' ? 'default' : 'outline'}
+                onClick={() => setActiveFilter('all')}
+              >
+                Tous ({sortedFlows.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={activeFilter === 'pending' ? 'default' : 'outline'}
+                onClick={() => setActiveFilter('pending')}
+              >
+                A valider ({pendingFlows.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={activeFilter === 'validated' ? 'default' : 'outline'}
+                onClick={() => setActiveFilter('validated')}
+              >
+                Valides ({validatedFlows.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={activeFilter === 'rejected' ? 'default' : 'outline'}
+                onClick={() => setActiveFilter('rejected')}
+              >
+                Rejetes ({rejectedFlows.length})
+              </Button>
+            </div>
+            {canValidateAll && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={validateAllPendingFlows}
+                disabled={validateBatchMutation.isPending}
+              >
+                <CheckCircle2 className="mr-2 h-4 w-4" />
+                Valider tout
+              </Button>
+            )}
           </div>
 
           <div className="space-y-3">

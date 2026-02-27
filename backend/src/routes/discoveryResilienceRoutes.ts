@@ -603,11 +603,9 @@ function hasScheduleSources(scanConfig: Record<string, unknown>): boolean {
   const providers = Array.isArray(scanConfig.providers) ? scanConfig.providers : [];
   const hasCloudProviders = providers.length > 0;
   const hasKubernetes = Array.isArray(scanConfig.kubernetes) && scanConfig.kubernetes.length > 0;
-  const onPremise = isRecord(scanConfig.onPremise) ? scanConfig.onPremise : null;
-  const hasOnPremise =
-    Boolean(onPremise) &&
-    Array.isArray(onPremise.ipRanges) &&
-    onPremise.ipRanges.some((entry) => readTrimmedString(entry));
+  const onPremise = isRecord(scanConfig.onPremise) ? scanConfig.onPremise : {};
+  const onPremiseRanges = Array.isArray(onPremise.ipRanges) ? onPremise.ipRanges : [];
+  const hasOnPremise = onPremiseRanges.some((entry) => readTrimmedString(entry));
   return hasCloudProviders || hasKubernetes || hasOnPremise;
 }
 

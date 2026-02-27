@@ -144,6 +144,11 @@ export interface CloudEnrichmentResponse {
   }>;
 }
 
+export interface ValidateBatchResponse {
+  validatedCount: number;
+  validatedIds: string[];
+}
+
 export const businessFlowsApi = {
   list: () => api.get<BusinessFlow[]>('/business-flows'),
   getById: (id: string) => api.get<BusinessFlow>(`/business-flows/${id}`),
@@ -152,6 +157,8 @@ export const businessFlowsApi = {
     api.patch<BusinessFlow>(`/business-flows/${id}`, payload),
   remove: (id: string) => api.delete(`/business-flows/${id}`),
   validate: (id: string) => api.post<BusinessFlow>(`/business-flows/${id}/validate`, {}),
+  validateBatch: (ids: string[]) =>
+    api.post<ValidateBatchResponse>('/business-flows/validate-batch', { ids }),
   addNodes: (
     id: string,
     payload: {

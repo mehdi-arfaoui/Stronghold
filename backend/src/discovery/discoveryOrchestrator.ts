@@ -5,15 +5,15 @@
 // ============================================================
 
 import type { PrismaClient } from '@prisma/client';
-import type { IngestReport } from '../graph/types.js';
+import type { GraphAnalysisReport, IngestReport, InfraNodeAttrs, ScanEdge } from '../graph/types.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { inferDependencies } from '../graph/dependencyInferenceEngine.js';
 import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
+import { classifyServiceCriticality } from '../graph/criticalityClassifier.js';
 import { transformToScanResult } from './graphBridge.js';
 import { validateScanConsistency } from '../services/discoveryHealthService.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
-import type { InfraNodeAttrs } from '../graph/types.js';
 import {
   encryptScanConfigCredentials,
   sanitizeScanConfig,
@@ -123,9 +123,27 @@ export async function updateScanJobProgress(
   });
 }
 
-async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string): Promise<void> {
+function readNodeMetadata(node: InfraNodeAttrs): Record<string, unknown> {
+  if (!node.metadata || typeof node.metadata !== 'object' || Array.isArray(node.metadata)) {
+    return {};
+  }
+  return node.metadata as Record<string, unknown>;
+}
+
+async function persistLatestGraphAnalysis(
+  prisma: PrismaClient,
+  tenantId: string,
+): Promise<{
+  analysisReport: GraphAnalysisReport | null;
+  classificationUpdates: number;
+}> {
   const graph = await GraphService.getGraph(prisma, tenantId);
-  if (graph.order === 0) return;
+  if (graph.order === 0) {
+    return {
+      analysisReport: null,
+      classificationUpdates: 0,
+    };
+  }
 
   const report = await analyzeFullGraph(graph);
   await prisma.graphAnalysis.create({
@@ -164,10 +182,8 @@ async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string
     Array.from(report.criticalityScores.entries()).map(async ([nodeId, score]) => {
       const blast = blastByNodeId.get(nodeId);
       const existingNode = graph.getNodeAttributes(nodeId) as InfraNodeAttrs;
-      const existingMetadata =
-        existingNode.metadata && typeof existingNode.metadata === 'object' && !Array.isArray(existingNode.metadata)
-          ? (existingNode.metadata as Record<string, unknown>)
-          : {};
+      const existingMetadata = readNodeMetadata(existingNode);
+      const classification = classifyServiceCriticality(existingNode, blast || null);
 
       await prisma.infraNode.updateMany({
         where: { id: nodeId, tenantId },
@@ -175,6 +191,7 @@ async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string
           criticalityScore: score,
           isSPOF: spofIds.has(nodeId),
           blastRadius: blast?.transitiveDependents ?? 0,
+          impactCategory: classification.impactCategory,
           metadata: {
             ...existingMetadata,
             blastRadiusDetails: blast
@@ -188,11 +205,108 @@ async function persistLatestGraphAnalysis(prisma: PrismaClient, tenantId: string
                   calculatedAt: new Date().toISOString(),
                 }
               : undefined,
+            criticalityClassification: {
+              tier: classification.tier,
+              confidence: classification.confidence,
+              signals: classification.signals,
+              impactCategory: classification.impactCategory,
+              source: 'auto_classifier',
+              classifiedAt: new Date().toISOString(),
+            },
           } as any,
         },
       });
     })
   );
+
+  return {
+    analysisReport: report,
+    classificationUpdates: report.criticalityScores.size,
+  };
+}
+
+export type PostIngestionPipelineResult = {
+  inferredEdgesPersisted: number;
+  analysisReport: GraphAnalysisReport | null;
+  classificationUpdates: number;
+};
+
+export async function runPostIngestionPipeline(
+  prisma: PrismaClient,
+  tenantId: string,
+  options?: {
+    inferDependencies?: boolean;
+  },
+): Promise<PostIngestionPipelineResult> {
+  let inferredEdgesPersisted = 0;
+
+  if (options?.inferDependencies === true) {
+    const [nodesFromDb, edgesFromDb] = await Promise.all([
+      prisma.infraNode.findMany({ where: { tenantId } }),
+      prisma.infraEdge.findMany({ where: { tenantId } }),
+    ]);
+
+    const inferenceNodes: InfraNodeAttrs[] = nodesFromDb.map((node) => {
+      const mapped: InfraNodeAttrs = {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+        provider: node.provider,
+        tags: (node.tags as Record<string, string>) || {},
+        metadata: (node.metadata as Record<string, unknown>) || {},
+      };
+      if (node.externalId) mapped.externalId = node.externalId;
+      if (node.region) mapped.region = node.region;
+      if (node.availabilityZone) mapped.availabilityZone = node.availabilityZone;
+      if (node.criticalityScore != null) mapped.criticalityScore = node.criticalityScore;
+      if (node.blastRadius != null) mapped.blastRadius = node.blastRadius;
+      if (node.isSPOF === true) mapped.isSPOF = true;
+      if (node.impactCategory) mapped.impactCategory = node.impactCategory;
+      return mapped;
+    });
+
+    const existingEdges: ScanEdge[] = edgesFromDb.map((edge) => {
+      const mapped: ScanEdge = {
+        source: edge.sourceId,
+        target: edge.targetId,
+        type: edge.type,
+      };
+      if (Number.isFinite(edge.confidence)) mapped.confidence = edge.confidence;
+      if (edge.inferenceMethod) mapped.inferenceMethod = edge.inferenceMethod;
+      if (edge.metadata && typeof edge.metadata === 'object' && !Array.isArray(edge.metadata)) {
+        mapped.metadata = edge.metadata as Record<string, unknown>;
+      }
+      return mapped;
+    });
+
+    const inferredEdges = inferDependencies(inferenceNodes, existingEdges);
+    if (inferredEdges.length > 0) {
+      const created = await prisma.infraEdge.createMany({
+        data: inferredEdges.map((edge) => ({
+          sourceId: edge.source,
+          targetId: edge.target,
+          type: edge.type,
+          confidence: Number.isFinite(edge.confidence) ? Number(edge.confidence) : 0.7,
+          inferenceMethod: edge.inferenceMethod ?? null,
+          metadata: (edge.metadata || {}) as any,
+          confirmed: false,
+          tenantId,
+        })),
+        skipDuplicates: true,
+      });
+      inferredEdgesPersisted = created.count;
+    }
+  }
+
+  // Always refresh graph and recompute analysis/classification after ingest.
+  await GraphService.loadGraphFromDB(prisma, tenantId);
+  const analysisResult = await persistLatestGraphAnalysis(prisma, tenantId);
+
+  return {
+    inferredEdgesPersisted,
+    analysisReport: analysisResult.analysisReport,
+    classificationUpdates: analysisResult.classificationUpdates,
+  };
 }
 
 /**
@@ -223,7 +337,7 @@ export async function ingestDiscoveredResources(
   const report = await GraphService.ingestScanResults(prisma, tenantId, scanResult);
 
   // 4. Refresh resilience analysis so dashboard metrics stay in sync with latest scan.
-  await persistLatestGraphAnalysis(prisma, tenantId);
+  await runPostIngestionPipeline(prisma, tenantId, { inferDependencies: false });
 
   // 5. Run post-scan validation checks automatically
   const validation = await validateScanConsistency(prisma, tenantId);

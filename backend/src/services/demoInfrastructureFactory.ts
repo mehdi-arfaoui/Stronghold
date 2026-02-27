@@ -1542,6 +1542,161 @@ function injectSPOFs(
   });
 }
 
+function inferSourceType(node: DemoInfraNodeDef): string | null {
+  const type = String(node.type || '').toUpperCase();
+  if (type === 'DATABASE') return 'RDS';
+  if (type === 'CACHE') return 'ELASTICACHE';
+  if (type === 'SERVERLESS') return 'LAMBDA';
+  if (type === 'VM' || type === 'PHYSICAL_SERVER') return 'EC2';
+  if (type === 'APPLICATION' || type === 'MICROSERVICE' || type === 'CONTAINER') return 'ECS_SERVICE';
+  if (type === 'LOAD_BALANCER') return 'ALB';
+  if (type === 'OBJECT_STORAGE' || type === 'FILE_STORAGE') return 'S3_BUCKET';
+  if (type === 'API_GATEWAY') return 'API_GATEWAY';
+  if (type === 'MESSAGE_QUEUE') {
+    const external = String(node.externalId || '').toLowerCase();
+    const name = String(node.name || '').toLowerCase();
+    if (external.includes(':sns:') || name.includes('topic') || name.includes('sns')) return 'SNS_TOPIC';
+    return 'SQS_QUEUE';
+  }
+  return null;
+}
+
+function enrichNodesForInference(
+  nodes: DemoInfraNodeDef[],
+  edges: DemoInfraEdgeDef[],
+): DemoInfraNodeDef[] {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const incomingByTargetId = new Map<string, DemoInfraEdgeDef[]>();
+  const outgoingBySourceId = new Map<string, DemoInfraEdgeDef[]>();
+
+  for (const edge of edges) {
+    if (!incomingByTargetId.has(edge.targetId)) incomingByTargetId.set(edge.targetId, []);
+    incomingByTargetId.get(edge.targetId)!.push(edge);
+    if (!outgoingBySourceId.has(edge.sourceId)) outgoingBySourceId.set(edge.sourceId, []);
+    outgoingBySourceId.get(edge.sourceId)!.push(edge);
+  }
+
+  return nodes.map((node) => {
+    const metadata: Record<string, unknown> = {
+      ...(node.metadata || {}),
+    };
+
+    const sourceType = inferSourceType(node);
+    if (!metadata.sourceType && sourceType) {
+      metadata.sourceType = sourceType;
+    }
+
+    if (node.type === 'MESSAGE_QUEUE') {
+      const externalId = String(node.externalId || '');
+      if (externalId.startsWith('arn:aws:sqs:') && !metadata.queueArn) {
+        metadata.queueArn = externalId;
+      }
+      if (externalId.startsWith('arn:aws:sns:') && !metadata.topicArn) {
+        metadata.topicArn = externalId;
+      }
+    }
+
+    if (node.type === 'SERVERLESS') {
+      const incoming = incomingByTargetId.get(node.id) || [];
+      const eventSourceMappings = incoming
+        .map((edge) => nodeById.get(edge.sourceId))
+        .filter((source): source is DemoInfraNodeDef => Boolean(source))
+        .filter((source) => source.type === 'MESSAGE_QUEUE')
+        .map((source) => {
+          const sourceArn = String(source.externalId || '');
+          if (!sourceArn.startsWith('arn:')) return null;
+          return { eventSourceArn: sourceArn, batchSize: 10 };
+        })
+        .filter((mapping): mapping is { eventSourceArn: string; batchSize: number } => Boolean(mapping));
+
+      if (eventSourceMappings.length > 0 && !Array.isArray(metadata.eventSourceMappings)) {
+        metadata.eventSourceMappings = eventSourceMappings;
+      }
+
+      const outgoing = outgoingBySourceId.get(node.id) || [];
+      const environmentReferences: Array<{ varName: string; referenceType: string; value: string }> = [];
+      for (const edge of outgoing) {
+        const target = nodeById.get(edge.targetId);
+        if (!target) continue;
+        const targetId = String(target.externalId || target.id || '');
+        if (!targetId) continue;
+
+        if (target.type === 'DATABASE') {
+          environmentReferences.push({
+            varName: 'DATABASE_ARN',
+            referenceType: 'arn',
+            value: targetId,
+          });
+        } else if (target.type === 'CACHE') {
+          environmentReferences.push({
+            varName: 'CACHE_ARN',
+            referenceType: 'arn',
+            value: targetId,
+          });
+        } else if (target.type === 'MESSAGE_QUEUE') {
+          environmentReferences.push({
+            varName: 'QUEUE_ARN',
+            referenceType: 'arn',
+            value: targetId,
+          });
+        } else if (target.type === 'OBJECT_STORAGE') {
+          environmentReferences.push({
+            varName: 'BUCKET_ARN',
+            referenceType: 'arn',
+            value: targetId,
+          });
+        }
+      }
+
+      if (environmentReferences.length > 0 && !Array.isArray(metadata.environmentReferences)) {
+        metadata.environmentReferences = environmentReferences;
+      }
+    }
+
+    if (node.type === 'MESSAGE_QUEUE' && !metadata.deadLetterTargetArn) {
+      const outgoing = outgoingBySourceId.get(node.id) || [];
+      const dlqEdge = outgoing.find((edge) => {
+        const target = nodeById.get(edge.targetId);
+        const targetName = String(target?.name || '').toLowerCase();
+        return (
+          target?.type === 'MESSAGE_QUEUE' &&
+          (targetName.includes('dlq') || targetName.includes('dead') || targetName.includes('error'))
+        );
+      });
+      if (dlqEdge) {
+        const dlqNode = nodeById.get(dlqEdge.targetId);
+        const dlqArn = String(dlqNode?.externalId || '');
+        if (dlqArn.startsWith('arn:')) {
+          metadata.deadLetterTargetArn = dlqArn;
+        }
+      }
+    }
+
+    const isTopicNode =
+      node.type === 'MESSAGE_QUEUE' &&
+      String(metadata.sourceType || '').toLowerCase().includes('sns');
+    if (isTopicNode && !Array.isArray(metadata.subscriptions)) {
+      const outgoing = outgoingBySourceId.get(node.id) || [];
+      const subscriptions = outgoing
+        .map((edge) => nodeById.get(edge.targetId))
+        .filter((target): target is DemoInfraNodeDef => Boolean(target))
+        .filter((target) => target.type === 'SERVERLESS' || target.type === 'MESSAGE_QUEUE')
+        .map((target) => ({
+          protocol: target.type === 'SERVERLESS' ? 'lambda' : 'sqs',
+          endpoint: target.externalId,
+        }));
+      if (subscriptions.length > 0) {
+        metadata.subscriptions = subscriptions;
+      }
+    }
+
+    return {
+      ...node,
+      metadata,
+    };
+  });
+}
+
 function sortNodes(nodes: DemoInfraNodeDef[]): DemoInfraNodeDef[] {
   return [...nodes].sort((left, right) => left.id.localeCompare(right.id));
 }
@@ -1593,7 +1748,12 @@ export function generateDemoInfrastructure(
 
   const baseNodes = sortNodes(Array.from(nodeMap.values()));
   const labeledNodes = applySectorLabels(baseNodes, params.sector);
-  const finalNodes = injectSPOFs(labeledNodes, params.companySize);
+  const allEdges = [
+    ...Array.from(confirmedEdgeMap.values()),
+    ...Array.from(inferredEdgeMap.values()),
+  ];
+  const enrichedNodes = enrichNodesForInference(labeledNodes, allEdges);
+  const finalNodes = injectSPOFs(enrichedNodes, params.companySize);
   const spofNodeIds = SIZE_SPOF_IDS[params.companySize].filter((id) => nodeMap.has(id));
 
   return {

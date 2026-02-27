@@ -27,6 +27,10 @@ function readString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
 type BiaFinancialScope =
   | 'not_configured'
   | 'profile_global'
@@ -471,6 +475,23 @@ router.get('/entries', async (req: TenantRequest, res) => {
           readString(metadataRecord?.awsService) ??
           readString(metadataRecord?.subType) ??
           p.serviceType;
+        const criticalityClassificationRaw = metadataRecord?.criticalityClassification;
+        const criticalityClassification =
+          isRecord(criticalityClassificationRaw) &&
+          Number.isFinite(Number(criticalityClassificationRaw.tier))
+            ? {
+                tier: Math.max(1, Math.min(4, Math.round(Number(criticalityClassificationRaw.tier)))),
+                confidence: Number.isFinite(Number(criticalityClassificationRaw.confidence))
+                  ? Number(criticalityClassificationRaw.confidence)
+                  : null,
+                signals: Array.isArray(criticalityClassificationRaw.signals)
+                  ? criticalityClassificationRaw.signals
+                      .map((item) => readString(item))
+                      .filter((item): item is string => Boolean(item))
+                  : [],
+                impactCategory: readString(criticalityClassificationRaw.impactCategory),
+              }
+            : null;
 
         return {
           id: p.id,
@@ -522,6 +543,7 @@ router.get('/entries', async (req: TenantRequest, res) => {
           dependencies: Array.isArray(p.dependencyChain) ? p.dependencyChain : [],
           criticalityScore: p.criticalityScore,
           impactCategory: p.impactCategory,
+          criticalityClassification,
           validationStatus: p.validationStatus,
         };
       }),

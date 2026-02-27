@@ -26,6 +26,10 @@ const APPLICATIVE_EDGE_TYPES = new Set<string>([
   EdgeType.DEAD_LETTER,
   EdgeType.PUBLISHES_TO,
   EdgeType.PUBLISHES_TO_APPLICATIVE,
+  EdgeType.CONNECTS_TO,
+  EdgeType.DEPENDS_ON,
+  EdgeType.ROUTES_TO,
+  EdgeType.SUBSCRIBES_TO,
 ]);
 
 const INFRA_EDGE_TYPES = new Set<string>([
@@ -53,15 +57,24 @@ type NormalizedDependency = {
 function normalizeEdgeDirection(edge: BlastEdge): NormalizedDependency {
   switch (edge.type) {
     case EdgeType.TRIGGERS:
-    case EdgeType.DEAD_LETTER:
-    case EdgeType.PUBLISHES_TO:
     case EdgeType.PUBLISHES_TO_APPLICATIVE:
       return {
         dependent: edge.targetId,
         dependency: edge.sourceId,
       };
+    case EdgeType.DEAD_LETTER:
+      // A DLQ is an auxiliary sink for a queue; treat it as dependent on the source queue.
+      return {
+        dependent: edge.targetId,
+        dependency: edge.sourceId,
+      };
+    case EdgeType.PUBLISHES_TO:
     case EdgeType.NETWORK_ACCESS:
     case EdgeType.USES:
+    case EdgeType.CONNECTS_TO:
+    case EdgeType.DEPENDS_ON:
+    case EdgeType.ROUTES_TO:
+    case EdgeType.SUBSCRIBES_TO:
     default:
       return {
         dependent: edge.sourceId,

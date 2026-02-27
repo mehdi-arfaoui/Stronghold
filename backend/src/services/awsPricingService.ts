@@ -30,6 +30,36 @@ export type AwsPricingProductsResult = {
 const DEFAULT_REGION = process.env.AWS_PRICING_REGION || "us-east-1";
 let cachedPricingClient: PricingClient | null = null;
 
+function parsePriceListJson(raw: string): unknown {
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+}
+
+function normalizePriceListEntry(entry: unknown): unknown {
+  if (entry == null) return entry;
+
+  if (typeof entry === "string") {
+    return parsePriceListJson(entry);
+  }
+
+  if (entry instanceof String) {
+    return parsePriceListJson(entry.valueOf());
+  }
+
+  if (typeof Buffer !== "undefined" && Buffer.isBuffer(entry)) {
+    return parsePriceListJson(entry.toString("utf-8"));
+  }
+
+  if (entry instanceof Uint8Array) {
+    return parsePriceListJson(Buffer.from(entry).toString("utf-8"));
+  }
+
+  return entry;
+}
+
 function buildPricingClientConfig(): PricingClientConfig {
   const config: PricingClientConfig = {
     region: DEFAULT_REGION,
@@ -88,7 +118,7 @@ export async function fetchAwsPricingProducts(
     pageCount += 1;
   } while (nextToken && pageCount < maxPages);
 
-  const parsed = priceList.map((entry) => (typeof entry === "string" ? JSON.parse(entry) : entry));
+  const parsed = priceList.map((entry) => normalizePriceListEntry(entry));
 
   return {
     priceList: parsed,

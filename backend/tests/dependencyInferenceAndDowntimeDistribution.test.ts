@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import { inferDependencies } from '../src/graph/dependencyInferenceEngine.js';
 import { calculateBlastRadius } from '../src/graph/blastRadiusEngine.js';
+import { inferBestEffortEdges } from '../src/graph/demoInferenceEngine.js';
+import { classifyServiceCriticality } from '../src/graph/criticalityClassifier.js';
 import { calculateServiceDowntimeCosts } from '../src/services/pricing/downtimeDistribution.js';
 import { EdgeType, NodeType } from '../src/graph/types.js';
 
@@ -297,3 +299,76 @@ test('computes blast radius and distributes downtime with override and fallback'
   assert.equal(fallbackCosts[0]?.source, 'fallback_criticality');
 });
 
+test('best-effort inference creates probable edges for sparse demo metadata', () => {
+  const nodes = [
+    { id: 'alb-1', name: 'alb-main', type: NodeType.LOAD_BALANCER, provider: 'aws', region: 'eu-west-1', tags: {}, metadata: {} },
+    { id: 'api-1', name: 'api-main', type: NodeType.VM, provider: 'aws', region: 'eu-west-1', tags: {}, metadata: {} },
+    { id: 'db-1', name: 'core-postgres', type: NodeType.DATABASE, provider: 'aws', region: 'eu-west-1', tags: {}, metadata: {} },
+    { id: 'queue-1', name: 'orders-queue', type: NodeType.MESSAGE_QUEUE, provider: 'aws', region: 'eu-west-1', tags: {}, metadata: {} },
+    { id: 'lambda-1', name: 'orders-processor', type: NodeType.SERVERLESS, provider: 'aws', region: 'eu-west-1', tags: {}, metadata: {} },
+  ];
+
+  const inferred = inferBestEffortEdges(nodes as any, []);
+  const edgeKeySet = new Set(inferred.map((edge) => `${edge.source}->${edge.target}:${edge.type}`));
+
+  assert.equal(edgeKeySet.has(`alb-1->api-1:${EdgeType.NETWORK_ACCESS}`), true);
+  assert.equal(edgeKeySet.has(`api-1->db-1:${EdgeType.NETWORK_ACCESS}`), true);
+  assert.equal(edgeKeySet.has(`queue-1->lambda-1:${EdgeType.TRIGGERS}`), true);
+});
+
+test('blast radius includes legacy dependency edge types used in demo datasets', () => {
+  const nodes = [
+    { id: 'lb', name: 'alb', type: NodeType.LOAD_BALANCER, provider: 'aws', tags: {}, metadata: {} },
+    { id: 'api', name: 'api', type: NodeType.APPLICATION, provider: 'aws', tags: {}, metadata: {} },
+    { id: 'db', name: 'db', type: NodeType.DATABASE, provider: 'aws', tags: {}, metadata: {} },
+  ];
+
+  const edges = [
+    { sourceId: 'lb', targetId: 'api', type: EdgeType.ROUTES_TO },
+    { sourceId: 'api', targetId: 'db', type: EdgeType.CONNECTS_TO },
+  ];
+
+  const blast = calculateBlastRadius(nodes as any, edges as any);
+  const blastByNodeId = new Map(blast.map((entry) => [entry.nodeId, entry]));
+
+  assert.equal(blastByNodeId.get('db')?.transitiveDependents, 2);
+  assert.equal(blastByNodeId.get('api')?.transitiveDependents, 1);
+});
+
+test('criticality classifier combines blast, type, name and tags and supports manual override', () => {
+  const node = {
+    id: 'db-prod',
+    name: 'primary-prod-db',
+    type: NodeType.DATABASE,
+    provider: 'aws',
+    tags: { Environment: 'production' },
+    metadata: {},
+  };
+  const blast = {
+    nodeId: 'db-prod',
+    nodeName: 'primary-prod-db',
+    directDependents: 8,
+    transitiveDependents: 20,
+    totalServices: 30,
+    impactRatio: 0.69,
+    impactedServices: [],
+    rationale: 'critical blast',
+  };
+
+  const classified = classifyServiceCriticality(node as any, blast as any);
+  assert.equal(classified.tier, 1);
+  assert.equal(classified.impactCategory, 'critical');
+  assert.ok(classified.signals.length >= 2);
+
+  const manual = classifyServiceCriticality(
+    {
+      ...node,
+      metadata: {
+        manualRecoveryTier: 4,
+      },
+    } as any,
+    blast as any,
+  );
+  assert.equal(manual.tier, 4);
+  assert.equal(manual.signals[0], 'Override manuel: Tier 4');
+});

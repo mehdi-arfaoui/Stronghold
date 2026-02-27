@@ -5,6 +5,7 @@
 import type { InfraNodeAttrs, ScanEdge } from './types.js';
 import { NodeType, EdgeType } from './types.js';
 import { isAnalyzableServiceNode } from './serviceClassification.js';
+import { inferBestEffortEdges } from './demoInferenceEngine.js';
 
 type NodeLookup = {
   byAnyId: Map<string, InfraNodeAttrs>;
@@ -55,7 +56,69 @@ export function inferDependencies(nodes: InfraNodeAttrs[], existingEdges: ScanEd
   inferred.push(...inferFromNaming(nodes));
   inferred.push(...inferFromPatterns(nodes, existingEdges));
 
-  return deduplicateEdges(existingEdges, inferred);
+  const initialInferred = deduplicateEdges(existingEdges, inferred);
+
+  const metadataSignalPresent = nodes.some(hasInferenceMetadataSignal);
+  const applicativeEdgesCount =
+    countApplicativeEdges(existingEdges) + countApplicativeEdges(initialInferred);
+  const minimumExpectedApplicativeEdges = Math.max(2, Math.floor(nodes.length * 0.05));
+  const shouldApplyBestEffortFallback =
+    !metadataSignalPresent || applicativeEdgesCount < minimumExpectedApplicativeEdges;
+
+  if (!shouldApplyBestEffortFallback) {
+    return initialInferred;
+  }
+
+  const fallbackInferred = inferBestEffortEdges(nodes, [...existingEdges, ...initialInferred]);
+  if (fallbackInferred.length === 0) {
+    return initialInferred;
+  }
+
+  const dedupedFallback = deduplicateEdges(
+    [...existingEdges, ...initialInferred],
+    fallbackInferred,
+  );
+  return [...initialInferred, ...dedupedFallback];
+}
+
+const APPLICATIVE_EDGE_TYPES = new Set<string>([
+  EdgeType.NETWORK_ACCESS,
+  EdgeType.TRIGGERS,
+  EdgeType.USES,
+  EdgeType.DEAD_LETTER,
+  EdgeType.PUBLISHES_TO,
+  EdgeType.PUBLISHES_TO_APPLICATIVE,
+  EdgeType.CONNECTS_TO,
+  EdgeType.DEPENDS_ON,
+  EdgeType.ROUTES_TO,
+  EdgeType.SUBSCRIBES_TO,
+]);
+
+function countApplicativeEdges(edges: ScanEdge[]): number {
+  return edges.filter((edge) => APPLICATIVE_EDGE_TYPES.has(edge.type)).length;
+}
+
+function hasInferenceMetadataSignal(node: InfraNodeAttrs): boolean {
+  const metadata = readRecord(node.metadata);
+  if (!metadata) return false;
+
+  const signalKeys = [
+    'securityGroups',
+    'inboundRules',
+    'eventSourceMappings',
+    'environmentReferences',
+    'environmentVariables',
+    'redrivePolicy',
+    'deadLetterTargetArn',
+    'subscriptions',
+  ];
+
+  return signalKeys.some((key) => {
+    const value = metadata[key];
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === 'string') return value.trim().length > 0;
+    return Boolean(value);
+  });
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {
