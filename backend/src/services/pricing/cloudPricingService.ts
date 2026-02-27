@@ -10,6 +10,7 @@ import { asRecord, readPositiveNumberFromKeys, readStringFromKeys } from '../dr-
 import type { CloudServiceResolution } from '../dr-recommendation-engine/types.js';
 import {
   getAwsEc2MonthlyPriceUsd,
+  getAwsEc2MonthlyPriceUsdWithDiagnostics,
   getAwsElastiCacheMonthlyPriceUsd,
   getAwsRdsMonthlyPriceUsd,
 } from './awsLivePricing.js';
@@ -294,7 +295,7 @@ export class CloudPricingService {
           monthlyCostUsd: liveMonthlyCostUsd,
           source: 'pricing-api',
           currency,
-          confidence: 0.9,
+          confidence: 0.88,
           note: 'Live cloud pricing API',
         });
         this.cache.set(cacheKey, { result, expiresAt: now + this.cacheTtlMs });
@@ -430,13 +431,58 @@ export class CloudPricingService {
     } else {
       const awsStartedAt = Date.now();
       try {
-        const monthlyCost = await withTimeout(
-          getAwsEc2MonthlyPriceUsd({
-            instanceType: 't3.micro',
-            region: process.env.AWS_PRICING_REGION || 'us-east-1',
-          }),
-          this.requestTimeoutMs,
+        const explicitSelfTestRegion = String(process.env.AWS_PRICING_SELFTEST_REGION || '')
+          .trim()
+          .toLowerCase();
+        const configuredPricingRegion = String(process.env.AWS_PRICING_REGION || '')
+          .trim()
+          .toLowerCase();
+        const regionCandidates = Array.from(
+          new Set(
+            [
+              explicitSelfTestRegion,
+              configuredPricingRegion,
+              'eu-west-3',
+              'us-east-1',
+            ].filter((candidate) => candidate.length > 0),
+          ),
         );
+
+        let winning:
+          | Awaited<ReturnType<typeof getAwsEc2MonthlyPriceUsdWithDiagnostics>>
+          | null = null;
+        let lastDiagnostics:
+          | Awaited<ReturnType<typeof getAwsEc2MonthlyPriceUsdWithDiagnostics>>['diagnostics']
+          | null = null;
+        const attemptErrors: Array<{ region: string; error: string }> = [];
+
+        for (const regionCandidate of regionCandidates) {
+          try {
+            const attempt = await withTimeout(
+              getAwsEc2MonthlyPriceUsdWithDiagnostics({
+                instanceType: 't3.micro',
+                region: regionCandidate,
+              }),
+              this.requestTimeoutMs,
+            );
+            lastDiagnostics = attempt.diagnostics;
+            if (
+              Number.isFinite(attempt.monthlyCostUsd) &&
+              Number(attempt.monthlyCostUsd) > 0
+            ) {
+              winning = attempt;
+              break;
+            }
+          } catch (error) {
+            attemptErrors.push({
+              region: regionCandidate,
+              error: error instanceof Error ? error.message : 'unknown_error',
+            });
+          }
+        }
+
+        const monthlyCost = winning?.monthlyCostUsd ?? null;
+        const selectedDiagnostics = winning?.diagnostics ?? lastDiagnostics;
 
         if (Number.isFinite(monthlyCost) && Number(monthlyCost) > 0) {
           awsStatus = {
@@ -447,24 +493,57 @@ export class CloudPricingService {
             latencyMs: Date.now() - awsStartedAt,
             details: {
               monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+              region: selectedDiagnostics?.region ?? null,
+              location: selectedDiagnostics?.location ?? null,
+              filters: selectedDiagnostics?.filters ?? [],
+              rawCount: selectedDiagnostics?.rawCount ?? 0,
+              parsedEntries: selectedDiagnostics?.parsedEntries ?? 0,
+              scannedDimensions: selectedDiagnostics?.scannedDimensions ?? 0,
+              matchedHourlyDimensions: selectedDiagnostics?.matchedHourlyDimensions ?? 0,
+              unitsSeen: selectedDiagnostics?.unitsSeen ?? [],
+              triedRegions: regionCandidates,
             },
           };
           appLogger.info('pricing.selftest.aws.ok', {
             monthlyCostUsd: Number(Number(monthlyCost).toFixed(4)),
+            region: selectedDiagnostics?.region ?? null,
+            location: selectedDiagnostics?.location ?? null,
+            rawCount: selectedDiagnostics?.rawCount ?? 0,
           });
         } else {
+          const noRows = (selectedDiagnostics?.rawCount ?? 0) === 0;
+          const noPrice = (selectedDiagnostics?.scannedDimensions ?? 0) > 0;
           awsStatus = {
             configured: true,
             status: 'failed',
-            message: 'Empty pricing response',
+            message: noRows
+              ? 'No pricing rows returned for self-test filters'
+              : noPrice
+                ? 'Pricing rows returned but no pricePerUnit detected'
+                : 'Empty pricing response',
             checkedAt,
             latencyMs: Date.now() - awsStartedAt,
             details: {
               monthlyCostUsd: monthlyCost,
+              region: selectedDiagnostics?.region ?? null,
+              location: selectedDiagnostics?.location ?? null,
+              filters: selectedDiagnostics?.filters ?? [],
+              rawCount: selectedDiagnostics?.rawCount ?? 0,
+              parsedEntries: selectedDiagnostics?.parsedEntries ?? 0,
+              scannedDimensions: selectedDiagnostics?.scannedDimensions ?? 0,
+              matchedHourlyDimensions: selectedDiagnostics?.matchedHourlyDimensions ?? 0,
+              unitsSeen: selectedDiagnostics?.unitsSeen ?? [],
+              triedRegions: regionCandidates,
+              attemptErrors,
             },
           };
           appLogger.warn('pricing.selftest.aws.empty', {
             monthlyCostUsd: monthlyCost,
+            region: selectedDiagnostics?.region ?? null,
+            location: selectedDiagnostics?.location ?? null,
+            rawCount: selectedDiagnostics?.rawCount ?? 0,
+            scannedDimensions: selectedDiagnostics?.scannedDimensions ?? 0,
+            triedRegions: regionCandidates,
           });
         }
       } catch (error) {
@@ -670,7 +749,7 @@ export class CloudPricingService {
         monthlyCostUsd,
         source: 'static-table',
         currency,
-        confidence: 0.75,
+        confidence: 0.6,
         note: staticEstimate.source,
       });
     }
@@ -681,7 +760,7 @@ export class CloudPricingService {
       monthlyCostUsd: fallbackUsd,
       source: 'static-table',
       currency,
-      confidence: 0.75,
+      confidence: 0.6,
       note: 'Static fallback default',
     });
   }
