@@ -227,6 +227,19 @@ function resolveFlowImpact(link: FlowNodeWithFlow): { impact: NodeFlowImpact['im
   return { impact: 'minor', multiplier: 0.05 };
 }
 
+export function resolveFlowServiceImpactWeight(input: {
+  isCritical?: boolean | null | undefined;
+  hasAlternativePath?: boolean | null | undefined;
+}): number {
+  if (input.isCritical !== false && input.hasAlternativePath !== true) {
+    return 1;
+  }
+  if (input.isCritical !== false && input.hasAlternativePath === true) {
+    return 0.5;
+  }
+  return 0.35;
+}
+
 function resolveCloudCostFactor(rawMetadata: unknown): number {
   if (!rawMetadata || typeof rawMetadata !== 'object' || Array.isArray(rawMetadata)) return 1;
   const metadata = rawMetadata as Record<string, unknown>;
@@ -461,7 +474,11 @@ export class BusinessFlowFinancialEngineService {
       }
 
       if (!flowDirectCost) {
-        aggregatedHourlyCost += nodeHourlyCost;
+        const impactWeight = resolveFlowServiceImpactWeight({
+          isCritical: flowNode.isCritical,
+          hasAlternativePath: flowNode.hasAlternativePath,
+        });
+        aggregatedHourlyCost += nodeHourlyCost * impactWeight;
       }
 
       const rtoHours = resolveRtoHours(flow, financialNode, validatedProcess);

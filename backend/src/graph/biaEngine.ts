@@ -150,36 +150,36 @@ function calculateMetrics(
   let baseRTO: number;
   switch (service.type) {
     case NodeType.DATABASE:
-      baseRTO = service.metadata?.isMultiAZ ? 15 : 120;
+      baseRTO = service.metadata?.isMultiAZ ? 20 : 60;
       break;
     case NodeType.APPLICATION:
     case NodeType.MICROSERVICE: {
       const hasLB = depChain.nodes.some(n => n.type === NodeType.LOAD_BALANCER);
-      baseRTO = hasLB ? 10 : 60;
+      baseRTO = hasLB ? 30 : 90;
       break;
     }
     case NodeType.SERVERLESS:
-      baseRTO = 5;
+      baseRTO = 45;
       break;
     case NodeType.API_GATEWAY:
-      baseRTO = 10;
-      break;
-    case NodeType.LOAD_BALANCER:
       baseRTO = 15;
       break;
+    case NodeType.LOAD_BALANCER:
+      baseRTO = 10;
+      break;
     default:
-      baseRTO = 60;
+      baseRTO = 240;
   }
 
   // Adjust for SPOFs in chain
   const spofsInChain = depChain.nodes.filter(n => n.isSPOF);
-  baseRTO += spofsInChain.length * 30;
+  baseRTO += spofsInChain.length * 10;
 
   // Adjust for low redundancy
   const lowRedundancy = depChain.nodes.filter(
     n => (n.redundancyScore || 100) < 30
   );
-  baseRTO += lowRedundancy.length * 15;
+  baseRTO += lowRedundancy.length * 5;
 
   // RPO calculation
   let rpo: number;
@@ -189,22 +189,41 @@ function calculateMetrics(
     const hasReplication = dbNodes.some(
       n => (n.metadata?.replicaCount as number || 0) > 0
     );
-    rpo = hasReplication ? 1 : 60;
+    rpo = hasReplication ? 5 : 15;
+  } else if (
+    service.type === NodeType.API_GATEWAY ||
+    service.type === NodeType.LOAD_BALANCER ||
+    service.type === NodeType.DNS
+  ) {
+    rpo = 60;
+  } else if (service.type === NodeType.SERVERLESS || service.type === NodeType.MESSAGE_QUEUE) {
+    rpo = 30;
   } else {
-    rpo = 240;
+    rpo = 60;
   }
 
-  // MTPD = 2x RTO
-  const mtpd = baseRTO * 2;
+  // MTPD stays aligned with tier expectations instead of 2x RTO.
+  let mtpd = 720;
   // MAO = MTPD + margin
-  const mao = mtpd + 60;
+  let mao = mtpd + 60;
 
   // Classification
   let category: 'critical' | 'high' | 'medium' | 'low';
-  if (baseRTO <= 30) category = 'critical';
-  else if (baseRTO <= 120) category = 'high';
-  else if (baseRTO <= 480) category = 'medium';
+  if (baseRTO <= 15) category = 'critical';
+  else if (baseRTO <= 60) category = 'high';
+  else if (baseRTO <= 240) category = 'medium';
   else category = 'low';
+
+  if (category === 'critical') {
+    mtpd = 240;
+  } else if (category === 'high') {
+    mtpd = 720;
+  } else if (category === 'medium') {
+    mtpd = 2_880;
+  } else {
+    mtpd = 4_320;
+  }
+  mao = mtpd + 60;
 
   return {
     rto: baseRTO,

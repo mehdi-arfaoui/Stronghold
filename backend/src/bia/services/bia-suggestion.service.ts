@@ -33,10 +33,40 @@ export interface TierConsistencyServiceInput {
 }
 
 const MAX_RTO_RPO_BY_TIER: Record<number, { rtoMinutes: number; rpoMinutes: number }> = {
-  1: { rtoMinutes: 15, rpoMinutes: 1 },
+  1: { rtoMinutes: 15, rpoMinutes: 5 },
   2: { rtoMinutes: 60, rpoMinutes: 15 },
   3: { rtoMinutes: 240, rpoMinutes: 60 },
-  4: { rtoMinutes: 1440, rpoMinutes: 720 },
+  4: { rtoMinutes: 1440, rpoMinutes: 1440 },
+};
+
+const TIER_TARGET_BOUNDS: Record<
+  number,
+  {
+    rtoMinutes: { min: number; max: number };
+    rpoMinutes: { min: number; max: number };
+    mtpdMinutes: { min: number; max: number };
+  }
+> = {
+  1: {
+    rtoMinutes: { min: 5, max: 15 },
+    rpoMinutes: { min: 1, max: 5 },
+    mtpdMinutes: { min: 120, max: 240 },
+  },
+  2: {
+    rtoMinutes: { min: 30, max: 60 },
+    rpoMinutes: { min: 10, max: 15 },
+    mtpdMinutes: { min: 360, max: 720 },
+  },
+  3: {
+    rtoMinutes: { min: 120, max: 240 },
+    rpoMinutes: { min: 45, max: 60 },
+    mtpdMinutes: { min: 1440, max: 2880 },
+  },
+  4: {
+    rtoMinutes: { min: 720, max: 1440 },
+    rpoMinutes: { min: 240, max: 1440 },
+    mtpdMinutes: { min: 2880, max: 4320 },
+  },
 };
 
 export function validateRTORPOConsistency(
@@ -54,6 +84,7 @@ export function validateRTORPOConsistency(
 }
 
 const clampMinimum = (value: number, min = 1) => Math.max(min, Math.round(value));
+const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, Math.round(value)));
 
 const toText = (value: unknown) => String(value ?? '').toLowerCase();
 
@@ -84,6 +115,77 @@ const getCriticalityLevel = (score: number): BiaCriticalityLevel => {
   if (score >= 25) return 'medium';
   return 'low';
 };
+
+function deterministicOffset(seed: string, spread: number): number {
+  if (spread <= 0) return 0;
+  let hash = 0;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) % 1_000_003;
+  }
+  const centered = (hash % (spread * 2 + 1)) - spread;
+  return centered;
+}
+
+function resolveServiceBias(node: InfraNodeAttrs): { rto: number; rpo: number; mtpd: number } {
+  const type = String(node.type || '').toUpperCase();
+  const name = String(node.name || '').toLowerCase();
+
+  if (type === 'DATABASE') {
+    return { rto: 0.75, rpo: 0.45, mtpd: 0.65 };
+  }
+  if (type === 'API_GATEWAY' || type === 'LOAD_BALANCER' || type === 'DNS' || type === 'CDN') {
+    return { rto: 0.6, rpo: 1, mtpd: 0.75 };
+  }
+  if (type === 'SERVERLESS' || type === 'MESSAGE_QUEUE') {
+    return { rto: 0.9, rpo: 0.85, mtpd: 0.85 };
+  }
+  if (name.includes('monitor') || name.includes('observability') || name.includes('logging')) {
+    return { rto: 1.2, rpo: 1.25, mtpd: 1.15 };
+  }
+  if (type === 'SAAS_SERVICE' || type === 'THIRD_PARTY_API') {
+    return { rto: 1.15, rpo: 1.2, mtpd: 1.1 };
+  }
+  return { rto: 0.9, rpo: 0.9, mtpd: 0.9 };
+}
+
+function alignMetricsToTier(
+  node: InfraNodeAttrs,
+  tier: number,
+  metrics: { rto: number; rpo: number; mtpd: number },
+): { rto: number; rpo: number; mtpd: number } {
+  const bounds = TIER_TARGET_BOUNDS[tier] ?? TIER_TARGET_BOUNDS[4]!;
+  const bias = resolveServiceBias(node);
+  const seed = `${node.id}:${node.name}:${node.type}`;
+  const nextRto = clamp(
+    metrics.rto * bias.rto + deterministicOffset(`${seed}:rto`, 6),
+    bounds.rtoMinutes.min,
+    bounds.rtoMinutes.max,
+  );
+  const nextRpo = clamp(
+    metrics.rpo * bias.rpo + deterministicOffset(`${seed}:rpo`, tier === 4 ? 180 : 4),
+    bounds.rpoMinutes.min,
+    bounds.rpoMinutes.max,
+  );
+  const nextMtpd = clamp(
+    metrics.mtpd * bias.mtpd + deterministicOffset(`${seed}:mtpd`, tier === 4 ? 360 : tier === 3 ? 240 : 30),
+    bounds.mtpdMinutes.min,
+    bounds.mtpdMinutes.max,
+  );
+
+  if (tier === 1 && String(node.type || '').toUpperCase() !== 'DATABASE') {
+    return {
+      rto: nextRto,
+      rpo: clamp(nextRpo, 3, bounds.rpoMinutes.max),
+      mtpd: nextMtpd,
+    };
+  }
+
+  return {
+    rto: nextRto,
+    rpo: nextRpo,
+    mtpd: nextMtpd,
+  };
+}
 
 const matchReference = (
   node: InfraNodeAttrs,
@@ -226,6 +328,23 @@ export class BIASuggestionService {
         rto = bounded.rtoMinutes;
         rpo = bounded.rpoMinutes;
       }
+
+      const tierAligned = alignMetricsToTier(node, context.tier, {
+        rto,
+        rpo,
+        mtpd,
+      });
+      if (tierAligned.rto !== rto || tierAligned.rpo !== rpo || tierAligned.mtpd !== mtpd) {
+        const bounds = TIER_TARGET_BOUNDS[context.tier] ?? TIER_TARGET_BOUNDS[4]!;
+        reasoning.push(
+          `Profil Tier ${context.tier} applique: RTO ${bounds.rtoMinutes.min}-${bounds.rtoMinutes.max} min, ` +
+            `RPO ${bounds.rpoMinutes.min}-${bounds.rpoMinutes.max} min, ` +
+            `MTPD ${Math.round(bounds.mtpdMinutes.min / 60)}-${Math.round(bounds.mtpdMinutes.max / 60)} h.`,
+        );
+      }
+      rto = tierAligned.rto;
+      rpo = tierAligned.rpo;
+      mtpd = tierAligned.mtpd;
     }
 
     return {

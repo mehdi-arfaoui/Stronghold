@@ -17,6 +17,7 @@ import {
 } from '../validation/common.js';
 import {
   BusinessFlowFinancialEngineService,
+  resolveFlowServiceImpactWeight,
 } from '../services/business-flow-financial-engine.service.js';
 import { CloudEnrichmentService } from '../services/cloud-enrichment.service.js';
 import { AIFlowSuggesterService, type FlowSuggestion } from '../services/ai-flow-suggester.service.js';
@@ -57,6 +58,8 @@ type FlowForDowntime = {
   id: string;
   flowNodes: Array<{
     infraNodeId: string;
+    isCritical?: boolean | null;
+    hasAlternativePath?: boolean | null;
   }>;
 };
 
@@ -67,7 +70,8 @@ type FlowContributingService = {
   serviceName: string;
   downtimeCostPerHour: number;
   downtimeCostSourceLabel: string;
-  isMax: boolean;
+  impactWeight: number;
+  weightedContribution: number;
 };
 
 type FlowDowntimeCost = {
@@ -287,26 +291,50 @@ async function buildFlowDowntimeContext(
       continue;
     }
 
-    const maxCostService = serviceCosts.reduce((best, current) =>
-      current.downtimeCostPerHour > best.downtimeCostPerHour ? current : best,
-    );
+    const weightedServiceCosts = flow.flowNodes
+      .map((flowNode) => {
+        const serviceCost = downtimeByNodeId.get(flowNode.infraNodeId);
+        if (!serviceCost) return null;
+        const impactWeight = resolveFlowServiceImpactWeight({
+          isCritical: flowNode.isCritical,
+          hasAlternativePath: flowNode.hasAlternativePath,
+        });
+        return {
+          serviceId: serviceCost.serviceNodeId,
+          serviceName: serviceCost.serviceName,
+          downtimeCostPerHour: serviceCost.downtimeCostPerHour,
+          downtimeCostSourceLabel: serviceCost.sourceLabel,
+          impactWeight,
+          weightedContribution: Math.round(serviceCost.downtimeCostPerHour * impactWeight),
+        };
+      })
+      .filter((item): item is FlowContributingService => Boolean(item));
 
-    const contributingServices = serviceCosts
+    if (weightedServiceCosts.length === 0) {
+      byFlowId.set(
+        flow.id,
+        buildFlowDowntimeUnavailable(
+          flow.id,
+          'Aucun cout service',
+          'Aucun service du flux ne dispose d un cout d indisponibilite calcule.',
+        ),
+      );
+      continue;
+    }
+
+    const contributingServices = weightedServiceCosts
       .slice()
-      .sort((left, right) => right.downtimeCostPerHour - left.downtimeCostPerHour)
-      .map((serviceCost) => ({
-        serviceId: serviceCost.serviceNodeId,
-        serviceName: serviceCost.serviceName,
-        downtimeCostPerHour: serviceCost.downtimeCostPerHour,
-        downtimeCostSourceLabel: serviceCost.sourceLabel,
-        isMax: serviceCost.serviceNodeId === maxCostService.serviceNodeId,
-      }));
+      .sort((left, right) => right.weightedContribution - left.weightedContribution);
+    const totalWeightedCost = contributingServices.reduce(
+      (sum, item) => sum + item.weightedContribution,
+      0,
+    );
 
     byFlowId.set(flow.id, {
       flowId: flow.id,
-      downtimeCostPerHour: maxCostService.downtimeCostPerHour,
+      downtimeCostPerHour: totalWeightedCost,
       downtimeCostSource: 'blast_radius_max',
-      downtimeCostSourceLabel: `Base sur ${maxCostService.serviceName} (${maxCostService.sourceLabel})`,
+      downtimeCostSourceLabel: 'Somme ponderee des services critiques du flux',
       contributingServices,
       message: null,
     });

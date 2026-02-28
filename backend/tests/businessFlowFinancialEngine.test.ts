@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { FinancialNodeInput } from '../src/services/financial-engine.service.js';
-import { BusinessFlowFinancialEngineService } from '../src/services/business-flow-financial-engine.service.js';
+import {
+  BusinessFlowFinancialEngineService,
+  resolveFlowServiceImpactWeight,
+} from '../src/services/business-flow-financial-engine.service.js';
 
 function createNode(overrides: Partial<FinancialNodeInput> = {}): FinancialNodeInput {
   return {
@@ -27,7 +30,7 @@ function createNode(overrides: Partial<FinancialNodeInput> = {}): FinancialNodeI
   };
 }
 
-test('calculateFlowCostPerHour supports annual revenue and penalties', () => {
+test('calculateFlowCostPerHour supports direct estimates and penalties', () => {
   const flow = {
     id: 'flow-1',
     tenantId: 'tenant-1',
@@ -37,7 +40,7 @@ test('calculateFlowCostPerHour supports annual revenue and penalties', () => {
     annualRevenue: 2_400_000,
     transactionsPerHour: null,
     revenuePerTransaction: null,
-    estimatedCostPerHour: null,
+    estimatedCostPerHour: 923.08,
     calculatedCostPerHour: null,
     costCalculationMethod: null,
     peakHoursMultiplier: 1.5,
@@ -63,12 +66,18 @@ test('calculateFlowCostPerHour supports annual revenue and penalties', () => {
 
   const cost = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow);
   assert.ok(cost);
-  assert.equal(cost.method, 'annual_revenue');
+  assert.equal(cost.method, 'direct_estimate');
   assert.equal(cost.directCostPerHour, 923.08);
   assert.equal(cost.slaPenaltyPerHour, 500);
   assert.equal(cost.indirectCostPerHour, 4800);
   assert.equal(cost.totalCostPerHour, 6223.08);
   assert.equal(cost.peakCostPerHour, 9334.62);
+});
+
+test('resolveFlowServiceImpactWeight differentiates critical path, alternate path and secondary services', () => {
+  assert.equal(resolveFlowServiceImpactWeight({ isCritical: true, hasAlternativePath: false }), 1);
+  assert.equal(resolveFlowServiceImpactWeight({ isCritical: true, hasAlternativePath: true }), 0.5);
+  assert.equal(resolveFlowServiceImpactWeight({ isCritical: false, hasAlternativePath: false }), 0.35);
 });
 
 test('calculateNodeCostFromFlows falls back when no business flow is linked', async () => {
@@ -85,7 +94,15 @@ test('calculateNodeCostFromFlows falls back when no business flow is linked', as
     tenantId: 'tenant-1',
     nodeId: 'node-1',
     node: createNode(),
-    orgProfile: { sizeCategory: 'midMarket', customCurrency: 'EUR' },
+    orgProfile: {
+      sizeCategory: 'midMarket',
+      customCurrency: 'EUR',
+      annualRevenue: 12_000_000,
+      customDowntimeCostPerHour: 15000,
+      hourlyDowntimeCost: 15000,
+      mode: 'business_profile',
+      isConfigured: true,
+    },
   });
 
   assert.equal(result.method, 'fallback_estimate');
@@ -265,6 +282,8 @@ test('calculateFlowFinancialSnapshot aggregates mapped service costs when flow h
         flowNodes: [
           {
             infraNodeId: 'node-db',
+            isCritical: true,
+            hasAlternativePath: false,
             infraNode: {
               id: 'node-db',
               name: 'orders-db',
@@ -287,6 +306,8 @@ test('calculateFlowFinancialSnapshot aggregates mapped service costs when flow h
           },
           {
             infraNodeId: 'node-cache',
+            isCritical: false,
+            hasAlternativePath: false,
             infraNode: {
               id: 'node-cache',
               name: 'redis-main',
@@ -353,8 +374,9 @@ test('calculateFlowFinancialSnapshot aggregates mapped service costs when flow h
   assert.ok(snapshot);
   assert.equal(snapshot?.method, 'services_aggregate');
   assert.equal(snapshot?.estimable, true);
-  assert.ok((snapshot?.hourlyDowntimeCost || 0) > 0);
+  assert.equal(snapshot?.hourlyDowntimeCost, 14770);
   assert.ok((snapshot?.aleAnnual || 0) > 0);
+  assert.equal(snapshot?.computedCost?.totalCostPerHour, 14770);
   assert.equal(snapshot?.sourceBreakdown.biaValidated, 1);
   assert.equal(snapshot?.sourceBreakdown.userOverride, 1);
 });

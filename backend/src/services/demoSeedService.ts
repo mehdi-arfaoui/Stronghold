@@ -326,7 +326,7 @@ function buildDemoBusinessFlowsForProfile(selection: DemoProfileSelection): Demo
     ...flow,
     annualRevenue: scaleNullableMoney(flow.annualRevenue ?? null, revenueMultiplier),
     revenuePerTransaction: scaleNullableMoney(flow.revenuePerTransaction ?? null, revenueMultiplier),
-    estimatedCostPerHour: scaleNullableMoney(flow.estimatedCostPerHour ?? null, hourlyMultiplier),
+    estimatedCostPerHour: null,
     slaPenaltyPerHour: scaleNullableMoney(flow.slaPenaltyPerHour ?? null, hourlyMultiplier),
     slaPenaltyFlat: scaleNullableMoney(flow.slaPenaltyFlat ?? null, hourlyMultiplier),
     customerLifetimeValue: scaleNullableMoney(flow.customerLifetimeValue ?? null, revenueMultiplier),
@@ -475,6 +475,7 @@ async function seedDemoBusinessFlows(
 
   const flowIds: string[] = [];
   let validatedFlows = 0;
+  const flowEngine = new BusinessFlowFinancialEngineService(prisma);
 
   for (const flowDef of demoFlows) {
     const normalizedNodes = flowDef.nodes
@@ -527,15 +528,6 @@ async function seedDemoBusinessFlows(
       },
     });
 
-    const computed = BusinessFlowFinancialEngineService.calculateFlowCostPerHour(flow);
-    await prisma.businessFlow.update({
-      where: { id: flow.id },
-      data: {
-        calculatedCostPerHour: computed ? computed.totalCostPerHour : null,
-        costCalculationMethod: computed ? computed.method : null,
-      },
-    });
-
     await prisma.businessFlowNode.createMany({
       data: normalizedNodes.map((flowNode, orderIndex) => ({
         businessFlowId: flow.id,
@@ -548,6 +540,17 @@ async function seedDemoBusinessFlows(
         alternativeNodeId: flowNode.alternativeNodeId ?? null,
       })),
     });
+
+    const recomputedFlow = await flowEngine.recalculateFlowComputedCost(tenantId, flow.id);
+    if (!recomputedFlow) {
+      await prisma.businessFlow.update({
+        where: { id: flow.id },
+        data: {
+          calculatedCostPerHour: null,
+          costCalculationMethod: 'not_estimable',
+        },
+      });
+    }
 
     flowIds.push(flow.id);
     if (validatedByUser) validatedFlows += 1;
@@ -581,7 +584,6 @@ async function seedDemoBusinessFlows(
     });
   }
 
-  const flowEngine = new BusinessFlowFinancialEngineService(prisma);
   const coverage = await flowEngine.calculateFlowsCoverage(tenantId);
 
   return {
