@@ -347,24 +347,37 @@ export interface BlastRadiusMetrics {
   recoveryComplexity: 'low' | 'medium' | 'high' | 'critical';
 }
 
+export interface SimulationPropagationEvent {
+  timestampMinutes: number;
+  delaySeconds: number;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  impactType:
+    | 'initial_failure'
+    | 'direct_cascade'
+    | 'indirect_cascade'
+    | 'degraded';
+  impactSeverity: 'critical' | 'major' | 'minor';
+  edgeType: string;
+  parentNodeId: string | null;
+  parentNodeName: string | null;
+  description: string;
+}
+
+export interface WarRoomImpactedNode {
+  id: string;
+  name: string;
+  type: string;
+  status: 'down' | 'degraded' | 'at_risk' | 'healthy';
+  impactedAt: number;
+  impactedAtSeconds: number;
+  estimatedRecovery: number;
+}
+
 export interface WarRoomData {
-  propagationTimeline: Array<{
-    timestampMinutes: number;
-    nodeId: string;
-    nodeName: string;
-    nodeType: string;
-    impactType: 'direct' | 'cascade' | 'degraded';
-    impactSeverity: 'critical' | 'major' | 'minor';
-    description: string;
-  }>;
-  impactedNodes: Array<{
-    id: string;
-    name: string;
-    type: string;
-    status: 'down' | 'degraded' | 'at_risk' | 'healthy';
-    impactedAt: number;
-    estimatedRecovery: number;
-  }>;
+  propagationTimeline: SimulationPropagationEvent[];
+  impactedNodes: WarRoomImpactedNode[];
   remediationActions: Array<{
     id: string;
     title: string;
@@ -373,27 +386,43 @@ export interface WarRoomData {
   }>;
 }
 
+export interface WarRoomCostTimelinePoint {
+  timestampMinutes: number;
+  timestampSeconds: number;
+  cumulativeBusinessLoss: number;
+  activeHourlyCost: number;
+}
+
+export interface WarRoomNodeCostBreakdown {
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  costPerHour: number;
+  totalCost: number;
+  recoveryCost: number;
+  rtoMinutes: number;
+  downtimeMinutes: number;
+  downtimeSeconds: number;
+  impactedAtSeconds: number;
+  costSource?: 'bia_configured' | 'infra_estimated' | 'fallback';
+  costSourceLabel?: string;
+  recoveryStrategy?: string;
+  monthlyDrCost?: number;
+  recoveryActivationFactor?: number;
+}
+
 export interface WarRoomFinancial {
   hourlyDowntimeCost: number;
   recoveryCostEstimate: number;
   projectedBusinessLoss: number;
-  cumulativeLossTimeline: Array<{
-    timestampMinutes: number;
-    cumulativeBusinessLoss: number;
-    activeHourlyCost: number;
-  }>;
-  nodeCostBreakdown: Array<{
-    nodeId: string;
-    nodeName: string;
-    nodeType: string;
-    costPerHour: number;
-    recoveryCost: number;
-    rtoMinutes: number;
-    costSource?: 'business_flow' | 'bia_validated' | 'resource_estimate';
-    recoveryStrategy?: string;
-    monthlyDrCost?: number;
-    recoveryActivationFactor?: number;
-  }>;
+  totalDurationSeconds: number;
+  totalDurationMinutes: number;
+  costConfidence: 'reliable' | 'approximate' | 'gross';
+  costConfidenceLabel: string;
+  biaCoverageRatio: number;
+  trackedNodeCount: number;
+  cumulativeLossTimeline: WarRoomCostTimelinePoint[];
+  nodeCostBreakdown: WarRoomNodeCostBreakdown[];
 }
 
 // --- Risk Detection Types ---

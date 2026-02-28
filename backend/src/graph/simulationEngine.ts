@@ -15,6 +15,7 @@ import type {
 import { NodeType } from './types.js';
 import type { GraphInstance } from './graphService.js';
 import { cloneGraph, calculateCascade } from './graphService.js';
+import { buildSimulationPropagation } from './simulationPropagation.js';
 
 // =====================================================
 //  PREDEFINED SCENARIO TEMPLATES
@@ -106,9 +107,18 @@ export function runSimulation(
     });
 
   // 3. Calculate cascade
-  const cascade = calculateCascade(simGraph, affectedNodeIds);
+  const fallbackCascade = calculateCascade(simGraph, affectedNodeIds);
 
   // 4. Identify impacted business services
+  const preliminaryBusinessImpact = identifyBusinessImpact(simGraph, affectedNodeIds, fallbackCascade);
+
+  const propagation = buildSimulationPropagation({
+    graph: simGraph,
+    initialFailureNodeIds: affectedNodeIds,
+    businessImpact: preliminaryBusinessImpact,
+    scenarioType: scenario.scenarioType,
+  });
+  const cascade = propagation.cascadeNodes.length > 0 ? propagation.cascadeNodes : fallbackCascade;
   const businessImpact = identifyBusinessImpact(simGraph, affectedNodeIds, cascade);
 
   // 5. Calculate metrics
@@ -141,7 +151,13 @@ export function runSimulation(
 
   // 6. Build blast-radius/war-room data and recommendations
   const blastRadiusMetrics = buildBlastRadiusMetrics(totalAffected, totalNodes, businessImpact, maxRTO, cascade);
-  const warRoomData = buildWarRoomData(affectedNodes, cascade, businessImpact);
+  const warRoomData = buildWarRoomData(
+    affectedNodes,
+    cascade,
+    businessImpact,
+    propagation.propagationTimeline,
+    propagation.impactedNodes,
+  );
   const recommendations = generateRecommendations(graph, affectedNodes, cascade, businessImpact, maxRTO);
 
   // 7. Post-incident resilience score
@@ -562,47 +578,32 @@ function buildBlastRadiusMetrics(
 function buildWarRoomData(
   affectedNodes: Array<{ id: string; name: string; type: string }>,
   cascade: CascadeNode[],
-  businessImpact: SimulationBusinessImpact[]
+  businessImpact: SimulationBusinessImpact[],
+  propagationTimeline: SimulationResult['warRoomData']['propagationTimeline'],
+  impactedNodesFromPropagation: SimulationResult['warRoomData']['impactedNodes'],
 ): SimulationResult['warRoomData'] {
-  const propagationTimeline = [
-    ...affectedNodes.map((node, index) => ({
-      timestampMinutes: index,
-      nodeId: node.id,
-      nodeName: node.name,
-      nodeType: node.type,
-      impactType: 'direct' as const,
-      impactSeverity: 'critical' as const,
-      description: `${node.name} tombe immediatement suite a l'incident initial.`,
-    })),
-    ...cascade.map((node) => ({
-      timestampMinutes: node.cascadeDepth,
-      nodeId: node.id,
-      nodeName: node.name,
-      nodeType: node.type,
-      impactType: node.status === 'degraded' ? 'degraded' as const : 'cascade' as const,
-      impactSeverity: node.status === 'down' ? 'major' as const : 'minor' as const,
-      description: node.cascadeReason,
-    })),
-  ].sort((a, b) => a.timestampMinutes - b.timestampMinutes);
-
-  const impactedNodes = [
-    ...affectedNodes.map((node) => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      status: 'down' as const,
-      impactedAt: 0,
-      estimatedRecovery: 60,
-    })),
-    ...cascade.map((node) => ({
-      id: node.id,
-      name: node.name,
-      type: node.type,
-      status: node.status,
-      impactedAt: node.cascadeDepth,
-      estimatedRecovery: node.status === 'down' ? 120 : 45,
-    })),
-  ];
+  const impactedNodes = impactedNodesFromPropagation.length > 0
+    ? impactedNodesFromPropagation
+    : [
+        ...affectedNodes.map((node) => ({
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          status: 'down' as const,
+          impactedAt: 0,
+          impactedAtSeconds: 0,
+          estimatedRecovery: 60,
+        })),
+        ...cascade.map((node) => ({
+          id: node.id,
+          name: node.name,
+          type: node.type,
+          status: node.status,
+          impactedAt: node.cascadeDepth,
+          impactedAtSeconds: node.cascadeDepth * 60,
+          estimatedRecovery: node.status === 'down' ? 120 : 45,
+        })),
+      ];
 
   const remediationActions: NonNullable<SimulationResult['warRoomData']>['remediationActions'] = businessImpact.slice(0, 5).map((service, index) => ({
     id: randomUUID(),
