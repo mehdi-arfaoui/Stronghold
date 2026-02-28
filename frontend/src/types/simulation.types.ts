@@ -43,11 +43,15 @@ export interface BlastRadiusMetrics {
 export interface WarRoomData {
   propagationTimeline: Array<{
     timestampMinutes: number;
+    delaySeconds: number;
     nodeId: string;
     nodeName: string;
     nodeType: string;
-    impactType: 'direct' | 'cascade' | 'degraded';
+    impactType: 'initial_failure' | 'direct_cascade' | 'indirect_cascade' | 'degraded';
     impactSeverity: 'critical' | 'major' | 'minor';
+    edgeType: string;
+    parentNodeId: string | null;
+    parentNodeName: string | null;
     description: string;
   }>;
   impactedNodes: Array<{
@@ -56,6 +60,7 @@ export interface WarRoomData {
     type: string;
     status: 'down' | 'degraded' | 'at_risk' | 'healthy';
     impactedAt: number;
+    impactedAtSeconds: number;
     estimatedRecovery: number;
   }>;
   remediationActions: Array<{
@@ -70,8 +75,15 @@ export interface WarRoomFinancial {
   hourlyDowntimeCost: number;
   recoveryCostEstimate: number;
   projectedBusinessLoss: number;
+  totalDurationSeconds: number;
+  totalDurationMinutes: number;
+  costConfidence: 'reliable' | 'approximate' | 'gross';
+  costConfidenceLabel: string;
+  biaCoverageRatio: number;
+  trackedNodeCount: number;
   cumulativeLossTimeline: Array<{
     timestampMinutes: number;
+    timestampSeconds: number;
     cumulativeBusinessLoss: number;
     activeHourlyCost: number;
   }>;
@@ -80,9 +92,14 @@ export interface WarRoomFinancial {
     nodeName: string;
     nodeType: string;
     costPerHour: number;
+    totalCost: number;
     recoveryCost: number;
     rtoMinutes: number;
-    costSource?: 'business_flow' | 'bia_validated' | 'resource_estimate';
+    downtimeMinutes: number;
+    downtimeSeconds: number;
+    impactedAtSeconds: number;
+    costSource?: 'bia_configured' | 'infra_estimated' | 'fallback';
+    costSourceLabel?: string;
     recoveryStrategy?: string;
     monthlyDrCost?: number;
     recoveryActivationFactor?: number;

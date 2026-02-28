@@ -121,19 +121,31 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
       propagationTimeline: Array.isArray(warRoomDataRaw.propagationTimeline)
         ? warRoomDataRaw.propagationTimeline.map((event, index) => {
             const e = isObject(event) ? event : {};
+            const delaySeconds = Number(
+              e.delaySeconds ?? (Number(e.timestampMinutes ?? index) * 60),
+            );
+            const impactTypeRaw = String(e.impactType ?? 'initial_failure');
             return {
               timestampMinutes: Number(e.timestampMinutes ?? index),
+              delaySeconds,
               nodeId: String(e.nodeId ?? `node-${index}`),
               nodeName: String(e.nodeName ?? 'Node'),
               nodeType: String(e.nodeType ?? 'UNKNOWN'),
               impactType:
-                e.impactType === 'cascade' || e.impactType === 'degraded'
-                  ? e.impactType
-                  : ('direct' as const),
+                impactTypeRaw === 'direct' || impactTypeRaw === 'direct_cascade'
+                  ? ('direct_cascade' as const)
+                  : impactTypeRaw === 'cascade' || impactTypeRaw === 'indirect_cascade'
+                    ? ('indirect_cascade' as const)
+                    : impactTypeRaw === 'degraded'
+                      ? ('degraded' as const)
+                      : ('initial_failure' as const),
               impactSeverity:
                 e.impactSeverity === 'major' || e.impactSeverity === 'minor'
                   ? e.impactSeverity
                   : ('critical' as const),
+              edgeType: String(e.edgeType ?? 'default'),
+              parentNodeId: e.parentNodeId ? String(e.parentNodeId) : null,
+              parentNodeName: e.parentNodeName ? String(e.parentNodeName) : null,
               description: String(e.description ?? 'Propagation event'),
             };
           })
@@ -154,6 +166,9 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
                   ? statusRaw
                   : ('at_risk' as const),
               impactedAt: Number(n.impactedAt ?? 0),
+              impactedAtSeconds: Number(
+                n.impactedAtSeconds ?? (Number(n.impactedAt ?? 0) * 60),
+              ),
               estimatedRecovery: Number(n.estimatedRecovery ?? 60),
             };
           })
@@ -184,11 +199,33 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
       projectedBusinessLoss: Number(
         warRoomFinancialRaw.projectedBusinessLoss ?? metrics.estimatedFinancialLoss ?? 0,
       ),
+      totalDurationSeconds: Number(
+        warRoomFinancialRaw.totalDurationSeconds ??
+          (Number(warRoomFinancialRaw.totalDurationMinutes ?? metrics.estimatedDowntimeMinutes ?? 0) *
+            60),
+      ),
+      totalDurationMinutes: Number(
+        warRoomFinancialRaw.totalDurationMinutes ?? metrics.estimatedDowntimeMinutes ?? 0,
+      ),
+      costConfidence:
+        warRoomFinancialRaw.costConfidence === 'reliable' ||
+        warRoomFinancialRaw.costConfidence === 'approximate'
+          ? warRoomFinancialRaw.costConfidence
+          : ('gross' as const),
+      costConfidenceLabel: String(
+        warRoomFinancialRaw.costConfidenceLabel ??
+          'Estimation grossiere - configurez le profil financier',
+      ),
+      biaCoverageRatio: Number(warRoomFinancialRaw.biaCoverageRatio ?? 0),
+      trackedNodeCount: Number(warRoomFinancialRaw.trackedNodeCount ?? 0),
       cumulativeLossTimeline: Array.isArray(warRoomFinancialRaw.cumulativeLossTimeline)
         ? warRoomFinancialRaw.cumulativeLossTimeline.map((row, index) => {
             const item = isObject(row) ? row : {};
             return {
               timestampMinutes: Number(item.timestampMinutes ?? index),
+              timestampSeconds: Number(
+                item.timestampSeconds ?? (Number(item.timestampMinutes ?? index) * 60),
+              ),
               cumulativeBusinessLoss: Number(item.cumulativeBusinessLoss ?? 0),
               activeHourlyCost: Number(item.activeHourlyCost ?? 0),
             };
@@ -202,8 +239,29 @@ function mapEngineResultToUiResult(raw: UnknownRecord): SimulationResult {
               nodeName: String(item.nodeName ?? 'Node'),
               nodeType: String(item.nodeType ?? 'UNKNOWN'),
               costPerHour: Number(item.costPerHour ?? 0),
+              totalCost: Number(item.totalCost ?? 0),
               recoveryCost: Number(item.recoveryCost ?? 0),
               rtoMinutes: Number(item.rtoMinutes ?? 0),
+              downtimeMinutes: Number(item.downtimeMinutes ?? 0),
+              downtimeSeconds: Number(
+                item.downtimeSeconds ?? (Number(item.downtimeMinutes ?? 0) * 60),
+              ),
+              impactedAtSeconds: Number(item.impactedAtSeconds ?? 0),
+              costSource:
+                item.costSource === 'bia_configured' ||
+                item.costSource === 'infra_estimated'
+                  ? item.costSource
+                  : item.costSource === 'fallback'
+                    ? 'fallback'
+                    : undefined,
+              costSourceLabel: item.costSourceLabel
+                ? String(item.costSourceLabel)
+                : undefined,
+              recoveryStrategy: item.recoveryStrategy
+                ? String(item.recoveryStrategy)
+                : undefined,
+              monthlyDrCost: Number(item.monthlyDrCost ?? 0),
+              recoveryActivationFactor: Number(item.recoveryActivationFactor ?? 0),
             };
           })
         : [],
