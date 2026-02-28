@@ -1,5 +1,6 @@
 import dagre from 'dagre';
 import type { Node, Edge } from '@xyflow/react';
+import { getNodeLayer } from '@/lib/graph-visuals';
 
 export type LayoutType = 'hierarchical' | 'force' | 'radial';
 
@@ -7,6 +8,40 @@ interface LayoutOptions {
   direction?: 'TB' | 'LR';
   nodeWidth?: number;
   nodeHeight?: number;
+  nodeSpacing?: number;
+  rankSpacing?: number;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function resolveNodeDimensions(node: Node, fallbackWidth: number, fallbackHeight: number): { width: number; height: number } {
+  const width = toNumber((node.style as Record<string, unknown> | undefined)?.width) ?? toNumber(node.width) ?? fallbackWidth;
+  const height = toNumber((node.style as Record<string, unknown> | undefined)?.height) ?? toNumber(node.height) ?? fallbackHeight;
+
+  return {
+    width: Math.max(40, width),
+    height: Math.max(28, height),
+  };
+}
+
+function resolveLayer(node: Node): number {
+  const data = (node.data as Record<string, unknown> | undefined) || {};
+  const metadata = data.metadata && typeof data.metadata === 'object'
+    ? (data.metadata as Record<string, unknown>)
+    : undefined;
+
+  return getNodeLayer({
+    type: typeof data.nodeType === 'string' ? data.nodeType : node.type,
+    name: typeof data.label === 'string' ? data.label : undefined,
+    metadata,
+  });
 }
 
 export function applyHierarchicalLayout(
@@ -14,14 +49,31 @@ export function applyHierarchicalLayout(
   edges: Edge[],
   options: LayoutOptions = {}
 ): { nodes: Node[]; edges: Edge[] } {
-  const { direction = 'TB', nodeWidth = 200, nodeHeight = 80 } = options;
+  const {
+    direction = 'TB',
+    nodeWidth = 180,
+    nodeHeight = 60,
+    nodeSpacing = 80,
+    rankSpacing = 120,
+  } = options;
 
   const g = new dagre.graphlib.Graph();
   g.setDefaultEdgeLabel(() => ({}));
-  g.setGraph({ rankdir: direction, ranksep: 80, nodesep: 50 });
+  g.setGraph({
+    rankdir: direction,
+    ranksep: rankSpacing,
+    nodesep: nodeSpacing,
+    marginx: 40,
+    marginy: 40,
+  });
 
   nodes.forEach((node) => {
-    g.setNode(node.id, { width: nodeWidth, height: nodeHeight });
+    const size = resolveNodeDimensions(node, nodeWidth, nodeHeight);
+    g.setNode(node.id, {
+      width: size.width,
+      height: size.height,
+      rank: resolveLayer(node),
+    });
   });
 
   edges.forEach((edge) => {
@@ -32,11 +84,12 @@ export function applyHierarchicalLayout(
 
   const layoutedNodes = nodes.map((node) => {
     const dagreNode = g.node(node.id);
+    const size = resolveNodeDimensions(node, nodeWidth, nodeHeight);
     return {
       ...node,
       position: {
-        x: dagreNode.x - nodeWidth / 2,
-        y: dagreNode.y - nodeHeight / 2,
+        x: dagreNode.x - size.width / 2,
+        y: dagreNode.y - size.height / 2,
       },
     };
   });
@@ -50,13 +103,13 @@ export function applyForceLayout(
 ): { nodes: Node[]; edges: Edge[] } {
   const nodeCount = nodes.length;
   const cols = Math.ceil(Math.sqrt(nodeCount));
-  const spacing = 250;
+  const spacing = 220;
 
   const layoutedNodes = nodes.map((node, i) => ({
     ...node,
     position: {
-      x: (i % cols) * spacing + Math.random() * 50,
-      y: Math.floor(i / cols) * spacing + Math.random() * 50,
+      x: (i % cols) * spacing,
+      y: Math.floor(i / cols) * spacing,
     },
   }));
 

@@ -1,22 +1,64 @@
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { useGraphStore } from '@/stores/graph.store';
-import type { LayoutType } from '@/lib/graph-layout';
+import { cn } from '@/lib/utils';
 
 interface GraphControlsProps {
-  availableTypes: string[];
-  availableProviders: string[];
-  availableRegions: string[];
+  onAutoLayout?: () => void;
+  compact?: boolean;
+  className?: string;
 }
 
-export function GraphControls({ availableTypes, availableProviders, availableRegions }: GraphControlsProps) {
+export function GraphControls({ onAutoLayout, compact = false, className }: GraphControlsProps) {
   const { layout, filters, setLayout, setFilters } = useGraphStore();
 
+  if (compact) {
+    return (
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2 rounded-xl border bg-background/90 p-2 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/75',
+          className,
+        )}
+      >
+        <div className="relative min-w-[220px] flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="Chercher un service..."
+            className="h-9 border-border/70 bg-background/70 pl-9"
+            value={filters.search}
+            onChange={(e) => setFilters({ search: e.target.value })}
+          />
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button variant="outline" size="sm" className="h-8" onClick={onAutoLayout}>
+            Auto
+          </Button>
+          <Button
+            variant={layout === 'hierarchical' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setLayout('hierarchical')}
+            className="h-8"
+          >
+            Hierarchie
+          </Button>
+          <Button
+            variant={layout === 'force' ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setLayout('force')}
+            className="h-8"
+          >
+            Force
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex flex-wrap items-center gap-3 rounded-lg border bg-card p-3">
-      <div className="relative flex-1 min-w-[200px]">
+    <div className={cn('space-y-2 rounded-lg border bg-card p-3', className)}>
+      <div className="relative min-w-[200px]">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder="Chercher un service..."
@@ -26,69 +68,27 @@ export function GraphControls({ availableTypes, availableProviders, availableReg
         />
       </div>
 
-      {availableTypes.length > 0 && (
-        <Select
-          value={filters.types[0] || 'all'}
-          onValueChange={(v) => setFilters({ types: v === 'all' ? [] : [v] })}
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Vues</span>
+        <Button variant="outline" size="sm" className="h-8" onClick={onAutoLayout}>
+          Auto
+        </Button>
+        <Button
+          variant={layout === 'hierarchical' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setLayout('hierarchical')}
+          className="h-8"
         >
-          <SelectTrigger className="w-[140px] h-9">
-            <SelectValue placeholder="Type" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous les types</SelectItem>
-            {availableTypes.map((t) => (
-              <SelectItem key={t} value={t}>{t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {availableProviders.length > 0 && (
-        <Select
-          value={filters.providers[0] || 'all'}
-          onValueChange={(v) => setFilters({ providers: v === 'all' ? [] : [v] })}
+          Hierarchique
+        </Button>
+        <Button
+          variant={layout === 'force' ? 'default' : 'outline'}
+          size="sm"
+          onClick={() => setLayout('force')}
+          className="h-8"
         >
-          <SelectTrigger className="w-[140px] h-9">
-            <SelectValue placeholder="Provider" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Tous</SelectItem>
-            {availableProviders.map((p) => (
-              <SelectItem key={p} value={p}>{p}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      {availableRegions.length > 0 && (
-        <Select
-          value={filters.regions[0] || 'all'}
-          onValueChange={(v) => setFilters({ regions: v === 'all' ? [] : [v] })}
-        >
-          <SelectTrigger className="w-[140px] h-9">
-            <SelectValue placeholder="Region" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Toutes</SelectItem>
-            {availableRegions.map((r) => (
-              <SelectItem key={r} value={r}>{r}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      )}
-
-      <div className="flex items-center gap-1">
-        {(['hierarchical', 'force', 'radial'] as LayoutType[]).map((l) => (
-          <Button
-            key={l}
-            variant={layout === l ? 'default' : 'outline'}
-            size="sm"
-            onClick={() => setLayout(l)}
-            className="h-9"
-          >
-            {l === 'hierarchical' ? 'Hierarchique' : l === 'force' ? 'Force' : 'Radial'}
-          </Button>
-        ))}
+          Force
+        </Button>
       </div>
     </div>
   );

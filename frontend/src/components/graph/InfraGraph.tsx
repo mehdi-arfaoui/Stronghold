@@ -1,26 +1,32 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ReactFlow,
   Controls,
   Background,
   type Node,
   type Edge,
+  type NodeProps,
+  type ReactFlowInstance,
   BackgroundVariant,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import type { CSSProperties } from 'react';
 
 import { NodeCard, type InfraNodeData } from './NodeCard';
-import { ClusterNodeCard, type ClusterNodeData } from './ClusterNodeCard';
-import { InferredEdge, ConfirmedEdge } from './EdgeLabel';
 import { GraphMinimap } from './GraphMinimap';
 import { applyLayout, type LayoutType } from '@/lib/graph-layout';
-import type { InfraNode, InfraEdge, NodeStatus, NodeType } from '@/types/graph.types';
-
-const nodeTypes = { infraNode: NodeCard, clusterNode: ClusterNodeCard };
-const edgeTypes = { inferred: InferredEdge, confirmed: ConfirmedEdge };
-
-const CLUSTER_THRESHOLD_DEFAULT = 50;
+import {
+  computeBlastRadius,
+  getEdgeHoverLabel,
+  getEdgeStyle,
+  getNetworkGroup,
+  getNodeCategory,
+  getNodeServiceType,
+  getNodeSize,
+  getNodeTier,
+  resolveBlastRatio,
+} from '@/lib/graph-visuals';
+import type { InfraNode, InfraEdge, NodeStatus } from '@/types/graph.types';
 
 export type GraphViewMode = 'auto' | 'grouped' | 'detailed';
 
@@ -39,13 +45,19 @@ interface InfraGraphProps {
   };
   graphViewMode?: GraphViewMode;
   showMiniMap?: boolean;
-  clusterThreshold?: number;
+  fitViewNonce?: number;
+  enableDependencyHighlight?: boolean;
+  enableNetworkGrouping?: boolean;
 }
 
-type ClusterBucket = {
-  key: string;
+interface GroupZoneData {
   label: string;
-  nodes: InfraNode[];
+  memberIds: string[];
+}
+
+const nodeTypes = {
+  infraNode: NodeCard,
+  groupZone: GroupZoneNode,
 };
 
 type FlowBuildResult = {
@@ -53,62 +65,39 @@ type FlowBuildResult = {
   edges: Edge[];
 };
 
-function resolveTypeGroup(nodeType: NodeType): string {
-  if (['VM', 'CONTAINER', 'SERVERLESS', 'KUBERNETES_CLUSTER', 'APPLICATION', 'MICROSERVICE', 'PHYSICAL_SERVER'].includes(nodeType)) {
-    return 'compute';
+const FIT_OPTIONS = {
+  padding: 0.15,
+  duration: 300,
+  maxZoom: 1.5,
+  minZoom: 0.1,
+};
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return parsed;
   }
-  if (['DATABASE', 'CACHE', 'MESSAGE_QUEUE'].includes(nodeType)) {
-    return 'data';
-  }
-  if (['OBJECT_STORAGE', 'CDN'].includes(nodeType)) {
-    return 'storage';
-  }
-  if (['LOAD_BALANCER', 'API_GATEWAY', 'VPC', 'SUBNET', 'DNS', 'FIREWALL', 'REGION', 'AVAILABILITY_ZONE'].includes(nodeType)) {
-    return 'network';
-  }
-  if (['THIRD_PARTY_API', 'SAAS_SERVICE'].includes(nodeType)) {
-    return 'external';
-  }
-  return 'other';
+  return null;
 }
 
-function isClusterNodeData(data: unknown): data is ClusterNodeData {
-  if (!data || typeof data !== 'object') return false;
-  const record = data as Record<string, unknown>;
-  return (
-    typeof record.label === 'string' &&
-    typeof record.count === 'number' &&
-    typeof record.criticalCount === 'number' &&
-    typeof record.hasSpof === 'boolean' &&
-    typeof record.groupKey === 'string'
-  );
-}
-
-function resolveClusterKey(node: InfraNode): { key: string; label: string } {
-  const region = typeof node.region === 'string' && node.region.trim().length > 0 ? node.region.trim() : null;
-  if (region) {
-    return {
-      key: `region:${region}`,
-      label: region,
-    };
-  }
-
-  const metadataLayer =
-    node.metadata && typeof node.metadata.layer === 'string' && node.metadata.layer.trim().length > 0
-      ? String(node.metadata.layer).trim()
-      : null;
-  if (metadataLayer) {
-    return {
-      key: `layer:${metadataLayer}`,
-      label: metadataLayer,
-    };
-  }
-
-  const groupedType = resolveTypeGroup(node.type);
+function getNodeDimensions(node: Node, fallbackWidth = 180, fallbackHeight = 60): { width: number; height: number } {
+  const style = node.style as Record<string, unknown> | undefined;
   return {
-    key: `type:${groupedType}`,
-    label: groupedType,
+    width: Math.max(50, toNumber(style?.width) ?? toNumber(node.width) ?? fallbackWidth),
+    height: Math.max(35, toNumber(style?.height) ?? toNumber(node.height) ?? fallbackHeight),
   };
+}
+
+function GroupZoneNode({ data }: NodeProps) {
+  const groupData = (data as unknown as GroupZoneData | undefined) || { label: '', memberIds: [] };
+  return (
+    <div className="h-full w-full rounded-xl border border-dashed border-slate-400/30 bg-slate-400/5 px-2 pt-1">
+      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+        {groupData.label}
+      </span>
+    </div>
+  );
 }
 
 function toFlowNode(
@@ -119,21 +108,35 @@ function toFlowNode(
   const metadata = node.metadata && typeof node.metadata === 'object'
     ? (node.metadata as Record<string, unknown>)
     : {};
-  const nodeTypeLabel = typeof metadata.awsService === 'string'
-    ? metadata.awsService
-    : typeof metadata.subType === 'string'
-      ? metadata.subType
-      : node.type;
+  const blastRatio = resolveBlastRatio(node);
+  const size = getNodeSize(blastRatio);
   const overrides = getNodeDataOverrides?.(node) || {};
+  const displayName =
+    (typeof metadata.displayName === 'string' && metadata.displayName.trim().length > 0
+      ? metadata.displayName
+      : node.name) || node.id;
+
   return {
     ...(overrides.dimmed ? { draggable: false } : {}),
     id: node.id,
     type: 'infraNode',
     position: { x: 0, y: 0 },
+    style: {
+      width: size.width,
+      height: size.height,
+      zIndex: 10,
+    },
     data: {
-      label: node.name,
+      label: displayName,
       nodeType: node.type,
-      nodeTypeLabel,
+      nodeTypeLabel: getNodeServiceType(node),
+      category: getNodeCategory(node),
+      serviceType: getNodeServiceType(node),
+      tier: getNodeTier(metadata),
+      blastRatio,
+      nodeWidth: size.width,
+      nodeHeight: size.height,
+      metadata,
       provider: node.provider,
       region: node.region,
       isSPOF: node.isSPOF,
@@ -144,7 +147,7 @@ function toFlowNode(
   };
 }
 
-function buildDetailedFlow(
+function buildFlow(
   infraNodes: InfraNode[],
   infraEdges: InfraEdge[],
   statuses?: Map<string, NodeStatus>,
@@ -163,140 +166,104 @@ function buildDetailedFlow(
       id: edge.id,
       source: edge.source,
       target: edge.target,
-      type: override?.type || (edge.inferred ? 'inferred' : 'confirmed'),
+      type: override?.type || 'smoothstep',
       data: {
         edgeType: edge.type,
         inferred: edge.inferred,
         confidence: edge.confidence,
       },
-      ...(override?.style ? { style: override.style } : {}),
+      style: {
+        ...getEdgeStyle(edge.type, edge.inferred),
+        ...(override?.style || {}),
+      },
     };
   });
 
   return { nodes, edges };
 }
 
-function buildClusteredFlow(
-  infraNodes: InfraNode[],
-  infraEdges: InfraEdge[],
-  expandedClusters: Set<string>,
-  statuses?: Map<string, NodeStatus>,
-  getNodeDataOverrides?: (node: InfraNode) => Partial<InfraNodeData>,
-  getEdgeStyleOverrides?: (edge: InfraEdge) => {
-    style?: CSSProperties;
-    animated?: boolean;
-    type?: Edge['type'];
-  },
-): FlowBuildResult {
-  const bucketMap = new Map<string, ClusterBucket>();
-  for (const node of infraNodes) {
-    const cluster = resolveClusterKey(node);
-    const existing = bucketMap.get(cluster.key);
+function applyNetworkGrouping(nodes: Node[]): Node[] {
+  if (nodes.length <= 30) return nodes;
+
+  const groupMap = new Map<string, { label: string; members: Node[] }>();
+  const clonedNodes = nodes.map((node) => ({ ...node }));
+
+  for (const node of clonedNodes) {
+    if (node.type !== 'infraNode') continue;
+    const data = (node.data as InfraNodeData | undefined) || undefined;
+    const group = getNetworkGroup({
+      type: data?.nodeType,
+      name: data?.label,
+      metadata: data?.metadata,
+    });
+    if (!group) continue;
+
+    const existing = groupMap.get(group.key);
     if (existing) {
-      existing.nodes.push(node);
+      existing.members.push(node);
       continue;
     }
-    bucketMap.set(cluster.key, {
-      key: cluster.key,
-      label: cluster.label,
-      nodes: [node],
-    });
+    groupMap.set(group.key, { label: group.label, members: [node] });
   }
 
-  const nodeToVisibleId = new Map<string, string>();
-  const nodes: Node[] = [];
-  for (const bucket of bucketMap.values()) {
-    const clusterNodeId = `cluster:${bucket.key}`;
-    const isExpanded = expandedClusters.has(bucket.key);
-    if (isExpanded) {
-      for (const node of bucket.nodes) {
-        nodeToVisibleId.set(node.id, node.id);
-        nodes.push(toFlowNode(node, statuses, getNodeDataOverrides));
-      }
-      continue;
+  const groupNodes: Node[] = [];
+  const padding = 24;
+  const topPadding = 26;
+
+  for (const [groupKey, group] of groupMap.entries()) {
+    if (group.members.length < 2) continue;
+    const groupId = `group:${groupKey}`;
+
+    let minX = Number.POSITIVE_INFINITY;
+    let minY = Number.POSITIVE_INFINITY;
+    let maxX = Number.NEGATIVE_INFINITY;
+    let maxY = Number.NEGATIVE_INFINITY;
+
+    for (const member of group.members) {
+      const size = getNodeDimensions(member);
+      minX = Math.min(minX, member.position.x);
+      minY = Math.min(minY, member.position.y);
+      maxX = Math.max(maxX, member.position.x + size.width);
+      maxY = Math.max(maxY, member.position.y + size.height);
     }
 
-    for (const node of bucket.nodes) {
-      nodeToVisibleId.set(node.id, clusterNodeId);
-    }
-    const criticalCount = bucket.nodes.filter((node) => (node.criticality ?? 0) >= 0.7).length;
-    const hasSpof = bucket.nodes.some((node) => Boolean(node.isSPOF));
+    const groupX = minX - padding;
+    const groupY = minY - topPadding;
+    const groupWidth = maxX - minX + padding * 2;
+    const groupHeight = maxY - minY + padding + topPadding;
 
-    nodes.push({
-      id: clusterNodeId,
-      type: 'clusterNode',
-      position: { x: 0, y: 0 },
+    groupNodes.push({
+      id: groupId,
+      type: 'groupZone',
+      position: { x: groupX, y: groupY },
+      selectable: false,
+      draggable: false,
+      connectable: false,
+      focusable: false,
       data: {
-        label: bucket.label,
-        count: bucket.nodes.length,
-        criticalCount,
-        hasSpof,
-        groupKey: bucket.key,
-      } satisfies ClusterNodeData,
-    });
-  }
-
-  const edgeAccumulator = new Map<string, {
-    source: string;
-    target: string;
-    inferred: boolean;
-    count: number;
-    sample: InfraEdge;
-    clustered: boolean;
-  }>();
-
-  for (const edge of infraEdges) {
-    const source = nodeToVisibleId.get(edge.source);
-    const target = nodeToVisibleId.get(edge.target);
-    if (!source || !target || source === target) continue;
-    const inferred = Boolean(edge.inferred);
-    const key = `${source}->${target}:${inferred ? 'i' : 'c'}`;
-    const existing = edgeAccumulator.get(key);
-    if (existing) {
-      existing.count += 1;
-      continue;
-    }
-    edgeAccumulator.set(key, {
-      source,
-      target,
-      inferred,
-      count: 1,
-      sample: edge,
-      clustered: source.startsWith('cluster:') || target.startsWith('cluster:'),
-    });
-  }
-
-  const edges: Edge[] = [];
-  for (const entry of edgeAccumulator.values()) {
-    const canApplyDirectOverride = !entry.clustered && entry.count === 1;
-    const override = canApplyDirectOverride ? getEdgeStyleOverrides?.(entry.sample) : undefined;
-    const inferredEdge = entry.inferred;
-    const strokeWidth = entry.clustered ? Math.min(5, 1.5 + Math.log2(entry.count + 1)) : undefined;
-
-    edges.push({
-      id:
-        entry.clustered || entry.count > 1
-          ? `cluster-edge:${entry.source}:${entry.target}:${inferredEdge ? 'i' : 'c'}`
-          : entry.sample.id,
-      source: entry.source,
-      target: entry.target,
-      type: override?.type || (inferredEdge ? 'inferred' : 'confirmed'),
-      ...(override?.animated !== undefined ? { animated: override.animated } : {}),
-      data: {
-        edgeType: entry.sample.type,
-        inferred: entry.sample.inferred,
-        confidence: entry.sample.confidence,
-        count: entry.count,
-      },
+        label: group.label,
+        memberIds: group.members.map((member) => member.id),
+      } satisfies GroupZoneData,
       style: {
-        ...(override?.style || {}),
-        ...(strokeWidth ? { strokeWidth } : {}),
-        ...(entry.clustered ? { opacity: 0.8 } : {}),
+        width: groupWidth,
+        height: groupHeight,
+        pointerEvents: 'none',
+        zIndex: 0,
       },
     });
+
+    for (const member of group.members) {
+      member.parentId = groupId;
+      member.extent = 'parent';
+      member.position = {
+        x: member.position.x - groupX,
+        y: member.position.y - groupY,
+      };
+      member.zIndex = 10;
+    }
   }
 
-  return { nodes, edges };
+  return [...groupNodes, ...clonedNodes];
 }
 
 function InfraGraphComponent({
@@ -310,9 +277,15 @@ function InfraGraphComponent({
   getEdgeStyleOverrides,
   graphViewMode = 'auto',
   showMiniMap = false,
-  clusterThreshold = CLUSTER_THRESHOLD_DEFAULT,
+  fitViewNonce = 0,
+  enableDependencyHighlight = false,
+  enableNetworkGrouping = false,
 }: InfraGraphProps) {
-  const [expandedClusters, setExpandedClusters] = useState<Set<string>>(new Set());
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
+  const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const fitTimeoutRef = useRef<number | null>(null);
 
   const infraNodeMap = useMemo(
     () => new Map(infraNodes.map((node) => [node.id, node])),
@@ -323,61 +296,139 @@ function InfraGraphComponent({
     [infraEdges],
   );
 
-  const clusteringEnabled =
-    graphViewMode === 'grouped' ||
-    (graphViewMode === 'auto' && infraNodes.length > clusterThreshold);
-
-  const flow = useMemo<FlowBuildResult>(() => {
-    if (!clusteringEnabled) {
-      return buildDetailedFlow(
+  const baseFlow = useMemo<FlowBuildResult>(
+    () =>
+      buildFlow(
         infraNodes,
         infraEdges,
         nodeStatuses,
         getNodeDataOverrides,
         getEdgeStyleOverrides,
-      );
-    }
-
-    return buildClusteredFlow(
+      ),
+    [
       infraNodes,
       infraEdges,
-      expandedClusters,
       nodeStatuses,
       getNodeDataOverrides,
       getEdgeStyleOverrides,
-    );
-  }, [
-    clusteringEnabled,
-    expandedClusters,
-    infraNodes,
-    infraEdges,
-    nodeStatuses,
-    getNodeDataOverrides,
-    getEdgeStyleOverrides,
-  ]);
-
-  const layouted = useMemo(
-    () => applyLayout(flow.nodes, flow.edges, layoutType),
-    [flow.nodes, flow.edges, layoutType],
+    ],
   );
+
+  const layoutedFlow = useMemo(
+    () => applyLayout(baseFlow.nodes, baseFlow.edges, layoutType),
+    [baseFlow.nodes, baseFlow.edges, layoutType],
+  );
+
+  const layoutedNodes = useMemo(
+    () => (enableNetworkGrouping ? applyNetworkGrouping(layoutedFlow.nodes) : layoutedFlow.nodes),
+    [enableNetworkGrouping, layoutedFlow.nodes],
+  );
+
+  const highlight = useMemo(() => {
+    if (!enableDependencyHighlight || !hoveredNodeId) return null;
+    return computeBlastRadius(hoveredNodeId, infraEdges);
+  }, [enableDependencyHighlight, hoveredNodeId, infraEdges]);
+
+  const nodesForRender = useMemo(() => {
+    if (!highlight) return layoutedNodes;
+
+    return layoutedNodes.map((node) => {
+      if (node.type === 'groupZone') {
+        const data = node.data as unknown as GroupZoneData | undefined;
+        const hasHighlightedChild = (data?.memberIds || []).some((id) => highlight.nodeIds.has(id));
+        return {
+          ...node,
+          style: {
+            ...(node.style || {}),
+            opacity: hasHighlightedChild ? 1 : 0.2,
+          },
+        };
+      }
+
+      const data = (node.data as InfraNodeData) || ({} as InfraNodeData);
+      const isHighlighted = highlight.nodeIds.has(node.id);
+      return {
+        ...node,
+        data: {
+          ...data,
+          dimmed: data.dimmed || !isHighlighted,
+        },
+        style: {
+          ...(node.style || {}),
+          opacity: isHighlighted ? 1 : 0.24,
+        },
+      };
+    });
+  }, [highlight, layoutedNodes]);
+
+  const edgesForRender = useMemo(() => {
+    return layoutedFlow.edges.map((edge) => {
+      const highlighted = highlight ? highlight.edgeIds.has(String(edge.id)) : true;
+      const isHovered = hoveredEdgeId === edge.id;
+      return {
+        ...edge,
+        label: isHovered
+          ? getEdgeHoverLabel(
+              (edge.data as Record<string, unknown> | undefined)?.edgeType as string || 'dependency',
+            )
+          : undefined,
+        labelStyle: isHovered ? { fontSize: 10, fontWeight: 600 } : edge.labelStyle,
+        style: {
+          ...(edge.style || {}),
+          opacity: highlighted ? (edge.style?.opacity ?? 1) : 0.14,
+          strokeWidth: highlighted
+            ? Math.max(1.8, Number((edge.style as Record<string, unknown> | undefined)?.strokeWidth ?? 1.8))
+            : 1,
+        },
+      };
+    });
+  }, [highlight, hoveredEdgeId, layoutedFlow.edges]);
+
+  const fitToView = useCallback(() => {
+    if (!reactFlowInstance || infraNodes.length === 0) return;
+    if (fitTimeoutRef.current !== null) {
+      window.clearTimeout(fitTimeoutRef.current);
+    }
+    fitTimeoutRef.current = window.setTimeout(() => {
+      reactFlowInstance.fitView(FIT_OPTIONS);
+    }, 100);
+  }, [reactFlowInstance, infraNodes.length]);
+
+  useEffect(() => {
+    fitToView();
+  }, [fitToView, layoutType, graphViewMode, fitViewNonce, infraNodes, infraEdges, enableNetworkGrouping]);
+
+  useEffect(
+    () => () => {
+      if (fitTimeoutRef.current !== null) {
+        window.clearTimeout(fitTimeoutRef.current);
+      }
+    },
+    [],
+  );
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !reactFlowInstance) return;
+
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => {
+        reactFlowInstance.fitView({ ...FIT_OPTIONS, duration: 200 });
+      });
+    });
+
+    observer.observe(container);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      observer.disconnect();
+    };
+  }, [reactFlowInstance]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, node: Node) => {
-      if (node.type === 'clusterNode') {
-        const groupKey = isClusterNodeData(node.data) ? node.data.groupKey : null;
-        if (!groupKey) return;
-        setExpandedClusters((previous) => {
-          const next = new Set(previous);
-          if (next.has(groupKey)) {
-            next.delete(groupKey);
-          } else {
-            next.add(groupKey);
-          }
-          return next;
-        });
-        return;
-      }
-
+      if (node.type !== 'infraNode') return;
       const infra = infraNodeMap.get(node.id);
       if (infra && onNodeClick) onNodeClick(infra);
     },
@@ -386,40 +437,65 @@ function InfraGraphComponent({
 
   const handleEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
-      if (String(edge.id).startsWith('cluster-edge:')) return;
-      const infra = infraEdgeMap.get(edge.id);
+      const infra = infraEdgeMap.get(String(edge.id));
       if (infra && onEdgeClick) onEdgeClick(infra);
     },
     [infraEdgeMap, onEdgeClick],
   );
 
+  const handleNodeMouseEnter = useCallback(
+    (_: React.MouseEvent, node: Node) => {
+      if (!enableDependencyHighlight || node.type !== 'infraNode') return;
+      setHoveredNodeId(node.id);
+    },
+    [enableDependencyHighlight],
+  );
+
+  const handleNodeMouseLeave = useCallback(() => {
+    setHoveredNodeId(null);
+  }, []);
+
+  const handleEdgeMouseEnter = useCallback((_: React.MouseEvent, edge: Edge) => {
+    setHoveredEdgeId(String(edge.id));
+  }, []);
+
+  const handleEdgeMouseLeave = useCallback(() => {
+    setHoveredEdgeId(null);
+  }, []);
+
   return (
-    <ReactFlow
-      nodes={layouted.nodes}
-      edges={layouted.edges}
-      onNodeClick={handleNodeClick}
-      onEdgeClick={handleEdgeClick}
-      nodeTypes={nodeTypes}
-      edgeTypes={edgeTypes}
-      fitView
-      fitViewOptions={{ padding: 0.2 }}
-      minZoom={0.1}
-      maxZoom={2}
-      className="bg-background"
-      defaultEdgeOptions={{
-        type: 'smoothstep',
-        animated: false,
-      }}
-      onlyRenderVisibleElements
-      nodesDraggable={false}
-      selectionOnDrag={false}
-      panOnScrollSpeed={0.5}
-      proOptions={{ hideAttribution: true }}
-    >
-      <Controls className="rounded-lg border bg-card shadow-sm" />
-      <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-      {showMiniMap && <GraphMinimap />}
-    </ReactFlow>
+    <div ref={containerRef} className="h-full w-full">
+      <ReactFlow
+        nodes={nodesForRender}
+        edges={edgesForRender}
+        onInit={setReactFlowInstance}
+        onNodeClick={handleNodeClick}
+        onEdgeClick={handleEdgeClick}
+        onNodeMouseEnter={handleNodeMouseEnter}
+        onNodeMouseLeave={handleNodeMouseLeave}
+        onEdgeMouseEnter={handleEdgeMouseEnter}
+        onEdgeMouseLeave={handleEdgeMouseLeave}
+        nodeTypes={nodeTypes}
+        minZoom={0.05}
+        maxZoom={2}
+        className="bg-background"
+        defaultEdgeOptions={{
+          type: 'smoothstep',
+          animated: false,
+          style: { strokeWidth: 1.5 },
+        }}
+        onlyRenderVisibleElements
+        nodesDraggable={false}
+        nodesConnectable={false}
+        selectionOnDrag={false}
+        panOnScrollSpeed={0.5}
+        proOptions={{ hideAttribution: true }}
+      >
+        <Controls className="rounded-lg border bg-card shadow-sm" />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        {showMiniMap && <GraphMinimap />}
+      </ReactFlow>
+    </div>
   );
 }
 

@@ -7,15 +7,17 @@ import { Progress } from '@/components/ui/progress';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { NodeIcon } from './NodeIcon';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
+import { cn } from '@/lib/utils';
 
 interface NodeDetailPanelProps {
   node: InfraNode;
   edges: InfraEdge[];
   allNodes: InfraNode[];
   onClose: () => void;
+  className?: string;
 }
 
-export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPanelProps) {
+export function NodeDetailPanel({ node, edges, allNodes, onClose, className }: NodeDetailPanelProps) {
   const navigate = useNavigate();
 
   const relatedEdges = edges.filter((e) => e.source === node.id || e.target === node.id);
@@ -30,7 +32,7 @@ export function NodeDetailPanel({ node, edges, allNodes, onClose }: NodeDetailPa
       : node.type;
 
   return (
-    <div className="flex h-full w-[400px] flex-col border-l bg-card">
+    <div className={cn('flex h-full w-full flex-col border-l bg-card', className)}>
       {/* Header */}
       <div className="flex items-center justify-between border-b p-4">
         <div className="flex items-center gap-2">
