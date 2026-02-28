@@ -30,6 +30,10 @@ import {
   strategyTargetRpoMinutes,
   strategyTargetRtoMinutes,
 } from './company-financial-profile.service.js';
+import {
+  allocateRecommendationCosts,
+  partitionRecommendationsByAleCap,
+} from './landing-zone-cost-optimization.js';
 
 export type LandingZoneRecommendationStatus = 'pending' | 'validated' | 'rejected';
 
@@ -52,6 +56,10 @@ export type LandingZoneFinancialRecommendation = {
   nodeId: string;
   serviceName: string;
   tier: number;
+  groupKey: string | null;
+  allocationShare: number;
+  recommendationBand: 'primary' | 'secondary';
+  costCountedInSummary: boolean;
   strategy: string;
   estimatedCost: number;
   estimatedAnnualCost: number;
@@ -106,6 +114,9 @@ export type LandingZoneFinancialSummary = {
   annualCostByStrategy: Record<string, number>;
   costSharePercentByStrategy: Record<string, number>;
   totalRecommendations: number;
+  secondaryRecommendations: number;
+  secondaryAnnualCost: number;
+  annualCostCap: number;
   riskAvoidedAnnual: number;
   roiPercent: number | null;
   paybackMonths: number | null;
@@ -155,6 +166,13 @@ type InternalRecommendationSeed = {
   accepted: boolean | null;
   probabilitySource: string;
   criticality: 'critical' | 'high' | 'medium' | 'low';
+  nodeType: string;
+  provider: string;
+  metadata: Record<string, unknown>;
+  groupKey: string | null;
+  allocationShare: number;
+  recommendationBand: 'primary' | 'secondary';
+  costCountedInSummary: boolean;
 };
 
 function roundMoney(value: number): number {
@@ -437,6 +455,9 @@ function buildDefaultContext(
       annualCostByStrategy: {},
       costSharePercentByStrategy: {},
       totalRecommendations: 0,
+      secondaryRecommendations: 0,
+      secondaryAnnualCost: 0,
+      annualCostCap: 0,
       riskAvoidedAnnual: 0,
       roiPercent: null,
       paybackMonths: null,
@@ -650,11 +671,49 @@ export async function buildLandingZoneFinancialContext(
       accepted: acceptedFromStatus(state.status),
       probabilitySource: probability.source,
       criticality,
+      nodeType: node?.type || 'APPLICATION',
+      provider: node?.provider || 'unknown',
+      metadata: (node?.metadata as Record<string, unknown>) || {},
+      groupKey: null,
+      allocationShare: 1,
+      recommendationBand: 'primary',
+      costCountedInSummary: true,
     });
   }
 
+  const costAllocations = new Map(
+    allocateRecommendationCosts(
+      recommendationSeeds.map((entry) => ({
+        id: entry.id,
+        nodeId: entry.nodeId,
+        serviceName: entry.serviceName,
+        strategyKey: entry.strategyKey,
+        estimatedCost: entry.estimatedCost,
+        estimatedAnnualCost: entry.estimatedAnnualCost,
+        estimatedProductionMonthlyCost: entry.estimatedProductionMonthlyCost,
+        nodeType: entry.nodeType,
+        provider: entry.provider,
+        metadata: entry.metadata,
+        priority: entry.priority,
+      })),
+    ).map((allocation) => [allocation.id, allocation]),
+  );
+
+  const adjustedRecommendationSeeds = recommendationSeeds.map((entry) => {
+    const allocation = costAllocations.get(entry.id);
+    if (!allocation) return entry;
+    return {
+      ...entry,
+      groupKey: allocation.groupKey,
+      estimatedCost: allocation.allocatedMonthlyCost,
+      estimatedAnnualCost: allocation.allocatedAnnualCost,
+      allocationShare: allocation.allocationShare,
+      costCountedInSummary: allocation.countedInSummary,
+    };
+  });
+
   await Promise.all(
-    recommendationSeeds.map((entry) =>
+    adjustedRecommendationSeeds.map((entry) =>
       prismaClient.infraNode.updateMany({
         where: { id: entry.id, tenantId },
         data: {
@@ -668,7 +727,7 @@ export async function buildLandingZoneFinancialContext(
     ),
   );
 
-  const recommendationInputs: RecommendationInput[] = recommendationSeeds.map((entry) => ({
+  const recommendationInputs: RecommendationInput[] = adjustedRecommendationSeeds.map((entry) => ({
     recommendationId: entry.id,
     id: entry.id,
     strategy: entry.strategy,
@@ -696,7 +755,7 @@ export async function buildLandingZoneFinancialContext(
     resolvedNodeCosts,
   );
 
-  const roi = FinancialEngineService.calculateROI(
+  const initialRoi = FinancialEngineService.calculateROI(
     financialContext.analysisResult,
     financialContext.biaResult,
     recommendationInputs,
@@ -704,6 +763,37 @@ export async function buildLandingZoneFinancialContext(
     financialContext.overridesByNodeId,
     resolvedNodeCosts,
   );
+
+  const initialBreakdownByRecommendationId = new Map(
+    initialRoi.breakdownByRecommendation.map((entry) => [entry.recommendationId, entry]),
+  );
+  const costPartition = partitionRecommendationsByAleCap(
+    adjustedRecommendationSeeds.map((entry) => {
+      const breakdown = initialBreakdownByRecommendationId.get(entry.id);
+      return {
+        id: entry.id,
+        annualCost: entry.estimatedAnnualCost,
+        roi: breakdown?.individualROI ?? null,
+        riskAvoidedAnnual: breakdown?.riskReduction ?? 0,
+        priority: entry.priority,
+      };
+    }),
+    ale.totalALE,
+  );
+  const primaryRecommendationInputs = recommendationInputs.filter((entry) =>
+    costPartition.primaryIds.has(String(entry.recommendationId || entry.id || '')),
+  );
+  const roi =
+    primaryRecommendationInputs.length === recommendationInputs.length
+      ? initialRoi
+      : FinancialEngineService.calculateROI(
+          financialContext.analysisResult,
+          financialContext.biaResult,
+          primaryRecommendationInputs,
+          financialProfileInput,
+          financialContext.overridesByNodeId,
+          resolvedNodeCosts,
+        );
 
   const breakdownByRecommendationId = new Map(
     roi.breakdownByRecommendation.map((entry) => [entry.recommendationId, entry]),
@@ -729,7 +819,7 @@ export async function buildLandingZoneFinancialContext(
   const downtimeCostByNodeId = new Map(
     calculateServiceDowntimeCosts(
       blastResults,
-      recommendationSeeds.map((seed) => ({
+      adjustedRecommendationSeeds.map((seed) => ({
         nodeId: seed.nodeId,
         name: seed.serviceName,
         criticality: seed.criticality,
@@ -742,8 +832,14 @@ export async function buildLandingZoneFinancialContext(
     ).map((item) => [item.serviceNodeId, item]),
   );
 
-  const recommendations: LandingZoneFinancialRecommendation[] = recommendationSeeds.map((seed) => {
-    const breakdown = breakdownByRecommendationId.get(seed.id);
+  const recommendations: LandingZoneFinancialRecommendation[] = adjustedRecommendationSeeds.map((seed) => {
+    const isSecondary = costPartition.secondaryIds.has(seed.id);
+    const recommendationBand: LandingZoneFinancialRecommendation['recommendationBand'] = isSecondary
+      ? 'secondary'
+      : 'primary';
+    const breakdown = isSecondary
+      ? initialBreakdownByRecommendationId.get(seed.id)
+      : breakdownByRecommendationId.get(seed.id);
     const downtimeCost = downtimeCostByNodeId.get(seed.nodeId);
     if (!breakdown) {
       appLogger.warn('landing_zone.recommendation_filtered_missing_breakdown', {
@@ -774,12 +870,23 @@ export async function buildLandingZoneFinancialContext(
     const riskAvoidedAnnual = breakdown?.riskReduction ?? 0;
     const aleCurrent = breakdown?.currentALE ?? 0;
     const aleAfter = breakdown?.projectedALE ?? Math.max(0, aleCurrent - riskAvoidedAnnual);
+    const capWarning = isSecondary
+      ? `Recommendation secondaire: cout hors cap DR (${Math.round(costPartition.annualCap)} ${profile.currency}/an max).`
+      : null;
+    const combinedBudgetWarning =
+      seed.budgetWarning && capWarning
+        ? `${seed.budgetWarning} | ${capWarning}`
+        : seed.budgetWarning || capWarning;
 
     return {
       id: seed.id,
       nodeId: seed.nodeId,
       serviceName: seed.serviceName,
       tier: seed.tier,
+      groupKey: seed.groupKey,
+      allocationShare: seed.allocationShare,
+      recommendationBand,
+      costCountedInSummary: !isSecondary && seed.costCountedInSummary,
       strategy: seed.strategy,
       estimatedCost: seed.estimatedCost,
       estimatedAnnualCost: seed.estimatedAnnualCost,
@@ -799,7 +906,7 @@ export async function buildLandingZoneFinancialContext(
       description: seed.description,
       priority: seed.priority,
       notes: seed.notes,
-      budgetWarning: seed.budgetWarning,
+      budgetWarning: combinedBudgetWarning,
       calculation: {
         aleCurrent: roundMoney(aleCurrent),
         aleAfter: roundMoney(aleAfter),
@@ -820,6 +927,11 @@ export async function buildLandingZoneFinancialContext(
       downtimeCostRationale: downtimeCost?.rationale ?? 'Profil financier non configure',
       ...(downtimeCost?.blastRadius ? { blastRadius: downtimeCost.blastRadius } : {}),
     };
+  }).sort((left, right) => {
+    if (left.recommendationBand !== right.recommendationBand) {
+      return left.recommendationBand === 'primary' ? -1 : 1;
+    }
+    return right.priority - left.priority;
   });
 
   const recommendationInputById = new Map<string, RecommendationInput>(
@@ -828,12 +940,13 @@ export async function buildLandingZoneFinancialContext(
       .filter((entry) => entry[0].length > 0),
   );
   const filteredRecommendationInputs = recommendations
+    .filter((recommendation) => recommendation.recommendationBand !== 'secondary')
     .map((recommendation) => recommendationInputById.get(recommendation.id))
     .filter((entry): entry is RecommendationInput => Boolean(entry));
 
   const byStrategy: Record<string, number> = {};
   const annualCostByStrategy: Record<string, number> = {};
-  for (const recommendation of recommendations) {
+  for (const recommendation of recommendations.filter((entry) => entry.recommendationBand !== 'secondary')) {
     byStrategy[recommendation.strategy] = (byStrategy[recommendation.strategy] || 0) + 1;
     annualCostByStrategy[recommendation.strategy] =
       (annualCostByStrategy[recommendation.strategy] || 0) + recommendation.estimatedAnnualCost;
@@ -873,7 +986,14 @@ export async function buildLandingZoneFinancialContext(
         ]),
       ),
       costSharePercentByStrategy,
-      totalRecommendations: recommendations.length,
+      totalRecommendations: recommendations.filter((entry) => entry.recommendationBand !== 'secondary').length,
+      secondaryRecommendations: recommendations.filter((entry) => entry.recommendationBand === 'secondary').length,
+      secondaryAnnualCost: roundMoney(
+        recommendations
+          .filter((entry) => entry.recommendationBand === 'secondary')
+          .reduce((sum, entry) => sum + entry.estimatedAnnualCost, 0),
+      ),
+      annualCostCap: roundMoney(costPartition.annualCap),
       riskAvoidedAnnual: roundMoney(cappedRiskAvoidedAnnual),
       roiPercent: roi.roiPercent,
       paybackMonths: roi.paybackMonths,

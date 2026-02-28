@@ -1111,8 +1111,11 @@ export function estimateStrategyMonthlyDrCost(
     return roundMoney(baseMonthly * nativeFactor);
   }
 
-  const strategyFactor = DR_STRATEGY_COST_FACTORS[strategy]?.default ?? DR_STRATEGY_PROFILES[strategy].productionCostMultiplier;
-  return roundMoney(baseMonthly * strategyFactor);
+  const strategyFactor =
+    DR_STRATEGY_COST_FACTORS[strategy]?.default ??
+    DR_STRATEGY_PROFILES[strategy].productionCostMultiplier;
+  const monthlyFloor = DR_STRATEGY_PROFILES[strategy]?.monthlyCostFloor ?? 0;
+  return roundMoney(Math.max(baseMonthly * strategyFactor, monthlyFloor));
 }
 
 export function findNextImprovingStrategy(

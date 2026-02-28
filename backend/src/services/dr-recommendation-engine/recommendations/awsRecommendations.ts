@@ -29,6 +29,13 @@ function strongest(
   return order[left] >= order[right] ? left : right;
 }
 
+function strategyFactor(
+  strategy: DrStrategyKey,
+  factors: Record<DrStrategyKey, number>,
+): number {
+  return factors[strategy];
+}
+
 function resolveAwsFloor(
   criticality: CriticalityLevel,
   defaultFloor: DrStrategyKey,
@@ -60,25 +67,70 @@ function resolveAwsFloor(
 }
 
 function resolveAwsNativeCostFactor(
-  _strategy: DrStrategyKey,
+  strategy: DrStrategyKey,
   resolution: CloudServiceResolution,
 ): number | null {
   const metadata = resolution.metadata;
 
   if (resolution.kind === 'ec2') {
+    const singleInstanceFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.08,
+      pilot_light: 0.22,
+      warm_standby: 0.4,
+      hot_standby: 0.65,
+      active_active: 0.85,
+    };
+    const zonalAsgFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.04,
+      pilot_light: 0.12,
+      warm_standby: 0.28,
+      hot_standby: 0.45,
+      active_active: 0.75,
+    };
+
     if (hasAwsAutoScalingGroup(metadata)) {
       const zones = countKnownZones(metadata);
-      return zones >= 2 ? 0 : 0.1;
+      return zones >= 2 ? 0 : strategyFactor(strategy, zonalAsgFactors);
     }
-    return 1.0;
+    return strategyFactor(strategy, singleInstanceFactors);
   }
   if (resolution.kind === 'rds') {
-    if (!isMultiAzEnabled(metadata)) return 1.0;
-    return 0.1;
+    const singleAzFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.08,
+      pilot_light: 0.2,
+      warm_standby: 0.45,
+      hot_standby: 0.7,
+      active_active: 0.9,
+    };
+    const resilientFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.03,
+      pilot_light: 0.08,
+      warm_standby: 0.18,
+      hot_standby: 0.35,
+      active_active: 0.8,
+    };
+    if (!isMultiAzEnabled(metadata) && readReplicaCount(metadata) <= 0) {
+      return strategyFactor(strategy, singleAzFactors);
+    }
+    return strategyFactor(strategy, resilientFactors);
   }
   if (resolution.kind === 'elasticache') {
-    if (readReplicaCount(metadata) <= 0) return 1.0;
-    return 0.1;
+    const singleNodeFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.05,
+      pilot_light: 0.15,
+      warm_standby: 0.35,
+      hot_standby: 0.55,
+      active_active: 0.8,
+    };
+    const resilientFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.02,
+      pilot_light: 0.05,
+      warm_standby: 0.12,
+      hot_standby: 0.25,
+      active_active: 0.7,
+    };
+    if (readReplicaCount(metadata) <= 0) return strategyFactor(strategy, singleNodeFactors);
+    return strategyFactor(strategy, resilientFactors);
   }
   if (
     resolution.kind === 'lambda' ||
@@ -89,7 +141,24 @@ function resolveAwsNativeCostFactor(
     return 0;
   }
   if (resolution.kind === 's3') {
-    return 0.25;
+    const s3Factors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.05,
+      pilot_light: 0.08,
+      warm_standby: 0.14,
+      hot_standby: 0.2,
+      active_active: 0.35,
+    };
+    return strategyFactor(strategy, s3Factors);
+  }
+  if (resolution.kind === 'alb' || resolution.kind === 'apiGateway') {
+    const ingressFactors: Record<DrStrategyKey, number> = {
+      backup_restore: 0.05,
+      pilot_light: 0.12,
+      warm_standby: 0.25,
+      hot_standby: 0.4,
+      active_active: 0.7,
+    };
+    return strategyFactor(strategy, ingressFactors);
   }
   return null;
 }

@@ -148,6 +148,28 @@ function resolveObservedMonthlyCostUsd(metadata: Record<string, unknown>): numbe
   return CurrencyService.convertAmount(monthlyEur, 'EUR', 'USD');
 }
 
+function isDemoPricingContext(metadata: Record<string, unknown>): boolean {
+  const demoFlags = [
+    metadata.demoData,
+    metadata.isDemo,
+    metadata.demoSeed,
+    metadata.demoMode,
+  ];
+  if (demoFlags.some((value) => value === true || String(value).toLowerCase() === 'true')) {
+    return true;
+  }
+
+  const demoMarkers = [
+    metadata.seededBy,
+    metadata.seedOrigin,
+    metadata.dataset,
+  ]
+    .map((value) => String(value || '').toLowerCase())
+    .filter(Boolean);
+
+  return demoMarkers.some((value) => value.includes('demo'));
+}
+
 async function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timeout = setTimeout(() => reject(new Error('pricing_timeout')), timeoutMs);
@@ -249,6 +271,14 @@ export class CloudPricingService {
         source: cached.result.source,
       });
       return cached.result;
+    }
+
+    if (isDemoPricingContext(metadata)) {
+      const fallback = this.getStaticFallback(resolution, currency, {
+        noteOverride: 'Stronghold demo pricing table (live pricing disabled)',
+      });
+      this.cache.set(cacheKey, { result: fallback, expiresAt: now + this.cacheTtlMs });
+      return fallback;
     }
 
     const observedMonthlyCostUsd = resolveObservedMonthlyCostUsd(metadata);
@@ -737,6 +767,9 @@ export class CloudPricingService {
   private getStaticFallback(
     resolution: CloudServiceResolution,
     currency: SupportedCurrency,
+    options?: {
+      noteOverride?: string;
+    },
   ): PricingResult {
     const staticEstimate = lookupEstimatedMonthlyReference(resolution);
     if (staticEstimate) {
@@ -750,7 +783,7 @@ export class CloudPricingService {
         source: 'static-table',
         currency,
         confidence: 0.6,
-        note: staticEstimate.source,
+        note: options?.noteOverride ?? staticEstimate.source,
       });
     }
 
@@ -761,7 +794,7 @@ export class CloudPricingService {
       source: 'static-table',
       currency,
       confidence: 0.6,
-      note: 'Static fallback default',
+      note: options?.noteOverride ?? 'Static fallback default',
     });
   }
 }

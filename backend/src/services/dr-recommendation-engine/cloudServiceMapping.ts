@@ -123,6 +123,13 @@ function detectCategory(
 
   const normalizedType = normalizeString(nodeType);
   if (normalizedType === 'vm' || normalizedType === 'physicalserver') return 'compute';
+  if (
+    normalizedType === 'application' ||
+    normalizedType === 'microservice' ||
+    normalizedType === 'container'
+  ) {
+    return 'compute';
+  }
   if (normalizedType === 'database') return 'database_relational';
   if (normalizedType === 'cache') return 'cache';
   if (normalizedType === 'objectstorage' || normalizedType === 'filestorage') return 'storage';
@@ -143,6 +150,8 @@ function detectAwsKind(descriptors: string[]): string {
   if (includesAnyToken(descriptors, ['s3', 'bucket'])) return 's3';
   if (includesAnyToken(descriptors, ['sqs', 'queue'])) return 'sqs';
   if (includesAnyToken(descriptors, ['sns', 'topic'])) return 'sns';
+  if (includesAnyToken(descriptors, ['alb', 'nlb', 'elb', 'loadbalancer'])) return 'alb';
+  if (includesAnyToken(descriptors, ['apigateway', 'api'])) return 'apiGateway';
   if (includesAnyToken(descriptors, ['eks'])) return 'eks';
   if (includesAnyToken(descriptors, ['ec2', 'instance'])) return 'ec2';
   return 'other';
@@ -178,10 +187,54 @@ function detectGcpKind(descriptors: string[]): string {
   return 'other';
 }
 
-function detectKind(provider: CloudProvider, descriptors: string[]): string {
-  if (provider === 'aws') return detectAwsKind(descriptors);
-  if (provider === 'azure') return detectAzureKind(descriptors);
-  if (provider === 'gcp') return detectGcpKind(descriptors);
+function detectKind(provider: CloudProvider, descriptors: string[], nodeType: string): string {
+  const normalizedType = normalizeString(nodeType);
+
+  if (provider === 'aws') {
+    const detected = detectAwsKind(descriptors);
+    if (detected !== 'other') return detected;
+    if (
+      normalizedType === 'application' ||
+      normalizedType === 'microservice' ||
+      normalizedType === 'container' ||
+      normalizedType === 'vm' ||
+      normalizedType === 'physicalserver'
+    ) {
+      return 'ec2';
+    }
+    if (normalizedType === 'loadbalancer') return 'alb';
+    if (normalizedType === 'apigateway') return 'apiGateway';
+    return 'other';
+  }
+
+  if (provider === 'azure') {
+    const detected = detectAzureKind(descriptors);
+    if (detected !== 'other') return detected;
+    if (
+      normalizedType === 'application' ||
+      normalizedType === 'microservice' ||
+      normalizedType === 'container' ||
+      normalizedType === 'vm'
+    ) {
+      return 'vm';
+    }
+    return 'other';
+  }
+
+  if (provider === 'gcp') {
+    const detected = detectGcpKind(descriptors);
+    if (detected !== 'other') return detected;
+    if (
+      normalizedType === 'application' ||
+      normalizedType === 'microservice' ||
+      normalizedType === 'container' ||
+      normalizedType === 'vm'
+    ) {
+      return 'computeEngine';
+    }
+    return 'other';
+  }
+
   return 'other';
 }
 
@@ -198,7 +251,7 @@ export function resolveCloudServiceResolution(options: {
   const metadata = asRecord(options.metadata);
   const descriptors = buildDescriptors(options.nodeType, metadata);
   const category = detectCategory(provider, descriptors, options.nodeType);
-  const kind = detectKind(provider, descriptors);
+  const kind = detectKind(provider, descriptors, options.nodeType);
 
   return {
     provider,

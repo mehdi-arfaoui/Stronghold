@@ -49,6 +49,7 @@ test(
     const annualDrCostDashboard = financialSummary.roi.annualRemediationCost;
     const riskAvoidedRecommendations = recommendationsContext.summary.riskAvoidedAnnual;
     const riskAvoidedDashboard = financialSummary.roi.riskReductionAmount;
+    const aleWithoutStronghold = recommendationsContext.ale.totalALE;
 
     const relativeDiff = (left: number, right: number) => {
       const baseline = Math.max(1, Math.abs(right));
@@ -65,6 +66,25 @@ test(
     } else {
       assert.equal(roiA, roiB);
     }
+
+    const remediationShare = annualDrCostRecommendations / Math.max(1, aleWithoutStronghold);
+    assert.ok(remediationShare >= 0.15);
+    assert.ok(remediationShare <= 0.3);
+
+    const primaryRecommendations = recommendationsContext.recommendations.filter(
+      (recommendation) => recommendation.recommendationBand !== 'secondary',
+    );
+    const secondaryRecommendations = recommendationsContext.recommendations.filter(
+      (recommendation) => recommendation.recommendationBand === 'secondary',
+    );
+
+    assert.equal(primaryRecommendations.length, recommendationsContext.summary.totalRecommendations);
+    assert.equal(secondaryRecommendations.length, recommendationsContext.summary.secondaryRecommendations);
+    assert.equal(
+      primaryRecommendations.length + secondaryRecommendations.length,
+      recommendationsContext.recommendations.length,
+    );
+    assert.ok(recommendationsContext.summary.annualCostCap >= annualDrCostRecommendations);
 
     const distinctStrategies = new Set(
       recommendationsContext.recommendations.map((recommendation) => recommendation.strategy),

@@ -1561,6 +1561,179 @@ function inferSourceType(node: DemoInfraNodeDef): string | null {
   return null;
 }
 
+function applyDemoPricingMetadata(nodes: DemoInfraNodeDef[]): DemoInfraNodeDef[] {
+  return nodes.map((node) => {
+    const metadata: Record<string, unknown> = {
+      demoData: true,
+      demoSeed: true,
+      seededBy: 'demoInfrastructureFactory',
+      ...(node.metadata || {}),
+    };
+    const tags = node.tags || {};
+    const nodeId = String(node.id || '');
+    const nodeName = String(node.name || '').toLowerCase();
+    const isSecondaryRegion = nodeId.includes('secondary') || tags.role === 'secondary';
+    const isCritical =
+      String(tags.critical || '').toLowerCase() === 'true' ||
+      nodeId.includes('payment') ||
+      nodeId.includes('gateway') ||
+      nodeId.includes('order') ||
+      nodeId.includes('main');
+
+    if (
+      !metadata.kubernetesClusterId &&
+      ['APPLICATION', 'MICROSERVICE', 'KUBERNETES_POD', 'KUBERNETES_SERVICE'].includes(node.type) &&
+      node.provider === 'aws'
+    ) {
+      metadata.kubernetesClusterId = isSecondaryRegion ? 'eks-secondary' : 'eks-prod';
+    }
+
+    if (!metadata.ingressProgramKey && ['API_GATEWAY', 'LOAD_BALANCER', 'DNS', 'CDN'].includes(node.type)) {
+      metadata.ingressProgramKey = isSecondaryRegion ? 'shopmax-edge-secondary' : 'shopmax-edge-primary';
+    }
+
+    if (!metadata.replicationProgramKey && node.type === 'OBJECT_STORAGE') {
+      metadata.replicationProgramKey = nodeName.includes('backup') || nodeName.includes('archive')
+        ? 'backup-archive-program'
+        : 'assets-replication-program';
+    }
+
+    if (!metadata.instanceType && ['APPLICATION', 'MICROSERVICE', 'VM', 'PHYSICAL_SERVER'].includes(node.type)) {
+      const instanceType =
+        node.type === 'PHYSICAL_SERVER'
+          ? isCritical
+            ? 'm5.large'
+            : 't3.medium'
+          : nodeId.includes('admin') || nodeId.includes('probe') || nodeId.includes('autoscaler')
+            ? 't3.micro'
+            : nodeId.includes('analytics') || nodeId.includes('search')
+              ? 'c5.xlarge'
+              : nodeId.includes('catalog') || nodeId.includes('main-app') || nodeId.includes('support')
+                ? 't3.medium'
+                : isCritical
+                  ? 'm5.large'
+                  : 't3.micro';
+
+      metadata.instanceType = instanceType;
+      metadata.vcpu =
+        instanceType === 'c5.xlarge' ? 4 : instanceType === 'm5.large' ? 2 : instanceType === 't3.medium' ? 2 : 2;
+      metadata.memoryGb =
+        instanceType === 'c5.xlarge' ? 8 : instanceType === 'm5.large' ? 8 : instanceType === 't3.medium' ? 4 : 1;
+    }
+
+    if (node.type === 'DATABASE') {
+      const baseClusterId =
+        nodeId.includes('payment')
+          ? 'payment-db-cluster'
+          : nodeId.includes('user')
+            ? 'user-db-cluster'
+            : nodeId.includes('order')
+              ? 'order-db-cluster'
+              : nodeId.includes('catalog')
+                ? 'catalog-db-cluster'
+                : nodeId.includes('main')
+                  ? 'main-db-cluster'
+                  : nodeId.includes('admin')
+                    ? 'admin-db-cluster'
+                    : nodeId.includes('analytics')
+                      ? 'analytics-warehouse-cluster'
+                      : nodeId.includes('erp')
+                        ? 'erp-db-cluster'
+                        : nodeId;
+      if (!metadata.clusterId) {
+        metadata.clusterId = baseClusterId;
+      }
+
+      if (!metadata.dbInstanceClass) {
+        const dbInstanceClass =
+          nodeId.includes('payment') || nodeId.includes('analytics')
+            ? 'db.r5.large'
+            : nodeId.includes('replica') || nodeId.includes('admin')
+              ? 'db.t3.micro'
+              : 'db.t3.medium';
+        metadata.dbInstanceClass = dbInstanceClass;
+        metadata.instanceType = metadata.instanceType ?? dbInstanceClass;
+        metadata.memoryGb =
+          dbInstanceClass === 'db.r5.large' ? 16 : dbInstanceClass === 'db.t3.medium' ? 4 : 1;
+      }
+    }
+
+    if (node.type === 'CACHE' && !metadata.cacheNodeType) {
+      const cacheNodeType =
+        nodeId.includes('secondary') || nodeId.includes('replica')
+          ? 'cache.t3.small'
+          : nodeId.includes('admin')
+            ? 'cache.t3.micro'
+            : 'cache.r5.large';
+      metadata.cacheNodeType = cacheNodeType;
+      metadata.instanceType = metadata.instanceType ?? cacheNodeType;
+      metadata.clusterId =
+        metadata.clusterId ??
+        (nodeId.includes('redis') ? 'redis-main-cluster' : `${nodeId}-cache-cluster`);
+    }
+
+    if (node.type === 'SERVERLESS') {
+      metadata.memorySize =
+        metadata.memorySize ??
+        (nodeId.includes('backup') ? 128 : nodeId.includes('image') ? 1024 : 512);
+      metadata.estimatedMonthlyInvocations =
+        metadata.estimatedMonthlyInvocations ??
+        (nodeId.includes('backup') ? 800_000 : nodeId.includes('image') ? 6_000_000 : 2_500_000);
+    }
+
+    if (node.type === 'OBJECT_STORAGE') {
+      metadata.estimatedStorageGB =
+        metadata.estimatedStorageGB ??
+        (nodeId.includes('backup')
+          ? 1_500
+          : nodeId.includes('archive')
+            ? 850
+            : isSecondaryRegion
+              ? 520
+              : 500);
+    }
+
+    if (node.type === 'LOAD_BALANCER') {
+      metadata.estimatedLcu =
+        metadata.estimatedLcu ??
+        (nodeId.includes('global')
+          ? 6
+          : nodeId.includes('dr')
+            ? 1
+            : isSecondaryRegion
+              ? 2
+              : 3.5);
+    }
+
+    if (node.type === 'MESSAGE_QUEUE') {
+      metadata.estimatedMonthlyRequests =
+        metadata.estimatedMonthlyRequests ??
+        (nodeId.includes('notification') ? 18_000_000 : 7_500_000);
+    }
+
+    if (
+      !metadata.drCostGroupKey &&
+      ['APPLICATION', 'MICROSERVICE', 'KUBERNETES_POD', 'KUBERNETES_SERVICE'].includes(node.type) &&
+      typeof metadata.kubernetesClusterId === 'string'
+    ) {
+      metadata.drCostGroupKey = `cluster:${metadata.kubernetesClusterId}`;
+    }
+
+    if (!metadata.drCostGroupKey && typeof metadata.replicationProgramKey === 'string') {
+      metadata.drCostGroupKey = `storage:${metadata.replicationProgramKey}`;
+    }
+
+    if (!metadata.drCostGroupKey && typeof metadata.ingressProgramKey === 'string' && node.type !== 'CDN') {
+      metadata.drCostGroupKey = `ingress:${metadata.ingressProgramKey}`;
+    }
+
+    return {
+      ...node,
+      metadata,
+    };
+  });
+}
+
 function enrichNodesForInference(
   nodes: DemoInfraNodeDef[],
   edges: DemoInfraEdgeDef[],
@@ -1753,7 +1926,9 @@ export function generateDemoInfrastructure(
     ...Array.from(inferredEdgeMap.values()),
   ];
   const enrichedNodes = enrichNodesForInference(labeledNodes, allEdges);
-  const finalNodes = injectSPOFs(enrichedNodes, params.companySize);
+  const finalNodes = applyDemoPricingMetadata(
+    injectSPOFs(enrichedNodes, params.companySize),
+  );
   const spofNodeIds = SIZE_SPOF_IDS[params.companySize].filter((id) => nodeMap.has(id));
 
   return {

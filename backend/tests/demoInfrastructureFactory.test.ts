@@ -58,6 +58,23 @@ test('ETI finance demo infra enables resilience + DR layers and finance labels',
   const paymentDb = infrastructure.nodes.find((node) => node.id === 'db-payment');
   assert.equal(mainApp?.name, 'trading-platform');
   assert.equal(paymentDb?.name, 'ledger-db');
+
+  const paymentService = infrastructure.nodes.find((node) => node.id === 'svc-payment');
+  const redisMain = infrastructure.nodes.find((node) => node.id === 'redis-main');
+  const albProd = infrastructure.nodes.find((node) => node.id === 'alb-prod');
+  const backupsBucket = infrastructure.nodes.find((node) => node.id === 's3-backups');
+
+  assert.equal(paymentService?.metadata.demoData, true);
+  assert.equal(paymentService?.metadata.instanceType, 'm5.large');
+  assert.equal(paymentService?.metadata.drCostGroupKey, 'cluster:eks-prod');
+  assert.equal(paymentDb?.metadata.dbInstanceClass, 'db.r5.large');
+  assert.equal(paymentDb?.metadata.clusterId, 'payment-db-cluster');
+  assert.equal(redisMain?.metadata.cacheNodeType, 'cache.r5.large');
+  assert.equal(redisMain?.metadata.clusterId, 'redis-main-cluster');
+  assert.equal(albProd?.metadata.estimatedLcu, 3.5);
+  assert.equal(albProd?.metadata.drCostGroupKey, 'ingress:shopmax-edge-primary');
+  assert.equal(backupsBucket?.metadata.estimatedStorageGB, 1500);
+  assert.equal(backupsBucket?.metadata.drCostGroupKey, 'storage:backup-archive-program');
 });
 
 test('Large manufacturing demo infra adds multi-region + extended legacy', () => {

@@ -32,8 +32,8 @@ test('selectDrStrategyForService picks least costly strategy that satisfies stri
   });
 
   assert.equal(selected.strategy, 'hot_standby');
-  assert.equal(selected.monthlyDrCost, 1_200);
-  assert.equal(selected.annualDrCost, 14_400);
+  assert.equal(selected.monthlyDrCost, 650);
+  assert.equal(selected.annualDrCost, 7_800);
 });
 
 test('selectDrStrategyForService applies criticality fallback when RTO/RPO are missing', () => {
@@ -43,8 +43,8 @@ test('selectDrStrategyForService applies criticality fallback when RTO/RPO are m
   });
 
   assert.equal(selected.strategy, 'warm_standby');
-  assert.equal(selected.monthlyDrCost, 900);
-  assert.equal(selected.annualDrCost, 10_800);
+  assert.equal(selected.monthlyDrCost, 420);
+  assert.equal(selected.annualDrCost, 5_040);
 });
 
 test('selectDrStrategyForService maps medium RTO/RPO objectives to pilot light', () => {
@@ -56,8 +56,8 @@ test('selectDrStrategyForService maps medium RTO/RPO objectives to pilot light',
   });
 
   assert.equal(selected.strategy, 'pilot_light');
-  assert.equal(selected.monthlyDrCost, 400);
-  assert.equal(selected.annualDrCost, 4_800);
+  assert.equal(selected.monthlyDrCost, 200);
+  assert.equal(selected.annualDrCost, 2_400);
 });
 
 test('selectDrStrategyForService maps relaxed objectives to backup and restore', () => {
@@ -69,8 +69,8 @@ test('selectDrStrategyForService maps relaxed objectives to backup and restore',
   });
 
   assert.equal(selected.strategy, 'backup_restore');
-  assert.equal(selected.monthlyDrCost, 100);
-  assert.equal(selected.annualDrCost, 1_200);
+  assert.equal(selected.monthlyDrCost, 80);
+  assert.equal(selected.annualDrCost, 960);
 });
 
 test('selectDrStrategyForService keeps DR cost proportional for low-cost services', () => {
@@ -88,9 +88,9 @@ test('selectDrStrategyForService keeps DR cost proportional for low-cost service
   });
 
   assert.equal(backup.strategy, 'backup_restore');
-  assert.equal(backup.monthlyDrCost, 1);
+  assert.equal(backup.monthlyDrCost, 5);
   assert.equal(active.strategy, 'active_active');
-  assert.equal(active.monthlyDrCost, 18);
+  assert.equal(active.monthlyDrCost, 120);
 });
 
 test('selectDrStrategyForService yields a mixed strategy set across varied service objectives', () => {
@@ -123,8 +123,8 @@ test('selectDrStrategyForService downgrades strategy when DR budget is exceeded'
 
   assert.equal(selected.strategy, 'warm_standby');
   assert.equal(selected.strategySource, 'budget_adjusted');
-  assert.equal(selected.monthlyDrCost, 900);
-  assert.equal(selected.annualDrCost, 10_800);
+  assert.equal(selected.monthlyDrCost, 420);
+  assert.equal(selected.annualDrCost, 5_040);
   assert.ok(selected.budgetWarning?.length);
 });
 
@@ -142,8 +142,8 @@ test('selectDrStrategyForService applies service-native EC2 scaling cost for AWS
   });
 
   assert.equal(selected.strategy, 'pilot_light');
-  assert.equal(selected.monthlyDrCost, 9.5);
-  assert.equal(selected.annualDrCost, 114);
+  assert.equal(selected.monthlyDrCost, 2.09);
+  assert.equal(selected.annualDrCost, 25.08);
 });
 
 test('selectDrStrategyForService applies service-native Multi-AZ uplift for single-AZ RDS', () => {
@@ -161,8 +161,8 @@ test('selectDrStrategyForService applies service-native Multi-AZ uplift for sing
   });
 
   assert.equal(selected.strategy, 'warm_standby');
-  assert.equal(selected.monthlyDrCost, 16);
-  assert.equal(selected.annualDrCost, 192);
+  assert.equal(selected.monthlyDrCost, 7.2);
+  assert.equal(selected.annualDrCost, 86.4);
 });
 
 test('calculateRecommendationRoi returns explicit non-applicable ROI when no risk is avoided', () => {
@@ -199,7 +199,7 @@ test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for kno
     'USD',
   );
 
-  assert.equal(ec2Cost.estimatedMonthlyCost, 9.5);
+  assert.equal(ec2Cost.estimatedMonthlyCost, 8.5);
   assert.equal(ec2Cost.costSource, 'cloud_type_reference');
   assert.ok(ec2Cost.note.includes('eu-west-3'));
 
@@ -212,7 +212,7 @@ test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for kno
     'USD',
   );
 
-  assert.equal(rdsCost.estimatedMonthlyCost, 16);
+  assert.equal(rdsCost.estimatedMonthlyCost, 15);
   assert.ok(rdsCost.note.includes('(rds)'));
 
   const cacheCost = estimateServiceMonthlyProductionCost(
@@ -235,13 +235,13 @@ test('buildServiceSpecificRecommendation returns actionable AWS EC2 guidance wit
     provider: 'aws',
     metadata: { sourceType: 'EC2', instanceType: 't3.micro' },
     strategy: 'pilot_light',
-    monthlyDrCost: 9.5,
+    monthlyDrCost: 8.5,
     currency: 'EUR',
   });
 
   assert.ok(recommendation.action.includes('Auto Scaling Group'));
   assert.ok(recommendation.resilienceImpact.length > 20);
-  assert.ok(recommendation.text.includes('9.50 EUR/mois'));
+  assert.ok(recommendation.text.includes('8.50 EUR/mois'));
 });
 
 test('estimateServiceMonthlyProductionCost supports Azure and GCP provider pricing references', () => {
