@@ -62,6 +62,7 @@ services:
   backend-migrate:
     build:
       context: ./backend
+      dockerfile: Dockerfile
       target: migrate
     image: stronghold-backend-migrate
     container_name: pra_backend_migrate
@@ -95,6 +96,7 @@ services:
   backend:
     build:
       context: ./backend
+      dockerfile: Dockerfile
       target: runtime
     image: stronghold-backend
     container_name: pra_backend
@@ -131,8 +133,8 @@ services:
       OWNER_PASSWORD: ${OWNER_PASSWORD}
       ALLOW_DEMO_SEED: ${ALLOW_DEMO_SEED}
       AWS_PRICING_REGION: us-east-1
-      AWS_PRICING_ACCESS_KEY_ID: AKIAYWQKUAHIURYQWMXX
-      AWS_PRICING_SECRET_ACCESS_KEY: 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
+      AWS_PRICING_ACCESS_KEY_ID: ${AWS_PRICING_ACCESS_KEY_ID:-}
+      AWS_PRICING_SECRET_ACCESS_KEY: ${AWS_PRICING_SECRET_ACCESS_KEY:-}
       GCP_PRICING_API_KEY: ${GCP_PRICING_API_KEY}
       USD_EUR_RATE: ${USD_EUR_RATE:-0.92}
     ports:
@@ -152,6 +154,7 @@ services:
   frontend:
     build:
       context: ./frontend
+      dockerfile: Dockerfile
       target: runtime
       args:
         VITE_API_URL: ${VITE_API_URL}
