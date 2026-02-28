@@ -318,12 +318,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
       });
   }, [baseRecommendations, breakdownByRecommendationId]);
 
-  const prioritizedRecommendations = useMemo(
-    () => recommendationCards.filter((card) => card.annualCost > 0 || card.annualSavings > 0),
+  const primaryRecommendationCards = useMemo(
+    () => recommendationCards.filter((card) => card.recommendation.recommendationBand !== 'secondary'),
     [recommendationCards],
   );
-  const informativeRecommendations = useMemo(
-    () => recommendationCards.filter((card) => card.annualCost <= 0 && card.annualSavings <= 0),
+  const secondaryRecommendationCards = useMemo(
+    () => recommendationCards.filter((card) => card.recommendation.recommendationBand === 'secondary'),
     [recommendationCards],
   );
 
@@ -338,6 +338,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const summaryPaybackLabel = recommendationsSummaryQuery.data?.paybackLabel ?? roiQuery.data?.paybackLabel;
   const summaryTotalRecommendations =
     recommendationsSummaryQuery.data?.totalRecommendations ?? recommendationCards.length;
+  const summarySecondaryRecommendations = recommendationsSummaryQuery.data?.secondaryRecommendations ?? 0;
+  const summarySecondaryAnnualCost = recommendationsSummaryQuery.data?.secondaryAnnualCost ?? 0;
+  const summaryAnnualCostCap = recommendationsSummaryQuery.data?.annualCostCap ?? 0;
   const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
   const summaryRiskAvoidedDisplay =
     summaryRiskAvoided < 0 ? 'Aucun gain - service deja protege' : money(summaryRiskAvoided, currency);
@@ -381,6 +384,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <h3 className="font-semibold">{recommendation.serviceName ?? recommendation.title ?? recommendation.id}</h3>
             <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
             {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
+            {recommendation.recommendationBand === 'secondary' && (
+              <Badge variant="secondary">Hors cap DR</Badge>
+            )}
             {isQuickWin && <Badge className="bg-green-500/10 text-green-700 border-green-500/20">Quick Win</Badge>}
             {card.roiMessage && (
               <Badge
@@ -618,8 +624,22 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 </span>
               </p>
               <p>
-                Recommandations: <span className="font-semibold">{summaryTotalRecommendations}</span>
+                Recommandations retenues: <span className="font-semibold">{summaryTotalRecommendations}</span>
               </p>
+              {summarySecondaryRecommendations > 0 && (
+                <p>
+                  Secondaires hors cap:{' '}
+                  <span className="font-semibold">
+                    {summarySecondaryRecommendations} ({money(summarySecondaryAnnualCost, currency)}/an)
+                  </span>
+                </p>
+              )}
+              {summaryAnnualCostCap > 0 && (
+                <p>
+                  Cap DR applique:{' '}
+                  <span className="font-semibold">{money(summaryAnnualCostCap, currency)}/an</span>
+                </p>
+              )}
               <p>
                 Repartition budget DR par strategie: {Object.entries(recommendationsSummaryQuery.data?.costSharePercentByStrategy ?? {})
                   .map(([strategy, share]) => `${STRATEGY_LABELS[strategy] ?? strategy}: ${Number(share).toFixed(1)}%`)
@@ -657,22 +677,27 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         <div className="space-y-4">
           <div className="rounded-md border px-3 py-2 bg-muted/10">
             <p className="text-sm font-semibold">
-              Recommandations prioritaires ({prioritizedRecommendations.length})
+              Recommandations prioritaires ({primaryRecommendationCards.length})
             </p>
           </div>
           <div className="space-y-3">
-            {prioritizedRecommendations.map(renderRecommendationCard)}
+            {primaryRecommendationCards.map(renderRecommendationCard)}
           </div>
 
           <details className="rounded-md border bg-muted/20">
             <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
-              Recommandations informatives ({informativeRecommendations.length})
+              Recommandations secondaires hors cap ({secondaryRecommendationCards.length})
             </summary>
             <div className="space-y-3 p-3 pt-0">
-              {informativeRecommendations.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune recommandation informative.</p>
+              {secondaryRecommendationCards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune recommandation secondaire.</p>
               ) : (
-                informativeRecommendations.map(renderRecommendationCard)
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Ces mesures restent utiles, mais elles ne sont pas comptees dans le ROI principal pour respecter le cap DR.
+                  </p>
+                  {secondaryRecommendationCards.map(renderRecommendationCard)}
+                </>
               )}
             </div>
           </details>

@@ -73,7 +73,8 @@ export interface BusinessFlow {
     serviceName: string;
     downtimeCostPerHour: number;
     downtimeCostSourceLabel: string;
-    isMax: boolean;
+    impactWeight: number;
+    weightedContribution: number;
   }>;
   financialImpact?: {
     hourlyDowntimeCost: number;

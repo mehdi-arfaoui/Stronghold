@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Bot, Cloud, Pencil, Plus, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Bot, Cloud, Pencil, Plus, Trash2, CheckCircle2, AlertTriangle, Info } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { businessFlowsApi, type BusinessFlow } from '@/api/businessFlows.api';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Input } from '@/components/ui/input';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
 import {
@@ -234,7 +235,8 @@ export function BusinessFlowsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <TooltipProvider>
+      <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Flux metier</h1>
@@ -407,9 +409,33 @@ export function BusinessFlowsPage() {
                           Services: {servicesSummary}
                         </p>
                       </div>
-                      <p className="text-sm font-medium">
-                        Cout/h: {downtimeCostPerHour != null ? formatMoney(downtimeCostPerHour, flowCurrency) : '—'}
-                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium">
+                          Cout/h: {downtimeCostPerHour != null ? formatMoney(downtimeCostPerHour, flowCurrency) : 'N/A'}
+                        </p>
+                        {flow.contributingServices && flow.contributingServices.length > 0 && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <button
+                                type="button"
+                                className="rounded-full border p-1 text-muted-foreground hover:bg-accent/40"
+                                aria-label="Voir le detail des services contributeurs"
+                              >
+                                <Info className="h-3.5 w-3.5" />
+                              </button>
+                            </TooltipTrigger>
+                            <TooltipContent align="end" className="max-w-sm space-y-1">
+                              <p className="text-xs font-semibold">Services contributeurs</p>
+                              {flow.contributingServices.map((service) => (
+                                <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
+                                  {service.serviceName}: {formatMoney(service.weightedContribution, flowCurrency)}
+                                  {' '}({Math.round(service.impactWeight * 100)}%, base {formatMoney(service.downtimeCostPerHour, flowCurrency)})
+                                </div>
+                              ))}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
                     </div>
 
                     <p className="text-xs text-muted-foreground">
@@ -516,6 +542,7 @@ export function BusinessFlowsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

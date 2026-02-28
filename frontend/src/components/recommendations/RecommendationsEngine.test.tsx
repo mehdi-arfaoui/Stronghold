@@ -68,6 +68,8 @@ describe('RecommendationsEngine', () => {
           serviceName: 'Managed Session Store',
           description: 'Service manage sans cout DR additionnel.',
           tier: 1,
+          recommendationBand: 'secondary',
+          costCountedInSummary: false,
           strategy: 'backup-restore',
           estimatedCost: 0,
           estimatedAnnualCost: 0,
@@ -134,7 +136,10 @@ describe('RecommendationsEngine', () => {
     vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
       asApiResult({
         totalAnnualCost: 3600,
-        totalRecommendations: 3,
+        totalRecommendations: 2,
+        secondaryRecommendations: 1,
+        secondaryAnnualCost: 0,
+        annualCostCap: 7700,
         riskAvoidedAnnual: 15000,
         roiPercent: 316.6,
         paybackMonths: 2.9,
@@ -212,7 +217,7 @@ describe('RecommendationsEngine', () => {
     );
 
     await screen.findByText('Recommandations prioritaires (2)');
-    expect(screen.getByText('Recommandations informatives (1)')).toBeInTheDocument();
+    expect(screen.getByText('Recommandations secondaires hors cap (1)')).toBeInTheDocument();
     expect(screen.queryByText(/Source cout:/i)).not.toBeInTheDocument();
 
     const topCard = screen.getByText('Payment API').closest('[class*="border"]') as HTMLElement;
@@ -225,10 +230,11 @@ describe('RecommendationsEngine', () => {
       expect(within(topCard).getByText(/3.0 mois/i)).toBeInTheDocument();
     }
 
-    await user.click(screen.getByText('Recommandations informatives (1)'));
+    await user.click(screen.getByText('Recommandations secondaires hors cap (1)'));
     const managedCard = await screen.findByText('Managed Session Store');
     const managedContainer = managedCard.closest('[class*="border"]') as HTMLElement;
     expect(within(managedContainer).getByText('Inclus dans le service manage')).toBeInTheDocument();
+    expect(within(managedContainer).getByText('Hors cap DR')).toBeInTheDocument();
     expect(within(managedContainer).queryByText(/Payback:/i)).not.toBeInTheDocument();
   });
 });

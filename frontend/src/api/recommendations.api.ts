@@ -5,6 +5,10 @@ export interface Recommendation {
   nodeId?: string;
   serviceName?: string;
   tier?: number;
+  groupKey?: string | null;
+  allocationShare?: number;
+  recommendationBand?: 'primary' | 'secondary';
+  costCountedInSummary?: boolean;
   strategy?:
     | 'backup-restore'
     | 'pilot-light'
@@ -77,6 +81,9 @@ export interface RecommendationsSummary {
   annualCostByStrategy?: Record<string, number>;
   costSharePercentByStrategy?: Record<string, number>;
   totalRecommendations: number;
+  secondaryRecommendations?: number;
+  secondaryAnnualCost?: number;
+  annualCostCap?: number;
   riskAvoidedAnnual?: number;
   roiPercent?: number | null;
   paybackMonths?: number | null;
