@@ -1,4 +1,5 @@
-﻿import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import {
   LayoutDashboard,
   Radar,
@@ -25,66 +26,65 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 interface NavItem {
-  label: string;
+  labelKey: string;
   icon: LucideIcon;
   path: string;
   exact?: boolean;
 }
 
 interface NavSection {
-  label?: string;
+  labelKey?: string;
   items: NavItem[];
 }
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    label: 'Configuration',
+    labelKey: 'sidebar.configuration',
     items: [
-      { label: 'Parametres', icon: Settings, path: '/settings' },
-      { label: 'Tableau de bord', icon: LayoutDashboard, path: '/dashboard', exact: true },
+      { labelKey: 'nav.settings', icon: Settings, path: '/settings' },
+      { labelKey: 'nav.dashboard', icon: LayoutDashboard, path: '/dashboard', exact: true },
     ],
   },
   {
-    label: 'Decouverte',
+    labelKey: 'sidebar.discovery',
+    items: [{ labelKey: 'nav.discovery', icon: Radar, path: '/discovery' }],
+  },
+  {
+    labelKey: 'sidebar.analysis',
     items: [
-      { label: 'Decouverte', icon: Radar, path: '/discovery' },
+      { labelKey: 'nav.analysis', icon: BarChart3, path: '/analysis' },
+      { labelKey: 'nav.businessFlows', icon: GitBranch, path: '/business-flows' },
+      { labelKey: 'nav.recommendations', icon: Lightbulb, path: '/recommendations', exact: true },
+      { labelKey: 'nav.roiFinance', icon: CircleDollarSign, path: '/finance' },
     ],
   },
   {
-    label: 'Analyse',
+    labelKey: 'sidebar.resilience',
     items: [
-      { label: 'Analyse & BIA', icon: BarChart3, path: '/analysis' },
-      { label: 'Flux Metier', icon: GitBranch, path: '/business-flows' },
-      { label: 'Recommandations', icon: Lightbulb, path: '/recommendations', exact: true },
-      { label: 'ROI & Finance', icon: CircleDollarSign, path: '/finance' },
+      { labelKey: 'nav.simulations', icon: FlaskConical, path: '/simulations', exact: true },
+      { labelKey: 'nav.driftDetection', icon: Activity, path: '/drift' },
+      { labelKey: 'nav.runbooks', icon: ClipboardList, path: '/simulations/runbooks' },
     ],
   },
   {
-    label: 'Resilience',
+    labelKey: 'sidebar.operations',
     items: [
-      { label: 'Simulations', icon: FlaskConical, path: '/simulations', exact: true },
-      { label: 'Drift Detection', icon: Activity, path: '/drift' },
-      { label: 'Runbooks', icon: ClipboardList, path: '/simulations/runbooks' },
+      { labelKey: 'nav.exercises', icon: ClipboardList, path: '/simulations/pra-exercises' },
+      { labelKey: 'nav.incidents', icon: AlertTriangle, path: '/incidents' },
     ],
   },
   {
-    label: 'Operations',
+    labelKey: 'sidebar.documentation',
     items: [
-      { label: 'Exercices PRA', icon: ClipboardList, path: '/simulations/pra-exercises' },
-      { label: 'Incidents', icon: AlertTriangle, path: '/incidents' },
-    ],
-  },
-  {
-    label: 'Documentation',
-    items: [
-      { label: 'Documents', icon: FileText, path: '/documents' },
-      { label: 'Rapport PRA/PCA', icon: FileDown, path: '/report' },
-      { label: 'Knowledge Base', icon: BookOpen, path: '/knowledge-base' },
+      { labelKey: 'nav.documents', icon: FileText, path: '/documents' },
+      { labelKey: 'nav.reports', icon: FileDown, path: '/report' },
+      { labelKey: 'nav.knowledgeBase', icon: BookOpen, path: '/knowledge-base' },
     ],
   },
 ];
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const location = useLocation();
 
@@ -92,7 +92,7 @@ export function Sidebar() {
     <aside
       className={cn(
         'flex h-screen flex-col border-r bg-card transition-all duration-300',
-        sidebarOpen ? 'w-64' : 'w-16'
+        sidebarOpen ? 'w-64' : 'w-16',
       )}
     >
       <div className="flex h-16 items-center justify-between border-b px-4">
@@ -109,12 +109,12 @@ export function Sidebar() {
 
       <ScrollArea className="flex-1">
         <nav className="space-y-1 p-2">
-          {NAV_SECTIONS.map((section, si) => (
-            <div key={si}>
-              {si > 0 && <Separator className="my-2" />}
-              {section.label && sidebarOpen && (
+          {NAV_SECTIONS.map((section, sectionIndex) => (
+            <div key={section.labelKey ?? sectionIndex}>
+              {sectionIndex > 0 && <Separator className="my-2" />}
+              {section.labelKey && sidebarOpen && (
                 <p className="mb-1 px-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  {section.label}
+                  {t(section.labelKey)}
                 </p>
               )}
               {section.items.map((item) => {
@@ -131,12 +131,12 @@ export function Sidebar() {
                       isActive
                         ? 'border-primary/40 bg-primary/15 text-primary'
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
-                      !sidebarOpen && 'justify-center px-2'
+                      !sidebarOpen && 'justify-center px-2',
                     )}
-                    title={!sidebarOpen ? item.label : undefined}
+                    title={!sidebarOpen ? t(item.labelKey) : undefined}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
-                    {sidebarOpen && <span>{item.label}</span>}
+                    {sidebarOpen && <span>{t(item.labelKey)}</span>}
                   </NavLink>
                 );
               })}
@@ -147,7 +147,9 @@ export function Sidebar() {
 
       {sidebarOpen && (
         <div className="border-t p-4">
-          <p className="text-xs text-muted-foreground">Stronghold v2.0</p>
+          <p className="text-xs text-muted-foreground">
+            Stronghold v2.0
+          </p>
         </div>
       )}
     </aside>

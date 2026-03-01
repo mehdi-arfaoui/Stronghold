@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { Building2, Settings } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,6 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { IntegrationsHub } from '@/components/integrations/IntegrationsHub';
 import { FinancialOnboardingWizard } from '@/components/financial/FinancialOnboardingWizard';
 import { CloudProvidersSettings } from '@/components/settings/CloudProvidersSettings';
@@ -53,6 +55,14 @@ const CRITICALITY_TIER_OPTIONS = [
 ] as const;
 
 type SettingsTab = 'general' | 'finance' | 'cloud' | 'integrations';
+
+const LANGUAGES = [
+  { code: 'fr', label: 'Français', flag: 'FR' },
+  { code: 'en', label: 'English', flag: 'EN' },
+  { code: 'es', label: 'Español', flag: 'ES' },
+  { code: 'it', label: 'Italiano', flag: 'IT' },
+  { code: 'zh', label: '中文', flag: 'ZH' },
+] as const;
 
 type ServiceOverrideDraft = {
   customDowntimeCostPerHour: string;
@@ -166,6 +176,7 @@ function describeServiceNode(node: {
 }
 
 export function SettingsPage() {
+  const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   const tenantScope = getCredentialScopeKey();
@@ -398,10 +409,10 @@ export function SettingsPage() {
     <div className="space-y-6">
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList>
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="finance">Finance</TabsTrigger>
-          <TabsTrigger value="cloud">Cloud</TabsTrigger>
-          <TabsTrigger value="integrations">Integrations</TabsTrigger>
+          <TabsTrigger value="general">{t('settings.tabs.general')}</TabsTrigger>
+          <TabsTrigger value="finance">{t('settings.tabs.finance')}</TabsTrigger>
+          <TabsTrigger value="cloud">{t('settings.tabs.cloud')}</TabsTrigger>
+          <TabsTrigger value="integrations">{t('settings.tabs.integrations')}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="general">
@@ -410,14 +421,32 @@ export function SettingsPage() {
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Settings className="h-5 w-5" />
-                  Parametres
+                  {t('settings.title')}
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
+                <div className="space-y-2">
+                  <Label>{t('settings.language')}</Label>
+                  <Select value={i18n.resolvedLanguage ?? 'fr'} onValueChange={(lang) => void i18n.changeLanguage(lang)}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {LANGUAGES.map((language) => (
+                        <SelectItem key={language.code} value={language.code}>
+                          {language.flag} {language.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <Separator />
+
                 <div className="flex items-center justify-between">
                   <div>
-                    <Label>Mode sombre</Label>
-                    <p className="text-sm text-muted-foreground">Activer le theme sombre</p>
+                    <Label>{t('settings.darkMode')}</Label>
+                    <p className="text-sm text-muted-foreground">{t('settings.darkModeDescription')}</p>
                   </div>
                   <Switch checked={theme === 'dark'} onCheckedChange={toggleTheme} />
                 </div>
@@ -425,7 +454,7 @@ export function SettingsPage() {
                 <Separator />
 
                 <div>
-                  <Label>URL de l&apos;API</Label>
+                  <Label>{t('settings.apiUrl')}</Label>
                   <p className="text-sm text-muted-foreground">
                     {import.meta.env.VITE_API_URL || 'http://localhost:3000/api'}
                   </p>
@@ -434,7 +463,7 @@ export function SettingsPage() {
                 <Separator />
 
                 <div>
-                  <Label>Version</Label>
+                  <Label>{t('common.version')}</Label>
                   <p className="text-sm text-muted-foreground">Stronghold v2.0.0</p>
                 </div>
               </CardContent>

@@ -1,4 +1,5 @@
 import { useLocation } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { CircleHelp, Menu, Moon, Sun, User } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -14,24 +15,24 @@ import { useGuidedTourStore } from '@/stores/guidedTour.store';
 import { resolveGuidedTab } from './guidedTabTour.config';
 
 const ROUTE_TITLES: Record<string, string> = {
-  '/': 'Onboarding',
-  '/dashboard': 'Tableau de bord',
-  '/discovery': 'Decouverte',
-  '/analysis': 'Analyse & BIA',
-  '/business-flows': 'Flux Metier',
-  '/finance': 'ROI & Finance',
-  '/simulations': 'Simulations',
-  '/drift': 'Drift Detection',
-  '/simulations/runbooks': 'Runbooks',
-  '/simulations/pra-exercises': 'Exercices PRA',
-  '/recommendations': 'Recommandations',
-  '/recommendations/remediation': 'Suivi Remediation',
-  '/exercises': 'Runbooks',
-  '/incidents': 'Incidents',
-  '/documents': 'Documents',
-  '/report': 'Rapport PRA/PCA',
-  '/settings': 'Parametres',
-  '/knowledge-base': 'Base de connaissances',
+  '/': 'routes.onboarding',
+  '/dashboard': 'routes.dashboard',
+  '/discovery': 'routes.discovery',
+  '/analysis': 'routes.analysis',
+  '/business-flows': 'routes.businessFlows',
+  '/finance': 'routes.finance',
+  '/simulations': 'routes.simulations',
+  '/drift': 'routes.drift',
+  '/simulations/runbooks': 'routes.runbooks',
+  '/simulations/pra-exercises': 'routes.praExercises',
+  '/recommendations': 'routes.recommendations',
+  '/recommendations/remediation': 'routes.remediation',
+  '/exercises': 'routes.runbooks',
+  '/incidents': 'routes.incidents',
+  '/documents': 'routes.documents',
+  '/report': 'routes.report',
+  '/settings': 'routes.settings',
+  '/knowledge-base': 'routes.knowledgeBase',
 };
 
 function resolveRouteTitle(pathname: string): string {
@@ -40,18 +41,19 @@ function resolveRouteTitle(pathname: string): string {
 
   const match = Object.entries(ROUTE_TITLES)
     .filter(([route]) => pathname.startsWith(`${route}/`))
-    .sort((a, b) => b[0].length - a[0].length)[0];
+    .sort((left, right) => right[0].length - left[0].length)[0];
 
-  return match?.[1] ?? 'Stronghold';
+  return match?.[1] ?? 'routes.stronghold';
 }
 
 export function Header() {
+  const { t } = useTranslation();
   const location = useLocation();
   const { theme, toggleTheme, toggleSidebar } = useUIStore();
   const { logout, user } = useAuthStore();
   const requestOpenForPath = useGuidedTourStore((state) => state.requestOpenForPath);
 
-  const title = resolveRouteTitle(location.pathname);
+  const title = t(resolveRouteTitle(location.pathname));
   const activeGuide = resolveGuidedTab(location.pathname);
 
   return (
@@ -70,10 +72,10 @@ export function Header() {
             size="sm"
             className="gap-2 text-muted-foreground hover:text-foreground"
             onClick={() => requestOpenForPath(location.pathname)}
-            aria-label={`Afficher le guide ${activeGuide.title}`}
+            aria-label={`${t('common.guide')} ${activeGuide.title}`}
           >
             <CircleHelp className="h-4 w-4" />
-            <span className="hidden md:inline">Guide</span>
+            <span className="hidden md:inline">{t('common.guide')}</span>
           </Button>
         )}
 
@@ -97,7 +99,7 @@ export function Header() {
                 <DropdownMenuSeparator />
               </>
             )}
-            <DropdownMenuItem onClick={logout}>Se deconnecter</DropdownMenuItem>
+            <DropdownMenuItem onClick={logout}>{t('common.logout')}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>

@@ -5,6 +5,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoadingState } from '@/components/common/LoadingState';
+import i18n from '@/i18n';
 import { useUIStore } from '@/stores/ui.store';
 import { getCredentialScopeKey, isCredentialStorageKey } from '@/lib/credentialStorage';
 
@@ -30,7 +31,7 @@ const PRAExercisesPage = lazy(async () => ({ default: (await import('@/pages/PRA
 
 function routeElement(element: ReactNode) {
   return (
-    <Suspense fallback={<LoadingState message="Chargement du module..." />}>
+    <Suspense fallback={<LoadingState message={i18n.t('common.loadingModule')} />}>
       {element}
     </Suspense>
   );
