@@ -8,12 +8,17 @@ import {
   DollarSign,
   Lightbulb,
   Loader2,
+  RotateCcw,
   TrendingUp,
   X,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
@@ -39,10 +44,36 @@ const STRATEGY_LABELS: Record<string, string> = {
   active_active: 'Active-Active',
 };
 
+const STRATEGY_FILTER_OPTIONS = [
+  { value: 'backup_restore', label: 'Backup & Restore' },
+  { value: 'pilot_light', label: 'Pilot Light' },
+  { value: 'warm_standby', label: 'Warm Standby' },
+  { value: 'hot_standby', label: 'Hot Standby' },
+  { value: 'active_active', label: 'Active-Active' },
+] as const;
+
+type StrategyFilterValue = (typeof STRATEGY_FILTER_OPTIONS)[number]['value'];
+type RoiSortDirection = 'asc' | 'desc';
+
+const DEFAULT_STRATEGY_FILTERS: StrategyFilterValue[] = STRATEGY_FILTER_OPTIONS.map((option) => option.value);
+
 function normalizeStrategy(strategy?: Recommendation['strategy']): string | undefined {
   if (!strategy) return undefined;
   if (strategy === 'backup-restore') return 'backup_restore';
   return String(strategy).replace(/-/g, '_');
+}
+
+function strategyFilterLabel(selectedStrategies: StrategyFilterValue[]): string {
+  if (selectedStrategies.length === 0) return 'Aucune';
+  if (selectedStrategies.length === DEFAULT_STRATEGY_FILTERS.length) return 'Toutes';
+  if (selectedStrategies.length === 1) {
+    return STRATEGY_FILTER_OPTIONS.find((option) => option.value === selectedStrategies[0])?.label ?? '1 strategie';
+  }
+  return `${selectedStrategies.length} strategies`;
+}
+
+function recommendationRoiValue(value: number | null | undefined): number {
+  return value != null && Number.isFinite(value) ? value : 0;
 }
 
 function money(amount: number | null | undefined, currency: string): string {
@@ -160,15 +191,6 @@ function roiToneClass(status: string | undefined, roi: number | null | undefined
   return 'text-red-700';
 }
 
-type RecommendationCriticality = 'critical' | 'high' | 'medium' | 'low';
-
-function resolveCriticalityFromTier(tier: number | null | undefined): RecommendationCriticality {
-  if (tier === 1) return 'critical';
-  if (tier === 2) return 'high';
-  if (tier === 3) return 'medium';
-  return 'low';
-}
-
 interface RecommendationsEngineProps {
   className?: string;
 }
@@ -195,6 +217,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const tenantScope = getCredentialScopeKey();
   const [currencyOverride, setCurrencyOverride] = useState<string | null>(null);
   const [localStatuses, setLocalStatuses] = useState<Record<string, RecommendationStatus>>({});
+  const [selectedStrategies, setSelectedStrategies] = useState<StrategyFilterValue[]>(DEFAULT_STRATEGY_FILTERS);
+  const [maxAnnualCostInput, setMaxAnnualCostInput] = useState('');
+  const [roiSortDirection, setRoiSortDirection] = useState<RoiSortDirection>('desc');
 
   const orgProfileQuery = useQuery({
     queryKey: ['financial-org-profile', tenantScope],
@@ -267,65 +292,92 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   }, [roiQuery.data]);
 
   const recommendationCards = useMemo(() => {
-    const criticalityOrder: Record<RecommendationCriticality, number> = {
-      critical: 0,
-      high: 1,
-      medium: 2,
-      low: 3,
-    };
+    return [...baseRecommendations].map((recommendation) => {
+      const breakdown = breakdownByRecommendationId.get(recommendation.id);
+      const monthlyCost = recommendation.estimatedCost ?? (breakdown ? breakdown.annualCost / 12 : 0);
+      const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
+      const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
+      const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
+      const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
+      const paybackLabel = recommendation.paybackLabel ?? breakdown?.paybackLabel;
+      const resolvedPayback =
+        annualCost > 0
+          ? resolveConsistentPayback({
+              paybackMonths,
+              paybackLabel,
+              roiPercent: individualROI,
+              riskAvoidedAnnual: annualSavings,
+              annualCost,
+            })
+          : { paybackMonths: null as number | null };
 
-    return [...baseRecommendations]
-      .map((recommendation) => {
-        const breakdown = breakdownByRecommendationId.get(recommendation.id);
-        const monthlyCost = recommendation.estimatedCost ?? (breakdown ? breakdown.annualCost / 12 : 0);
-        const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
-        const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
-        const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
-        const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
-        const paybackLabel = recommendation.paybackLabel ?? breakdown?.paybackLabel;
-        const resolvedPayback =
-          annualCost > 0
-            ? resolveConsistentPayback({
-                paybackMonths,
-                paybackLabel,
-                roiPercent: individualROI,
-                riskAvoidedAnnual: annualSavings,
-                annualCost,
-              })
-            : { paybackMonths: null as number | null };
-
-        return {
-          recommendation,
-          breakdown,
-          monthlyCost,
-          annualCost,
-          annualSavings,
-          individualROI,
-          roiStatus: recommendation.roiStatus ?? breakdown?.roiStatus,
-          roiMessage: recommendation.roiMessage ?? breakdown?.roiMessage,
-          resolvedPayback,
-          criticality: resolveCriticalityFromTier(recommendation.tier),
-        };
-      })
-      .sort((left, right) => {
-        const savingsDiff = (right.annualSavings ?? 0) - (left.annualSavings ?? 0);
-        if (savingsDiff !== 0) return savingsDiff;
-
-        const costDiff = (right.annualCost ?? 0) - (left.annualCost ?? 0);
-        if (costDiff !== 0) return costDiff;
-
-        return (criticalityOrder[left.criticality] ?? 99) - (criticalityOrder[right.criticality] ?? 99);
-      });
+      return {
+        recommendation,
+        breakdown,
+        strategyKey: normalizeStrategy(recommendation.strategy) as StrategyFilterValue | undefined,
+        monthlyCost,
+        annualCost,
+        annualSavings,
+        individualROI,
+        roiStatus: recommendation.roiStatus ?? breakdown?.roiStatus,
+        roiMessage: recommendation.roiMessage ?? breakdown?.roiMessage,
+        resolvedPayback,
+      };
+    });
   }, [baseRecommendations, breakdownByRecommendationId]);
 
-  const primaryRecommendationCards = useMemo(
-    () => recommendationCards.filter((card) => card.recommendation.recommendationBand !== 'secondary'),
+  const totalDrBudget = useMemo(
+    () => recommendationCards.reduce((sum, card) => sum + Math.max(0, card.annualCost || 0), 0),
     [recommendationCards],
   );
-  const secondaryRecommendationCards = useMemo(
-    () => recommendationCards.filter((card) => card.recommendation.recommendationBand === 'secondary'),
-    [recommendationCards],
-  );
+
+  const filteredRecommendationCards = useMemo(() => {
+    const selectedStrategySet = new Set(selectedStrategies);
+    const parsedMaxAnnualCost = Number(maxAnnualCostInput);
+    const hasCostFilter =
+      maxAnnualCostInput.trim().length > 0 && Number.isFinite(parsedMaxAnnualCost) && parsedMaxAnnualCost >= 0;
+
+    return recommendationCards
+      .filter((card) => {
+        const strategyMatches = card.strategyKey
+          ? selectedStrategySet.has(card.strategyKey)
+          : selectedStrategies.length === DEFAULT_STRATEGY_FILTERS.length;
+        const costMatches = !hasCostFilter || card.annualCost <= parsedMaxAnnualCost;
+        return strategyMatches && costMatches;
+      })
+      .sort((left, right) => {
+        const roiDiff =
+          roiSortDirection === 'asc'
+            ? recommendationRoiValue(left.individualROI) - recommendationRoiValue(right.individualROI)
+            : recommendationRoiValue(right.individualROI) - recommendationRoiValue(left.individualROI);
+        if (roiDiff !== 0) return roiDiff;
+
+        const paybackDiff =
+          (left.resolvedPayback.paybackMonths ?? Number.POSITIVE_INFINITY) -
+          (right.resolvedPayback.paybackMonths ?? Number.POSITIVE_INFINITY);
+        if (paybackDiff !== 0) return paybackDiff;
+
+        return (right.annualSavings ?? 0) - (left.annualSavings ?? 0);
+      });
+  }, [maxAnnualCostInput, recommendationCards, roiSortDirection, selectedStrategies]);
+
+  const { quickWinCards, otherRecommendationCards } = useMemo(() => {
+    const quickWins = filteredRecommendationCards.filter((card) => {
+      const quickWinByBudget =
+        recommendationRoiValue(card.individualROI) > 100 &&
+        Math.max(0, card.annualCost) < totalDrBudget * 0.2;
+      const quickWinByPayback = (card.resolvedPayback.paybackMonths ?? Number.POSITIVE_INFINITY) < 6;
+      return quickWinByBudget || quickWinByPayback;
+    });
+    const quickWinIds = new Set(quickWins.map((card) => card.recommendation.id));
+
+    return {
+      quickWinCards: quickWins,
+      otherRecommendationCards: filteredRecommendationCards.filter(
+        (card) => !quickWinIds.has(card.recommendation.id),
+      ),
+    };
+  }, [filteredRecommendationCards, totalDrBudget]);
 
   const summaryRiskAvoided =
     recommendationsSummaryQuery.data?.riskAvoidedAnnual ?? roiQuery.data?.riskReductionAmount ?? 0;
@@ -351,6 +403,28 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     riskAvoidedAnnual: summaryRiskAvoided,
     annualCost: summaryAnnualCost,
   });
+  const filteredSecondaryCount = filteredRecommendationCards.filter(
+    (card) => card.recommendation.recommendationBand === 'secondary',
+  ).length;
+  const hasActiveFilters =
+    maxAnnualCostInput.trim().length > 0 ||
+    roiSortDirection !== 'desc' ||
+    selectedStrategies.length !== DEFAULT_STRATEGY_FILTERS.length;
+
+  const toggleStrategyFilter = (strategy: StrategyFilterValue, checked: boolean) => {
+    setSelectedStrategies((current) => {
+      if (checked) {
+        return current.includes(strategy) ? current : [...current, strategy];
+      }
+      return current.filter((value) => value !== strategy);
+    });
+  };
+
+  const resetFilters = () => {
+    setSelectedStrategies(DEFAULT_STRATEGY_FILTERS);
+    setMaxAnnualCostInput('');
+    setRoiSortDirection('desc');
+  };
 
   const setRecommendationStatus = (recommendation: Recommendation, status: RecommendationStatus) => {
     setLocalStatuses((previous) => ({ ...previous, [recommendation.id]: status }));
@@ -364,14 +438,14 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     );
   };
 
-  const renderRecommendationCard = (card: (typeof recommendationCards)[number]) => {
+  const renderRecommendationCard = (card: (typeof recommendationCards)[number], isQuickWin: boolean) => {
     const recommendation = card.recommendation;
     const individualRoiDisplay = formatRoiPercent(card.individualROI);
-    const isQuickWin =
-      card.resolvedPayback.paybackLabel === 'Quick win' ||
-      ((card.individualROI ?? 0) > 500 && card.monthlyCost < 500);
     const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
-    const strategyLabel = STRATEGY_LABELS[String(recommendation.strategy)] ?? recommendation.strategy;
+    const strategyLabel =
+      STRATEGY_LABELS[card.strategyKey ?? ''] ??
+      STRATEGY_LABELS[String(recommendation.strategy)] ??
+      recommendation.strategy;
     const costSourceBadge = resolveCompactCostSourceLabel({
       costSource: recommendation.costSource,
       costSourceLabel: recommendation.costSourceLabel,
@@ -387,7 +461,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             {recommendation.recommendationBand === 'secondary' && (
               <Badge variant="secondary">Hors cap DR</Badge>
             )}
-            {isQuickWin && <Badge className="bg-green-500/10 text-green-700 border-green-500/20">Quick Win</Badge>}
+            {isQuickWin && (
+              <Badge className="border-green-500/20 bg-green-500/10 text-green-700">⚡ Quick Win</Badge>
+            )}
             {card.roiMessage && (
               <Badge
                 className={cn(
@@ -571,6 +647,127 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </Select>
       </div>
 
+      {!recommendationsQuery.isLoading && recommendationCards.length > 0 && (
+        <Card className="border-dashed">
+          <CardContent className="space-y-4 p-4">
+            <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto]">
+              <div className="space-y-2">
+                <Label>Strategie DR</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-between">
+                      <span className="truncate">Strategie DR: {strategyFilterLabel(selectedStrategies)}</span>
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-72 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-medium">Filtrer par strategie</p>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setSelectedStrategies(DEFAULT_STRATEGY_FILTERS)}
+                        >
+                          Tout
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedStrategies([])}>
+                          Aucune
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {STRATEGY_FILTER_OPTIONS.map((option) => (
+                        <label
+                          key={option.value}
+                          className="flex cursor-pointer items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm"
+                        >
+                          <span>{option.label}</span>
+                          <Checkbox
+                            checked={selectedStrategies.includes(option.value)}
+                            onCheckedChange={(checked) => toggleStrategyFilter(option.value, Boolean(checked))}
+                            aria-label={`Filtrer ${option.label}`}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="recommendations-max-annual-cost">Cout estime</Label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    ≤
+                  </span>
+                  <Input
+                    id="recommendations-max-annual-cost"
+                    type="number"
+                    min="0"
+                    inputMode="numeric"
+                    value={maxAnnualCostInput}
+                    onChange={(event) => setMaxAnnualCostInput(event.target.value)}
+                    className="pl-9"
+                    placeholder={`500 ${currency}/an`}
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label>ROI</Label>
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={roiSortDirection === 'asc' ? 'default' : 'outline'}
+                    onClick={() => setRoiSortDirection('asc')}
+                    aria-label="Trier par ROI croissant"
+                  >
+                    ↑
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={roiSortDirection === 'desc' ? 'default' : 'outline'}
+                    onClick={() => setRoiSortDirection('desc')}
+                    aria-label="Trier par ROI decroissant"
+                  >
+                    ↓
+                  </Button>
+                </div>
+              </div>
+
+              <div className="flex items-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={resetFilters}
+                  disabled={!hasActiveFilters}
+                  aria-label="Reinitialiser les filtres"
+                >
+                  <RotateCcw className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              <p>
+                {filteredRecommendationCards.length} recommandations affichees sur {recommendationCards.length} total
+                (dont {quickWinCards.length} Quick Wins)
+              </p>
+              {filteredSecondaryCount > 0 && (
+                <p className="text-muted-foreground">
+                  Les cartes "Hors cap DR" restent hors ROI principal.
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {(recommendationsSummaryQuery.isLoading || roiQuery.isLoading) && (
         <Card>
           <CardContent className="py-8 flex items-center justify-center">
@@ -673,34 +870,66 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         </Card>
       )}
 
-      {!recommendationsQuery.isLoading && recommendationCards.length > 0 && (
-        <div className="space-y-4">
-          <div className="rounded-md border px-3 py-2 bg-muted/10">
-            <p className="text-sm font-semibold">
-              Recommandations prioritaires ({primaryRecommendationCards.length})
-            </p>
-          </div>
-          <div className="space-y-3">
-            {primaryRecommendationCards.map(renderRecommendationCard)}
-          </div>
+      {!recommendationsQuery.isLoading &&
+        recommendationCards.length > 0 &&
+        filteredRecommendationCards.length === 0 && (
+          <Card>
+            <CardContent className="space-y-3 py-10 text-center">
+              <p className="font-medium">Aucune recommandation ne correspond aux filtres actuels</p>
+              <p className="text-sm text-muted-foreground">
+                Elargissez le cout maximal, re-selectionnez des strategies ou revenez au tri par defaut.
+              </p>
+              <div>
+                <Button type="button" variant="outline" onClick={resetFilters}>
+                  Reinitialiser les filtres
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
-          <details className="rounded-md border bg-muted/20">
-            <summary className="cursor-pointer px-3 py-2 text-sm font-semibold">
-              Recommandations secondaires hors cap ({secondaryRecommendationCards.length})
-            </summary>
-            <div className="space-y-3 p-3 pt-0">
-              {secondaryRecommendationCards.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Aucune recommandation secondaire.</p>
+      {!recommendationsQuery.isLoading && filteredRecommendationCards.length > 0 && (
+        <div className="space-y-4">
+          <section className="space-y-3 rounded-xl border border-green-200 bg-green-50/60 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold text-green-900">
+                  Quick Wins & forte valeur ajoutee ({quickWinCards.length})
+                </p>
+                <p className="text-xs text-green-800/80">
+                  ROI &gt; 100% avec faible poids budgetaire, ou payback inferieur a 6 mois.
+                </p>
+              </div>
+              <Badge variant="outline" className="border-green-300 bg-white text-green-700">
+                Trie par ROI {roiSortDirection === 'asc' ? 'croissant' : 'decroissant'}
+              </Badge>
+            </div>
+            <div className="space-y-3">
+              {quickWinCards.length === 0 ? (
+                <p className="text-sm text-green-900/80">Aucun Quick Win pour les filtres actifs.</p>
               ) : (
-                <>
-                  <p className="text-sm text-muted-foreground">
-                    Ces mesures restent utiles, mais elles ne sont pas comptees dans le ROI principal pour respecter le cap DR.
-                  </p>
-                  {secondaryRecommendationCards.map(renderRecommendationCard)}
-                </>
+                quickWinCards.map((card) => renderRecommendationCard(card, true))
               )}
             </div>
-          </details>
+          </section>
+
+          <section className="space-y-3 rounded-xl border p-4">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <p className="text-sm font-semibold">Autres recommandations ({otherRecommendationCards.length})</p>
+                <p className="text-xs text-muted-foreground">
+                  Mesures utiles a prioriser apres les gains rapides.
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3">
+              {otherRecommendationCards.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Aucune autre recommandation pour les filtres actifs.</p>
+              ) : (
+                otherRecommendationCards.map((card) => renderRecommendationCard(card, false))
+              )}
+            </div>
+          </section>
         </div>
       )}
     </div>

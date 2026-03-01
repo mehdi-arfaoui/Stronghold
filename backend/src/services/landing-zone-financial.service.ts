@@ -32,6 +32,7 @@ import {
 } from './company-financial-profile.service.js';
 import {
   allocateRecommendationCosts,
+  normalizeStrategyCostPercentages,
   partitionRecommendationsByAleCap,
 } from './landing-zone-cost-optimization.js';
 
@@ -944,14 +945,6 @@ export async function buildLandingZoneFinancialContext(
     .map((recommendation) => recommendationInputById.get(recommendation.id))
     .filter((entry): entry is RecommendationInput => Boolean(entry));
 
-  const byStrategy: Record<string, number> = {};
-  const annualCostByStrategy: Record<string, number> = {};
-  for (const recommendation of recommendations.filter((entry) => entry.recommendationBand !== 'secondary')) {
-    byStrategy[recommendation.strategy] = (byStrategy[recommendation.strategy] || 0) + 1;
-    annualCostByStrategy[recommendation.strategy] =
-      (annualCostByStrategy[recommendation.strategy] || 0) + recommendation.estimatedAnnualCost;
-  }
-
   const totalCostAnnual = roi.annualRemediationCost;
   const totalCostMonthly = roundMoney(totalCostAnnual / 12);
   const cappedRiskAvoidedAnnual = Math.min(
@@ -966,11 +959,31 @@ export async function buildLandingZoneFinancialContext(
       cappedRiskAvoidedAnnual,
     });
   }
-  const costSharePercentByStrategy = Object.fromEntries(
-    Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => [
+  const recommendationsCountedInSummary = recommendations.filter((entry) => {
+    if (entry.recommendationBand === 'secondary' || !entry.costCountedInSummary) {
+      return false;
+    }
+
+    const breakdown = breakdownByRecommendationId.get(entry.id);
+    return Boolean(breakdown) && (breakdown?.annualCost || 0) > 0;
+  });
+
+  const byStrategy: Record<string, number> = {};
+  const annualCostByStrategy: Record<string, number> = {};
+  for (const recommendation of recommendationsCountedInSummary) {
+    const annualCost = roundMoney(
+      breakdownByRecommendationId.get(recommendation.id)?.annualCost ?? recommendation.estimatedAnnualCost,
+    );
+    byStrategy[recommendation.strategy] = (byStrategy[recommendation.strategy] || 0) + 1;
+    annualCostByStrategy[recommendation.strategy] =
+      roundMoney((annualCostByStrategy[recommendation.strategy] || 0) + annualCost);
+  }
+
+  const costSharePercentByStrategy = normalizeStrategyCostPercentages(
+    Object.entries(annualCostByStrategy).map(([strategy, absoluteCost]) => ({
       strategy,
-      totalCostAnnual > 0 ? roundMoney((annualCost / totalCostAnnual) * 100) : 0,
-    ]),
+      absoluteCost,
+    })),
   );
 
   return {
@@ -979,14 +992,9 @@ export async function buildLandingZoneFinancialContext(
       totalCostMonthly,
       totalCostAnnual,
       byStrategy,
-      annualCostByStrategy: Object.fromEntries(
-        Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => [
-          strategy,
-          roundMoney(annualCost),
-        ]),
-      ),
+      annualCostByStrategy,
       costSharePercentByStrategy,
-      totalRecommendations: recommendations.filter((entry) => entry.recommendationBand !== 'secondary').length,
+      totalRecommendations: recommendationsCountedInSummary.length,
       secondaryRecommendations: recommendations.filter((entry) => entry.recommendationBand === 'secondary').length,
       secondaryAnnualCost: roundMoney(
         recommendations

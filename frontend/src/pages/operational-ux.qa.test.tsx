@@ -62,6 +62,7 @@ vi.mock('@/api/remediation.api', () => ({
 vi.mock('@/api/recommendations.api', () => ({
   recommendationsApi: {
     getAll: vi.fn(),
+    getSummary: vi.fn(),
     updateStatus: vi.fn(),
   },
 }));
@@ -163,6 +164,20 @@ describe('Operational UX QA flows', () => {
         },
       },
     } as any);
+    vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
+      asApiResult({
+        totalAnnualCost: 0,
+        totalRecommendations: 0,
+        secondaryRecommendations: 0,
+        secondaryAnnualCost: 0,
+        annualCostByStrategy: {},
+        costSharePercentByStrategy: {},
+        annualCostCap: 0,
+        riskAvoidedAnnual: 0,
+        roiPercent: null,
+        paybackMonths: null,
+      } as any),
+    );
 
     vi.mocked(financialApi.getTrend).mockResolvedValue({
       data: {
@@ -768,6 +783,25 @@ describe('Operational UX QA flows', () => {
         },
       ] as any),
     );
+    vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
+      asApiResult({
+        totalAnnualCost: 2400,
+        totalRecommendations: 1,
+        secondaryRecommendations: 0,
+        secondaryAnnualCost: 0,
+        annualCostByStrategy: {
+          warm_standby: 2400,
+        },
+        costSharePercentByStrategy: {
+          warm_standby: 100,
+        },
+        annualCostCap: 7700,
+        riskAvoidedAnnual: 20000,
+        roiPercent: 733,
+        paybackMonths: 0.8,
+        budgetAnnual: 12000,
+      } as any),
+    );
 
     vi.mocked(financialApi.calculateROI).mockImplementation(async () =>
       asApiResult({
@@ -813,6 +847,7 @@ describe('Operational UX QA flows', () => {
     expect(screen.getByText(/554/)).toBeInTheDocument();
     expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
     expect(screen.getByText(/0\.8 mois/)).toBeInTheDocument();
+    expect(await screen.findByText(/Total affiche:\s*100%/)).toBeInTheDocument();
     dashboardRender.unmount();
 
     const recommendationsRender = render(
@@ -822,7 +857,7 @@ describe('Operational UX QA flows', () => {
     );
 
     await screen.findByText('ROI de vos recommandations');
-    await screen.findByText('Quick Win');
+    await screen.findByText('⚡ Quick Win');
     recommendationsRender.unmount();
 
     render(
@@ -1020,6 +1055,25 @@ describe('Operational UX QA flows', () => {
         },
       ] as any),
     );
+    vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
+      asApiResult({
+        totalAnnualCost: 2400,
+        totalRecommendations: 1,
+        secondaryRecommendations: 0,
+        secondaryAnnualCost: 0,
+        annualCostByStrategy: {
+          warm_standby: 2400,
+        },
+        costSharePercentByStrategy: {
+          warm_standby: 100,
+        },
+        annualCostCap: 7700,
+        riskAvoidedAnnual: 20000,
+        roiPercent: 733,
+        paybackMonths: 0.8,
+        budgetAnnual: 12000,
+      } as any),
+    );
 
     vi.mocked(financialApi.calculateROI).mockImplementation(async () =>
       asApiResult({
@@ -1070,6 +1124,7 @@ describe('Operational UX QA flows', () => {
     expect(screen.getByText('NIS2')).toBeInTheDocument();
     expect(screen.getByText(/Lancez des scans reguliers pour visualiser la tendance de votre resilience\./i)).toBeInTheDocument();
     expect(screen.getByText('Methodologie & Sources')).toBeInTheDocument();
+    expect(await screen.findByText(/Total affiche:\s*100%/)).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /Exporter le rapport executif/i }));
 
@@ -1094,7 +1149,7 @@ describe('Operational UX QA flows', () => {
       </QueryClientProvider>,
     );
     await screen.findByText('ROI de vos recommandations');
-    await screen.findByText('Quick Win');
+    await screen.findByText('⚡ Quick Win');
     recRender.unmount();
 
     const initialBiaRows = [

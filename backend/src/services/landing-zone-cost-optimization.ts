@@ -33,6 +33,11 @@ export type RecommendationRoiCandidate = {
   priority: number;
 };
 
+export type StrategyCostBreakdownEntry = {
+  strategy: string;
+  absoluteCost: number;
+};
+
 function roundMoney(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.round(value * 100) / 100;
@@ -226,4 +231,59 @@ export function partitionRecommendationsByAleCap(
     annualCap,
     primaryAnnualCost: runningAnnualCost,
   };
+}
+
+export function normalizeStrategyCostPercentages(
+  entries: StrategyCostBreakdownEntry[],
+): Record<string, number> {
+  const normalizedEntries = entries
+    .map((entry) => ({
+      strategy: entry.strategy,
+      absoluteCost: roundMoney(Math.max(0, Number(entry.absoluteCost) || 0)),
+    }))
+    .filter((entry) => entry.strategy.length > 0 && entry.absoluteCost > 0);
+
+  const totalCost = roundMoney(
+    normalizedEntries.reduce((sum, entry) => sum + entry.absoluteCost, 0),
+  );
+  if (totalCost <= 0 || normalizedEntries.length === 0) {
+    return {};
+  }
+
+  const allocation = normalizedEntries.map((entry, index) => {
+    const rawPercent = (entry.absoluteCost / totalCost) * 100;
+    const flooredPercent = Math.floor(rawPercent);
+    return {
+      ...entry,
+      index,
+      rawPercent,
+      flooredPercent,
+      remainder: rawPercent - flooredPercent,
+    };
+  });
+
+  let remainingPercent = 100 - allocation.reduce((sum, entry) => sum + entry.flooredPercent, 0);
+  const bumpOrder = [...allocation].sort((left, right) => {
+    if (right.remainder !== left.remainder) {
+      return right.remainder - left.remainder;
+    }
+    if (right.absoluteCost !== left.absoluteCost) {
+      return right.absoluteCost - left.absoluteCost;
+    }
+    return left.strategy.localeCompare(right.strategy);
+  });
+
+  const integerPercents = new Map<number, number>(
+    allocation.map((entry) => [entry.index, entry.flooredPercent]),
+  );
+
+  for (const entry of bumpOrder) {
+    if (remainingPercent <= 0) break;
+    integerPercents.set(entry.index, (integerPercents.get(entry.index) || 0) + 1);
+    remainingPercent -= 1;
+  }
+
+  return Object.fromEntries(
+    allocation.map((entry) => [entry.strategy, integerPercents.get(entry.index) || 0]),
+  );
 }

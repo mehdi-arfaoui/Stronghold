@@ -114,17 +114,17 @@ describe('RecommendationsEngine', () => {
           estimatedAnnualCost: 1200,
           priority: 'P2',
           costSource: 'pricing-api',
-          roi: 350,
+          roi: 40,
           calculation: {
             aleCurrent: 6600,
-            aleAfter: 1200,
-            riskAvoidedAnnual: 5400,
+            aleAfter: 4920,
+            riskAvoidedAnnual: 1680,
             annualDrCost: 1200,
             formula: 'test',
             inputs: {
               hourlyDowntimeCost: 500,
               currentRtoHours: 3,
-              targetRtoHours: 1,
+              targetRtoHours: 2.2,
               incidentProbabilityAnnual: 0.2,
               monthlyDrCost: 100,
             },
@@ -140,22 +140,30 @@ describe('RecommendationsEngine', () => {
         secondaryRecommendations: 1,
         secondaryAnnualCost: 0,
         annualCostCap: 7700,
-        riskAvoidedAnnual: 15000,
-        roiPercent: 316.6,
-        paybackMonths: 2.9,
+        annualCostByStrategy: {
+          warm_standby: 2400,
+          pilot_light: 1200,
+        },
+        costSharePercentByStrategy: {
+          warm_standby: 67,
+          pilot_light: 33,
+        },
+        riskAvoidedAnnual: 11280,
+        roiPercent: 213.3,
+        paybackMonths: 3.8,
       } as RecommendationsSummary),
     );
 
     vi.mocked(financialApi.calculateROI).mockImplementation(async () =>
       asApiResult({
         currentALE: 18000,
-        projectedALE: 3000,
-        riskReduction: 0.833,
+        projectedALE: 6720,
+        riskReduction: 0.626,
         annualRemediationCost: 3600,
-        riskReductionAmount: 15000,
-        netAnnualSavings: 11400,
-        roiPercent: 316.6,
-        paybackMonths: 2.9,
+        riskReductionAmount: 11280,
+        netAnnualSavings: 7680,
+        roiPercent: 213.3,
+        paybackMonths: 3.8,
         strongholdSubscriptionAnnual: 0,
         breakdownByRecommendation: [
           {
@@ -190,11 +198,11 @@ describe('RecommendationsEngine', () => {
             targetNodes: ['rec-second'],
             annualCost: 1200,
             currentALE: 6600,
-            projectedALE: 1200,
-            riskReduction: 5400,
-            individualROI: 350,
-            paybackMonths: null,
-            paybackLabel: 'Non rentable',
+            projectedALE: 4920,
+            riskReduction: 1680,
+            individualROI: 40,
+            paybackMonths: 8.57,
+            paybackLabel: 'Rentable a moyen terme',
             roiStatus: 'rentable',
           },
         ],
@@ -207,7 +215,7 @@ describe('RecommendationsEngine', () => {
     );
   });
 
-  it('tri, sections et nettoyage payback/source sont conformes', async () => {
+  it('hierarchise les quick wins et applique les filtres/sorts', async () => {
     const user = userEvent.setup();
 
     render(
@@ -216,25 +224,49 @@ describe('RecommendationsEngine', () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText('Recommandations prioritaires (2)');
-    expect(screen.getByText('Recommandations secondaires hors cap (1)')).toBeInTheDocument();
+    await screen.findByText('Quick Wins & forte valeur ajoutee (1)');
+    expect(screen.getByText('Autres recommandations (2)')).toBeInTheDocument();
+    expect(screen.getByText('3 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
     expect(screen.queryByText(/Source cout:/i)).not.toBeInTheDocument();
 
-    const topCard = screen.getByText('Payment API').closest('[class*="border"]') as HTMLElement;
-    const secondCard = screen.getByText('Order DB').closest('[class*="border"]') as HTMLElement;
-    expect(topCard && secondCard).toBeTruthy();
-    if (topCard && secondCard) {
-      const relation = topCard.compareDocumentPosition(secondCard);
-      expect(Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-      expect(within(topCard).getByText(/Payback:/i)).toBeInTheDocument();
-      expect(within(topCard).getByText(/3.0 mois/i)).toBeInTheDocument();
-    }
+    const quickWinSection = screen.getByText('Quick Wins & forte valeur ajoutee (1)').closest('section') as HTMLElement;
+    expect(within(quickWinSection).getByText('Payment API')).toBeInTheDocument();
+    expect(within(quickWinSection).getByText('⚡ Quick Win')).toBeInTheDocument();
+    expect(within(quickWinSection).getByText(/3.0 mois/i)).toBeInTheDocument();
 
-    await user.click(screen.getByText('Recommandations secondaires hors cap (1)'));
-    const managedCard = await screen.findByText('Managed Session Store');
-    const managedContainer = managedCard.closest('[class*="border"]') as HTMLElement;
-    expect(within(managedContainer).getByText('Inclus dans le service manage')).toBeInTheDocument();
-    expect(within(managedContainer).getByText('Hors cap DR')).toBeInTheDocument();
-    expect(within(managedContainer).queryByText(/Payback:/i)).not.toBeInTheDocument();
+    const otherSection = screen.getByText('Autres recommandations (2)').closest('section') as HTMLElement;
+    expect(within(otherSection).getByText('Order DB')).toBeInTheDocument();
+    expect(within(otherSection).getByText('Managed Session Store')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Strategie DR: Toutes/i }));
+    await user.click(screen.getByRole('button', { name: 'Aucune' }));
+    await user.click(screen.getByText('Warm Standby'));
+
+    expect(await screen.findByText('1 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    expect(screen.getByText('Payment API')).toBeInTheDocument();
+    expect(screen.queryByText('Order DB')).not.toBeInTheDocument();
+    expect(screen.queryByText('Managed Session Store')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /Reinitialiser les filtres/i }));
+    expect(await screen.findByText('3 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+
+    const maxCostInput = screen.getByLabelText('Cout estime');
+    await user.clear(maxCostInput);
+    await user.type(maxCostInput, '1500');
+    await user.click(screen.getByRole('button', { name: /Trier par ROI croissant/i }));
+
+    expect(await screen.findByText('2 recommandations affichees sur 3 total (dont 0 Quick Wins)')).toBeInTheDocument();
+    expect(screen.queryByText('Payment API')).not.toBeInTheDocument();
+    expect(screen.getByText('Quick Wins & forte valeur ajoutee (0)')).toBeInTheDocument();
+
+    const managedCard = screen.getByText('Managed Session Store').closest('[class*="border"]') as HTMLElement;
+    expect(within(managedCard).getByText('Inclus dans le service manage')).toBeInTheDocument();
+    expect(within(managedCard).getByText('Hors cap DR')).toBeInTheDocument();
+    expect(within(managedCard).queryByText(/Payback:/i)).not.toBeInTheDocument();
+
+    const managedLabel = screen.getByText('Managed Session Store');
+    const orderLabel = screen.getByText('Order DB');
+    const relation = managedLabel.compareDocumentPosition(orderLabel);
+    expect(Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
   });
 });

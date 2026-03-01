@@ -59,6 +59,19 @@ function formatCompactMoney(value: number, currency: string): string {
 
 const ROI_DISPLAY_CAP_ABS = 5_000;
 const ROI_DISPLAY_HIGH_THRESHOLD = 1_000;
+const STRATEGY_LABELS: Record<string, string> = {
+  'backup-restore': 'Backup & Restore',
+  backup_restore: 'Backup & Restore',
+  backup: 'Backup & Restore',
+  'pilot-light': 'Pilot Light',
+  pilot_light: 'Pilot Light',
+  'warm-standby': 'Warm Standby',
+  warm_standby: 'Warm Standby',
+  'hot-standby': 'Hot Standby',
+  hot_standby: 'Hot Standby',
+  'active-active': 'Active-Active',
+  active_active: 'Active-Active',
+};
 
 function formatPercentNullable(value: number | null | undefined): { label: string; tooltip?: string } {
   if (value == null || !Number.isFinite(value)) return { label: 'Non applicable' };
@@ -241,12 +254,17 @@ function FinancialDashboardInner() {
   const strategySplitData = useMemo(() => {
     const annualCostByStrategy = recommendationsSummaryQuery.data?.annualCostByStrategy ?? {};
     const shareByStrategy = recommendationsSummaryQuery.data?.costSharePercentByStrategy ?? {};
-    return Object.entries(annualCostByStrategy).map(([strategy, annualCost]) => ({
-      strategy,
-      annualCost: Number(annualCost) || 0,
-      share: Number(shareByStrategy[strategy] ?? 0),
-    }));
+    return Object.entries(annualCostByStrategy)
+      .map(([strategy, annualCost]) => ({
+        strategy,
+        displayName: STRATEGY_LABELS[strategy] ?? strategy,
+        annualCost: Number(annualCost) || 0,
+        share: Number(shareByStrategy[strategy] ?? 0),
+      }))
+      .filter((entry) => entry.annualCost > 0)
+      .sort((left, right) => right.annualCost - left.annualCost);
   }, [recommendationsSummaryQuery.data?.annualCostByStrategy, recommendationsSummaryQuery.data?.costSharePercentByStrategy]);
+  const strategyShareTotal = strategySplitData.reduce((sum, entry) => sum + entry.share, 0);
 
   const trendData = useMemo(() => {
     const points = trendQuery.data?.points ?? [];
@@ -570,11 +588,11 @@ function FinancialDashboardInner() {
                   <Pie
                     data={strategySplitData}
                     dataKey="annualCost"
-                    nameKey="strategy"
+                    nameKey="displayName"
                     innerRadius={55}
                     outerRadius={95}
                     label={(entry: any) =>
-                      `${String(entry?.strategy || '')} ${Number(entry?.share ?? 0).toFixed(1)}%`
+                      `${String(entry?.displayName || '')} ${Number(entry?.share ?? 0).toFixed(1)}%`
                     }
                   >
                     {strategySplitData.map((entry, index) => (
@@ -591,12 +609,13 @@ function FinancialDashboardInner() {
             <div className="space-y-2 text-sm">
               {strategySplitData.map((entry) => (
                 <div key={entry.strategy} className="rounded border px-3 py-2">
-                  <p className="font-medium">{entry.strategy}</p>
+                  <p className="font-medium">{entry.displayName}</p>
                   <p className="text-muted-foreground">
                     {formatMoney(entry.annualCost, currency)} / an ({entry.share.toFixed(1)}%)
                   </p>
                 </div>
               ))}
+              <p className="text-xs font-medium text-muted-foreground">Total affiche: {strategyShareTotal.toFixed(0)}%</p>
               <p className="text-xs text-muted-foreground">
                 Budget DR estime: {formatMoney(recommendationsSummaryQuery.data?.budgetAnnual ?? 0, currency)}
               </p>
