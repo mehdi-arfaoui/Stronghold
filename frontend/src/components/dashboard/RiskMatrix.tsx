@@ -3,11 +3,13 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { RISK_MATRIX_LABELS } from '@/lib/constants';
+import { truncateRiskTitle, type RiskCellFilter } from '@/lib/riskAnalysis';
 import type { Risk } from '@/types/risks.types';
 
 interface RiskMatrixProps {
   risks: Risk[];
   onCellClick?: (probability: number, impact: number) => void;
+  activeCell?: RiskCellFilter | null;
 }
 
 function getCellColor(prob: number, impact: number): string {
@@ -18,7 +20,7 @@ function getCellColor(prob: number, impact: number): string {
   return 'bg-severity-low/20 text-severity-low';
 }
 
-export function RiskMatrix({ risks, onCellClick }: RiskMatrixProps) {
+export function RiskMatrix({ risks, onCellClick, activeCell = null }: RiskMatrixProps) {
   const matrix = useMemo(() => {
     const grid: Record<string, Risk[]> = {};
     for (let p = 1; p <= 5; p++) {
@@ -58,9 +60,10 @@ export function RiskMatrix({ risks, onCellClick }: RiskMatrixProps) {
                         <TooltipTrigger asChild>
                           <button
                             className={cn(
-                              'flex h-12 items-center justify-center rounded text-sm font-bold transition-transform hover:scale-105',
+                              'flex h-12 items-center justify-center rounded border text-sm font-bold transition-transform hover:scale-105',
                               getCellColor(prob, impact),
-                              cellRisks.length > 0 && 'cursor-pointer'
+                              cellRisks.length > 0 && 'cursor-pointer',
+                              activeCell?.probability === prob && activeCell?.impact === impact && 'ring-2 ring-primary ring-offset-2'
                             )}
                             onClick={() => onCellClick?.(prob, impact)}
                           >
@@ -68,13 +71,17 @@ export function RiskMatrix({ risks, onCellClick }: RiskMatrixProps) {
                           </button>
                         </TooltipTrigger>
                         {cellRisks.length > 0 && (
-                          <TooltipContent className="max-w-[300px]">
-                            <p className="font-semibold">{cellRisks.length} risque(s)</p>
-                            {cellRisks.slice(0, 3).map((r) => (
-                              <p key={r.id} className="text-xs">{r.title}</p>
+                          <TooltipContent className="max-w-[320px] space-y-1">
+                            <p className="font-semibold">
+                              {cellRisks.length} risque(s) (Impact: {impact}, Proba: {prob})
+                            </p>
+                            {cellRisks.slice(0, 5).map((r) => (
+                              <p key={r.id} className="text-xs">
+                                • {truncateRiskTitle(r.title)}
+                              </p>
                             ))}
-                            {cellRisks.length > 3 && (
-                              <p className="text-xs text-muted-foreground">+{cellRisks.length - 3} de plus</p>
+                            {cellRisks.length > 5 && (
+                              <p className="text-xs text-muted-foreground">… et {cellRisks.length - 5} autre(s)</p>
                             )}
                           </TooltipContent>
                         )}

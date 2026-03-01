@@ -411,7 +411,11 @@ export function BusinessFlowsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">
-                          Cout/h: {downtimeCostPerHour != null ? formatMoney(downtimeCostPerHour, flowCurrency) : 'N/A'}
+                          Cout/h: {downtimeCostPerHour != null
+                            ? `${formatMoney(downtimeCostPerHour, flowCurrency)}/h`
+                            : flow.flowNodes.length === 0
+                              ? 'Cout non calculable - associez des services'
+                              : flow.downtimeCostMessage || 'Cout non calculable'}
                         </p>
                         {flow.contributingServices && flow.contributingServices.length > 0 && (
                           <Tooltip>
@@ -425,11 +429,13 @@ export function BusinessFlowsPage() {
                               </button>
                             </TooltipTrigger>
                             <TooltipContent align="end" className="max-w-sm space-y-1">
-                              <p className="text-xs font-semibold">Services contributeurs</p>
+                              <p className="text-xs font-semibold">
+                                Cout/h total : {formatMoney(downtimeCostPerHour ?? 0, flowCurrency)}/h
+                              </p>
                               {flow.contributingServices.map((service) => (
                                 <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
-                                  {service.serviceName}: {formatMoney(service.weightedContribution, flowCurrency)}
-                                  {' '}({Math.round(service.impactWeight * 100)}%, base {formatMoney(service.downtimeCostPerHour, flowCurrency)})
+                                  {service.serviceName}: {formatMoney(service.weightedContribution, flowCurrency)}/h
+                                  {' '}(poids: {service.impactWeight.toFixed(1)}, base {formatMoney(service.downtimeCostPerHour, flowCurrency)}/h)
                                 </div>
                               ))}
                             </TooltipContent>

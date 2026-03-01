@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, CheckCircle2, Loader2, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Info, Loader2, Save, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { businessFlowsApi, type BusinessFlow, type BusinessFlowNode } from '@/api/businessFlows.api';
 import { discoveryApi } from '@/api/discovery.api';
 import { InfraGraph } from '@/components/graph/InfraGraph';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { buildVisibleFlowNodeIds } from '@/lib/businessFlowGraph';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { InfraEdge, InfraNode } from '@/types/graph.types';
 
 type FlowFormState = {
@@ -143,11 +146,16 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
     estimatedCustomerChurnPerHour: '',
     customerLifetimeValue: '',
   });
+  const [showFullGraph, setShowFullGraph] = useState(false);
 
   useEffect(() => {
     if (!flowQuery.data) return;
     setForm(buildInitialFormState(flowQuery.data));
   }, [flowQuery.data]);
+
+  useEffect(() => {
+    setShowFullGraph(false);
+  }, [flowId]);
 
   const refreshFlow = useCallback(async () => {
     await Promise.all([
@@ -245,6 +253,15 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
     () => new Set(flowNodesSorted.map((entry) => entry.infraNodeId)),
     [flowNodesSorted],
   );
+  const visibleNodeIds = useMemo(
+    () => buildVisibleFlowNodeIds(flowNodesSorted.map((entry) => entry.infraNodeId), graphEdges),
+    [flowNodesSorted, graphEdges],
+  );
+  const graphFilterActive = flowNodesSorted.length > 0 && !showFullGraph;
+  const flowDowntimeCostPerHour =
+    typeof flow?.downtimeCostPerHour === 'number' && Number.isFinite(flow.downtimeCostPerHour)
+      ? flow.downtimeCostPerHour
+      : null;
 
   const pathEdgeIds = useMemo(() => {
     const ids = new Set<string>();
@@ -315,29 +332,43 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
   const nodeOverrides = useCallback(
     (node: InfraNode) => {
       const linked = flowNodeById.get(node.id);
-      if (!linked) {
+      if (linked) {
+        const roleLabel = linked.role || 'processing';
+        const tooltip = [
+          linked.infraNode?.name || node.name,
+          `role: ${roleLabel}`,
+          linked.isCritical ? 'critical: yes' : 'critical: no',
+        ].join(' | ');
+
         return {
-          customBorderColor: '#9ca3af',
-          dimmed: true,
+          customBorderColor: FLOW_COLOR,
+          dimmed: false,
+          flowStripeColors: [FLOW_COLOR],
+          flowRole: roleLabel,
+          flowTooltip: tooltip,
+          customOpacity: 1,
+          disablePointerEvents: false,
         };
       }
 
-      const roleLabel = linked.role || 'processing';
-      const tooltip = [
-        linked.infraNode?.name || node.name,
-        `role: ${roleLabel}`,
-        linked.isCritical ? 'critical: yes' : 'critical: no',
-      ].join(' | ');
+      if (graphFilterActive && visibleNodeIds.has(node.id)) {
+        return {
+          customBorderColor: '#94a3b8',
+          dimmed: false,
+          flowTooltip: `${node.name} | dependance directe du flux`,
+          customOpacity: 1,
+          disablePointerEvents: false,
+        };
+      }
 
       return {
-        customBorderColor: FLOW_COLOR,
-        dimmed: false,
-        flowStripeColors: [FLOW_COLOR],
-        flowRole: roleLabel,
-        flowTooltip: tooltip,
+        customBorderColor: graphFilterActive ? '#9ca3af' : undefined,
+        dimmed: graphFilterActive,
+        customOpacity: graphFilterActive ? 0.12 : 1,
+        disablePointerEvents: graphFilterActive,
       };
     },
-    [flowNodeById],
+    [flowNodeById, graphFilterActive, visibleNodeIds],
   );
 
   const edgeOverrides = useCallback(
@@ -352,6 +383,16 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
           },
         };
       }
+      if (graphFilterActive) {
+        const sourceVisible = visibleNodeIds.has(edge.source);
+        const targetVisible = visibleNodeIds.has(edge.target);
+        return {
+          style: {
+            opacity: sourceVisible && targetVisible ? 0.45 : 0.12,
+            strokeWidth: sourceVisible && targetVisible ? 1.5 : 1,
+          },
+        };
+      }
       if (flowNodeIdSet.has(edge.source) || flowNodeIdSet.has(edge.target)) {
         return {
           style: {
@@ -360,13 +401,9 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
           },
         };
       }
-      return {
-        style: {
-          opacity: 0.12,
-        },
-      };
+      return {};
     },
-    [pathEdgeIds, flowNodeIdSet],
+    [graphFilterActive, pathEdgeIds, flowNodeIdSet, visibleNodeIds],
   );
 
   if (flowQuery.isLoading || graphQuery.isLoading) {
@@ -391,7 +428,8 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
   }
 
   return (
-    <div className="space-y-4">
+    <TooltipProvider>
+      <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={onBack}>
@@ -425,6 +463,22 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
             </p>
           </CardHeader>
           <CardContent className="space-y-4">
+            {flowNodesSorted.length > 0 && (
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/20 px-3 py-2">
+                <Badge variant={graphFilterActive ? 'default' : 'outline'}>
+                  {graphFilterActive ? `Affichage filtre : ${flow.name} - ${flowNodesSorted.length} services` : 'Vue complete du graphe'}
+                </Badge>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowFullGraph((current) => !current)}
+                >
+                  {graphFilterActive ? 'Voir tout' : 'Revenir au filtre'}
+                </Button>
+              </div>
+            )}
+
             <div className="h-[540px] rounded-lg border">
               <InfraGraph
                 infraNodes={graphNodes}
@@ -512,6 +566,50 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
             <CardTitle className="text-base">Business value</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            <div className="rounded-md border bg-muted/25 p-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-medium">Cout/h calcule du flux</p>
+                  <p className="text-lg font-semibold">
+                    {flowNodesSorted.length === 0
+                      ? 'Cout non calculable - associez des services'
+                      : flowDowntimeCostPerHour != null
+                        ? `${formatMoney(flowDowntimeCostPerHour, currency)}/h`
+                        : flow.downtimeCostMessage || 'Cout non calculable'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || 'Somme ponderee des couts de services'}
+                  </p>
+                </div>
+                {flow.contributingServices && flow.contributingServices.length > 0 && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className="rounded-full border p-2 text-muted-foreground transition-colors hover:bg-accent/40"
+                        aria-label="Voir la decomposition du cout"
+                      >
+                        <Info className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent align="end" className="max-w-sm space-y-1">
+                      <p className="text-xs font-semibold">
+                        Cout/h total : {formatMoney(flowDowntimeCostPerHour ?? 0, currency)}/h
+                      </p>
+                      {flow.contributingServices.map((service) => (
+                        <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
+                          {service.serviceName}: {formatMoney(service.weightedContribution, currency)}/h
+                          {' '}(
+                          poids: {service.impactWeight.toFixed(1)},
+                          base {formatMoney(service.downtimeCostPerHour, currency)}/h)
+                        </div>
+                      ))}
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+              </div>
+            </div>
+
             <Input
               value={form.name}
               onChange={(event) => setForm((prev) => ({ ...prev, name: event.target.value }))}
@@ -645,7 +743,7 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
             </div>
 
             <div className="rounded-md border bg-muted/25 p-3 text-sm">
-              <p className="font-medium">Total</p>
+              <p className="font-medium">Apercu manuel</p>
               <p>Direct: {formatMoney(currentPreview.directCostPerHour, currency)}</p>
               <p>SLA: {formatMoney(currentPreview.slaPenaltyPerHour, currency)}</p>
               <p>Indirect: {formatMoney(currentPreview.indirectCostPerHour, currency)}</p>
@@ -655,6 +753,7 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
           </CardContent>
         </Card>
       </div>
-    </div>
+      </div>
+    </TooltipProvider>
   );
 }

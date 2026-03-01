@@ -32,6 +32,8 @@ export interface InfraNodeData {
   flowRole?: string | null;
   flowTooltip?: string;
   showUnknownCostIndicator?: boolean;
+  customOpacity?: number;
+  disablePointerEvents?: boolean;
   [key: string]: unknown;
 }
 

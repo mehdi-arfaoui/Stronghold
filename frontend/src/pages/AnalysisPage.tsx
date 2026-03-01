@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { RefreshCw, Download } from 'lucide-react';
+import { ChevronDown, ChevronUp, Download, ExternalLink, FilterX, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BIATable } from '@/components/bia/BIATable';
@@ -16,18 +17,48 @@ import { ValidateAllButton } from '@/components/analysis/ValidateAllButton';
 import { ExportPanel } from '@/components/analysis/ExportPanel';
 import { RedundancyGraph } from '@/components/analysis/RedundancyGraph';
 import { biaApi } from '@/api/bia.api';
+import { discoveryApi } from '@/api/discovery.api';
 import { risksApi } from '@/api/risks.api';
 import { analysisApi } from '@/api/analysis.api';
 import { financialApi } from '@/api/financial.api';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import {
+  filterRisks,
+  getRiskCriticityLabel,
+  getRiskCriticityLevel,
+  getRiskScore,
+  type RiskCellFilter,
+  type RiskCriticityLevel,
+} from '@/lib/riskAnalysis';
 import type { Risk } from '@/types/risks.types';
 import type { BIAEntry } from '@/types/bia.types';
+
+const DEFAULT_RISK_LEVELS: RiskCriticityLevel[] = ['critical', 'high', 'medium', 'low'];
+
+const RISK_LEVEL_STYLES: Record<RiskCriticityLevel, string> = {
+  critical: 'border-severity-critical bg-severity-critical/10 text-severity-critical',
+  high: 'border-severity-high bg-severity-high/10 text-severity-high',
+  medium: 'border-severity-medium bg-severity-medium/10 text-severity-medium',
+  low: 'border-severity-low bg-severity-low/10 text-severity-low',
+};
+
+function RiskCriticityBadge({ level, score }: { level: RiskCriticityLevel; score: number }) {
+  return (
+    <Badge variant="outline" className={RISK_LEVEL_STYLES[level]}>
+      {getRiskCriticityLabel(level)} - {score}
+    </Badge>
+  );
+}
 
 export function AnalysisPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const tenantScope = getCredentialScopeKey();
   const [exportOpen, setExportOpen] = useState(false);
+  const [activeRiskLevels, setActiveRiskLevels] = useState<RiskCriticityLevel[]>(DEFAULT_RISK_LEVELS);
+  const [selectedRiskCell, setSelectedRiskCell] = useState<RiskCellFilter | null>(null);
+  const [expandedRiskIds, setExpandedRiskIds] = useState<string[]>([]);
+  const riskListRef = useRef<HTMLDivElement | null>(null);
 
   const biaQuery = useQuery({
     queryKey: ['bia-entries', tenantScope],
@@ -47,6 +78,12 @@ export function AnalysisPage() {
   const risksQuery = useQuery({
     queryKey: ['risks'],
     queryFn: async () => (await risksApi.getRisks()).data,
+  });
+
+  const riskGraphQuery = useQuery({
+    queryKey: ['risk-graph', tenantScope],
+    queryFn: async () => (await discoveryApi.getGraph()).data,
+    staleTime: 60_000,
   });
 
   const redundancyQuery = useQuery({
@@ -103,6 +140,45 @@ export function AnalysisPage() {
   const risks: Risk[] = Array.isArray(risksQuery.data) ? risksQuery.data : [];
   const redundancy = redundancyQuery.data ?? [];
   const regional = regionalQuery.data ?? [];
+  const nodeNameById = useMemo(
+    () => new Map((riskGraphQuery.data?.nodes ?? []).map((node) => [node.id, node.name])),
+    [riskGraphQuery.data],
+  );
+  const filteredRisks = useMemo(
+    () => filterRisks(risks, activeRiskLevels, selectedRiskCell),
+    [activeRiskLevels, risks, selectedRiskCell],
+  );
+
+  const toggleRiskLevel = (level: RiskCriticityLevel) => {
+    setActiveRiskLevels((current) =>
+      current.includes(level)
+        ? current.filter((entry) => entry !== level)
+        : [...current, level].sort(
+            (left, right) => DEFAULT_RISK_LEVELS.indexOf(left) - DEFAULT_RISK_LEVELS.indexOf(right),
+          ),
+    );
+  };
+
+  const toggleMitigations = (riskId: string) => {
+    setExpandedRiskIds((current) =>
+      current.includes(riskId) ? current.filter((entry) => entry !== riskId) : [...current, riskId],
+    );
+  };
+
+  const handleRiskCellClick = (probability: number, impact: number) => {
+    setSelectedRiskCell((current) =>
+      current?.probability === probability && current.impact === impact
+        ? null
+        : { probability, impact },
+    );
+    window.requestAnimationFrame(() => {
+      riskListRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
+  const openDiscoveryForNode = (nodeId: string) => {
+    navigate(`/discovery?focus=${encodeURIComponent(nodeId)}`);
+  };
 
   if (biaQuery.isLoading || risksQuery.isLoading) {
     return <LoadingState variant="skeleton" message="Chargement de l'analyse..." count={5} />;
@@ -200,31 +276,118 @@ export function AnalysisPage() {
 
         {/* Risks Tab */}
         <TabsContent value="risks" className="space-y-6">
-          {risks.length > 0 && <RiskMatrix risks={risks} />}
-          <Card>
+          {risks.length > 0 && (
+            <RiskMatrix
+              risks={risks}
+              onCellClick={handleRiskCellClick}
+              activeCell={selectedRiskCell}
+            />
+          )}
+          <Card ref={riskListRef}>
             <CardHeader>
               <CardTitle className="text-base">Liste des risques</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3">
-              {risks.map((risk: Risk) => (
-                <div key={risk.id} className="rounded-lg border p-4">
-                  <div className="flex items-center gap-2">
-                    <SeverityBadge severity={risk.severity} />
-                    <h4 className="font-semibold">{risk.title}</h4>
-                    {risk.autoDetected && <span className="text-xs text-muted-foreground">(auto-detecte)</span>}
-                  </div>
-                  <p className="mt-1 text-sm text-muted-foreground">{risk.description}</p>
-                  {(risk.mitigations ?? []).length > 0 && (
-                    <div className="mt-2 space-y-1">
-                      {risk.mitigations.map((m) => (
-                        <p key={m.id} className="text-xs text-muted-foreground">- {m.description} ({m.status})</p>
-                      ))}
-                    </div>
+            <CardContent className="space-y-4">
+              <div className="space-y-3 rounded-lg border bg-muted/20 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  {DEFAULT_RISK_LEVELS.map((level) => (
+                    <Button
+                      key={level}
+                      type="button"
+                      size="sm"
+                      variant={activeRiskLevels.includes(level) ? 'default' : 'outline'}
+                      onClick={() => toggleRiskLevel(level)}
+                    >
+                      {getRiskCriticityLabel(level)}
+                    </Button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+                  <span>{filteredRisks.length} risque(s) affiche(s) sur {risks.length}</span>
+                  {selectedRiskCell && (
+                    <Badge variant="outline">
+                      Impact {selectedRiskCell.impact} / Proba {selectedRiskCell.probability}
+                    </Badge>
+                  )}
+                  {selectedRiskCell && (
+                    <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRiskCell(null)}>
+                      <FilterX className="mr-2 h-4 w-4" />
+                      Retirer le filtre matrice
+                    </Button>
                   )}
                 </div>
-              ))}
+              </div>
+
+              {filteredRisks.map((risk: Risk) => {
+                const score = getRiskScore(risk);
+                const criticityLevel = getRiskCriticityLevel(score);
+                const isExpanded = expandedRiskIds.includes(risk.id);
+
+                return (
+                  <div key={risk.id} className="rounded-lg border p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <RiskCriticityBadge level={criticityLevel} score={score} />
+                          <SeverityBadge severity={risk.severity} />
+                          <h4 className="truncate font-semibold">{risk.title}</h4>
+                          {risk.autoDetected && <span className="text-xs text-muted-foreground">(auto-detecte)</span>}
+                        </div>
+                        <p className="line-clamp-3 text-sm text-muted-foreground">{risk.description}</p>
+                      </div>
+                      <div className="text-right text-xs text-muted-foreground">
+                        <p>Impact {risk.impact}</p>
+                        <p>Probabilite {risk.probability}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      {(risk.relatedNodes ?? []).length > 0 ? (
+                        risk.relatedNodes.map((nodeId) => (
+                          <Button
+                            key={`${risk.id}-${nodeId}`}
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            className="h-8"
+                            onClick={() => openDiscoveryForNode(nodeId)}
+                          >
+                            {nodeNameById.get(nodeId) || nodeId}
+                            <ExternalLink className="ml-2 h-3.5 w-3.5" />
+                          </Button>
+                        ))
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Aucun service rattache.</span>
+                      )}
+                    </div>
+
+                    {(risk.mitigations ?? []).length > 0 && (
+                      <div className="mt-3 space-y-2">
+                        <Button type="button" variant="ghost" size="sm" onClick={() => toggleMitigations(risk.id)}>
+                          {isExpanded ? <ChevronUp className="mr-2 h-4 w-4" /> : <ChevronDown className="mr-2 h-4 w-4" />}
+                          {isExpanded ? 'Masquer' : 'Afficher'} les mitigations ({risk.mitigations.length})
+                        </Button>
+                        {isExpanded && (
+                          <div className="space-y-1 rounded-md border bg-muted/20 p-3">
+                            {risk.mitigations.map((mitigation) => (
+                              <p key={mitigation.id} className="text-sm text-muted-foreground">
+                                - {mitigation.description} ({mitigation.status})
+                              </p>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               {risks.length === 0 && (
                 <p className="text-sm text-muted-foreground">Aucun risque detecte. Lancez une analyse pour identifier les risques.</p>
+              )}
+              {risks.length > 0 && filteredRisks.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Aucun risque ne correspond aux filtres actifs.
+                </p>
               )}
             </CardContent>
           </Card>

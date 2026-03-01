@@ -111,13 +111,18 @@ function toFlowNode(
   const blastRatio = resolveBlastRatio(node);
   const size = getNodeSize(blastRatio);
   const overrides = getNodeDataOverrides?.(node) || {};
+  const customOpacity =
+    typeof overrides.customOpacity === 'number' && Number.isFinite(overrides.customOpacity)
+      ? overrides.customOpacity
+      : undefined;
+  const disablePointerEvents = overrides.disablePointerEvents === true;
   const displayName =
     (typeof metadata.displayName === 'string' && metadata.displayName.trim().length > 0
       ? metadata.displayName
       : node.name) || node.id;
 
   return {
-    ...(overrides.dimmed ? { draggable: false } : {}),
+    ...((overrides.dimmed || disablePointerEvents) ? { draggable: false, selectable: false } : {}),
     id: node.id,
     type: 'infraNode',
     position: { x: 0, y: 0 },
@@ -125,6 +130,8 @@ function toFlowNode(
       width: size.width,
       height: size.height,
       zIndex: 10,
+      ...(customOpacity != null ? { opacity: customOpacity } : {}),
+      ...(disablePointerEvents ? { pointerEvents: 'none' } : {}),
     },
     data: {
       label: displayName,

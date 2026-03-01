@@ -1,14 +1,22 @@
 ﻿import { memo, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, Check, CheckCircle2, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Check, CheckCircle2, ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDuration } from '@/lib/formatters';
 import type { BIAEntry } from '@/types/bia.types';
+import {
+  DEFAULT_BIA_FILTERS,
+  filterAndSortBiaEntries,
+  type BIAFilters,
+  type BIASortKey,
+} from '@/lib/biaTable';
 
 interface BIATableProps {
   entries: BIAEntry[];
@@ -135,43 +143,41 @@ function BIATableComponent({
   const [overridePopoverEntry, setOverridePopoverEntry] = useState<BIAEntry | null>(null);
   const [overrideValue, setOverrideValue] = useState('');
   const [overrideJustification, setOverrideJustification] = useState('');
+  const [filters, setFilters] = useState<BIAFilters>(DEFAULT_BIA_FILTERS);
 
-  const sortedEntries = useMemo(
-    () =>
-      [...(entries ?? [])].sort((a, b) => {
-        const leftValue = a.downtimeCostPerHour ?? a.financialImpactPerHour;
-        const rightValue = b.downtimeCostPerHour ?? b.financialImpactPerHour;
-        const left = Number.isFinite(leftValue as number) ? Number(leftValue) : -1;
-        const right = Number.isFinite(rightValue as number) ? Number(rightValue) : -1;
-        return right - left;
-      }),
-    [entries],
+  const filteredEntries = useMemo(
+    () => filterAndSortBiaEntries(entries ?? [], filters),
+    [entries, filters],
   );
-  const shouldVirtualize = sortedEntries.length > 50;
+  const shouldVirtualize = filteredEntries.length > 50;
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const { rowsToRender, paddingTop, paddingBottom } = useMemo(() => {
     if (!shouldVirtualize) {
       return {
-        rowsToRender: sortedEntries.map((entry, index) => ({ entry, index })),
+        rowsToRender: filteredEntries.map((entry, index) => ({ entry, index })),
         paddingTop: 0,
         paddingBottom: 0,
       };
     }
-    const firstVisibleIndex = Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN);
+    const maxFirstVisibleIndex = Math.max(0, filteredEntries.length - VIRTUAL_VISIBLE_ROWS);
+    const firstVisibleIndex = Math.min(
+      maxFirstVisibleIndex,
+      Math.max(0, Math.floor(scrollTop / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN),
+    );
     const lastVisibleExclusive = Math.min(
-      sortedEntries.length,
+      filteredEntries.length,
       firstVisibleIndex + VIRTUAL_VISIBLE_ROWS + VIRTUAL_OVERSCAN * 2,
     );
-    const rows = sortedEntries
+    const rows = filteredEntries
       .slice(firstVisibleIndex, lastVisibleExclusive)
       .map((entry, offset) => ({ entry, index: firstVisibleIndex + offset }));
     return {
       rowsToRender: rows,
       paddingTop: firstVisibleIndex * VIRTUAL_ROW_HEIGHT,
-      paddingBottom: Math.max(0, (sortedEntries.length - lastVisibleExclusive) * VIRTUAL_ROW_HEIGHT),
+      paddingBottom: Math.max(0, (filteredEntries.length - lastVisibleExclusive) * VIRTUAL_ROW_HEIGHT),
     };
-  }, [shouldVirtualize, sortedEntries, scrollTop]);
+  }, [filteredEntries, shouldVirtualize, scrollTop]);
 
   const handleTableScroll = (event: React.UIEvent<HTMLDivElement>) => {
     if (!shouldVirtualize) return;
@@ -194,6 +200,48 @@ function BIATableComponent({
   };
 
   const cancelEdit = () => setEditingCell(null);
+
+  const selectedTierLabel = filters.tiers.length === 4 ? 'Tous' : filters.tiers.map((tier) => `T${tier}`).join(', ');
+
+  const setSort = (sortBy: BIASortKey) => {
+    setFilters((current) => {
+      if (current.sortBy === sortBy) {
+        return {
+          ...current,
+          sortOrder: current.sortOrder === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return {
+        ...current,
+        sortBy,
+        sortOrder:
+          sortBy === 'tier' ||
+          sortBy === 'serviceName' ||
+          sortBy === 'serviceType' ||
+          sortBy === 'source'
+            ? 'asc'
+            : 'desc',
+      };
+    });
+  };
+
+  const toggleTier = (tier: number) => {
+    setFilters((current) => {
+      const exists = current.tiers.includes(tier);
+      const nextTiers = exists
+        ? current.tiers.filter((value) => value !== tier)
+        : [...current.tiers, tier].sort((left, right) => left - right);
+      return {
+        ...current,
+        tiers: nextTiers,
+      };
+    });
+  };
+
+  const resetFilters = () => {
+    setFilters(DEFAULT_BIA_FILTERS);
+    setScrollTop(0);
+  };
 
   const openOverridePopover = (entry: BIAEntry) => {
     const baselineValue =
@@ -224,10 +272,12 @@ function BIATableComponent({
     closeOverridePopover();
   };
 
+  const resultCountLabel = `${filteredEntries.length} service${filteredEntries.length > 1 ? 's' : ''} affich${filteredEntries.length > 1 ? 'es' : 'e'} sur ${entries.length} total`;
+
   return (
     <TooltipProvider>
-      <div className="space-y-2">
-        <div className="flex justify-between gap-3">
+      <div className="space-y-3">
+        <div className="flex flex-wrap justify-between gap-3">
           <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
             Cellule coloree = suggestion IA
           </span>
@@ -238,30 +288,163 @@ function BIATableComponent({
             </span>
           </span>
         </div>
+
+        <div className="rounded-lg border bg-muted/20 p-3">
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[180px] flex-1">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Tier</p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" className="w-full justify-between">
+                    <span className="truncate">Tier: {selectedTierLabel}</span>
+                    <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent align="start" className="w-56 space-y-3">
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium">Tiers visibles</p>
+                    {[1, 2, 3, 4].map((tier) => (
+                      <label key={tier} className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={filters.tiers.includes(tier)}
+                          onCheckedChange={() => toggleTier(tier)}
+                        />
+                        <span>T{tier}</span>
+                      </label>
+                    ))}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="min-w-[180px] flex-1">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Blast radius</p>
+              <div className="flex gap-2">
+                <Select
+                  value={filters.blastRadiusOp}
+                  onValueChange={(value: '>=' | '<=') =>
+                    setFilters((current) => ({ ...current, blastRadiusOp: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[88px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=">=">&gt;=</SelectItem>
+                    <SelectItem value="<=">&lt;=</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ex: 5"
+                  value={filters.blastRadiusValue ?? ''}
+                  onChange={(event) =>
+                    setFilters((current) => {
+                      const parsed = Number(event.target.value);
+                      return {
+                        ...current,
+                        blastRadiusValue: event.target.value === '' || Number.isNaN(parsed) ? null : parsed,
+                      };
+                    })
+                  }
+                />
+              </div>
+            </div>
+
+            <div className="min-w-[240px] flex-[1.2]">
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Cout/h indisponibilite</p>
+              <div className="flex gap-2">
+                <Select
+                  value={filters.hourlyCostOp}
+                  onValueChange={(value: '>=' | '<=') =>
+                    setFilters((current) => ({ ...current, hourlyCostOp: value }))
+                  }
+                >
+                  <SelectTrigger className="w-[88px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value=">=">&gt;=</SelectItem>
+                    <SelectItem value="<=">&lt;=</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  placeholder="Ex: 1000"
+                  value={filters.hourlyCostValue ?? ''}
+                  onChange={(event) =>
+                    setFilters((current) => {
+                      const parsed = Number(event.target.value);
+                      return {
+                        ...current,
+                        hourlyCostValue: event.target.value === '' || Number.isNaN(parsed) ? null : parsed,
+                      };
+                    })
+                  }
+                />
+                <Button
+                  type="button"
+                  variant={filters.sortBy === 'hourlyCost' && filters.sortOrder === 'asc' ? 'default' : 'outline'}
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setFilters((current) => ({ ...current, sortBy: 'hourlyCost', sortOrder: 'asc' }))}
+                  aria-label="Trier le cout horaire par ordre croissant"
+                >
+                  <ChevronUp className="h-4 w-4" />
+                </Button>
+                <Button
+                  type="button"
+                  variant={filters.sortBy === 'hourlyCost' && filters.sortOrder === 'desc' ? 'default' : 'outline'}
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => setFilters((current) => ({ ...current, sortBy: 'hourlyCost', sortOrder: 'desc' }))}
+                  aria-label="Trier le cout horaire par ordre decroissant"
+                >
+                  <ChevronDown className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <Button type="button" variant="ghost" size="icon" onClick={resetFilters} aria-label="Reinitialiser les filtres">
+              <RotateCcw className="h-4 w-4" />
+            </Button>
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">{resultCountLabel}</p>
+        </div>
+
         <div
           ref={tableContainerRef}
           className={cn(shouldVirtualize && 'max-h-[70vh] overflow-auto rounded-md border')}
           onScroll={handleTableScroll}
         >
           <Table>
-          <TableHeader className={cn(shouldVirtualize && 'sticky top-0 z-10 bg-background')}>
-            <TableRow>
-              <TableHead>Service</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead className="text-center">Tier</TableHead>
-              <TableHead className="text-center">RTO</TableHead>
-              <TableHead className="text-center">RPO</TableHead>
-              <TableHead className="text-center">MTPD</TableHead>
-              <TableHead className="text-center">Blast</TableHead>
-              <TableHead className="text-center">Cout/h indisponibilite</TableHead>
-              <TableHead className="text-center">Source</TableHead>
-              <TableHead className="text-center">Valide</TableHead>
-            </TableRow>
-          </TableHeader>
+            <TableHeader className={cn(shouldVirtualize && 'sticky top-0 z-10 bg-background')}>
+              <TableRow>
+                <SortableTableHead label="Service" sortBy="serviceName" filters={filters} onSort={setSort} />
+                <SortableTableHead label="Type" sortBy="serviceType" filters={filters} onSort={setSort} />
+                <SortableTableHead label="Tier" sortBy="tier" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="RTO" sortBy="rto" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="RPO" sortBy="rpo" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="MTPD" sortBy="mtpd" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="Blast" sortBy="blastRadius" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="Cout/h indisponibilite" sortBy="hourlyCost" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="Source" sortBy="source" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="Valide" sortBy="validated" filters={filters} onSort={setSort} align="center" />
+              </TableRow>
+            </TableHeader>
           <TableBody>
             {shouldVirtualize && paddingTop > 0 ? (
               <TableRow aria-hidden>
                 <TableCell colSpan={10} className="p-0" style={{ height: `${paddingTop}px` }} />
+              </TableRow>
+            ) : null}
+            {rowsToRender.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                  Aucun service ne correspond aux filtres selectionnes.
+                </TableCell>
               </TableRow>
             ) : null}
             {rowsToRender.map(({ entry, index }: RowToRender) => (
@@ -514,6 +697,42 @@ function BIATableComponent({
 }
 
 export const BIATable = memo(BIATableComponent);
+
+interface SortableTableHeadProps {
+  label: string;
+  sortBy: BIASortKey;
+  filters: BIAFilters;
+  onSort: (sortBy: BIASortKey) => void;
+  align?: 'left' | 'center';
+}
+
+function SortableTableHead({
+  label,
+  sortBy,
+  filters,
+  onSort,
+  align = 'left',
+}: SortableTableHeadProps) {
+  const isActive = filters.sortBy === sortBy;
+  const Icon = isActive ? (filters.sortOrder === 'asc' ? ChevronUp : ChevronDown) : ArrowDownUp;
+
+  return (
+    <TableHead className={cn(align === 'center' && 'text-center')}>
+      <button
+        type="button"
+        className={cn(
+          'inline-flex items-center gap-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground',
+          align === 'center' && 'mx-auto justify-center',
+        )}
+        onClick={() => onSort(sortBy)}
+        aria-label={`Trier par ${label.replace('/h', ' horaire')}`}
+      >
+        <span>{label}</span>
+        <Icon className={cn('h-3.5 w-3.5', isActive && 'text-foreground')} />
+      </button>
+    </TableHead>
+  );
+}
 
 interface EditableCellProps {
   entry: BIAEntry;
