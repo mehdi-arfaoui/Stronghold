@@ -256,7 +256,7 @@ export function DiscoveryPage() {
   const [fitViewNonce, setFitViewNonce] = useState(0);
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [colorByBusinessFlow, setColorByBusinessFlow] = useState(false);
-  const [showMiniMap, setShowMiniMap] = useState(false);
+  const [showMiniMap, setShowMiniMap] = useState(true);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [showPostScanOnboarding, setShowPostScanOnboarding] = useState(false);
   const [financialWizardOpen, setFinancialWizardOpen] = useState(false);

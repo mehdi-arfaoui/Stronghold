@@ -341,6 +341,7 @@ async function seedDemoPreparednessArtifacts(
     id: string;
     name: string;
     scenarioType: string;
+    scenarioParams: Record<string, unknown>;
     result: ReturnType<typeof runSimulation>;
     createdAt: Date;
   }> = [];
@@ -428,6 +429,7 @@ async function seedDemoPreparednessArtifacts(
       id: simulationId,
       name: simulationSeed.name,
       scenarioType: simulationSeed.scenarioType,
+      scenarioParams,
       result: simulationResult,
       createdAt: persistedAt,
     });
@@ -453,6 +455,8 @@ async function seedDemoPreparednessArtifacts(
       type: true,
       provider: true,
       region: true,
+      availabilityZone: true,
+      metadata: true,
     },
   });
 
@@ -461,6 +465,7 @@ async function seedDemoPreparednessArtifacts(
       id: primarySimulation.id,
       name: primarySimulation.name,
       scenarioType: primarySimulation.scenarioType,
+      scenarioParams: primarySimulation.scenarioParams as any,
       result: toStoredJson(primarySimulation.result),
       createdAt: primarySimulation.createdAt,
     },

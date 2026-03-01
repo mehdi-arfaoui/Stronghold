@@ -14,12 +14,12 @@ import type { CSSProperties } from 'react';
 
 import { NodeCard, type InfraNodeData } from './NodeCard';
 import { GraphMinimap } from './GraphMinimap';
+import { applyHierarchicalGrouping, augmentEdgesForGrouping, type GroupZoneData } from '@/lib/graph-grouping';
 import { applyLayout, type LayoutType } from '@/lib/graph-layout';
 import {
   computeBlastRadius,
   getEdgeHoverLabel,
   getEdgeStyle,
-  getNetworkGroup,
   getNodeCategory,
   getNodeServiceType,
   getNodeSize,
@@ -50,11 +50,6 @@ interface InfraGraphProps {
   enableNetworkGrouping?: boolean;
 }
 
-interface GroupZoneData {
-  label: string;
-  memberIds: string[];
-}
-
 const nodeTypes = {
   infraNode: NodeCard,
   groupZone: GroupZoneNode,
@@ -72,28 +67,11 @@ const FIT_OPTIONS = {
   minZoom: 0.1,
 };
 
-function toNumber(value: unknown): number | null {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-  return null;
-}
-
-function getNodeDimensions(node: Node, fallbackWidth = 180, fallbackHeight = 60): { width: number; height: number } {
-  const style = node.style as Record<string, unknown> | undefined;
-  return {
-    width: Math.max(50, toNumber(style?.width) ?? toNumber(node.width) ?? fallbackWidth),
-    height: Math.max(35, toNumber(style?.height) ?? toNumber(node.height) ?? fallbackHeight),
-  };
-}
-
 function GroupZoneNode({ data }: NodeProps) {
-  const groupData = (data as unknown as GroupZoneData | undefined) || { label: '', memberIds: [] };
+  const groupData = (data as unknown as GroupZoneData | undefined) || { label: '', groupType: 'region', memberIds: [] };
   return (
-    <div className="h-full w-full rounded-xl border border-dashed border-slate-400/30 bg-slate-400/5 px-2 pt-1">
-      <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+    <div className="h-full w-full px-2 pt-1.5">
+      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/80">
         {groupData.label}
       </span>
     </div>
@@ -189,90 +167,6 @@ function buildFlow(
   return { nodes, edges };
 }
 
-function applyNetworkGrouping(nodes: Node[]): Node[] {
-  if (nodes.length <= 30) return nodes;
-
-  const groupMap = new Map<string, { label: string; members: Node[] }>();
-  const clonedNodes = nodes.map((node) => ({ ...node }));
-
-  for (const node of clonedNodes) {
-    if (node.type !== 'infraNode') continue;
-    const data = (node.data as InfraNodeData | undefined) || undefined;
-    const group = getNetworkGroup({
-      type: data?.nodeType,
-      name: data?.label,
-      metadata: data?.metadata,
-    });
-    if (!group) continue;
-
-    const existing = groupMap.get(group.key);
-    if (existing) {
-      existing.members.push(node);
-      continue;
-    }
-    groupMap.set(group.key, { label: group.label, members: [node] });
-  }
-
-  const groupNodes: Node[] = [];
-  const padding = 24;
-  const topPadding = 26;
-
-  for (const [groupKey, group] of groupMap.entries()) {
-    if (group.members.length < 2) continue;
-    const groupId = `group:${groupKey}`;
-
-    let minX = Number.POSITIVE_INFINITY;
-    let minY = Number.POSITIVE_INFINITY;
-    let maxX = Number.NEGATIVE_INFINITY;
-    let maxY = Number.NEGATIVE_INFINITY;
-
-    for (const member of group.members) {
-      const size = getNodeDimensions(member);
-      minX = Math.min(minX, member.position.x);
-      minY = Math.min(minY, member.position.y);
-      maxX = Math.max(maxX, member.position.x + size.width);
-      maxY = Math.max(maxY, member.position.y + size.height);
-    }
-
-    const groupX = minX - padding;
-    const groupY = minY - topPadding;
-    const groupWidth = maxX - minX + padding * 2;
-    const groupHeight = maxY - minY + padding + topPadding;
-
-    groupNodes.push({
-      id: groupId,
-      type: 'groupZone',
-      position: { x: groupX, y: groupY },
-      selectable: false,
-      draggable: false,
-      connectable: false,
-      focusable: false,
-      data: {
-        label: group.label,
-        memberIds: group.members.map((member) => member.id),
-      } satisfies GroupZoneData,
-      style: {
-        width: groupWidth,
-        height: groupHeight,
-        pointerEvents: 'none',
-        zIndex: 0,
-      },
-    });
-
-    for (const member of group.members) {
-      member.parentId = groupId;
-      member.extent = 'parent';
-      member.position = {
-        x: member.position.x - groupX,
-        y: member.position.y - groupY,
-      };
-      member.zIndex = 10;
-    }
-  }
-
-  return [...groupNodes, ...clonedNodes];
-}
-
 function InfraGraphComponent({
   infraNodes,
   infraEdges,
@@ -321,13 +215,18 @@ function InfraGraphComponent({
     ],
   );
 
+  const layoutEdges = useMemo(
+    () => (enableNetworkGrouping ? augmentEdgesForGrouping(baseFlow.nodes, baseFlow.edges) : baseFlow.edges),
+    [enableNetworkGrouping, baseFlow.nodes, baseFlow.edges],
+  );
+
   const layoutedFlow = useMemo(
-    () => applyLayout(baseFlow.nodes, baseFlow.edges, layoutType),
-    [baseFlow.nodes, baseFlow.edges, layoutType],
+    () => applyLayout(baseFlow.nodes, layoutEdges, layoutType),
+    [baseFlow.nodes, layoutEdges, layoutType],
   );
 
   const layoutedNodes = useMemo(
-    () => (enableNetworkGrouping ? applyNetworkGrouping(layoutedFlow.nodes) : layoutedFlow.nodes),
+    () => (enableNetworkGrouping ? applyHierarchicalGrouping(layoutedFlow.nodes) : layoutedFlow.nodes),
     [enableNetworkGrouping, layoutedFlow.nodes],
   );
 
@@ -369,7 +268,7 @@ function InfraGraphComponent({
   }, [highlight, layoutedNodes]);
 
   const edgesForRender = useMemo(() => {
-    return layoutedFlow.edges.map((edge) => {
+    return baseFlow.edges.map((edge) => {
       const highlighted = highlight ? highlight.edgeIds.has(String(edge.id)) : true;
       const isHovered = hoveredEdgeId === edge.id;
       return {
@@ -389,7 +288,7 @@ function InfraGraphComponent({
         },
       };
     });
-  }, [highlight, hoveredEdgeId, layoutedFlow.edges]);
+  }, [highlight, hoveredEdgeId, baseFlow.edges]);
 
   const fitToView = useCallback(() => {
     if (!reactFlowInstance || infraNodes.length === 0) return;

@@ -13,7 +13,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
-import { runbooksApi, type RunbookStep } from '@/api/runbooks.api';
+import { runbooksApi, type RunbookContext, type RunbookStep } from '@/api/runbooks.api';
 import { simulationsApi } from '@/api/simulations.api';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -26,6 +26,7 @@ type SimulationOption = {
 };
 
 type StepType = RunbookStep['type'];
+type StepPhase = NonNullable<RunbookStep['phase']>;
 
 type TransitionTarget = 'validated' | 'tested' | 'active';
 
@@ -35,6 +36,16 @@ const TYPE_META: Record<StepType, { label: string; Icon: typeof Wrench }> = {
   decision: { label: 'Decision', Icon: GitBranch },
   notification: { label: 'Notification', Icon: Megaphone },
 };
+
+const PHASE_META: Record<StepPhase, { label: string; window: string }> = {
+  detection: { label: 'Detection', window: '5-15 min' },
+  containment: { label: 'Containment', window: '5-30 min' },
+  recovery: { label: 'Recovery', window: 'Variable' },
+  validation: { label: 'Validation', window: '15-30 min' },
+  communication: { label: 'Communication', window: 'Cadencee' },
+};
+
+const PHASE_ORDER: StepPhase[] = ['detection', 'containment', 'recovery', 'validation', 'communication'];
 
 const STATUS_META: Record<string, { className: string; label: string }> = {
   draft: {
@@ -81,9 +92,29 @@ function normalizeSimulations(raw: unknown): SimulationOption[] {
   return [];
 }
 
-function normalizeRunbookSteps(steps?: RunbookStep[] | null): RunbookStep[] {
+function inferPhase(step: RunbookStep): StepPhase {
+  const raw = step.phase;
+  if (raw && raw in PHASE_META) return raw;
+
+  const title = step.title.toLowerCase();
+  if (title.includes('detect') || title.includes('evaluat')) return 'detection';
+  if (title.includes('contain')) return 'containment';
+  if (title.includes('recover') || title.includes('restore') || title.includes('failover') || title.includes('bascul')) return 'recovery';
+  if (title.includes('valid') || title.includes('verif')) return 'validation';
+  return 'communication';
+}
+
+function normalizeRunbookSteps(steps?: RunbookStep[] | null): Array<RunbookStep & { phase: StepPhase; validationCriteria?: string; assignedRole: string }> {
   if (!Array.isArray(steps)) return [];
-  return [...steps].sort((left, right) => left.order - right.order);
+  return [...steps]
+    .map((step, index) => ({
+      ...step,
+      id: step.id || `step-${index + 1}`,
+      phase: inferPhase(step),
+      validationCriteria: step.validationCriteria || step.verificationCheck,
+      assignedRole: step.assignedRole || step.assignee || '-',
+    }))
+    .sort((left, right) => left.order - right.order);
 }
 
 function formatDate(value?: string | null): string {
@@ -109,6 +140,11 @@ function statusBadge(status: string) {
   }
 
   return <Badge className={meta.className}>{meta.label}</Badge>;
+}
+
+function formatScenarioType(value?: string | null): string {
+  if (!value) return '-';
+  return value.replace(/[_-]+/g, ' ');
 }
 
 function nextTransition(status: string): { target: TransitionTarget; label: string } | null {
@@ -184,6 +220,17 @@ function RunbookDetailPageInner() {
   const runbook = runbookQuery.data;
 
   const steps = useMemo(() => normalizeRunbookSteps(runbook?.steps), [runbook?.steps]);
+  const context: RunbookContext | null = runbook?.context ?? null;
+  const stepById = useMemo(() => new Map(steps.map((step) => [step.id || `step-${step.order}`, step] as const)), [steps]);
+  const stepsByPhase = useMemo(
+    () =>
+      PHASE_ORDER.map((phase) => ({
+        phase,
+        meta: PHASE_META[phase],
+        steps: steps.filter((step) => step.phase === phase),
+      })).filter((section) => section.steps.length > 0),
+    [steps],
+  );
 
   const simulationName = useMemo(() => {
     if (!runbook?.simulationId) return '-';
@@ -205,6 +252,7 @@ function RunbookDetailPageInner() {
     ],
     [runbook],
   );
+  const impactedNodePreview = context?.impactedNodes?.slice(0, 6) ?? [];
 
   const copyCommands = async (commands: string[]) => {
     try {
@@ -254,7 +302,7 @@ function RunbookDetailPageInner() {
           </Button>
           <h1 className="text-2xl font-bold">{runbook.title}</h1>
           <p className="text-sm text-muted-foreground">
-            Scenario lie: {simulationName} | Derniere mise a jour: {formatDate(runbook.updatedAt)}
+            Scenario lie: {simulationName} | Type: {formatScenarioType(context?.scenarioType)} | Derniere mise a jour: {formatDate(runbook.updatedAt)}
           </p>
         </div>
 
@@ -279,7 +327,7 @@ function RunbookDetailPageInner() {
       <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
         <Card>
           <CardHeader>
-            <CardTitle className="text-base">Timeline des etapes</CardTitle>
+            <CardTitle className="text-base">Runbook par phase</CardTitle>
           </CardHeader>
           <CardContent>
             {steps.length === 0 ? (
@@ -287,71 +335,130 @@ function RunbookDetailPageInner() {
                 Ce runbook ne contient pas encore d etapes structurees.
               </p>
             ) : (
-              <div className="space-y-5">
-                {steps.map((step, index) => {
-                  const typeMeta = TYPE_META[step.type] ?? TYPE_META.manual;
-                  const hasCommands = Array.isArray(step.commands) && step.commands.length > 0;
-
-                  return (
-                    <div key={`${runbook.id}-${step.order}`} className="relative pl-10">
-                      {index < steps.length - 1 && <span className="absolute left-[15px] top-8 h-[calc(100%+12px)] w-px bg-border" />}
-                      <span className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border bg-background text-xs font-semibold">
-                        {step.order}
-                      </span>
-
-                      <div className="rounded-md border p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <p className="font-medium">{step.title}</p>
-                          <Badge variant="outline" className="inline-flex items-center gap-1">
-                            <typeMeta.Icon className="h-3.5 w-3.5" /> {typeMeta.label}
-                          </Badge>
-                        </div>
-
-                        <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          Role: {step.assignedRole} | Duree estimee: {step.estimatedDurationMinutes} min
-                        </p>
-
-                        {hasCommands && (
-                          <div className="mt-3 overflow-hidden rounded-md border bg-slate-950">
-                            <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
-                              <p className="text-xs text-slate-200">Commandes CLI</p>
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                className="h-7 px-2"
-                                onClick={() => copyCommands(step.commands ?? [])}
-                              >
-                                <Copy className="mr-1 h-3.5 w-3.5" /> Copier
-                              </Button>
-                            </div>
-                            <pre className="overflow-x-auto p-3 text-xs text-slate-100">
-                              <code>{(step.commands ?? []).join('\n')}</code>
-                            </pre>
-                          </div>
-                        )}
-
-                        {step.verificationCheck && (
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            Verification: {step.verificationCheck}
-                          </p>
-                        )}
-
-                        {step.rollbackInstructions && (
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            Rollback: {step.rollbackInstructions}
-                          </p>
-                        )}
+              <div className="space-y-6">
+                {stepsByPhase.map((section) => (
+                  <div key={section.phase} className="space-y-4">
+                    <div className="flex items-center justify-between gap-3 border-b pb-2">
+                      <div>
+                        <p className="font-semibold">{section.meta.label}</p>
+                        <p className="text-xs text-muted-foreground">Fenetre cible: {section.meta.window}</p>
                       </div>
+                      <Badge variant="outline">{section.steps.length} etape(s)</Badge>
                     </div>
-                  );
-                })}
+
+                    <div className="space-y-5">
+                      {section.steps.map((step, index) => {
+                        const typeMeta = TYPE_META[step.type] ?? TYPE_META.manual;
+                        const hasCommands = Array.isArray(step.commands) && step.commands.length > 0;
+                        const prerequisiteLabels = (step.prerequisites ?? [])
+                          .map((id) => stepById.get(id))
+                          .filter(Boolean)
+                          .map((entry) => `#${entry?.order}`);
+
+                        return (
+                          <div key={`${runbook.id}-${step.order}`} className="relative pl-10">
+                            {index < section.steps.length - 1 && <span className="absolute left-[15px] top-8 h-[calc(100%+12px)] w-px bg-border" />}
+                            <span className="absolute left-0 top-0 flex h-8 w-8 items-center justify-center rounded-full border bg-background text-xs font-semibold">
+                              {step.order}
+                            </span>
+
+                            <div className="rounded-md border p-3">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <p className="font-medium">{step.title}</p>
+                                <Badge variant="outline" className="inline-flex items-center gap-1">
+                                  <typeMeta.Icon className="h-3.5 w-3.5" /> {typeMeta.label}
+                                </Badge>
+                              </div>
+
+                              <p className="mt-1 text-sm text-muted-foreground">{step.description}</p>
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Service: {step.serviceName || '-'} | Role: {step.assignedRole} | Duree estimee: {step.estimatedDurationMinutes} min
+                              </p>
+
+                              {prerequisiteLabels.length > 0 && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Prerequis: {prerequisiteLabels.join(', ')}
+                                </p>
+                              )}
+
+                              {hasCommands && (
+                                <div className="mt-3 overflow-hidden rounded-md border bg-slate-950">
+                                  <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2">
+                                    <p className="text-xs text-slate-200">Commandes CLI</p>
+                                    <Button
+                                      variant="secondary"
+                                      size="sm"
+                                      className="h-7 px-2"
+                                      onClick={() => copyCommands(step.commands ?? [])}
+                                    >
+                                      <Copy className="mr-1 h-3.5 w-3.5" /> Copier
+                                    </Button>
+                                  </div>
+                                  <pre className="overflow-x-auto p-3 text-xs text-slate-100">
+                                    <code>{(step.commands ?? []).join('\n')}</code>
+                                  </pre>
+                                </div>
+                              )}
+
+                              {step.validationCriteria && (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  Validation: {step.validationCriteria}
+                                </p>
+                              )}
+
+                              {step.rollbackInstructions && (
+                                <p className="mt-1 text-xs text-muted-foreground">
+                                  Rollback: {step.rollbackInstructions}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </CardContent>
         </Card>
 
         <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Contexte simulation</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <p>
+                <span className="text-muted-foreground">Type:</span> {formatScenarioType(context?.scenarioType)}
+              </p>
+              <p>
+                <span className="text-muted-foreground">RTO predit:</span> {context?.predictedRTO ?? '-'} min
+              </p>
+              <p>
+                <span className="text-muted-foreground">RPO predit:</span> {context?.predictedRPO ?? '-'} min
+              </p>
+              <p>
+                <span className="text-muted-foreground">Noeuds impactes:</span> {context?.impactedNodes?.length ?? 0}
+              </p>
+              <p>
+                <span className="text-muted-foreground">Evenements de propagation:</span> {context?.propagationTimeline?.length ?? 0}
+              </p>
+              {impactedNodePreview.length > 0 && (
+                <div className="pt-1">
+                  <p className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Priorites de recovery</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {impactedNodePreview.map((node) => (
+                      <Badge key={node.id} variant="secondary" className="text-[11px]">
+                        {node.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader>
               <CardTitle className="text-base">RACI</CardTitle>

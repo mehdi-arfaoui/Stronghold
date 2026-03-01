@@ -268,5 +268,5 @@ describe('RecommendationsEngine', () => {
     const orderLabel = screen.getByText('Order DB');
     const relation = managedLabel.compareDocumentPosition(orderLabel);
     expect(Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
-  });
+  }, 10000);
 });

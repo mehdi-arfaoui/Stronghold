@@ -117,6 +117,52 @@ async function withDownloadUrls(runbook: any) {
   return { ...runbook, downloadUrls };
 }
 
+async function buildSimulationMap(
+  tenantId: string,
+  simulationIds: string[],
+): Promise<Map<string, { id: string; scenarioType: string; scenarioParams: object; result: object; createdAt: Date }>> {
+  const uniqueIds = Array.from(new Set(simulationIds.filter(Boolean)));
+  if (uniqueIds.length === 0) return new Map();
+
+  const simulations = await prisma.simulation.findMany({
+    where: { tenantId, id: { in: uniqueIds } },
+    select: {
+      id: true,
+      scenarioType: true,
+      scenarioParams: true,
+      result: true,
+      createdAt: true,
+    },
+  });
+
+  return new Map(
+    simulations.map((simulation) => [
+      simulation.id,
+      {
+        id: simulation.id,
+        scenarioType: simulation.scenarioType,
+        scenarioParams: simulation.scenarioParams as object,
+        result: simulation.result as object,
+        createdAt: simulation.createdAt,
+      },
+    ]),
+  );
+}
+
+function attachContext(runbook: any, simulationMap: Map<string, { id: string; scenarioType: string; scenarioParams: object; result: object; createdAt: Date }>) {
+  if (!runbook.simulationId) return runbook;
+  const simulation = simulationMap.get(runbook.simulationId);
+  if (!simulation) return runbook;
+
+  return {
+    ...runbook,
+    context: RunbookGeneratorService.buildContext({
+      simulation,
+      steps: runbook.steps,
+    }),
+  };
+}
+
 function parseRunbookDate(value: unknown): Date | null {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -554,7 +600,13 @@ router.get("/", async (req: TenantRequest, res) => {
       where: { tenantId },
       orderBy: { generatedAt: "desc" },
     });
-    const enriched = await Promise.all(runbooks.map((rb) => withDownloadUrls(rb)));
+    const simulationMap = await buildSimulationMap(
+      tenantId,
+      runbooks.map((runbook) => runbook.simulationId || "").filter(Boolean),
+    );
+    const enriched = await Promise.all(
+      runbooks.map(async (runbook) => attachContext(await withDownloadUrls(runbook), simulationMap)),
+    );
     return res.json(enriched);
   } catch (error) {
     appLogger.error("Error fetching runbooks", error);
@@ -575,7 +627,8 @@ router.get("/:id", async (req: TenantRequest, res) => {
     const runbook = await prisma.runbook.findFirst({ where: { id: runbookId, tenantId } });
     if (!runbook) return res.status(404).json({ error: "Runbook introuvable" });
 
-    const enriched = await withDownloadUrls(runbook);
+    const simulationMap = await buildSimulationMap(tenantId, [runbook.simulationId || ""]);
+    const enriched = attachContext(await withDownloadUrls(runbook), simulationMap);
     return res.json(enriched);
   } catch (error) {
     appLogger.error("Error fetching runbook", error);
@@ -774,6 +827,8 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
               type: true,
               provider: true,
               region: true,
+              availabilityZone: true,
+              metadata: true,
             },
           })
         : [];
@@ -783,6 +838,7 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
           id: simulation.id,
           name: simulation.name,
           scenarioType: simulation.scenarioType,
+          scenarioParams: simulation.scenarioParams,
           result: simulation.result,
           createdAt: simulation.createdAt,
         },
@@ -815,6 +871,7 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
           accountable: generated.accountable,
           consulted: generated.consulted,
           informed: generated.informed,
+          generatedForServices: impactedNodes.map((node) => node.name).join(", "),
           templateId:
             typeof templateId === "string" && templateId.trim().length > 0
               ? templateId.trim()
@@ -822,7 +879,10 @@ router.post("/generate", requireRole("OPERATOR"), async (req: TenantRequest, res
         },
       });
 
-      const enriched = await withDownloadUrls(runbook);
+      const enriched = {
+        ...(await withDownloadUrls(runbook)),
+        context: generated.context,
+      };
       return res.status(201).json({
         runbook: enriched,
         predictedRTO: generated.predictedRTO,

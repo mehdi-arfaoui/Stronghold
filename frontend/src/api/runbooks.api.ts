@@ -1,15 +1,57 @@
 import { api } from "./client";
 
 export interface RunbookStep {
+  id?: string;
   order: number;
+  phase?: 'detection' | 'containment' | 'recovery' | 'validation' | 'communication';
   title: string;
   description: string;
+  serviceId?: string;
+  serviceName?: string;
   type: "manual" | "automated" | "decision" | "notification";
   estimatedDurationMinutes: number;
+  prerequisites?: string[];
+  validationCriteria?: string;
+  assignee?: string;
   assignedRole: string;
   commands?: string[];
   verificationCheck?: string;
   rollbackInstructions?: string;
+}
+
+export interface RunbookContextNode {
+  id: string;
+  name: string;
+  type: string;
+  provider?: string;
+  region?: string;
+  availabilityZone?: string;
+  tier?: number;
+  impactedAtMinutes: number;
+  impactedAtSeconds: number;
+}
+
+export interface RunbookPropagationEvent {
+  timestampMinutes: number;
+  delaySeconds: number;
+  nodeId: string;
+  nodeName: string;
+  nodeType: string;
+  impactType: string;
+  impactSeverity: string;
+  edgeType: string;
+  parentNodeId: string | null;
+  parentNodeName: string | null;
+  description: string;
+}
+
+export interface RunbookContext {
+  simulationId: string;
+  scenarioType: string;
+  impactedNodes: RunbookContextNode[];
+  propagationTimeline: RunbookPropagationEvent[];
+  predictedRTO: number;
+  predictedRPO: number;
 }
 
 export interface RunbookRecord {
@@ -21,6 +63,7 @@ export interface RunbookRecord {
   simulationId?: string | null;
   recommendationId?: string | null;
   steps?: RunbookStep[] | null;
+  context?: RunbookContext | null;
   responsible?: string | null;
   accountable?: string | null;
   consulted?: string | null;
@@ -62,4 +105,3 @@ export const runbooksApi = {
   validate: (id: string, payload?: { testResult?: string; lastTestedAt?: string }) =>
     api.put<RunbookRecord>(`/runbooks/${id}/validate`, payload ?? {}),
 };
-
