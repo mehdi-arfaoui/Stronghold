@@ -5,7 +5,7 @@
 import type { InfraNodeAttrs, ScanEdge } from './types.js';
 import { NodeType, EdgeType } from './types.js';
 import { isAnalyzableServiceNode } from './serviceClassification.js';
-import { inferBestEffortEdges } from './demoInferenceEngine.js';
+import { inferBestEffortEdges } from './fallbackInferenceEngine.js';
 
 type NodeLookup = {
   byAnyId: Map<string, InfraNodeAttrs>;

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { inferDependencies } from '../src/graph/dependencyInferenceEngine.js';
 import { calculateBlastRadius } from '../src/graph/blastRadiusEngine.js';
-import { inferBestEffortEdges } from '../src/graph/demoInferenceEngine.js';
+import { inferBestEffortEdges } from '../src/graph/fallbackInferenceEngine.js';
 import { classifyServiceCriticality } from '../src/graph/criticalityClassifier.js';
 import { calculateServiceDowntimeCosts } from '../src/services/pricing/downtimeDistribution.js';
 import { EdgeType, NodeType } from '../src/graph/types.js';
