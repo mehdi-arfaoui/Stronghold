@@ -273,7 +273,7 @@ export class CloudPricingService {
       return cached.result;
     }
 
-    if (isDemoPricingContext(metadata)) {
+    if (process.env.BUILD_TARGET === 'internal' && isDemoPricingContext(metadata)) {
       const fallback = this.getStaticFallback(resolution, currency, {
         noteOverride: 'Stronghold demo pricing table (live pricing disabled)',
       });

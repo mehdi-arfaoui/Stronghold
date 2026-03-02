@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
 
-import discoveryResilienceRoutes from '../../src/routes/discoveryResilienceRoutes.ts';
+import demoRoutes from '../../src/demo/demoRoutes.ts';
 import { discoveryQueue } from '../../src/queues/discoveryQueue.ts';
 import prisma from '../../src/prismaClient.ts';
 
@@ -34,7 +34,7 @@ test('POST /discovery-resilience/seed-demo is blocked in production', async () =
     req.apiRole = 'ADMIN';
     next();
   });
-  app.use('/discovery-resilience', discoveryResilienceRoutes);
+  app.use('/discovery-resilience', demoRoutes);
 
   try {
     await withServer(app, async (baseUrl) => {

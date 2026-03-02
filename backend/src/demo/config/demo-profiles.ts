@@ -55,6 +55,10 @@ export type DemoProfileSelection = {
   hasUserOverrides: boolean;
 };
 
+export type DemoProfileParseResult =
+  | { ok: true; value: DemoProfileSelectionInput }
+  | { ok: false; error: string; details: Array<{ field: string; message: string }> };
+
 export const DEMO_SECTOR_DEFINITIONS: ReadonlyArray<DemoSectorDefinition> = [
   {
     key: 'ecommerce',
@@ -490,4 +494,76 @@ export function deriveOrganizationSizeCategoryFromDemoProfile(
   selection: DemoProfileSelection,
 ): string {
   return mapSizeCategoryFromEmployees(selection.financials.employeeCount);
+}
+
+export function parseDemoProfile(body: unknown): DemoProfileParseResult {
+  if (body == null || body === '') {
+    return { ok: true, value: {} };
+  }
+  if (typeof body !== 'object' || Array.isArray(body)) {
+    return {
+      ok: false,
+      error: 'Invalid payload',
+      details: [{ field: 'body', message: 'Expected JSON object' }],
+    };
+  }
+
+  const payload = body as Record<string, unknown>;
+  const details: Array<{ field: string; message: string }> = [];
+  const input: DemoProfileSelectionInput = {};
+
+  if (payload.sector !== undefined) {
+    if (!isDemoSectorKey(payload.sector)) {
+      details.push({ field: 'sector', message: 'Unsupported demo sector' });
+    } else {
+      input.sector = payload.sector;
+    }
+  }
+
+  if (payload.companySize !== undefined) {
+    if (!isDemoCompanySizeKey(payload.companySize)) {
+      details.push({ field: 'companySize', message: 'Unsupported company size' });
+    } else {
+      input.companySize = payload.companySize;
+    }
+  }
+
+  if (payload.financialOverrides !== undefined) {
+    if (
+      payload.financialOverrides == null ||
+      typeof payload.financialOverrides !== 'object' ||
+      Array.isArray(payload.financialOverrides)
+    ) {
+      details.push({
+        field: 'financialOverrides',
+        message: 'Expected object with numeric overrides',
+      });
+    } else {
+      const parsedOverrides: Partial<Record<DemoFinancialFieldKey, number>> = {};
+      const rawOverrides = payload.financialOverrides as Record<string, unknown>;
+      for (const field of DEMO_FINANCIAL_FIELDS) {
+        if (rawOverrides[field] === undefined) continue;
+        const parsed = toPositiveNumber(rawOverrides[field]);
+        if (parsed == null) {
+          details.push({
+            field: `financialOverrides.${field}`,
+            message: 'Expected positive number',
+          });
+          continue;
+        }
+        parsedOverrides[field] = parsed;
+      }
+      input.financialOverrides = parsedOverrides;
+    }
+  }
+
+  if (details.length > 0) {
+    return {
+      ok: false,
+      error: 'Invalid demo profile payload',
+      details,
+    };
+  }
+
+  return { ok: true, value: input };
 }
