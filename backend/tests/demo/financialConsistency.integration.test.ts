@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import prisma from '../src/prismaClient.js';
-import { runDemoSeed } from '../src/services/demoSeedService.js';
-import { buildLandingZoneFinancialContext } from '../src/services/landing-zone-financial.service.js';
-import { buildFinancialSummaryPayload } from '../src/services/financial-dashboard.service.js';
+import prisma from '../../src/prismaClient.js';
+import { runDemoSeed } from '../../src/demo/index.js';
+import { buildLandingZoneFinancialContext } from '../../src/services/landing-zone-financial.service.js';
+import { buildFinancialSummaryPayload } from '../../src/services/financial-dashboard.service.js';
 
 test(
   'financial pipelines stay numerically aligned between recommendations and dashboard',

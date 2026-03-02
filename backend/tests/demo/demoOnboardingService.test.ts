@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { getDemoSeedGuard } from '../src/services/demoOnboardingService.ts';
+import { getDemoSeedGuard } from '../../src/demo/services/demoOnboardingService.ts';
 
 test('getDemoSeedGuard blocks production', () => {
   const result = getDemoSeedGuard({ NODE_ENV: 'production' });

@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   deriveOrganizationSizeCategoryFromDemoProfile,
   resolveDemoProfileSelection,
-} from '../src/config/demo-profiles.js';
+} from '../../src/demo/config/demo-profiles.js';
 
 test('resolveDemoProfileSelection returns matrix defaults when no overrides are provided', () => {
   const selection = resolveDemoProfileSelection({

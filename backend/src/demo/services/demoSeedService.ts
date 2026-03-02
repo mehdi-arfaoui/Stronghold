@@ -11,13 +11,13 @@
  */
 
 import type { PrismaClient, Prisma } from "@prisma/client";
-import * as GraphService from '../graph/graphService.js';
-import { generateBIA } from '../graph/biaEngine.js';
-import { detectRisks } from '../graph/riskDetectionEngine.js';
-import { runPostIngestionPipeline } from '../discovery/discoveryOrchestrator.js';
-import { ensureBaselineSnapshot } from '../drift/driftDetectionService.js';
-import { BusinessFlowFinancialEngineService } from './business-flow-financial-engine.service.js';
-import { CurrencyService } from './currency.service.js';
+import * as GraphService from '../../graph/graphService.js';
+import { generateBIA } from '../../graph/biaEngine.js';
+import { detectRisks } from '../../graph/riskDetectionEngine.js';
+import { runPostIngestionPipeline } from '../../discovery/discoveryOrchestrator.js';
+import { ensureBaselineSnapshot } from '../../drift/driftDetectionService.js';
+import { BusinessFlowFinancialEngineService } from '../../services/business-flow-financial-engine.service.js';
+import { CurrencyService } from '../../services/currency.service.js';
 import {
   deriveOrganizationSizeCategoryFromDemoProfile,
   resolveDemoProfileSelection,
@@ -25,7 +25,7 @@ import {
   type DemoProfileSelectionInput,
 } from '../config/demo-profiles.js';
 import { generateDemoInfrastructure } from './demoInfrastructureFactory.js';
-import { appLogger } from "../utils/logger.js";
+import { appLogger } from "../../utils/logger.js";
 
 interface DemoFlowNodeDef {
   infraNodeId: string;

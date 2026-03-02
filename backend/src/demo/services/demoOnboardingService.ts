@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient } from '@prisma/client';
-import * as GraphService from '../graph/graphService.js';
-import { runSimulation } from '../graph/simulationEngine.js';
-import { RunbookGeneratorService } from './runbook-generator.service.js';
+import * as GraphService from '../../graph/graphService.js';
+import { runSimulation } from '../../graph/simulationEngine.js';
+import { RunbookGeneratorService } from '../../services/runbook-generator.service.js';
 import {
   DEMO_INCIDENT_SEEDS,
   DEMO_PRA_EXERCISE_KEY,
@@ -11,7 +11,7 @@ import {
   DEMO_SIMULATION_SEEDS,
 } from './demoOnboardingDataset.js';
 import { runDemoSeed, type RunDemoSeedOptions } from './demoSeedService.js';
-import { appLogger } from '../utils/logger.js';
+import { appLogger } from '../../utils/logger.js';
 
 const PERFORMANCE_BUDGET_MS = 10_000;
 const HOUR_MS = 60 * 60 * 1000;

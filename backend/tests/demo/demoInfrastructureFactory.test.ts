@@ -4,7 +4,7 @@ import test from 'node:test';
 import {
   generateDemoInfrastructure,
   getLayersForCompanySize,
-} from '../src/services/demoInfrastructureFactory.ts';
+} from '../../src/demo/services/demoInfrastructureFactory.ts';
 
 const REQUIRED_CORE_IDS = [
   'svc-api-gateway',

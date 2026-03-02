@@ -2,12 +2,12 @@
  * CLI entrypoint for ShopMax demo seed.
  *
  * Usage:
- *   npx tsx prisma/seed-demo.ts
+ *   npx tsx src/demo/seed-demo.ts
  *   npm run seed:demo
  */
 
 import { PrismaClient } from "@prisma/client";
-import { getDemoSeedGuard, runDemoOnboarding } from "../src/services/demoOnboardingService.js";
+import { getDemoSeedGuard, runDemoOnboarding } from "./services/demoOnboardingService.js";
 
 const prisma = new PrismaClient();
 

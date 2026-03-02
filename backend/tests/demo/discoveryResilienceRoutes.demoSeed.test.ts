@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
 
-import discoveryResilienceRoutes from '../src/routes/discoveryResilienceRoutes.ts';
-import { discoveryQueue } from '../src/queues/discoveryQueue.ts';
-import prisma from '../src/prismaClient.ts';
+import discoveryResilienceRoutes from '../../src/routes/discoveryResilienceRoutes.ts';
+import { discoveryQueue } from '../../src/queues/discoveryQueue.ts';
+import prisma from '../../src/prismaClient.ts';
 
 async function withServer(app: express.Express, handler: (baseUrl: string) => Promise<void>) {
   const server = app.listen(0);

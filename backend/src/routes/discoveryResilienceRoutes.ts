@@ -15,7 +15,11 @@ import { discoveryQueue } from '../queues/discoveryQueue.js';
 import {
   getDemoSeedGuard,
   runDemoOnboarding,
-} from '../services/demoOnboardingService.js';
+  isDemoCompanySizeKey,
+  isDemoSectorKey,
+  type DemoFinancialFieldKey,
+  type DemoProfileSelectionInput,
+} from '../demo/index.js';
 import { buildScanHealthReport } from '../services/discoveryHealthService.js';
 import {
   encryptScanConfigCredentials,
@@ -28,12 +32,6 @@ import type {
   DiscoveryConnectorResult,
   DiscoveryCredentials,
 } from '../services/discoveryTypes.js';
-import {
-  isDemoCompanySizeKey,
-  isDemoSectorKey,
-  type DemoFinancialFieldKey,
-  type DemoProfileSelectionInput,
-} from '../config/demo-profiles.js';
 import {
   enqueueScheduledScanRun,
   intervalToCronExpression,
