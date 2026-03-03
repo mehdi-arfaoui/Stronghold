@@ -55,7 +55,7 @@ services:
         max-size: "50m"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:4000/health/live"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:4000/health/live"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -82,7 +82,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/health"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -161,7 +161,7 @@ services:
         max-size: "10m"
         max-file: "3"
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:9000/minio/health/ready >/dev/null"]
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9000/minio/health/ready >/dev/null"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -193,7 +193,7 @@ services:
         max-size: "20m"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost/"]
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1/"]
       interval: 30s
       timeout: 5s
       retries: 5
