@@ -94,6 +94,10 @@ log_info "Copying package files to ${INSTALL_DIR}..."
 sync_package_tree "${PACKAGE_DIR}" "${INSTALL_DIR}"
 mkdir -p "${INSTALL_DIR}/nginx" "${INSTALL_DIR}/certs" "${INSTALL_DIR}/backups" "${INSTALL_DIR}/docs" "${INSTALL_DIR}/lib"
 chmod +x "${INSTALL_DIR}"/*.sh
+if [[ ! -f "${INSTALL_DIR}/frontend-nginx.conf" ]]; then
+  log_error "Missing frontend-nginx.conf in ${INSTALL_DIR}."
+  exit 1
+fi
 
 cd "${INSTALL_DIR}"
 
