@@ -7,6 +7,9 @@ import { visualizer } from 'rollup-plugin-visualizer';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
+  define: {
+    __DEMO_ENABLED__: JSON.stringify(process.env.BUILD_TARGET === 'internal'),
+  },
   plugins: [
     react(),
     ...(process.env.ANALYZE === 'true'

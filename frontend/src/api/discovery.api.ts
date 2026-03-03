@@ -9,80 +9,6 @@ import type {
 } from '@/types/discovery.types';
 import type { GraphData } from '@/types/graph.types';
 
-export interface DemoOnboardingPipelineStep {
-  step: string;
-  status: 'completed' | 'failed';
-  durationMs: number;
-  details?: string;
-}
-
-export interface DemoOnboardingResponse {
-  success: boolean;
-  message: string;
-  environment: string;
-  mode: string;
-  nodes: number;
-  confirmedEdges: number;
-  inferredEdges: number;
-  totalEdges: number;
-  resilienceScore: number;
-  spofCount: number;
-  biaProcesses: number;
-  risksDetected: number;
-  organizationProfileConfigured: boolean;
-  businessFlows: number;
-  validatedBusinessFlows: number;
-  unvalidatedBusinessFlows: number;
-  flowCoveragePercent: number;
-  userOverrides: number;
-  spofs: string[];
-  servicesSeeded: number;
-  incidentsSeeded: number;
-  simulationsSeeded: number;
-  runbooksSeeded: number;
-  praExercisesSeeded: number;
-  durationMs: number;
-  performanceBudgetMs: number;
-  withinPerformanceBudget: boolean;
-  pipeline: DemoOnboardingPipelineStep[];
-  demoProfile?: {
-    sector: DemoSectorKey;
-    sectorLabel: string;
-    companySize: DemoCompanySizeKey;
-    companySizeLabel: string;
-    hasUserOverrides: boolean;
-    annualRevenue: number;
-    employeeCount: number;
-    annualITBudget: number;
-    drBudgetPercent: number;
-    hourlyDowntimeCost: number;
-  };
-}
-
-export type DemoSectorKey =
-  | 'ecommerce'
-  | 'finance'
-  | 'healthcare'
-  | 'manufacturing'
-  | 'it_saas'
-  | 'transport'
-  | 'energy'
-  | 'public';
-
-export type DemoCompanySizeKey = 'pme' | 'pme_plus' | 'eti' | 'large';
-
-export type DemoSeedPayload = {
-  sector: DemoSectorKey;
-  companySize: DemoCompanySizeKey;
-  financialOverrides?: Partial<{
-    annualRevenue: number;
-    employeeCount: number;
-    annualITBudget: number;
-    drBudgetPercent: number;
-    hourlyDowntimeCost: number;
-  }>;
-};
-
 export const discoveryApi = {
   launchScan: (config: ScanConfig) =>
     api.post<{ jobId: string }>('/discovery-resilience/auto-scan', config),
@@ -125,10 +51,4 @@ export const discoveryApi = {
 
   getHealth: () =>
     api.get<{ data: ScanHealthReport }>('/discovery/health'),
-
-  seedDemo: (payload?: DemoSeedPayload) =>
-    api.post<DemoOnboardingResponse>(
-      '/discovery-resilience/seed-demo',
-      payload ?? {}
-    ),
 };
