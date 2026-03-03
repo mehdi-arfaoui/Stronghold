@@ -4,6 +4,7 @@ import cors, { type CorsOptions } from "cors";
 import helmet from "helmet";
 import dotenv from "dotenv";
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { Redis } from "ioredis";
 import { Prisma } from "@prisma/client";
@@ -74,6 +75,8 @@ import { deploymentConfig } from "./config/deployment.js";
 import { loadValidatedEnv } from "./config/env.validation.js";
 import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
 import { cloudPricingService } from "./services/pricing/cloudPricingService.js";
+
+const require = createRequire(import.meta.url);
 
 const envCandidates = [
   path.resolve(process.cwd(), ".env"),
@@ -633,6 +636,20 @@ const routes = [
 for (const route of routes) {
   const normalizedHandler = normalizeRouteHandler(route.handler, route.name);
   app.use(route.path, normalizedHandler);
+}
+
+if (process.env.BUILD_TARGET === "internal") {
+  try {
+    const demoRoutes = require("./demo/demoRoutes.js");
+    const normalizedDemoRoutes = normalizeRouteHandler(demoRoutes, "demoRoutes");
+    app.use("/discovery-resilience", normalizedDemoRoutes);
+    app.use("/api/discovery-resilience", normalizedDemoRoutes);
+    logBoot("routes.demo.loaded", {
+      paths: ["/discovery-resilience", "/api/discovery-resilience"],
+    });
+  } catch {
+    // Demo module absent in client builds or stripped artifacts.
+  }
 }
 
 logBoot("routes.registered", { count: routes.length });
