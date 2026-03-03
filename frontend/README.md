@@ -2,6 +2,20 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Stronghold build targets
+
+The frontend supports two build variants controlled at build time by `BUILD_TARGET`:
+
+- `BUILD_TARGET=client`: demo pages are excluded and `__DEMO_ENABLED__` is `false`.
+- `BUILD_TARGET=internal`: demo pages are included and the internal demo onboarding stays available.
+
+Examples:
+
+- Client build: `$env:BUILD_TARGET='client'; npm run build`
+- Internal build: `$env:BUILD_TARGET='internal'; npm run build`
+- Docker client image: `docker build --target client -t stronghold-web:client .`
+- Docker internal image: `docker build --target internal -t stronghold-web:internal .`
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
