@@ -24,7 +24,7 @@ RUN --mount=type=cache,target=/root/.npm \
 FROM deps AS source
 COPY prisma ./prisma
 RUN npx prisma generate
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.client.json ./
 COPY config ./config
 COPY src ./src
 COPY scripts ./scripts
@@ -72,5 +72,6 @@ COPY --from=build-internal /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build-internal /app/dist ./dist
 COPY --from=build-internal /app/prisma ./prisma
 COPY --from=build-internal /app/config ./config
+COPY --from=build-internal /app/src/demo ./src/demo
 EXPOSE 4000
 CMD ["node", "dist/index.js"]
