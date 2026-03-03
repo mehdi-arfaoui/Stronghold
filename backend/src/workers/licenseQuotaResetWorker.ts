@@ -6,12 +6,12 @@ import { appLogger } from "../utils/logger.js";
 const queueName = "licenseQuotaReset";
 
 async function runMonthlyReset() {
-  appLogger.info("[License] Starting monthly quota reset...");
+  appLogger.info("[License] Starting scheduled license maintenance check...");
   try {
     const count = await licenseService.resetMonthlyQuotas();
-    appLogger.info(`[License] Reset monthly quotas for ${count} licenses`);
+    appLogger.info(`[License] Scheduled license maintenance completed (${count})`);
   } catch (error) {
-    appLogger.error("[License] Failed to reset monthly quotas:", error);
+    appLogger.error("[License] Scheduled license maintenance failed:", error);
     throw error;
   }
 }
@@ -24,7 +24,7 @@ export async function startLicenseQuotaResetWorker() {
   const cronPattern = process.env.CRON_LICENSE_RESET || "0 0 1 * *";
 
   await queue.add(
-    "license.resetMonthlyQuotas",
+    "license.maintenance",
     {},
     {
       repeat: { pattern: cronPattern },
@@ -43,13 +43,13 @@ export async function startLicenseQuotaResetWorker() {
   );
 
   worker.on("failed", (job, err) => {
-    appLogger.error("[License] Monthly quota reset failed", job?.id, err);
+    appLogger.error("[License] Scheduled license maintenance failed", job?.id, err);
   });
 
   worker.on("completed", (job) => {
-    appLogger.info("[License] Monthly quota reset completed", { jobId: job?.id });
+    appLogger.info("[License] Scheduled license maintenance completed", { jobId: job?.id });
   });
 
-  appLogger.info(`[License] Quota reset worker scheduled with pattern: ${cronPattern}`);
+  appLogger.info(`[License] Maintenance worker scheduled with pattern: ${cronPattern}`);
   return worker;
 }

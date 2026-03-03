@@ -1,410 +1,357 @@
-import { appLogger } from "../utils/logger.js";
+import fs from 'node:fs';
+import fsp from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { TextDecoder } from 'node:util';
+import type { PrismaClient } from '@prisma/client';
+import { compactVerify, importSPKI } from 'jose';
 import prisma from '../prismaClient.js';
-import { redis } from '../lib/redis.js';
-import { PLANS, type PlanKey } from '../config/plans.js';
-import type { License, LicenseUsage } from '@prisma/client';
-import type { QuotaType, QuotaCheckResult, ValidityResult, LicenseWithUsage } from '../types/license.js';
+import { appLogger } from '../utils/logger.js';
+import {
+  LEGACY_FEATURE_ALIASES,
+  type LicenseFeature,
+  type LicensePlan,
+} from '../config/licensePlans.js';
+import type { LicenseApiSnapshot, LicensePayload, LicenseStatus } from '../types/license.js';
 
-const LICENSE_CACHE_TTL = 300; // 5 minutes
-const CACHE_PREFIX = 'license:';
+const LICENSE_REVALIDATION_MS = 6 * 60 * 60 * 1000;
+const GRACE_PERIOD_DAYS = 15;
+const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const LICENSE_SIGNATURE_ALGORITHM = 'EdDSA';
+const textDecoder = new TextDecoder();
 
-/**
- * Serializes an object with BigInt support for JSON
- */
-function serializeWithBigInt(obj: unknown): string {
-  return JSON.stringify(obj, (_key, value) =>
-    typeof value === 'bigint' ? value.toString() + 'n' : value
-  );
+type LicenseBindingRecord = {
+  id: string;
+  licenseId: string;
+  fingerprint: string;
+  boundAt: Date;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type LicenseBindingPrisma = {
+  licenseBinding: {
+    findUnique(args: { where: { licenseId: string } }): Promise<LicenseBindingRecord | null>;
+    create(args: { data: { licenseId: string; fingerprint: string } }): Promise<LicenseBindingRecord>;
+  };
+};
+
+function isLicensePlan(value: unknown): value is LicensePlan {
+  return value === 'starter' || value === 'pro' || value === 'enterprise';
 }
 
-/**
- * Deserializes JSON with BigInt support
- */
-function deserializeWithBigInt(json: string): unknown {
-  return JSON.parse(json, (_key, value) => {
-    if (typeof value === 'string' && /^-?\d+n$/.test(value)) {
-      return BigInt(value.slice(0, -1));
-    }
-    return value;
-  });
+function normalizeFeature(feature: string): string {
+  return feature.trim().toLowerCase();
 }
 
-/**
- * Erreur personnalisée pour licence non trouvée
- */
-export class LicenseNotFoundError extends Error {
-  constructor(tenantId: string) {
-    super(`No license found for tenant ${tenantId}`);
-    this.name = 'LicenseNotFoundError';
+function normalizePayload(payload: unknown): LicensePayload | null {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
   }
+
+  const candidate = payload as Record<string, unknown>;
+  const lid = typeof candidate.lid === 'string' ? candidate.lid.trim() : '';
+  const company = typeof candidate.company === 'string' ? candidate.company.trim() : '';
+  const plan = typeof candidate.plan === 'string' ? candidate.plan.trim().toLowerCase() : '';
+  const maxNodes = Number(candidate.maxNodes);
+  const maxUsers = Number(candidate.maxUsers);
+  const maxCloudEnvs = Number(candidate.maxCloudEnvs);
+  const iat = Number(candidate.iat);
+  const exp = Number(candidate.exp);
+  const rawFeatures = Array.isArray(candidate.features) ? candidate.features : [];
+  const features = rawFeatures
+    .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+    .map((entry) => normalizeFeature(entry)) as LicenseFeature[];
+
+  if (
+    !lid ||
+    !company ||
+    !isLicensePlan(plan) ||
+    !Number.isFinite(maxNodes) ||
+    !Number.isFinite(maxUsers) ||
+    !Number.isFinite(maxCloudEnvs) ||
+    !Number.isFinite(iat) ||
+    !Number.isFinite(exp)
+  ) {
+    return null;
+  }
+
+  return {
+    lid,
+    company,
+    plan,
+    maxNodes,
+    maxUsers,
+    maxCloudEnvs,
+    features,
+    iat: Math.trunc(iat),
+    exp: Math.trunc(exp),
+  };
 }
 
-/**
- * Service de gestion des licences pour les tenants
- */
 export class LicenseService {
-  /**
-   * Récupère la licence d'un tenant avec cache Redis
-   */
-  async getLicense(tenantId: string): Promise<LicenseWithUsage> {
-    const cacheKey = `${CACHE_PREFIX}${tenantId}`;
+  private readonly licensePath: string;
+  private readonly publicKeyPath: string;
+  private readonly prismaClient: LicenseBindingPrisma;
+  private publicKey: Awaited<ReturnType<typeof importSPKI>> | null = null;
+  private license: LicensePayload | null = null;
+  private status: LicenseStatus = 'not_found';
+  private revalidationTimer: NodeJS.Timeout | null = null;
 
-    // Vérifier le cache
+  constructor(prismaClient: LicenseBindingPrisma) {
+    this.prismaClient = prismaClient;
+    this.licensePath = process.env.LICENSE_PATH || '/app/license/stronghold.lic';
+    this.publicKeyPath = process.env.LICENSE_PUBLIC_KEY_PATH || '/app/license/license-public.pem';
+  }
+
+  async initialize(): Promise<void> {
     try {
-      const cached = await redis.get(cacheKey);
-      if (cached) {
-        return deserializeWithBigInt(cached) as LicenseWithUsage;
-      }
-    } catch (err) {
-      // Redis might not be connected, continue without cache
-      appLogger.warn('Redis cache read failed:', err);
-    }
-
-    // Récupérer depuis la DB
-    const license = await prisma.license.findUnique({
-      where: { tenantId },
-      include: { usage: true },
-    });
-
-    if (!license) {
-      throw new LicenseNotFoundError(tenantId);
-    }
-
-    // Track the last successful license validation/read in DB.
-    const checkedAt = new Date();
-    if (!license.lastCheckedAt || checkedAt.getTime() - license.lastCheckedAt.getTime() >= 60_000) {
-      await prisma.license.update({
-        where: { id: license.id },
-        data: { lastCheckedAt: checkedAt },
-      });
-      license.lastCheckedAt = checkedAt;
-    }
-
-    // Mettre en cache
-    try {
-      await redis.setex(cacheKey, LICENSE_CACHE_TTL, serializeWithBigInt(license));
-    } catch (err) {
-      // Redis might not be connected, continue without cache
-      appLogger.warn('Redis cache write failed:', err);
-    }
-
-    return license;
-  }
-
-  /**
-   * Crée une licence pour un nouveau tenant
-   */
-  async createLicense(tenantId: string, plan: PlanKey = 'STARTER'): Promise<License> {
-    const planConfig = PLANS[plan];
-
-    const license = await prisma.license.create({
-      data: {
-        tenantId,
-        plan,
-        maxUsers: planConfig.maxUsers,
-        maxStorage: BigInt(planConfig.maxStorage),
-        maxScansMonth: planConfig.maxScansMonth,
-        maxDocuments: planConfig.maxDocuments,
-        features: (planConfig.features as readonly string[]).includes('*')
-          ? ['*']
-          : [...planConfig.features],
-        usage: {
-          create: {},  // Crée LicenseUsage avec valeurs par défaut
-        },
-      },
-      include: { usage: true },
-    });
-
-    return license;
-  }
-
-  /**
-   * Met à jour le plan d'une licence
-   */
-  async upgradePlan(tenantId: string, newPlan: PlanKey): Promise<License> {
-    const planConfig = PLANS[newPlan];
-
-    const license = await prisma.license.update({
-      where: { tenantId },
-      data: {
-        plan: newPlan,
-        maxUsers: planConfig.maxUsers,
-        maxStorage: BigInt(planConfig.maxStorage),
-        maxScansMonth: planConfig.maxScansMonth,
-        maxDocuments: planConfig.maxDocuments,
-        features: (planConfig.features as readonly string[]).includes('*')
-          ? ['*']
-          : [...planConfig.features],
-      },
-      include: { usage: true },
-    });
-
-    // Invalider le cache
-    await this.invalidateCache(tenantId);
-
-    return license;
-  }
-
-  /**
-   * Vérifie si une feature est activée pour un tenant
-   */
-  async hasFeature(tenantId: string, feature: string): Promise<boolean> {
-    const license = await this.getLicense(tenantId);
-
-    // OWNER bypasses all feature checks.
-    if (license.plan === 'OWNER') {
-      return true;
-    }
-
-    // Licence non active = pas d'accès
-    if (license.status !== 'ACTIVE' && license.status !== 'TRIAL') {
-      return false;
-    }
-
-    // Licence expirée = pas d'accès
-    if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
-      return false;
-    }
-
-    // Wildcard = toutes les features
-    if (license.features.includes('*')) {
-      return true;
-    }
-
-    return license.features.includes(feature);
-  }
-
-  /**
-   * Vérifie si un quota permet une action
-   */
-  async checkQuota(
-    tenantId: string,
-    quotaType: QuotaType,
-    increment: number = 1
-  ): Promise<QuotaCheckResult> {
-    const license = await this.getLicense(tenantId);
-    const usage = license.usage;
-
-    const quotaMap: Record<QuotaType, { current: number; max: number }> = {
-      users: {
-        current: usage?.currentUsers ?? 0,
-        max: license.maxUsers,
-      },
-      storage: {
-        current: Number(usage?.currentStorage ?? 0),
-        max: Number(license.maxStorage),
-      },
-      scans: {
-        current: usage?.scansThisMonth ?? 0,
-        max: license.maxScansMonth,
-      },
-      documents: {
-        current: usage?.documentsCount ?? 0,
-        max: license.maxDocuments,
-      },
-    };
-
-    const { current, max } = quotaMap[quotaType];
-
-    // OWNER bypasses all quotas.
-    if (license.plan === 'OWNER') {
-      return {
-        allowed: true,
-        current,
-        max: -1,
-        remaining: -1,
-      };
-    }
-
-    // -1 signifie illimité
-    if (max === -1) {
-      return {
-        allowed: true,
-        current,
-        max,
-        remaining: -1,
-      };
-    }
-
-    const remaining = max - current;
-    const allowed = current + increment <= max;
-
-    return { allowed, current, max, remaining };
-  }
-
-  /**
-   * Incrémente un compteur d'usage
-   */
-  async incrementUsage(
-    tenantId: string,
-    quotaType: QuotaType,
-    amount: number = 1
-  ): Promise<void> {
-    const license = await this.getLicense(tenantId);
-
-    if (!license.usage) {
-      throw new Error(`No usage record for tenant ${tenantId}`);
-    }
-
-    const fieldMap: Record<QuotaType, string> = {
-      users: 'currentUsers',
-      storage: 'currentStorage',
-      scans: 'scansThisMonth',
-      documents: 'documentsCount',
-    };
-
-    await prisma.licenseUsage.update({
-      where: { licenseId: license.id },
-      data: {
-        [fieldMap[quotaType]]: { increment: amount },
-      },
-    });
-
-    // Invalider le cache
-    await this.invalidateCache(tenantId);
-  }
-
-  /**
-   * Décrémente un compteur d'usage
-   */
-  async decrementUsage(
-    tenantId: string,
-    quotaType: QuotaType,
-    amount: number = 1
-  ): Promise<void> {
-    const license = await this.getLicense(tenantId);
-
-    if (!license.usage) {
-      throw new Error(`No usage record for tenant ${tenantId}`);
-    }
-
-    const fieldMap: Record<QuotaType, string> = {
-      users: 'currentUsers',
-      storage: 'currentStorage',
-      scans: 'scansThisMonth',
-      documents: 'documentsCount',
-    };
-
-    await prisma.licenseUsage.update({
-      where: { licenseId: license.id },
-      data: {
-        [fieldMap[quotaType]]: { decrement: amount },
-      },
-    });
-
-    // Invalider le cache
-    await this.invalidateCache(tenantId);
-  }
-
-  /**
-   * Vérifie la validité globale d'une licence
-   */
-  async isValid(tenantId: string): Promise<ValidityResult> {
-    try {
-      const license = await this.getLicense(tenantId);
-
-      // OWNER bypasses all license guards.
-      if (license.plan === 'OWNER') {
-        return { valid: true };
-      }
-
-      if (license.status === 'SUSPENDED') {
-        return { valid: false, reason: 'License suspended' };
-      }
-
-      if (license.status === 'CANCELLED') {
-        return { valid: false, reason: 'License cancelled' };
-      }
-
-      if (license.status === 'EXPIRED') {
-        return { valid: false, reason: 'License expired' };
-      }
-
-      if (license.status !== 'ACTIVE' && license.status !== 'TRIAL') {
-        return { valid: false, reason: `License ${String(license.status).toLowerCase()}` };
-      }
-
-      // Vérifier expiration
-      if (license.expiresAt && new Date(license.expiresAt) < new Date()) {
-        // Mettre à jour le statut automatiquement
-        await prisma.license.update({
-          where: { id: license.id },
-          data: { status: 'EXPIRED' },
-        });
-        await this.invalidateCache(tenantId);
-        return { valid: false, reason: 'License expired' };
-      }
-
-      return { valid: true };
+      await this.loadPublicKey();
     } catch (error) {
-      if (error instanceof LicenseNotFoundError) {
-        return { valid: false, reason: 'No license found' };
+      this.status = 'error';
+      appLogger.error('Failed to load license public key', {
+        path: this.publicKeyPath,
+        message: error instanceof Error ? error.message : 'unknown error',
+      });
+    }
+
+    await this.validate();
+
+    if (this.revalidationTimer) {
+      clearInterval(this.revalidationTimer);
+    }
+
+    this.revalidationTimer = setInterval(() => {
+      void this.validate().catch((error) => {
+        appLogger.error('License revalidation failed', {
+          message: error instanceof Error ? error.message : 'unknown error',
+        });
+      });
+    }, LICENSE_REVALIDATION_MS);
+    this.revalidationTimer.unref?.();
+  }
+
+  async validate(): Promise<LicenseStatus> {
+    try {
+      if (!fs.existsSync(this.licensePath)) {
+        this.license = null;
+        this.status = 'not_found';
+        return this.status;
       }
-      throw error;
+
+      const token = (await fsp.readFile(this.licensePath, 'utf-8')).trim();
+      if (!token) {
+        this.license = null;
+        this.status = 'not_found';
+        return this.status;
+      }
+
+      if (!this.publicKey) {
+        await this.loadPublicKey();
+      }
+
+      let verified: unknown;
+      try {
+        const { protectedHeader, payload } = await compactVerify(token, this.publicKey as Awaited<ReturnType<typeof importSPKI>>);
+        if (protectedHeader.alg !== LICENSE_SIGNATURE_ALGORITHM) {
+          this.license = null;
+          this.status = 'invalid_signature';
+          return this.status;
+        }
+        verified = JSON.parse(textDecoder.decode(payload));
+      } catch (error) {
+        this.license = null;
+        this.status = 'invalid_signature';
+        return this.status;
+      }
+
+      const payload = normalizePayload(verified);
+      if (!payload) {
+        this.license = null;
+        this.status = 'error';
+        return this.status;
+      }
+
+      this.license = payload;
+
+      const nowSeconds = Math.floor(Date.now() / 1000);
+      if (payload.exp < nowSeconds) {
+        const expiredDays = Math.floor((Date.now() - payload.exp * 1000) / DAY_IN_MS);
+        this.status = expiredDays <= GRACE_PERIOD_DAYS ? 'grace_period' : 'expired';
+        if (this.status === 'expired') {
+          return this.status;
+        }
+      }
+
+      const fingerprintMatches = await this.verifyFingerprint(payload.lid);
+      if (!fingerprintMatches) {
+        this.status = 'fingerprint_mismatch';
+        return this.status;
+      }
+
+      if (payload.exp < nowSeconds) {
+        this.status = 'grace_period';
+        return this.status;
+      }
+
+      this.status = 'valid';
+      return this.status;
+    } catch (error) {
+      this.license = null;
+      this.status = 'error';
+      appLogger.error('License validation failed', {
+        message: error instanceof Error ? error.message : 'unknown error',
+      });
+      return this.status;
     }
   }
 
-  /**
-   * Suspend une licence
-   */
-  async suspend(tenantId: string): Promise<License> {
-    const license = await prisma.license.update({
-      where: { tenantId },
-      data: { status: 'SUSPENDED' },
-    });
-
-    await this.invalidateCache(tenantId);
-    return license;
+  async activate(token: string): Promise<LicenseStatus> {
+    await fsp.mkdir(path.dirname(this.licensePath), { recursive: true });
+    await fsp.writeFile(this.licensePath, token.trim(), 'utf-8');
+    return this.validate();
   }
 
-  /**
-   * Réactive une licence
-   */
-  async reactivate(tenantId: string): Promise<License> {
-    const license = await prisma.license.update({
-      where: { tenantId },
-      data: { status: 'ACTIVE' },
+  async verifyFingerprint(licenseId: string): Promise<boolean> {
+    const fingerprint = await this.generateFingerprint();
+    const existing = await this.prismaClient.licenseBinding.findUnique({
+      where: { licenseId },
     });
 
-    await this.invalidateCache(tenantId);
-    return license;
+    if (!existing) {
+      try {
+        await this.prismaClient.licenseBinding.create({
+          data: {
+            licenseId,
+            fingerprint,
+          },
+        });
+        return true;
+      } catch {
+        const reloaded = await this.prismaClient.licenseBinding.findUnique({
+          where: { licenseId },
+        });
+        return reloaded?.fingerprint === fingerprint;
+      }
+    }
+
+    return existing.fingerprint === fingerprint;
   }
 
-  /**
-   * Reset mensuel des compteurs de scans
-   */
+  shutdown(): void {
+    if (this.revalidationTimer) {
+      clearInterval(this.revalidationTimer);
+      this.revalidationTimer = null;
+    }
+  }
+
+  getLicense(): LicensePayload | null {
+    return this.license;
+  }
+
+  getStatus(): LicenseStatus {
+    return this.status;
+  }
+
+  isOperational(): boolean {
+    return this.status === 'valid' || this.status === 'grace_period';
+  }
+
+  hasFeature(feature: string): boolean {
+    const normalized = normalizeFeature(feature);
+    const mappedFeature = LEGACY_FEATURE_ALIASES[normalized] || normalized;
+    return this.license?.features.includes(mappedFeature as LicenseFeature) ?? false;
+  }
+
+  getMaxNodes(): number {
+    return this.license?.maxNodes ?? 0;
+  }
+
+  getMaxUsers(): number {
+    return this.license?.maxUsers ?? 0;
+  }
+
+  getMaxCloudEnvs(): number {
+    return this.license?.maxCloudEnvs ?? 0;
+  }
+
+  getDaysUntilExpiry(): number | null {
+    if (!this.license) {
+      return null;
+    }
+
+    const diffMs = this.license.exp * 1000 - Date.now();
+    return Math.ceil(diffMs / DAY_IN_MS);
+  }
+
+  getGracePeriodDaysRemaining(): number | null {
+    if (!this.license || this.status !== 'grace_period') {
+      return null;
+    }
+
+    const expiredDays = Math.max(0, Math.floor((Date.now() - this.license.exp * 1000) / DAY_IN_MS));
+    return Math.max(0, GRACE_PERIOD_DAYS - expiredDays);
+  }
+
+  getPlan(): LicensePlan | null {
+    return this.license?.plan ?? null;
+  }
+
+  getLicensePath(): string {
+    return this.licensePath;
+  }
+
+  toJSON(): LicenseApiSnapshot {
+    return {
+      status: this.status,
+      company: this.license?.company ?? null,
+      plan: this.license?.plan ?? null,
+      licenseId: this.license?.lid ?? null,
+      features: this.license?.features ?? [],
+      maxNodes: this.license?.maxNodes ?? null,
+      maxUsers: this.license?.maxUsers ?? null,
+      maxCloudEnvs: this.license?.maxCloudEnvs ?? null,
+      issuedAt: this.license ? new Date(this.license.iat * 1000).toISOString() : null,
+      expiresAt: this.license ? new Date(this.license.exp * 1000).toISOString() : null,
+      daysUntilExpiry: this.getDaysUntilExpiry(),
+      gracePeriodDaysRemaining: this.getGracePeriodDaysRemaining(),
+      isOperational: this.isOperational(),
+    };
+  }
+
   async resetMonthlyQuotas(): Promise<number> {
-    const result = await prisma.licenseUsage.updateMany({
-      data: {
-        scansThisMonth: 0,
-        lastResetAt: new Date(),
-      },
-    });
-
-    // Invalider tout le cache licence
-    try {
-      const keys = await redis.keys(`${CACHE_PREFIX}*`);
-      if (keys.length > 0) {
-        await redis.del(...keys);
-      }
-    } catch (err) {
-      appLogger.warn('Failed to invalidate license cache:', err);
-    }
-
-    return result.count;
+    return 0;
   }
 
-  /**
-   * Invalide le cache pour un tenant
-   */
-  private async invalidateCache(tenantId: string): Promise<void> {
+  private async loadPublicKey(): Promise<void> {
+    const pem = await fsp.readFile(this.publicKeyPath, 'utf-8');
+    this.publicKey = await importSPKI(pem, LICENSE_SIGNATURE_ALGORITHM);
+  }
+
+  private async generateFingerprint(): Promise<string> {
+    const machineIdentity = await this.resolveMachineIdentity();
+    const cpuCount = os.cpus().length;
+    const totalMemory = os.totalmem();
+    return crypto
+      .createHash('sha256')
+      .update(`${machineIdentity}:${cpuCount}:${totalMemory}`, 'utf-8')
+      .digest('hex');
+  }
+
+  private async resolveMachineIdentity(): Promise<string> {
     try {
-      await redis.del(`${CACHE_PREFIX}${tenantId}`);
-    } catch (err) {
-      appLogger.warn('Failed to invalidate license cache:', err);
+      const machineId = await fsp.readFile('/etc/machine-id', 'utf-8');
+      const normalized = machineId.trim();
+      if (normalized) {
+        return normalized;
+      }
+    } catch {
+      // Fall back to hostname outside Linux/Docker environments.
     }
+
+    return os.hostname();
   }
 }
 
-// Export singleton
-export const licenseService = new LicenseService();
+export const licenseService = new LicenseService(prisma as unknown as PrismaClient);

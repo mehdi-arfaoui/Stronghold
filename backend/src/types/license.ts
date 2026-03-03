@@ -1,45 +1,38 @@
-import type { License, LicenseUsage, PlanType, LicenseStatus } from '@prisma/client';
+import type { LicenseFeature, LicensePlan } from '../config/licensePlans.js';
 
-export type LicenseWithUsage = License & {
-  usage: LicenseUsage | null;
-};
-
-export type QuotaType = 'users' | 'storage' | 'scans' | 'documents';
-
-export interface QuotaCheckResult {
-  allowed: boolean;
-  current: number;
-  max: number;
-  remaining: number;
+export interface LicensePayload {
+  lid: string;
+  company: string;
+  plan: LicensePlan;
+  maxNodes: number;
+  maxUsers: number;
+  maxCloudEnvs: number;
+  features: LicenseFeature[];
+  iat: number;
+  exp: number;
 }
 
-export interface QuotaInfo {
-  current: number;
-  max: number;
-  percentage: number;
-  remaining: number;
-}
+export type LicenseStatus =
+  | 'valid'
+  | 'expired'
+  | 'grace_period'
+  | 'invalid_signature'
+  | 'fingerprint_mismatch'
+  | 'not_found'
+  | 'error';
 
-export interface LicenseUsageResponse {
-  plan: {
-    name: string;
-    type: PlanType;
-  };
+export interface LicenseApiSnapshot {
   status: LicenseStatus;
-  expiresAt: Date | null;
-  quotas: {
-    users: QuotaInfo;
-    storage: QuotaInfo & { currentFormatted: string; maxFormatted: string };
-    scans: QuotaInfo & { resetsAt: Date };
-    documents: QuotaInfo;
-  };
-  features: {
-    available: string[];
-    all: string[];
-  };
-}
-
-export interface ValidityResult {
-  valid: boolean;
-  reason?: string;
+  company: string | null;
+  plan: LicensePlan | null;
+  licenseId: string | null;
+  features: LicenseFeature[];
+  maxNodes: number | null;
+  maxUsers: number | null;
+  maxCloudEnvs: number | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  daysUntilExpiry: number | null;
+  gracePeriodDaysRemaining: number | null;
+  isOperational: boolean;
 }
