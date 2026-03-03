@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { setPendingSetupEmail } from '@/lib/authSession';
 
 function resolveErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
@@ -31,6 +32,7 @@ export function AdminSetupPage() {
   const setupMutation = useMutation({
     mutationFn: async () => (await authApi.setupAdmin(email, password, displayName)).data,
     onSuccess: async () => {
+      setPendingSetupEmail(email);
       await queryClient.invalidateQueries({ queryKey: setupStatusQueryKey });
     },
   });
@@ -132,6 +134,7 @@ export function AdminSetupPage() {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     autoComplete="new-password"
+                    placeholder="Au moins 8 caracteres"
                     required
                   />
                 </div>

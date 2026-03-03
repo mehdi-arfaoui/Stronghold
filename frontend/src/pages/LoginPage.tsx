@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getPendingSetupEmail } from '@/lib/authSession';
 
 function resolveErrorMessage(error: unknown): string {
   if (error instanceof AxiosError) {
@@ -24,7 +25,8 @@ function resolveErrorMessage(error: unknown): string {
 
 export function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [setupEmailHint] = useState(() => getPendingSetupEmail());
+  const [email, setEmail] = useState(() => getPendingSetupEmail() ?? '');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -83,6 +85,12 @@ export function LoginPage() {
                     Utilisez votre compte administrateur ou un compte invite par un administrateur.
                   </p>
                 </div>
+
+                {setupEmailHint && (
+                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                    Compte administrateur cree. Connectez-vous avec <span className="font-medium">{setupEmailHint}</span>.
+                  </div>
+                )}
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>

@@ -1,4 +1,5 @@
 const REFRESH_TOKEN_SESSION_KEY = 'stronghold_refresh_token';
+const PENDING_SETUP_EMAIL_SESSION_KEY = 'stronghold_pending_setup_email';
 
 let accessToken: string | null = null;
 
@@ -67,4 +68,24 @@ export function clearAuthTokens(): void {
   accessToken = null;
   if (!isBrowser()) return;
   window.sessionStorage.removeItem(REFRESH_TOKEN_SESSION_KEY);
+}
+
+export function getPendingSetupEmail(): string | null {
+  if (!isBrowser()) return null;
+  return normalize(window.sessionStorage.getItem(PENDING_SETUP_EMAIL_SESSION_KEY));
+}
+
+export function setPendingSetupEmail(email: string | null): void {
+  if (!isBrowser()) return;
+  const normalized = normalize(email);
+  if (!normalized) {
+    window.sessionStorage.removeItem(PENDING_SETUP_EMAIL_SESSION_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(PENDING_SETUP_EMAIL_SESSION_KEY, normalized);
+}
+
+export function clearPendingSetupEmail(): void {
+  if (!isBrowser()) return;
+  window.sessionStorage.removeItem(PENDING_SETUP_EMAIL_SESSION_KEY);
 }

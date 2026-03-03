@@ -48,6 +48,12 @@ const ROUTE_TITLES: Record<string, string> = {
   '/users': 'Utilisateurs',
 };
 
+const USER_ROLE_LABELS = {
+  ADMIN: 'Administrateur',
+  ANALYST: 'Analyste',
+  VIEWER: 'Lecteur',
+} as const;
+
 function resolveRouteTitle(pathname: string): string {
   const exact = ROUTE_TITLES[pathname];
   if (exact) return exact;
@@ -74,8 +80,19 @@ export function Header() {
   const rawTitle = resolveRouteTitle(location.pathname);
   const title = rawTitle.startsWith('routes.') ? t(rawTitle) : rawTitle;
   const activeGuide = resolveGuidedTab(location.pathname);
+  const userInitials = user?.displayName
+    ?.split(' ')
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? '')
+    .join('');
 
   const handlePasswordChange = async () => {
+    if (!currentPassword.trim()) {
+      toast.error('Le mot de passe actuel est requis.');
+      return;
+    }
+
     if (newPassword.length < 8) {
       toast.error('Le mot de passe doit contenir au moins 8 caracteres.');
       return;
@@ -131,8 +148,18 @@ export function Header() {
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon">
-                <User className="h-5 w-5" />
+              <Button variant="ghost" className="h-10 gap-3 px-2">
+                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-900 text-xs font-semibold text-white">
+                  {userInitials || <User className="h-4 w-4" />}
+                </span>
+                {user && (
+                  <span className="hidden text-left md:block">
+                    <span className="block text-sm font-medium leading-none">{user.displayName}</span>
+                    <span className="block pt-1 text-xs text-muted-foreground">
+                      {USER_ROLE_LABELS[user.role]}
+                    </span>
+                  </span>
+                )}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -152,7 +179,17 @@ export function Header() {
         </div>
       </header>
 
-      <Dialog open={profileOpen} onOpenChange={setProfileOpen}>
+      <Dialog
+        open={profileOpen}
+        onOpenChange={(open) => {
+          setProfileOpen(open);
+          if (!open) {
+            setCurrentPassword('');
+            setNewPassword('');
+            setConfirmPassword('');
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Mon profil</DialogTitle>
@@ -203,7 +240,11 @@ export function Header() {
             <Button variant="outline" onClick={() => setProfileOpen(false)}>
               Annuler
             </Button>
-            <Button className="gap-2" disabled={savingPassword} onClick={() => void handlePasswordChange()}>
+            <Button
+              className="gap-2"
+              disabled={savingPassword || !currentPassword || !newPassword || !confirmPassword}
+              onClick={() => void handlePasswordChange()}
+            >
               {savingPassword && <Loader2 className="h-4 w-4 animate-spin" />}
               Mettre a jour
             </Button>

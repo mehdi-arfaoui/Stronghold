@@ -10,6 +10,7 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { authApi, type AuthUser } from '@/api/auth.api';
 import {
+  clearPendingSetupEmail,
   clearAuthTokens,
   configureAuthClientHandlers,
   getRefreshToken,
@@ -112,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       accessToken: data.accessToken,
       refreshToken: data.refreshToken,
     });
+    clearPendingSetupEmail();
 
     startTransition(() => {
       setUser(data.user);

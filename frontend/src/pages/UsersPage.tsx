@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { AxiosError } from 'axios';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Loader2, Plus, RotateCcw, Trash2, UserCog } from 'lucide-react';
 import {
@@ -52,12 +53,39 @@ const ROLE_LABELS: Record<UserRole, string> = {
   VIEWER: 'Lecteur',
 };
 
+function resolveErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof AxiosError) {
+    const apiError = error.response?.data?.error;
+    if (apiError === 'USER_LIMIT_REACHED') {
+      const maxUsers = error.response?.data?.maxUsers;
+      return typeof maxUsers === 'number'
+        ? `Limite licence atteinte: ${maxUsers} utilisateur(s) actifs maximum.`
+        : 'Limite licence atteinte pour les utilisateurs actifs.';
+    }
+
+    const apiMessage = error.response?.data?.message;
+    if (typeof apiMessage === 'string' && apiMessage.trim()) {
+      return apiMessage;
+    }
+  }
+
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return fallback;
+}
+
 function formatLastLogin(value: string | null): string {
   if (!value) return 'Jamais';
   return new Intl.DateTimeFormat('fr-FR', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
+}
+
+function isValidEmail(value: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 }
 
 export function UsersPage() {
@@ -96,7 +124,7 @@ export function UsersPage() {
       await refreshUsers();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Creation impossible.');
+      toast.error(resolveErrorMessage(error, 'Creation impossible.'));
     },
   });
 
@@ -107,7 +135,7 @@ export function UsersPage() {
       await refreshUsers();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Mise a jour impossible.');
+      toast.error(resolveErrorMessage(error, 'Mise a jour impossible.'));
     },
   });
 
@@ -120,7 +148,7 @@ export function UsersPage() {
       await refreshUsers();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Suppression impossible.');
+      toast.error(resolveErrorMessage(error, 'Suppression impossible.'));
     },
   });
 
@@ -135,13 +163,54 @@ export function UsersPage() {
       await refreshUsers();
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Reinitialisation impossible.');
+      toast.error(resolveErrorMessage(error, 'Reinitialisation impossible.'));
     },
   });
 
   const users = usersQuery.data?.users ?? [];
   const count = usersQuery.data?.count ?? 0;
   const maxUsers = usersQuery.data?.maxUsers ?? -1;
+  const activeAdminCount = users.filter((entry) => entry.role === 'ADMIN' && entry.isActive).length;
+  const hasUserLimit = maxUsers !== -1;
+  const remainingSeats = hasUserLimit ? Math.max(maxUsers - count, 0) : null;
+  const isUserLimitReached = hasUserLimit && count >= maxUsers;
+
+  const inviteFormIsValid =
+    inviteForm.displayName.trim().length > 0 &&
+    isValidEmail(inviteForm.email) &&
+    inviteForm.password.length >= 8;
+
+  const handleInviteSubmit = async () => {
+    if (inviteForm.displayName.trim().length === 0) {
+      toast.error('Le nom complet est requis.');
+      return;
+    }
+
+    if (!isValidEmail(inviteForm.email)) {
+      toast.error('Adresse email invalide.');
+      return;
+    }
+
+    if (inviteForm.password.length < 8) {
+      toast.error('Le mot de passe temporaire doit contenir au moins 8 caracteres.');
+      return;
+    }
+
+    if (isUserLimitReached) {
+      toast.error(
+        hasUserLimit
+          ? `Limite licence atteinte: ${maxUsers} utilisateur(s) actifs maximum.`
+          : 'Creation impossible.'
+      );
+      return;
+    }
+
+    await createUserMutation.mutateAsync({
+      ...inviteForm,
+      email: inviteForm.email.trim(),
+      displayName: inviteForm.displayName.trim(),
+    });
+  };
 
   return (
     <div className="space-y-6">
@@ -158,13 +227,34 @@ export function UsersPage() {
             <Badge variant="secondary" className="bg-slate-100 text-slate-900">
               {maxUsers === -1 ? `${count} / illimite` : `${count} / ${maxUsers}`} utilisateurs
             </Badge>
-            <Button className="gap-2" onClick={() => setInviteOpen(true)}>
+            <Button
+              className="gap-2"
+              onClick={() => setInviteOpen(true)}
+              disabled={isUserLimitReached}
+              title={isUserLimitReached ? 'Limite de licence atteinte' : undefined}
+            >
               <Plus className="h-4 w-4" />
               Inviter un utilisateur
             </Button>
           </div>
         </CardHeader>
         <CardContent>
+          <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+            {hasUserLimit ? (
+              isUserLimitReached ? (
+                <span>
+                  Limite atteinte. {count} utilisateur(s) actif(s) sur {maxUsers} autorises par la licence.
+                </span>
+              ) : (
+                <span>
+                  {remainingSeats} place(s) restante(s) avant la limite licence de {maxUsers} utilisateur(s) actifs.
+                </span>
+              )
+            ) : (
+              <span>Licence sans limite de nombre d utilisateurs.</span>
+            )}
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
@@ -187,7 +277,15 @@ export function UsersPage() {
                 </TableRow>
               )}
 
-              {!usersQuery.isLoading && users.length === 0 && (
+              {usersQuery.isError && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-rose-700">
+                    {resolveErrorMessage(usersQuery.error, 'Chargement des utilisateurs impossible.')}
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {!usersQuery.isLoading && !usersQuery.isError && users.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground">
                     Aucun utilisateur cree.
@@ -197,6 +295,8 @@ export function UsersPage() {
 
               {users.map((rowUser) => {
                 const isSelf = rowUser.id === user?.id;
+                const isLastActiveAdmin =
+                  rowUser.role === 'ADMIN' && rowUser.isActive && activeAdminCount <= 1;
                 const rowBusy =
                   updateUserMutation.isPending ||
                   deleteUserMutation.isPending ||
@@ -206,7 +306,14 @@ export function UsersPage() {
                   <TableRow key={rowUser.id}>
                     <TableCell>
                       <div className="space-y-1">
-                        <div className="font-medium text-slate-900">{rowUser.displayName}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-slate-900">{rowUser.displayName}</div>
+                          {isSelf && (
+                            <Badge variant="outline" className="border-teal-200 text-teal-700">
+                              Vous
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-sm text-muted-foreground">{rowUser.email}</div>
                       </div>
                     </TableCell>
@@ -219,7 +326,7 @@ export function UsersPage() {
                             payload: { role: value as UserRole },
                           });
                         }}
-                        disabled={isSelf || rowBusy}
+                        disabled={isSelf || rowBusy || isLastActiveAdmin}
                       >
                         <SelectTrigger>
                           <SelectValue />
@@ -247,7 +354,12 @@ export function UsersPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={isSelf || rowBusy}
+                          disabled={isSelf || rowBusy || isLastActiveAdmin}
+                          title={
+                            isLastActiveAdmin
+                              ? 'Le dernier administrateur actif ne peut pas etre desactive.'
+                              : undefined
+                          }
                           onClick={() => {
                             void updateUserMutation.mutateAsync({
                               id: rowUser.id,
@@ -271,7 +383,12 @@ export function UsersPage() {
                           variant="outline"
                           size="sm"
                           className="gap-2"
-                          disabled={isSelf || rowBusy}
+                          disabled={isSelf || rowBusy || isLastActiveAdmin}
+                          title={
+                            isLastActiveAdmin
+                              ? 'Le dernier administrateur actif ne peut pas etre supprime.'
+                              : undefined
+                          }
                           onClick={() => {
                             void deleteUserMutation.mutateAsync(rowUser.id);
                           }}
@@ -299,6 +416,12 @@ export function UsersPage() {
           </DialogHeader>
 
           <div className="space-y-4">
+            {isUserLimitReached && (
+              <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                La limite licence est atteinte. Desactivez ou supprimez un utilisateur avant d en creer un nouveau.
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="invite-display-name">Nom complet</Label>
               <Input
@@ -325,6 +448,7 @@ export function UsersPage() {
                 type="password"
                 value={inviteForm.password}
                 onChange={(event) => setInviteForm((current) => ({ ...current, password: event.target.value }))}
+                placeholder="Au moins 8 caracteres"
               />
             </div>
 
@@ -354,9 +478,9 @@ export function UsersPage() {
             </Button>
             <Button
               className="gap-2"
-              disabled={createUserMutation.isPending}
+              disabled={createUserMutation.isPending || isUserLimitReached || !inviteFormIsValid}
               onClick={() => {
-                void createUserMutation.mutateAsync(inviteForm);
+                void handleInviteSubmit();
               }}
             >
               {createUserMutation.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

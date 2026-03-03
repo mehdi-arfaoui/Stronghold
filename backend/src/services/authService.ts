@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
 import crypto from 'node:crypto';
-import * as jwt from 'jsonwebtoken';
+import jwt, { type JwtPayload, type Secret, type SignOptions } from 'jsonwebtoken';
 import {
   type ApiRole,
   type LicenseStatus,
@@ -293,9 +293,9 @@ export class AuthService {
   }
 
   verifyAccessToken(token: string): AccessTokenPayload {
-    const payload = jwt.verify(token, this.jwtSecret, {
+    const payload = jwt.verify(token, this.jwtSecret as Secret, {
       algorithms: ['HS256'],
-    }) as jwt.JwtPayload;
+    }) as JwtPayload;
 
     if (
       typeof payload.sub !== 'string' ||
@@ -683,12 +683,12 @@ export class AuthService {
       type: 'access',
     };
 
-    const signOptions: jwt.SignOptions = {
+    const signOptions: SignOptions = {
       algorithm: 'HS256',
       expiresIn: ACCESS_TOKEN_EXPIRY,
     };
 
-    return jwt.sign(payload, this.jwtSecret as jwt.Secret, signOptions);
+    return jwt.sign(payload, this.jwtSecret as Secret, signOptions);
   }
 
   private generateRefreshToken(tenantId: string): string {
