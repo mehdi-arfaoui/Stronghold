@@ -11,6 +11,7 @@ import { appLogger } from "../utils/logger.js";
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildFinancialSummaryPayload } from '../services/financial-dashboard.service.js';
 import DOMPurify from 'isomorphic-dompurify';
+import { requireFeature } from '../middleware/licenseMiddleware.js';
 
 type DocxModule = typeof import('docx');
 
@@ -783,6 +784,11 @@ async function handleReportGeneration(req: TenantRequest, res: Response) {
 router.post('/pra-pca', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     if (!req.tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+    if ((req.body?.format || '').toLowerCase() === 'docx') {
+      return requireFeature('report-docx')(req as any, res, async () => {
+        return await handleReportGeneration(req, res);
+      });
+    }
     return await handleReportGeneration(req, res);
   } catch (error) {
     appLogger.error('Error generating PRA/PCA report:', error);
@@ -795,6 +801,11 @@ router.post('/generate', reportRateLimit, async (req: TenantRequest, res) => {
   try {
     if (!req.tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
     req.body = { ...req.body, format: req.body?.format ?? 'pdf' };
+    if ((req.body?.format || '').toLowerCase() === 'docx') {
+      return requireFeature('report-docx')(req as any, res, async () => {
+        return await handleReportGeneration(req, res);
+      });
+    }
     return await handleReportGeneration(req, res);
   } catch (error) {
     appLogger.error('Error generating PRA/PCA report (compat):', error);
@@ -882,7 +893,7 @@ router.get('/prerequisites', async (req: TenantRequest, res) => {
 });
 
 // ─── POST /reports/executive-summary — Board-ready 1-page PDF ──────────
-router.post('/executive-summary', reportRateLimit, async (req: TenantRequest, res) => {
+router.post('/executive-summary', reportRateLimit, requireFeature('executive-dashboard'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -986,7 +997,7 @@ router.post('/executive-summary', reportRateLimit, async (req: TenantRequest, re
 });
 
 // Board-ready financial executive export used by ROI & Finance dashboard
-router.post('/executive-financial', reportRateLimit, async (req: TenantRequest, res) => {
+router.post('/executive-financial', reportRateLimit, requireFeature('executive-dashboard'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });

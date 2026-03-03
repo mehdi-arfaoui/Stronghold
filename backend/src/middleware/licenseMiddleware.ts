@@ -1,196 +1,137 @@
-import { appLogger } from "../utils/logger.js";
-import type { Response, NextFunction } from 'express';
+import type { NextFunction, Request, Response } from 'express';
 import type { TenantRequest } from './tenantMiddleware.js';
-import { licenseService, LicenseNotFoundError } from '../services/licenseService.js';
+import type { LicenseService } from '../services/licenseService.js';
+import type { LicensePlan } from '../config/licensePlans.js';
+import type { LicenseStatus } from '../types/license.js';
 
-// Extend TenantRequest to include quota tracking
-export type LicenseRequest = TenantRequest & {
-  quotaToIncrement?: {
-    type: 'users' | 'storage' | 'scans' | 'documents';
-    amount: number;
-  };
+export type LicenseRequest = TenantRequest;
+
+const PLAN_RANK: Record<LicensePlan, number> = {
+  starter: 0,
+  pro: 1,
+  enterprise: 2,
 };
 
-/**
- * Vérifie que la licence du tenant est valide
- */
+const LICENSE_STATUS_MESSAGES: Record<LicenseStatus, string> = {
+  valid: 'Licence active.',
+  grace_period: 'Votre licence Stronghold a expire. Contactez support@stronghold.io pour renouveler.',
+  expired: 'Votre licence Stronghold a expire. Contactez support@stronghold.io pour renouveler.',
+  fingerprint_mismatch: 'Cette licence est liee a un autre serveur. Contactez support@stronghold.io.',
+  invalid_signature: 'Licence invalide. Verifiez votre fichier de licence.',
+  not_found: 'Aucune licence trouvee. Veuillez activer Stronghold.',
+  error: 'Une erreur est survenue lors de la verification de la licence.',
+};
+
+function getLicenseService(req: Request): LicenseService | null {
+  return (req.app.locals.licenseService as LicenseService | undefined) ?? null;
+}
+
+function sendLicenseError(res: Response, status: LicenseStatus) {
+  return res.status(403).json({
+    error: 'LICENSE_INVALID',
+    licenseStatus: status,
+    message: LICENSE_STATUS_MESSAGES[status],
+  });
+}
+
+export function getLicenseStatusMessage(status: LicenseStatus): string {
+  return LICENSE_STATUS_MESSAGES[status];
+}
+
+export function requireLicense(req: Request, res: Response, next: NextFunction) {
+  const license = getLicenseService(req);
+  if (!license) {
+    return res.status(500).json({
+      error: 'LICENSE_SERVICE_UNAVAILABLE',
+      message: 'License service is not initialized.',
+    });
+  }
+
+  if (!license.isOperational()) {
+    return sendLicenseError(res, license.getStatus());
+  }
+
+  if (license.getStatus() === 'grace_period') {
+    res.setHeader('X-License-Warning', LICENSE_STATUS_MESSAGES.grace_period);
+  }
+
+  return next();
+}
+
 export function requireValidLicense() {
-  return async (req: LicenseRequest, res: Response, next: NextFunction) => {
-    try {
-      const tenantId = req.tenantId;
-
-      if (!tenantId) {
-        return res.status(401).json({
-          error: 'TENANT_NOT_IDENTIFIED',
-          message: 'Tenant ID is required',
-          code: 'AUTH_001',
-        });
-      }
-
-      const { valid, reason } = await licenseService.isValid(tenantId);
-
-      if (!valid) {
-        return res.status(403).json({
-          error: 'LICENSE_INVALID',
-          message: reason,
-          code: 'LICENSE_001',
-        });
-      }
-
-      next();
-    } catch (error) {
-      appLogger.error('License validation error:', error);
-      return res.status(500).json({
-        error: 'LICENSE_CHECK_FAILED',
-        message: 'Unable to validate license',
-      });
-    }
-  };
+  return requireLicense;
 }
 
-/**
- * Vérifie qu'une feature est activée pour le tenant
- */
 export function requireFeature(feature: string) {
-  return async (req: LicenseRequest, res: Response, next: NextFunction) => {
-    try {
-      const tenantId = req.tenantId;
-
-      if (!tenantId) {
-        return res.status(401).json({
-          error: 'TENANT_NOT_IDENTIFIED',
-          message: 'Tenant ID is required',
-          code: 'AUTH_001',
-        });
-      }
-
-      const hasAccess = await licenseService.hasFeature(tenantId, feature);
-
-      if (!hasAccess) {
-        return res.status(403).json({
-          error: 'FEATURE_NOT_AVAILABLE',
-          message: `The feature '${feature}' is not included in your current plan`,
-          code: 'LICENSE_002',
-          feature,
-          action: 'upgrade',
-          upgradeUrl: '/settings/billing',
-        });
-      }
-
-      next();
-    } catch (error) {
-      appLogger.error('Feature check error:', error);
+  return (req: Request, res: Response, next: NextFunction) => {
+    const license = getLicenseService(req);
+    if (!license) {
       return res.status(500).json({
-        error: 'FEATURE_CHECK_FAILED',
-        message: 'Unable to check feature access',
+        error: 'LICENSE_SERVICE_UNAVAILABLE',
+        message: 'License service is not initialized.',
       });
     }
+
+    if (!license.isOperational()) {
+      return sendLicenseError(res, license.getStatus());
+    }
+
+    if (!license.hasFeature(feature)) {
+      return res.status(403).json({
+        error: 'FEATURE_NOT_AVAILABLE',
+        feature,
+        currentPlan: license.getPlan(),
+        message: `Cette fonctionnalite n'est pas disponible avec votre plan actuel.`,
+      });
+    }
+
+    return next();
   };
 }
 
-/**
- * Vérifie qu'un quota n'est pas dépassé
- * Note: N'incrémente pas automatiquement, utiliser incrementQuotaOnSuccess() pour ça
- */
-export function requireQuota(
-  quotaType: 'users' | 'storage' | 'scans' | 'documents',
-  increment: number = 1
-) {
-  return async (req: LicenseRequest, res: Response, next: NextFunction) => {
-    try {
-      const tenantId = req.tenantId;
-
-      if (!tenantId) {
-        return res.status(401).json({
-          error: 'TENANT_NOT_IDENTIFIED',
-          message: 'Tenant ID is required',
-          code: 'AUTH_001',
-        });
-      }
-
-      const quota = await licenseService.checkQuota(tenantId, quotaType, increment);
-
-      if (!quota.allowed) {
-        return res.status(429).json({
-          error: 'QUOTA_EXCEEDED',
-          message: `Your ${quotaType} quota has been exceeded`,
-          code: 'LICENSE_003',
-          quota: {
-            type: quotaType,
-            current: quota.current,
-            max: quota.max,
-            requested: increment,
-            remaining: quota.remaining,
-          },
-          action: 'upgrade',
-          upgradeUrl: '/settings/billing',
-        });
-      }
-
-      // Stocker pour incrémenter après succès
-      req.quotaToIncrement = { type: quotaType, amount: increment };
-
-      next();
-    } catch (error) {
-      appLogger.error('Quota check error:', error);
+export function requirePlan(minimumPlan: LicensePlan) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const license = getLicenseService(req);
+    if (!license) {
       return res.status(500).json({
-        error: 'QUOTA_CHECK_FAILED',
-        message: 'Unable to check quota',
+        error: 'LICENSE_SERVICE_UNAVAILABLE',
+        message: 'License service is not initialized.',
       });
     }
+
+    if (!license.isOperational()) {
+      return sendLicenseError(res, license.getStatus());
+    }
+
+    const currentPlan = license.getPlan();
+    if (!currentPlan || PLAN_RANK[currentPlan] < PLAN_RANK[minimumPlan]) {
+      return res.status(403).json({
+        error: 'PLAN_INSUFFICIENT',
+        requiredPlan: minimumPlan,
+        currentPlan,
+        message: `Cette fonctionnalite necessite au minimum le plan ${minimumPlan}.`,
+      });
+    }
+
+    return next();
   };
 }
 
-/**
- * Incrémente le quota après une réponse réussie (2xx)
- * À utiliser APRÈS requireQuota()
- */
+export function requireQuota(_quotaType: 'users' | 'storage' | 'scans' | 'documents', _increment = 1) {
+  return (_req: Request, _res: Response, next: NextFunction) => next();
+}
+
 export function incrementQuotaOnSuccess() {
-  return (req: LicenseRequest, res: Response, next: NextFunction) => {
-    const originalJson = res.json.bind(res);
-
-    res.json = function (body: unknown) {
-      // Incrémenter seulement si succès et quota à incrémenter
-      if (res.statusCode >= 200 && res.statusCode < 300 && req.quotaToIncrement && req.tenantId) {
-        const { type, amount } = req.quotaToIncrement;
-        const tenantId = req.tenantId;
-
-        // Fire and forget - ne pas bloquer la réponse
-        licenseService.incrementUsage(tenantId, type, amount)
-          .catch(err => appLogger.error('Failed to increment quota:', err));
-      }
-
-      return originalJson(body);
-    };
-
-    next();
-  };
+  return (_req: Request, _res: Response, next: NextFunction) => next();
 }
 
-/**
- * Combine plusieurs checks en un seul middleware array
- */
-export function requireLicenseAccess(options: {
-  feature?: string;
-  quota?: {
-    type: 'users' | 'storage' | 'scans' | 'documents';
-    increment?: number;
-  };
-}) {
-  // Using any[] to avoid complex Express middleware type constraints
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const middlewares: any[] = [
-    requireValidLicense()
-  ];
-
+export function requireLicenseAccess(options: { feature?: string; minimumPlan?: LicensePlan }) {
+  const middlewares = [requireLicense];
   if (options.feature) {
     middlewares.push(requireFeature(options.feature));
   }
-
-  if (options.quota) {
-    middlewares.push(requireQuota(options.quota.type, options.quota.increment || 1));
-    middlewares.push(incrementQuotaOnSuccess());
+  if (options.minimumPlan) {
+    middlewares.push(requirePlan(options.minimumPlan));
   }
-
   return middlewares;
 }

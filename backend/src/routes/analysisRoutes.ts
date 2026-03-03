@@ -3,6 +3,7 @@ import { Router } from "express";
 import prisma from "../prismaClient.js";
 import type { TenantRequest } from "../middleware/tenantMiddleware.js";
 import { requireRole } from "../middleware/tenantMiddleware.js";
+import { requireFeature } from "../middleware/licenseMiddleware.js";
 import { recommendPraOptions } from "../analysis/praRecommender.js";
 import {
   DR_SCENARIOS,
@@ -813,7 +814,7 @@ router.get("/pra-dashboard", requireRole("READER"), async (req: TenantRequest, r
   }
 });
 
-router.get("/compliance-report", requireRole("READER"), async (req: TenantRequest, res) => {
+router.get("/compliance-report", requireFeature("compliance-mapping"), requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -828,15 +829,15 @@ router.get("/compliance-report", requireRole("READER"), async (req: TenantReques
   }
 });
 
-router.get("/compliance/templates", requireRole("READER"), async (_req: TenantRequest, res) => {
+router.get("/compliance/templates", requireFeature("compliance-mapping"), requireRole("READER"), async (_req: TenantRequest, res) => {
   return res.json(listComplianceTemplates());
 });
 
-router.get("/compliance/checklists", requireRole("READER"), async (_req: TenantRequest, res) => {
+router.get("/compliance/checklists", requireFeature("compliance-mapping"), requireRole("READER"), async (_req: TenantRequest, res) => {
   return res.json(listComplianceChecklists());
 });
 
-router.get("/compliance/report", requireRole("READER"), async (req: TenantRequest, res) => {
+router.get("/compliance/report", requireFeature("compliance-mapping"), requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {
@@ -856,7 +857,7 @@ router.get("/compliance/report", requireRole("READER"), async (req: TenantReques
   }
 });
 
-router.get("/compliance/statement-of-applicability", requireRole("READER"), async (req: TenantRequest, res) => {
+router.get("/compliance/statement-of-applicability", requireFeature("compliance-mapping"), requireRole("READER"), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) {

@@ -7,6 +7,7 @@ import { Router } from 'express';
 import type { Prisma } from '@prisma/client';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
+import { requireFeature } from '../middleware/licenseMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { runSimulation, getScenarioOptions } from '../graph/simulationEngine.js';
 import { SCENARIO_LIBRARY } from '../simulations/data/scenario-library.js';
@@ -656,6 +657,22 @@ router.post('/', async (req: TenantRequest, res) => {
 
     if (!scenarioType) {
       return res.status(400).json({ error: 'scenarioType is required' });
+    }
+
+    if (String(scenarioType).toLowerCase() === 'custom') {
+      let nextCalled = false;
+      await new Promise<void>((resolve) => {
+        requireFeature('war-room-custom')(req as any, res, () => {
+          nextCalled = true;
+          resolve();
+        });
+        if (!nextCalled && res.headersSent) {
+          resolve();
+        }
+      });
+      if (!nextCalled) {
+        return;
+      }
     }
 
     const graph = await GraphService.getGraph(prisma, tenantId);

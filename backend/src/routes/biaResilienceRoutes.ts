@@ -7,6 +7,7 @@ import { Router } from 'express';
 import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
+import { requireFeature } from '../middleware/licenseMiddleware.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import { generateBIA } from '../graph/biaEngine.js';
@@ -659,7 +660,7 @@ router.get('/summary', async (req: TenantRequest, res) => {
 });
 
 // ─── GET /bia-resilience/export/csv — Export BIA as CSV ──────────
-router.get('/export/csv', async (req: TenantRequest, res) => {
+router.get('/export/csv', requireFeature('api-export'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -732,7 +733,7 @@ router.get('/export/csv', async (req: TenantRequest, res) => {
 });
 
 // ─── GET /bia-resilience/export/json — Export BIA as JSON ──────────
-router.get('/export/json', async (req: TenantRequest, res) => {
+router.get('/export/json', requireFeature('api-export'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -807,7 +808,7 @@ router.get('/export/json', async (req: TenantRequest, res) => {
 });
 
 // ─── GET /bia-resilience/export/xlsx — Export BIA as XLSX (CSV-compatible TSV) ──────────
-router.get('/export/xlsx', async (req: TenantRequest, res) => {
+router.get('/export/xlsx', requireFeature('api-export'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
@@ -880,7 +881,7 @@ router.get('/export/xlsx', async (req: TenantRequest, res) => {
 });
 
 // ─── GET /bia-resilience/export/pdf — Export BIA as PDF ──────────
-router.get('/export/pdf', async (req: TenantRequest, res) => {
+router.get('/export/pdf', requireFeature('report-pdf'), async (req: TenantRequest, res) => {
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
