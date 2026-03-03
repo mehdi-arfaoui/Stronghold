@@ -43,7 +43,7 @@ import discoveryRoutes from "./routes/discoveryRoutes.js";
 import pricingRoutes from "./routes/pricingRoutes.js";
 import vulnerabilityRoutes from "./routes/vulnerabilityRoutes.js";
 import brandingRoutes from "./routes/brandingRoutes.js";
-import licenseRoutes from "./routes/licenseRoutes.js";
+import { createLicenseRoutes } from "./routes/licenseRoutes.js";
 import resilienceGraphRoutes from "./routes/resilienceGraphRoutes.js";
 import analysisResilienceRoutes from "./routes/analysisResilienceRoutes.js";
 import biaResilienceRoutes from "./routes/biaResilienceRoutes.js";
@@ -73,7 +73,8 @@ import { startDriftScheduler } from "./workers/driftScheduler.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { loadValidatedEnv } from "./config/env.validation.js";
-import { ensureOnPremiseLicense } from "./services/onPremiseLicenseService.js";
+import { requireLicense } from "./middleware/licenseMiddleware.js";
+import { licenseService } from "./services/licenseService.js";
 import { cloudPricingService } from "./services/pricing/cloudPricingService.js";
 
 const require = createRequire(import.meta.url);
@@ -90,7 +91,6 @@ for (const envPath of envCandidates) {
 
 loadValidatedEnv();
 initTelemetry();
-const onPremiseLicense = ensureOnPremiseLicense();
 
 type DependencyStatus = "ok" | "failed" | "skipped";
 type DependencyCheck = {
@@ -403,9 +403,33 @@ const buildReadinessReport = async (): Promise<{
   };
 };
 
+const liveHandler = (_req: express.Request, res: express.Response) => {
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+  });
+};
+
+const readyHandler = async (_req: express.Request, res: express.Response) => {
+  const { httpStatus, report } = await buildReadinessReport();
+  res.status(httpStatus).json(report);
+};
+
+const healthHandler = async (_req: express.Request, res: express.Response) => {
+  const { httpStatus, report } = await buildReadinessReport();
+  res.status(httpStatus).json({
+    ...report,
+    deprecated: true,
+    live: "/health/live",
+    ready: "/health/ready",
+  });
+};
+
 const app = express();
 const globalExceptionFilter = new GlobalExceptionFilter();
 app.set("trust proxy", 1);
+app.locals.licenseService = licenseService;
 
 app.use(
   helmet({
@@ -494,28 +518,16 @@ app.use(globalRateLimitMedium);
 app.use(globalRateLimitLong);
 
 // ✅ health-check sans tenant
-app.get("/health/live", (_req, res) => {
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    uptimeSeconds: Math.round(process.uptime()),
-  });
-});
+app.get("/health/live", liveHandler);
+app.get("/api/health/live", liveHandler);
+app.get("/health/ready", readyHandler);
+app.get("/api/health/ready", readyHandler);
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
-app.get("/health/ready", async (_req, res) => {
-  const { httpStatus, report } = await buildReadinessReport();
-  res.status(httpStatus).json(report);
-});
-
-app.get("/health", async (_req, res) => {
-  const { httpStatus, report } = await buildReadinessReport();
-  res.status(httpStatus).json({
-    ...report,
-    deprecated: true,
-    live: "/health/live",
-    ready: "/health/ready",
-  });
-});
+const publicLicenseRoutes = createLicenseRoutes(licenseService);
+app.use("/license", publicLicenseRoutes);
+app.use("/api/license", publicLicenseRoutes);
 
 app.get("/metrics", (_req, res) => {
   const handler = getPrometheusMetricsHandler();
@@ -530,6 +542,7 @@ const asyncMiddleware = (fn: (req: any, res: any, next: any) => Promise<any>) =>
   };
 };
 app.use(asyncMiddleware(tenantMiddleware));
+app.use(requireLicense);
 
 // Helper pour normaliser les imports (gère les exports par défaut)
 // Un router Express est un objet avec des méthodes comme use, get, post, etc.
@@ -606,7 +619,6 @@ const routes = [
   { path: "/pricing", handler: pricingRoutes, name: "pricingRoutes" },
   { path: "/vulnerabilities", handler: vulnerabilityRoutes, name: "vulnerabilityRoutes" },
   { path: "/branding", handler: brandingRoutes, name: "brandingRoutes" },
-  { path: "/license", handler: licenseRoutes, name: "licenseRoutes" },
   { path: "/resilience", handler: resilienceGraphRoutes, name: "resilienceGraphRoutes" },
   { path: "/analysis/resilience", handler: analysisResilienceRoutes, name: "analysisResilienceRoutes" },
   { path: "/api/analysis/resilience", handler: analysisResilienceRoutes, name: "analysisResilienceRoutesApi" },
@@ -681,42 +693,54 @@ const HOST = process.env.HOST || "0.0.0.0";
 const server = http.createServer(app);
 initDiscoveryWebSocket(server);
 
-server.listen(Number(PORT), HOST, () => {
-  appLogger.info(`API PRA/PCA running on ${HOST}:${PORT}`);
-  logBoot("server.listening", { host: HOST, port: Number(PORT) });
-  const originList = [...allowedOrigins.values()];
-  appLogger.info(
-    `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
-  );
-  appLogger.info(
-    `Health checks available at http://${HOST}:${PORT}/health/live (liveness) and /health/ready (readiness)`
-  );
-  if (deploymentConfig.mode === "saas") {
-    appLogger.info("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
-  } else {
-    appLogger.info("Deployment mode: On-premise (auto-mise à jour désactivée).");
-    if (onPremiseLicense) {
-      appLogger.info(`Licence on-premise stockée: ${deploymentConfig.license.filePath}`);
-    }
-  }
+licenseService.initialize()
+  .then(() => {
+    app.locals.licenseService = licenseService;
+    const stopLicenseValidation = () => {
+      licenseService.shutdown();
+    };
+    process.on("SIGTERM", stopLicenseValidation);
+    process.on("SIGINT", stopLicenseValidation);
 
-  setImmediate(() => {
-    void cloudPricingService.runConnectivitySelfTest();
-  });
+    server.listen(Number(PORT), HOST, () => {
+      appLogger.info(`API PRA/PCA running on ${HOST}:${PORT}`);
+      logBoot("server.listening", { host: HOST, port: Number(PORT) });
+      const originList = [...allowedOrigins.values()];
+      appLogger.info(
+        `CORS enabled for origins: ${originList.length > 0 ? originList.join(", ") : "none"}`
+      );
+      appLogger.info(
+        `Health checks available at http://${HOST}:${PORT}/health/live (liveness) and /health/ready (readiness)`
+      );
+      if (deploymentConfig.mode === "saas") {
+        appLogger.info("Deployment mode: SaaS (multi-tenant mutualisé, schéma par tenant, quotas actifs).");
+      } else {
+        appLogger.info("Deployment mode: On-premise (auto-mise à jour désactivée).");
+        appLogger.info(`License status: ${licenseService.getStatus()}`);
+      }
 
-  setImmediate(() => {
-    void startBackgroundServices();
-  });
+      setImmediate(() => {
+        void cloudPricingService.runConnectivitySelfTest();
+      });
 
-  void (async () => {
-    logBoot("dependencies.probe.start");
-    const { report } = await buildReadinessReport();
-    const failed = Object.entries(report.dependencies)
-      .filter(([, dependency]) => dependency.status === "failed")
-      .map(([name]) => name);
-    logBoot("dependencies.probe.complete", {
-      status: report.status,
-      failedDependencies: failed,
+      setImmediate(() => {
+        void startBackgroundServices();
+      });
+
+      void (async () => {
+        logBoot("dependencies.probe.start");
+        const { report } = await buildReadinessReport();
+        const failed = Object.entries(report.dependencies)
+          .filter(([, dependency]) => dependency.status === "failed")
+          .map(([name]) => name);
+        logBoot("dependencies.probe.complete", {
+          status: report.status,
+          failedDependencies: failed,
+        });
+      })();
     });
-  })();
-});
+  })
+  .catch((error) => {
+    appLogger.error("Server bootstrap failed", error);
+    process.exitCode = 1;
+  });
