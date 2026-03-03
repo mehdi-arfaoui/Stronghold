@@ -5,6 +5,8 @@ const extraArgs = process.argv.slice(3);
 const includeDemoTests = process.env.BUILD_TARGET === 'internal';
 
 const unitBase = [
+  'tests/authMiddleware.test.ts',
+  'tests/authService.test.ts',
   'tests/aiFlowSuggester.service.test.ts',
   'tests/awsMultiRegion.test.cjs',
   'tests/classificationService.test.js',
@@ -40,6 +42,7 @@ const unitDemo = [
 ];
 
 const integrationBase = [
+  'tests/authRoutes.test.ts',
   'tests/biaRoutes.test.js',
   'tests/businessFlowFinancialEngine.test.ts',
   'tests/businessFlowRoutes.test.ts',
