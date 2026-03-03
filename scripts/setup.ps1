@@ -3,6 +3,43 @@ $ErrorActionPreference = "Stop"
 $rootDir = Split-Path -Parent $PSScriptRoot
 Set-Location $rootDir
 
+$envFile = Join-Path $rootDir ".env"
+
+function Ensure-EnvSecret {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string]$Key
+  )
+
+  if (-not (Test-Path $envFile)) {
+    return
+  }
+
+  $content = Get-Content $envFile
+  $line = $content | Where-Object { $_ -match "^$Key=" } | Select-Object -Last 1
+  $currentValue = if ($line) { ($line -replace "^$Key=", "").Trim() } else { "" }
+
+  if (-not [string]::IsNullOrWhiteSpace($currentValue) -and -not $currentValue.StartsWith("CHANGE_ME") -and $currentValue -ne "example") {
+    return
+  }
+
+  $generatedValue = node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+  $replacement = "$Key=$generatedValue"
+
+  if ($line) {
+    $updated = $content | ForEach-Object {
+      if ($_ -match "^$Key=") { $replacement } else { $_ }
+    }
+    Set-Content -Path $envFile -Value $updated
+  } else {
+    Add-Content -Path $envFile -Value $replacement
+  }
+
+  Write-Host "Generated $Key in .env"
+}
+
+Ensure-EnvSecret -Key "JWT_SECRET"
+
 Write-Host "[1/6] Starting postgres + redis..."
 docker compose up -d postgres redis
 

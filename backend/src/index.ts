@@ -17,7 +17,6 @@ import serviceRoutes from "./routes/serviceRoutes.js";
 import graphRoutes from "./routes/graphRoutes.js";
 import analysisRoutes from "./routes/analysisRoutes.js";
 import infraRoutes from "./routes/infraRoutes.js";
-import { tenantMiddleware } from "./middleware/tenantMiddleware.js";
 import {
   globalRateLimitLong,
   globalRateLimitMedium,
@@ -34,6 +33,7 @@ import continuityRoutes from "./routes/continuityRoutes.js";
 import runbookRoutes from "./routes/runbookRoutes.js";
 import webhookRoutes from "./routes/webhookRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
 import auditRoutes from "./routes/auditRoutes.js";
 import riskRoutes from "./routes/riskRoutes.js";
 import biaRoutes from "./routes/biaRoutes.js";
@@ -74,6 +74,8 @@ import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { loadValidatedEnv } from "./config/env.validation.js";
 import { requireLicense } from "./middleware/licenseMiddleware.js";
+import { authMiddleware, requireRole as requireUserRole } from "./middleware/authMiddleware.js";
+import { AuthService } from "./services/authService.js";
 import { licenseService } from "./services/licenseService.js";
 import { cloudPricingService } from "./services/pricing/cloudPricingService.js";
 
@@ -428,8 +430,10 @@ const healthHandler = async (_req: express.Request, res: express.Response) => {
 
 const app = express();
 const globalExceptionFilter = new GlobalExceptionFilter();
+const authService = new AuthService(prisma, { licenseService });
 app.set("trust proxy", 1);
 app.locals.licenseService = licenseService;
+app.locals.authService = authService;
 
 app.use(
   helmet({
@@ -536,13 +540,12 @@ app.get("/metrics", (_req, res) => {
 
 // ✅ à partir d'ici, on exige une API key et on injecte tenantId
 // Wrapper pour gérer les middlewares async
-const asyncMiddleware = (fn: (req: any, res: any, next: any) => Promise<any>) => {
-  return (req: any, res: any, next: any) => {
-    Promise.resolve(fn(req, res, next)).catch(next);
-  };
-};
-app.use(asyncMiddleware(tenantMiddleware));
 app.use(requireLicense);
+app.use("/auth", authRoutes);
+app.use("/api/auth", authRoutes);
+app.use(authMiddleware);
+app.use("/users", requireUserRole("ADMIN"), userRoutes);
+app.use("/api/users", requireUserRole("ADMIN"), userRoutes);
 
 // Helper pour normaliser les imports (gère les exports par défaut)
 // Un router Express est un objet avec des méthodes comme use, get, post, etc.
@@ -609,7 +612,6 @@ const routes = [
   { path: "/continuity", handler: continuityRoutes, name: "continuityRoutes" },
   { path: "/runbooks", handler: runbookRoutes, name: "runbookRoutes" },
   { path: "/webhooks", handler: webhookRoutes, name: "webhookRoutes" },
-  { path: "/auth", handler: authRoutes, name: "authRoutes" },
   { path: "/audit-logs", handler: auditRoutes, name: "auditRoutes" },
   { path: "/risks", handler: riskRoutes, name: "riskRoutes" },
   { path: "/bia", handler: biaRoutes, name: "biaRoutes" },
@@ -696,6 +698,7 @@ initDiscoveryWebSocket(server);
 licenseService.initialize()
   .then(() => {
     app.locals.licenseService = licenseService;
+    app.locals.authService = authService;
     const stopLicenseValidation = () => {
       licenseService.shutdown();
     };
@@ -726,6 +729,20 @@ licenseService.initialize()
       setImmediate(() => {
         void startBackgroundServices();
       });
+
+      const refreshTokenCleanupTimer = setInterval(() => {
+        void (async () => {
+          try {
+            const count = await authService.cleanupExpiredTokens();
+            if (count > 0) {
+              appLogger.info(`[AUTH] ${count} refresh token(s) expire(s) nettoye(s)`);
+            }
+          } catch (error) {
+            appLogger.error("[AUTH] Erreur nettoyage tokens:", error);
+          }
+        })();
+      }, 24 * 60 * 60 * 1000);
+      refreshTokenCleanupTimer.unref?.();
 
       void (async () => {
         logBoot("dependencies.probe.start");

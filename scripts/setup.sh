@@ -4,6 +4,35 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+ENV_FILE="$ROOT_DIR/.env"
+
+ensure_env_secret() {
+  local key="$1"
+  if [[ ! -f "$ENV_FILE" ]]; then
+    return
+  fi
+
+  local current_value
+  current_value="$(grep -E "^${key}=" "$ENV_FILE" | tail -n 1 | cut -d= -f2- || true)"
+  if [[ -n "$current_value" && ! "$current_value" =~ ^CHANGE_ME && ! "$current_value" =~ ^example$ ]]; then
+    return
+  fi
+
+  local generated_value
+  generated_value="$(node -e "console.log(require('crypto').randomBytes(64).toString('hex'))")"
+
+  if grep -q -E "^${key}=" "$ENV_FILE"; then
+    sed -i.bak "s|^${key}=.*|${key}=${generated_value}|" "$ENV_FILE"
+    rm -f "${ENV_FILE}.bak"
+  else
+    printf "\n%s=%s\n" "$key" "$generated_value" >> "$ENV_FILE"
+  fi
+
+  echo "Generated ${key} in .env"
+}
+
+ensure_env_secret "JWT_SECRET"
+
 echo "[1/6] Starting postgres + redis..."
 docker compose up -d postgres redis
 
