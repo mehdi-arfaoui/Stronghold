@@ -9,21 +9,19 @@ RUN apk add --no-cache \
     openssl \
     tesseract-ocr \
     wget
+WORKDIR /app
 
 FROM base AS deps
-WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --no-audit --fund=false --ignore-scripts
 
 FROM base AS prod-deps
-WORKDIR /app
 COPY package.json package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --omit=dev --no-audit --fund=false --ignore-scripts
 
-FROM deps AS build
-WORKDIR /app
+FROM deps AS source
 COPY prisma ./prisma
 RUN npx prisma generate
 COPY tsconfig.json ./
@@ -32,27 +30,47 @@ COPY src ./src
 COPY scripts ./scripts
 RUN sed -i 's/\r$//' scripts/migrate-and-seed.sh \
     && chmod +x scripts/migrate-and-seed.sh
+
+FROM source AS build-client
+ENV BUILD_TARGET=client
+RUN rm -rf src/demo
+RUN npm run build
+
+FROM source AS build-internal
+ENV BUILD_TARGET=internal
 RUN npm run build
 
 FROM base AS migrate
-WORKDIR /app
 RUN apk add --no-cache bash
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/package-lock.json ./package-lock.json
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/scripts ./scripts
+COPY --from=build-internal /app/package.json ./package.json
+COPY --from=build-internal /app/package-lock.json ./package-lock.json
+COPY --from=build-internal /app/node_modules ./node_modules
+COPY --from=build-internal /app/prisma ./prisma
+COPY --from=build-internal /app/scripts ./scripts
 CMD ["bash", "scripts/migrate-and-seed.sh"]
 
-FROM base AS runtime
-WORKDIR /app
+FROM base AS client
 ENV NODE_ENV=production
-COPY --from=build /app/package.json ./package.json
+ENV BUILD_TARGET=client
+COPY --from=build-client /app/package.json ./package.json
 COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=build /app/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=build /app/dist ./dist
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/config ./config
+COPY --from=build-client /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build-client /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build-client /app/dist ./dist
+COPY --from=build-client /app/prisma ./prisma
+COPY --from=build-client /app/config ./config
+EXPOSE 4000
+CMD ["node", "dist/index.js"]
+
+FROM base AS internal
+ENV NODE_ENV=production
+ENV BUILD_TARGET=internal
+COPY --from=build-internal /app/package.json ./package.json
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=build-internal /app/node_modules/@prisma/client ./node_modules/@prisma/client
+COPY --from=build-internal /app/node_modules/.prisma ./node_modules/.prisma
+COPY --from=build-internal /app/dist ./dist
+COPY --from=build-internal /app/prisma ./prisma
+COPY --from=build-internal /app/config ./config
 EXPOSE 4000
 CMD ["node", "dist/index.js"]
