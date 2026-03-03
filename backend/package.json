@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc && npm run copy-scenarios",
+    "build": "node scripts/build.mjs",
     "copy-scenarios": "node scripts/copy-scenarios.mjs",
     "typecheck": "tsc --noEmit",
     "start": "node dist/index.js",

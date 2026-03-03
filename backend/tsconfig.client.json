@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.cache/tsconfig.client.tsbuildinfo"
+  },
+  "exclude": [
+    "scripts",
+    "node_modules",
+    "dist",
+    "src/demo/**/*"
+  ]
+}
