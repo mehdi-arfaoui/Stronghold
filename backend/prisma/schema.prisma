@@ -76,6 +76,8 @@ model Tenant {
   vulnerabilities          Vulnerability[]
   branding                 TenantBranding?
   license                  License?
+  users                    User[]
+  refreshTokens            RefreshToken[]
 
   // Resilience platform
   infraNodes             InfraNode[]
@@ -1143,6 +1145,47 @@ enum ApiRole {
   ADMIN
   READER
   OPERATOR
+}
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  email        String
+  passwordHash String
+  displayName  String
+  role         UserRole @default(VIEWER)
+  isActive     Boolean  @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  refreshTokens RefreshToken[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId, role])
+  @@index([tenantId, isActive])
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([tenantId, userId])
+  @@index([tenantId, expiresAt])
 }
 
 model ApiKey {
