@@ -17,6 +17,7 @@ import {
   Activity,
   CircleDollarSign,
   GitBranch,
+  Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -25,9 +26,11 @@ import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useLicense } from '@/hooks/useLicense';
+import { useAuth } from '@/hooks/useAuth';
 
 interface NavItem {
   labelKey: string;
+  label?: string;
   icon: LucideIcon;
   path: string;
   exact?: boolean;
@@ -90,6 +93,17 @@ export function Sidebar() {
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const location = useLocation();
   const { hasFeature } = useLicense();
+  const { user } = useAuth();
+
+  const navSections = user?.role === 'ADMIN'
+    ? [
+        ...NAV_SECTIONS,
+        {
+          labelKey: 'sidebar.configuration',
+          items: [{ labelKey: 'nav.users', label: 'Utilisateurs', icon: Users, path: '/users' }],
+        },
+      ]
+    : NAV_SECTIONS;
 
   return (
     <aside
@@ -112,7 +126,7 @@ export function Sidebar() {
 
       <ScrollArea className="flex-1">
         <nav className="space-y-1 p-2">
-          {NAV_SECTIONS.map((section, sectionIndex) => (
+          {navSections.map((section, sectionIndex) => (
             <div key={section.labelKey ?? sectionIndex}>
               {sectionIndex > 0 && <Separator className="my-2" />}
               {section.labelKey && sidebarOpen && (
@@ -139,10 +153,10 @@ export function Sidebar() {
                         : 'text-muted-foreground hover:bg-accent hover:text-foreground',
                       !sidebarOpen && 'justify-center px-2',
                     )}
-                    title={!sidebarOpen ? t(item.labelKey) : undefined}
+                    title={!sidebarOpen ? item.label ?? t(item.labelKey) : undefined}
                   >
                     <item.icon className="h-5 w-5 shrink-0" />
-                    {sidebarOpen && <span>{t(item.labelKey)}</span>}
+                    {sidebarOpen && <span>{item.label ?? t(item.labelKey)}</span>}
                   </NavLink>
                 );
               })}

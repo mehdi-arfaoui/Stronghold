@@ -1,10 +1,10 @@
 import axios from 'axios';
+import { clearStoredApiKey, getStoredApiKey } from '@/lib/credentialStorage';
 import {
-  clearStoredApiKey,
-  clearStoredToken,
-  getStoredApiKey,
-  getStoredToken,
-} from '@/lib/credentialStorage';
+  getAccessToken,
+  getAuthClientHandlers,
+  getRefreshToken,
+} from '@/lib/authSession';
 
 function resolveApiBaseUrl(): string {
   const configuredBaseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -16,8 +16,6 @@ function resolveApiBaseUrl(): string {
     const resolved = new URL(configuredBaseUrl, window.location.origin);
     const isSameOrigin = resolved.origin === window.location.origin;
 
-    // Prevent misrouting API calls to the SPA root (which returns index.html)
-    // when VITE_API_URL is set to something like http://localhost:3000.
     if (isSameOrigin && !resolved.pathname.startsWith('/api')) {
       return '/api';
     }
@@ -39,30 +37,56 @@ api.interceptors.request.use((config) => {
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }
-  const token = getStoredToken();
+
+  const token = getAccessToken();
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 
+let refreshPromise: Promise<string | null> | null = null;
+
 api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    if (err.response?.status === 401) {
-      // Only redirect to login if a JWT session expired (token was present).
-      // Don't redirect for missing/invalid API key — let the caller handle the error.
-      const hadToken = getStoredToken();
-      if (hadToken) {
-        clearStoredToken();
-        window.location.href = '/login';
+  (response) => response,
+  async (error) => {
+    const originalRequest = error.config;
+    const hasRefreshToken = Boolean(getRefreshToken());
+
+    if (
+      error.response?.status === 401 &&
+      originalRequest &&
+      !originalRequest._retry &&
+      !originalRequest.skipAuthRefresh &&
+      hasRefreshToken
+    ) {
+      originalRequest._retry = true;
+
+      try {
+        if (!refreshPromise) {
+          refreshPromise = getAuthClientHandlers().refreshSession();
+        }
+
+        const nextAccessToken = await refreshPromise;
+        refreshPromise = null;
+
+        if (nextAccessToken) {
+          originalRequest.headers = originalRequest.headers ?? {};
+          originalRequest.headers.Authorization = `Bearer ${nextAccessToken}`;
+          return api(originalRequest);
+        }
+      } catch {
+        refreshPromise = null;
       }
+
+      getAuthClientHandlers().onAuthFailure();
     }
 
-    if (err.response?.status === 403 && err.response?.data?.error === 'Invalid API key') {
+    if (error.response?.status === 403 && error.response?.data?.error === 'Invalid API key') {
       clearStoredApiKey();
     }
 
-    return Promise.reject(err);
+    return Promise.reject(error);
   }
 );
