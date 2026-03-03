@@ -22,9 +22,11 @@ import { useGraph } from '@/hooks/useGraph';
 import { discoveryApi } from '@/api/discovery.api';
 import { simulationsApi } from '@/api/simulations.api';
 import { financialApi } from '@/api/financial.api';
+import { useLicense } from '@/hooks/useLicense';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatDate } from '@/lib/formatters';
 import { cn } from '@/lib/utils';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 import type { ScenarioTemplate, SimulationConfig } from '@/types/simulation.types';
 
 type SimulationSubView = 'library' | 'priorities' | 'history';
@@ -115,6 +117,7 @@ function mapScenarioToEngine(
 
 export function SimulationPage() {
   const tenantScope = getCredentialScopeKey();
+  const { hasFeature } = useLicense();
   const [activeSimId, setActiveSimId] = useState<string | undefined>();
   const [activeView, setActiveView] = useState<SimulationSubView>('library');
   const [warRoomOpen, setWarRoomOpen] = useState(false);
@@ -148,6 +151,14 @@ export function SimulationPage() {
     staleTime: 60_000,
   });
   const activeCurrency = String(orgProfileQuery.data?.customCurrency ?? 'EUR').toUpperCase();
+  const canUseCustomWarRoom = hasFeature('war-room-custom');
+  const selectedScenarioRequiresCustomFeature = selectedTemplate
+    ? mapScenarioToEngine(
+        selectedTemplate,
+        selectedParams,
+        (allNodes ?? []).map((node) => ({ id: node.id, type: node.type })),
+      ).scenarioType === 'custom'
+    : false;
 
   const setScenarioParam = (key: string, value: unknown) => {
     setSelectedParams((prev) => ({ ...prev, [key]: value }));
@@ -213,11 +224,26 @@ export function SimulationPage() {
             isLaunching={isCreating}
             libraryOnly
             onSelectTemplate={(template, params) => {
+              const config = mapScenarioToEngine(
+                template,
+                params ?? {},
+                (allNodes ?? []).map((node) => ({ id: node.id, type: node.type })),
+              );
+              if (config.scenarioType === 'custom' && !canUseCustomWarRoom) {
+                setSelectedTemplate(template);
+                setSelectedParams(params);
+                setScenarioModalOpen(true);
+                return;
+              }
               setSelectedTemplate(template);
               setSelectedParams(params);
               setScenarioModalOpen(true);
             }}
           />
+
+          {!canUseCustomWarRoom && (
+            <UpgradePrompt feature="Scenarios personnalises" requiredPlan="Pro" />
+          )}
 
           {simulation?.result && (
             <>
@@ -364,6 +390,9 @@ export function SimulationPage() {
             <p className="text-sm text-muted-foreground">Selectionnez un scenario dans la bibliotheque.</p>
           ) : (
             <div className="space-y-4">
+              {selectedScenarioRequiresCustomFeature && !canUseCustomWarRoom ? (
+                <UpgradePrompt feature="Scenarios personnalises" requiredPlan="Pro" />
+              ) : null}
               <div>
                 <p className="font-medium">{selectedTemplate.name}</p>
                 <p className="text-sm text-muted-foreground">{selectedTemplate.description}</p>
@@ -413,7 +442,7 @@ export function SimulationPage() {
                 className="w-full"
                 variant={selectedTemplate.severity === 'critical' ? 'destructive' : 'default'}
                 onClick={() => handleLaunch(selectedTemplate, selectedParams)}
-                disabled={isCreating}
+                disabled={isCreating || (selectedScenarioRequiresCustomFeature && !canUseCustomWarRoom)}
               >
                 {isCreating ? 'Lancement...' : `Lancer (${selectedTemplate.severity.toUpperCase()})`}
               </Button>
@@ -421,6 +450,8 @@ export function SimulationPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* TODO: define the exact frontend rule for war-room-unlimited when product UX is finalized. */}
 
       {simulation?.result && (
         <BlastRadiusDrawer

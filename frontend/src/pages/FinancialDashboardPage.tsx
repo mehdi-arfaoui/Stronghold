@@ -36,9 +36,11 @@ import { recommendationsApi } from '@/api/recommendations.api';
 import { reportsApi } from '@/api/reports.api';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { useLicense } from '@/hooks/useLicense';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 
 function formatMoney(value: number, currency: string): string {
   return new Intl.NumberFormat('fr-FR', {
@@ -136,35 +138,42 @@ const KpiCard = memo(function KpiCard(props: {
 function FinancialDashboardInner() {
   const navigate = useNavigate();
   const tenantScope = getCredentialScopeKey();
+  const { hasFeature } = useLicense();
   const [isExporting, setIsExporting] = useState(false);
+  const canAccessExecutiveDashboard = hasFeature('executive-dashboard');
 
   const orgProfileQuery = useQuery({
     queryKey: ['financial-org-profile', tenantScope],
     queryFn: async () => (await financialApi.getOrgProfile()).data,
     staleTime: 60_000,
+    enabled: canAccessExecutiveDashboard,
   });
 
   const summaryQuery = useQuery({
     queryKey: ['financial-summary', tenantScope],
     queryFn: async () => (await financialApi.getSummary()).data,
     staleTime: 60_000,
+    enabled: canAccessExecutiveDashboard,
   });
 
   const trendQuery = useQuery({
     queryKey: ['financial-trend', tenantScope],
     queryFn: async () => (await financialApi.getTrend({ months: 6 })).data,
     staleTime: 60_000,
+    enabled: canAccessExecutiveDashboard,
   });
 
   const flowCoverageQuery = useQuery({
     queryKey: ['flows-coverage', tenantScope],
     queryFn: async () => (await financialApi.getFlowCoverage()).data,
     staleTime: 60_000,
+    enabled: canAccessExecutiveDashboard,
   });
   const recommendationsSummaryQuery = useQuery({
     queryKey: ['recommendations-summary', tenantScope],
     queryFn: async () => (await recommendationsApi.getSummary()).data,
     staleTime: 60_000,
+    enabled: canAccessExecutiveDashboard,
   });
 
   const summary = summaryQuery.data;
@@ -359,6 +368,10 @@ function FinancialDashboardInner() {
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
+  }
+
+  if (!canAccessExecutiveDashboard) {
+    return <UpgradePrompt feature="Dashboard executif" requiredPlan="Pro" />;
   }
 
   if (summaryQuery.isError || !summary) {

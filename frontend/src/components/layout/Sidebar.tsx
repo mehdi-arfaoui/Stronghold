@@ -24,12 +24,14 @@ import { useUIStore } from '@/stores/ui.store';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useLicense } from '@/hooks/useLicense';
 
 interface NavItem {
   labelKey: string;
   icon: LucideIcon;
   path: string;
   exact?: boolean;
+  feature?: string;
 }
 
 interface NavSection {
@@ -55,7 +57,7 @@ const NAV_SECTIONS: NavSection[] = [
       { labelKey: 'nav.analysis', icon: BarChart3, path: '/analysis' },
       { labelKey: 'nav.businessFlows', icon: GitBranch, path: '/business-flows' },
       { labelKey: 'nav.recommendations', icon: Lightbulb, path: '/recommendations', exact: true },
-      { labelKey: 'nav.roiFinance', icon: CircleDollarSign, path: '/finance' },
+      { labelKey: 'nav.roiFinance', icon: CircleDollarSign, path: '/finance', feature: 'executive-dashboard' },
     ],
   },
   {
@@ -87,6 +89,7 @@ export function Sidebar() {
   const { t } = useTranslation();
   const { sidebarOpen, toggleSidebar } = useUIStore();
   const location = useLocation();
+  const { hasFeature } = useLicense();
 
   return (
     <aside
@@ -118,6 +121,9 @@ export function Sidebar() {
                 </p>
               )}
               {section.items.map((item) => {
+                if (item.feature && !hasFeature(item.feature)) {
+                  return null;
+                }
                 const isActive = item.exact
                   ? location.pathname === item.path
                   : location.pathname.startsWith(item.path);

@@ -8,10 +8,13 @@ import { cn } from '@/lib/utils';
 import { ModuleErrorBoundary } from '@/components/ErrorBoundary';
 import { GuidedTabTour } from './GuidedTabTour';
 import { GUIDED_TAB_CONTENT_AREA_ID } from './guidedTabTour.config';
+import { LicenseBanner } from '@/components/LicenseBanner';
+import { useLicense } from '@/hooks/useLicense';
 
 export function AppShell() {
   const location = useLocation();
   const sidebarOpen = useUIStore((s) => s.sidebarOpen);
+  const { license } = useLicense();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -28,6 +31,7 @@ export function AppShell() {
       </div>
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header />
+        <LicenseBanner license={license} />
         <main id={GUIDED_TAB_CONTENT_AREA_ID} className="relative flex-1 overflow-y-auto bg-background p-6">
           <ModuleErrorBoundary key={location.pathname} moduleName="Page">
             <div className="animate-in fade-in duration-200">

@@ -21,7 +21,9 @@ import { discoveryApi } from '@/api/discovery.api';
 import { risksApi } from '@/api/risks.api';
 import { analysisApi } from '@/api/analysis.api';
 import { financialApi } from '@/api/financial.api';
+import { useLicense } from '@/hooks/useLicense';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 import {
   filterRisks,
   getRiskCriticityLabel,
@@ -54,6 +56,7 @@ export function AnalysisPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const tenantScope = getCredentialScopeKey();
+  const { hasFeature } = useLicense();
   const [exportOpen, setExportOpen] = useState(false);
   const [activeRiskLevels, setActiveRiskLevels] = useState<RiskCriticityLevel[]>(DEFAULT_RISK_LEVELS);
   const [selectedRiskCell, setSelectedRiskCell] = useState<RiskCellFilter | null>(null);
@@ -200,9 +203,11 @@ export function AnalysisPage() {
             <Button variant="outline" size="sm" onClick={() => regenerateMutation.mutate()} disabled={regenerateMutation.isPending}>
               <RefreshCw className="mr-2 h-4 w-4" /> Regenerer le BIA
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
-              <Download className="mr-2 h-4 w-4" /> Exporter
-            </Button>
+            {hasFeature('api-export') ? (
+              <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
+                <Download className="mr-2 h-4 w-4" /> Exporter
+              </Button>
+            ) : null}
             <ValidateAllButton
               entries={entries.map((e: { id: string; serviceName: string; validationStatus?: string }) => ({
                 id: e.id,
@@ -212,12 +217,19 @@ export function AnalysisPage() {
             />
           </div>
 
-          {/* Export Panel (Drawer) */}
-          <ExportPanel
-            open={exportOpen}
-            onOpenChange={setExportOpen}
-            totalRows={entries.length}
-          />
+          {!hasFeature('api-export') ? (
+            <UpgradePrompt feature="Exports BIA" requiredPlan="Pro" />
+          ) : null}
+
+          {hasFeature('api-export') ? (
+            <ExportPanel
+              open={exportOpen}
+              onOpenChange={setExportOpen}
+              totalRows={entries.length}
+            />
+          ) : null}
+
+          {/* TODO: add frontend compliance mapping views when the corresponding UI is finalized. */}
 
           {summary && (
             <BIAValidation totalServices={summary.totalServices} validatedCount={summary.validatedCount} />

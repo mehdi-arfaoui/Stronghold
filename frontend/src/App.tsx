@@ -5,6 +5,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { GlobalErrorBoundary } from '@/components/ErrorBoundary';
 import { AppShell } from '@/components/layout/AppShell';
 import { LoadingState } from '@/components/common/LoadingState';
+import { useLicense } from '@/hooks/useLicense';
+import { LicenseActivationPage } from '@/pages/LicenseActivationPage';
 import i18n from '@/i18n';
 import { useUIStore } from '@/stores/ui.store';
 import { getCredentialScopeKey, isCredentialStorageKey } from '@/lib/credentialStorage';
@@ -116,12 +118,32 @@ export default function App() {
   return (
     <GlobalErrorBoundary>
       <QueryClientProvider client={queryClient}>
-        <TooltipProvider>
-          <ThemeInitializer />
-          <TenantCacheIsolationGuard />
-          <RouterProvider router={router} />
-        </TooltipProvider>
+        <AppBootstrap />
       </QueryClientProvider>
     </GlobalErrorBoundary>
+  );
+}
+
+function AppBootstrap() {
+  const { needsActivation, isLoading } = useLicense();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen">
+        <LoadingState message={i18n.t('common.loadingModule')} />
+      </div>
+    );
+  }
+
+  if (needsActivation) {
+    return <LicenseActivationPage />;
+  }
+
+  return (
+    <TooltipProvider>
+      <ThemeInitializer />
+      <TenantCacheIsolationGuard />
+      <RouterProvider router={router} />
+    </TooltipProvider>
   );
 }

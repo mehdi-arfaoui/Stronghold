@@ -1,4 +1,4 @@
-import { useState, Component } from 'react';
+import { useEffect, useState, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -31,6 +31,8 @@ import { cn } from '@/lib/utils';
 import { reportsApi, type ReportConfig, type ReportPrerequisite } from '@/api/reports.api';
 import { simulationsApi } from '@/api/simulations.api';
 import { biaApi } from '@/api/bia.api';
+import { useLicense } from '@/hooks/useLicense';
+import { UpgradePrompt } from '@/components/UpgradePrompt';
 import type { Simulation } from '@/types/simulation.types';
 
 type ReportTemplate = 'iso22301' | 'dora' | 'nist' | 'custom';
@@ -206,6 +208,7 @@ export function ReportGenerator({ className }: ReportGeneratorProps) {
 }
 
 function ReportGeneratorInner({ className }: ReportGeneratorProps) {
+  const { hasFeature } = useLicense();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState(0);
   const [currentGeneratingSection, setCurrentGeneratingSection] = useState('');
@@ -219,6 +222,13 @@ function ReportGeneratorInner({ className }: ReportGeneratorProps) {
   const [sections, setSections] = useState<ReportSection[]>(DEFAULT_SECTIONS);
   const [selectedSimulations, setSelectedSimulations] = useState<Set<string>>(new Set());
   const [selectedExercises] = useState<Set<string>>(new Set());
+  const canExportDocx = hasFeature('report-docx');
+
+  useEffect(() => {
+    if (format === 'docx' && !canExportDocx) {
+      setFormat('pdf');
+    }
+  }, [canExportDocx, format]);
 
   const prereqsQuery = useQuery({
     queryKey: ['report-prerequisites'],
@@ -502,10 +512,15 @@ function ReportGeneratorInner({ className }: ReportGeneratorProps) {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="pdf">PDF</SelectItem>
-                      <SelectItem value="docx">DOCX</SelectItem>
+                      {canExportDocx ? <SelectItem value="docx">DOCX</SelectItem> : null}
                       <SelectItem value="html">HTML interactif</SelectItem>
                     </SelectContent>
                   </Select>
+                  {!canExportDocx ? (
+                    <div className="mt-2">
+                      <UpgradePrompt feature="Export DOCX" requiredPlan="Pro" />
+                    </div>
+                  ) : null}
                 </div>
                 <div>
                   <Label className="mb-1.5 block text-xs">Niveau de detail</Label>
