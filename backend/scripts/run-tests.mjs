@@ -21,7 +21,8 @@ const unitBase = [
   'tests/graphServiceIdentification.test.ts',
   'tests/helpers.test.js',
   'tests/landingZoneCostOptimization.test.ts',
-  'tests/licenseMiddleware.test.js',
+  'tests/licenseMiddleware.test.ts',
+  'tests/licenseRoutes.test.ts',
   'tests/ocrService.test.js',
   'tests/openAiAnalyzer.test.js',
   'tests/pricingSummary.test.js',
@@ -56,7 +57,7 @@ const integrationBase = [
   'tests/financialEngineBusinessFlows.test.ts',
   'tests/financialMultiTenantE2E.test.ts',
   'tests/incidentRoutes.test.js',
-  'tests/licenseService.test.js',
+  'tests/licenseService.test.ts',
   'tests/riskRoutes.test.js',
   'tests/tenantIsolation.test.js',
 ];
