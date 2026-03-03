@@ -4,7 +4,7 @@ const EnvironmentVariablesSchema = z
   .object({
     DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
     REDIS_URL: z.string().min(1, "REDIS_URL is required"),
-    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
+    JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters").optional(),
     SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
     LICENSE_SIGNING_SECRET: z
       .string()
@@ -61,10 +61,13 @@ export function validateEnv(
   const validated = result.data;
   if (validated.NODE_ENV === "production") {
     const strictSecrets: Array<[keyof EnvironmentVariables, string]> = [
-      ["JWT_SECRET", String(validated.JWT_SECRET)],
       ["SESSION_SECRET", String(validated.SESSION_SECRET)],
       ["LICENSE_SIGNING_SECRET", String(validated.LICENSE_SIGNING_SECRET)],
     ];
+
+    if (validated.JWT_SECRET) {
+      strictSecrets.unshift(["JWT_SECRET", String(validated.JWT_SECRET)]);
+    }
 
     for (const [key, value] of strictSecrets) {
       if (isPlaceholderSecret(value)) {
