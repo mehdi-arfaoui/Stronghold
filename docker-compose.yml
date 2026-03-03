@@ -97,7 +97,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-      target: runtime
+      target: client
     image: stronghold-backend
     container_name: pra_backend
     environment:
@@ -137,10 +137,15 @@ services:
       AWS_PRICING_SECRET_ACCESS_KEY: ${AWS_PRICING_SECRET_ACCESS_KEY:-}
       GCP_PRICING_API_KEY: ${GCP_PRICING_API_KEY}
       USD_EUR_RATE: ${USD_EUR_RATE:-0.92}
+      DEPLOYMENT_MODE: onpremise
     ports:
       - "4000:4000"
     volumes:
-      - ./stronghold.lic:/app/license/stronghold.lic:rw
+      - type: bind
+        source: ./stronghold.lic
+        target: /app/license/stronghold.lic
+        bind:
+          create_host_path: false
       - /etc/machine-id:/etc/machine-id:ro
     depends_on:
       backend-migrate:
@@ -158,7 +163,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-      target: runtime
+      target: client
       args:
         VITE_API_URL: ${VITE_API_URL}
         VITE_API_KEY: ${VITE_API_KEY}
