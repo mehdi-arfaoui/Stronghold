@@ -1487,6 +1487,15 @@ model LicenseUsage {
   updatedAt   DateTime @updatedAt
 }
 
+model LicenseBinding {
+  id          String   @id @default(uuid())
+  licenseId   String   @unique
+  fingerprint String
+  boundAt     DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 // ============================================================
 // RESILIENCE PLATFORM — Graph, Analysis, BIA, Simulations
 // ============================================================
