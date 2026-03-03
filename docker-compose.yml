@@ -139,6 +139,9 @@ services:
       USD_EUR_RATE: ${USD_EUR_RATE:-0.92}
     ports:
       - "4000:4000"
+    volumes:
+      - ./stronghold.lic:/app/license/stronghold.lic:rw
+      - /etc/machine-id:/etc/machine-id:ro
     depends_on:
       backend-migrate:
         condition: service_completed_successfully

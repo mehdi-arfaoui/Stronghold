@@ -52,6 +52,7 @@ CMD ["bash", "scripts/migrate-and-seed.sh"]
 FROM base AS client
 ENV NODE_ENV=production
 ENV BUILD_TARGET=client
+RUN mkdir -p /app/license
 COPY --from=build-client /app/package.json ./package.json
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build-client /app/node_modules/@prisma/client ./node_modules/@prisma/client
@@ -59,12 +60,14 @@ COPY --from=build-client /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build-client /app/dist ./dist
 COPY --from=build-client /app/prisma ./prisma
 COPY --from=build-client /app/config ./config
+COPY license-public.pem /app/license/license-public.pem
 EXPOSE 4000
 CMD ["node", "dist/index.js"]
 
 FROM base AS internal
 ENV NODE_ENV=production
 ENV BUILD_TARGET=internal
+RUN mkdir -p /app/license
 COPY --from=build-internal /app/package.json ./package.json
 COPY --from=prod-deps /app/node_modules ./node_modules
 COPY --from=build-internal /app/node_modules/@prisma/client ./node_modules/@prisma/client
@@ -73,5 +76,6 @@ COPY --from=build-internal /app/dist ./dist
 COPY --from=build-internal /app/prisma ./prisma
 COPY --from=build-internal /app/config ./config
 COPY --from=build-internal /app/src/demo ./src/demo
+COPY license-public.pem /app/license/license-public.pem
 EXPOSE 4000
 CMD ["node", "dist/index.js"]
