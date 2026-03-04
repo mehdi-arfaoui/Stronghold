@@ -6,9 +6,11 @@ import { spawn } from 'node:child_process';
 import discoveryResilienceRoutes, {
   cloudScanAdapters,
   cloudScanIngestor,
+  cloudScanPostProcessors,
 } from '../src/routes/discoveryResilienceRoutes.ts';
 import { discoveryQueue } from '../src/queues/discoveryQueue.ts';
 import prisma from '../src/prismaClient.ts';
+import { appLogger } from '../src/utils/logger.ts';
 
 test.after(async () => {
   await discoveryQueue.close().catch(() => undefined);
@@ -67,13 +69,16 @@ test('POST /discovery-resilience/cloud-scan returns partial 200 and ingests succ
   const originalAzure = cloudScanAdapters.azure;
   const originalGcp = cloudScanAdapters.gcp;
   const originalIngest = cloudScanIngestor.ingest;
+  const originalAutoGenerateBia = cloudScanPostProcessors.autoGenerateBia;
   let ingestArgs: {
     tenantId: string;
     resources: Array<{ externalId: string }>;
     flows: unknown[];
     provider: string;
     inferDependencies: boolean;
+    autoGenerateBiaDisabled: boolean;
   } | null = null;
+  let autoGenerateBiaTenantId: string | null = null;
 
   (cloudScanAdapters as any).aws = async () => {
     throw new Error('AccessDeniedException');
@@ -99,7 +104,7 @@ test('POST /discovery-resilience/cloud-scan returns partial 200 and ingests succ
     resources: Array<{ externalId: string }>,
     flows: unknown[],
     provider: string,
-    options: { inferDependencies?: boolean }
+    options: { inferDependencies?: boolean; postScanEnrichments?: { autoGenerateBia?: false } }
   ) => {
     ingestArgs = {
       tenantId,
@@ -107,6 +112,7 @@ test('POST /discovery-resilience/cloud-scan returns partial 200 and ingests succ
       flows,
       provider,
       inferDependencies: options.inferDependencies !== false,
+      autoGenerateBiaDisabled: options.postScanEnrichments?.autoGenerateBia === false,
     };
     return {
       provider,
@@ -121,12 +127,17 @@ test('POST /discovery-resilience/cloud-scan returns partial 200 and ingests succ
       edgesRemoved: 0,
     };
   };
+  (cloudScanPostProcessors as any).autoGenerateBia = async (tenantId: string) => {
+    autoGenerateBiaTenantId = tenantId;
+    return { id: 'bia-report-1' };
+  };
 
   t.after(async () => {
     (cloudScanAdapters as any).aws = originalAws;
     (cloudScanAdapters as any).azure = originalAzure;
     (cloudScanAdapters as any).gcp = originalGcp;
     (cloudScanIngestor as any).ingest = originalIngest;
+    (cloudScanPostProcessors as any).autoGenerateBia = originalAutoGenerateBia;
   });
 
   const app = createApp();
@@ -182,11 +193,14 @@ test('POST /discovery-resilience/cloud-scan returns partial 200 and ingests succ
   assert.equal(ingestArgs?.resources.length, 1);
   assert.equal(ingestArgs?.provider, 'cloud-scan');
   assert.equal(ingestArgs?.inferDependencies, true);
+  assert.equal(ingestArgs?.autoGenerateBiaDisabled, true);
+  assert.equal(autoGenerateBiaTenantId, 'tenant-cloud-scan');
 });
 
 test('POST /api/discovery-resilience/cloud-scan responds to curl', async (t) => {
   const originalAws = cloudScanAdapters.aws;
   const originalIngest = cloudScanIngestor.ingest;
+  const originalAutoGenerateBia = cloudScanPostProcessors.autoGenerateBia;
 
   (cloudScanAdapters as any).aws = async () => ({
     resources: [
@@ -219,10 +233,12 @@ test('POST /api/discovery-resilience/cloud-scan responds to curl', async (t) => 
     edgesUpdated: 0,
     edgesRemoved: 0,
   });
+  (cloudScanPostProcessors as any).autoGenerateBia = async () => ({ id: 'bia-report-curl' });
 
   t.after(() => {
     (cloudScanAdapters as any).aws = originalAws;
     (cloudScanIngestor as any).ingest = originalIngest;
+    (cloudScanPostProcessors as any).autoGenerateBia = originalAutoGenerateBia;
   });
 
   const app = createApp();
@@ -258,4 +274,85 @@ test('POST /api/discovery-resilience/cloud-scan responds to curl', async (t) => 
     assert.equal(response.summary?.nodes, 1);
     assert.deepEqual(response.scannedProviders, ['aws']);
   });
+});
+
+test('POST /discovery-resilience/cloud-scan keeps success response when BIA auto-generation fails', async (t) => {
+  const originalAws = cloudScanAdapters.aws;
+  const originalIngest = cloudScanIngestor.ingest;
+  const originalAutoGenerateBia = cloudScanPostProcessors.autoGenerateBia;
+  const originalWarn = appLogger.warn;
+  const warnings: string[] = [];
+
+  (cloudScanAdapters as any).aws = async () => ({
+    resources: [
+      {
+        source: 'aws',
+        externalId: 'i-bia-warning',
+        name: 'i-bia-warning',
+        kind: 'infra',
+        type: 'EC2_INSTANCE',
+      },
+    ],
+    flows: [],
+    warnings: [],
+  });
+  (cloudScanIngestor as any).ingest = async (
+    _prisma: unknown,
+    _tenantId: string,
+    resources: unknown[],
+    flows: unknown[],
+    provider: string
+  ) => ({
+    provider,
+    scannedAt: new Date('2026-02-24T13:00:00.000Z'),
+    totalNodes: resources.length,
+    totalEdges: flows.length,
+    nodesCreated: resources.length,
+    nodesUpdated: 0,
+    nodesRemoved: 0,
+    edgesCreated: flows.length,
+    edgesUpdated: 0,
+    edgesRemoved: 0,
+  });
+  (cloudScanPostProcessors as any).autoGenerateBia = async () => {
+    throw new Error('bia auto-generation failed');
+  };
+  (appLogger as any).warn = (message: unknown) => {
+    warnings.push(String(message));
+  };
+
+  t.after(() => {
+    (cloudScanAdapters as any).aws = originalAws;
+    (cloudScanIngestor as any).ingest = originalIngest;
+    (cloudScanPostProcessors as any).autoGenerateBia = originalAutoGenerateBia;
+    (appLogger as any).warn = originalWarn;
+  });
+
+  const app = createApp();
+  await withServer(app, async (baseUrl) => {
+    const response = await fetch(`${baseUrl}/discovery-resilience/cloud-scan`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        providers: [
+          {
+            type: 'aws',
+            credentials: {
+              accessKeyId: 'AKIA_TEST',
+              secretAccessKey: 'secret-test',
+            },
+            regions: ['eu-west-3'],
+          },
+        ],
+      }),
+    });
+
+    assert.equal(response.status, 200);
+    const payload = await response.json();
+    assert.equal(payload.success, true);
+    assert.equal(payload.summary.nodes, 1);
+  });
+
+  assert.equal(warnings.length, 1);
+  assert.match(warnings[0] || '', /BIA auto-generation failed after cloud-scan/i);
 });

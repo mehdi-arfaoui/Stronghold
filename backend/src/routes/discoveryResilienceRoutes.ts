@@ -29,6 +29,7 @@ import {
   intervalToCronExpression,
   mapScanScheduleForApi,
 } from '../services/scheduledScanService.js';
+import { generateAndPersistBiaReport } from '../services/biaAutoGenerationService.js';
 
 const router = Router();
 
@@ -40,6 +41,10 @@ export const cloudScanAdapters = {
 
 export const cloudScanIngestor = {
   ingest: ingestDiscoveredResources,
+};
+
+export const cloudScanPostProcessors = {
+  autoGenerateBia: (tenantId: string) => generateAndPersistBiaReport(prisma, tenantId),
 };
 
 type CloudProviderType = 'aws' | 'azure' | 'gcp';
@@ -619,7 +624,12 @@ router.post('/cloud-scan', async (req: TenantRequest, res) => {
             discoveredResources,
             discoveredFlows,
             'cloud-scan',
-            { inferDependencies }
+            {
+              inferDependencies,
+              postScanEnrichments: {
+                autoGenerateBia: false,
+              },
+            }
           )
         : null;
 
@@ -627,6 +637,17 @@ router.post('/cloud-scan', async (req: TenantRequest, res) => {
       console.info(
         `[CLOUD-SCAN] tenant=${tenantId} ingest.completed totalNodes=${ingestReport.totalNodes} totalEdges=${ingestReport.totalEdges}`
       );
+      try {
+        appLogger.info('[Discovery] Auto-generating BIA after cloud-scan...');
+        const biaReport = await cloudScanPostProcessors.autoGenerateBia(tenantId);
+        if (biaReport) {
+          appLogger.info('[Discovery] BIA auto-generated successfully');
+        } else {
+          appLogger.info('[Discovery] BIA auto-generation skipped because graph is empty');
+        }
+      } catch (error) {
+        appLogger.warn('[Discovery] BIA auto-generation failed after cloud-scan', error);
+      }
     } else {
       console.info(`[CLOUD-SCAN] tenant=${tenantId} ingest.skipped reason=no-discovered-resource`);
     }

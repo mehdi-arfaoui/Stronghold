@@ -236,8 +236,8 @@ export type PostIngestionPipelineResult = {
 
 type PostScanEnrichmentOptions = {
   logger?: Pick<typeof appLogger, 'info' | 'warn'>;
-  autoGenerateBia?: (tenantId: string) => Promise<unknown>;
-  autoGenerateRecommendations?: (tenantId: string) => Promise<{ recommendations?: unknown[] } | void>;
+  autoGenerateBia?: false | ((tenantId: string) => Promise<unknown>);
+  autoGenerateRecommendations?: false | ((tenantId: string) => Promise<{ recommendations?: unknown[] } | void>);
 };
 
 export async function runPostScanEnrichments(
@@ -247,36 +247,44 @@ export async function runPostScanEnrichments(
 ): Promise<void> {
   const logger = options?.logger ?? appLogger;
   const autoGenerateBia =
-    options?.autoGenerateBia ??
-    ((currentTenantId: string) => generateAndPersistBiaReport(prisma, currentTenantId));
+    options?.autoGenerateBia === false
+      ? null
+      : options?.autoGenerateBia ??
+        ((currentTenantId: string) => generateAndPersistBiaReport(prisma, currentTenantId));
   const autoGenerateRecommendations =
-    options?.autoGenerateRecommendations ??
-    ((currentTenantId: string) => buildLandingZoneFinancialContext(prisma, currentTenantId));
+    options?.autoGenerateRecommendations === false
+      ? null
+      : options?.autoGenerateRecommendations ??
+        ((currentTenantId: string) => buildLandingZoneFinancialContext(prisma, currentTenantId));
 
-  try {
-    logger.info('[Discovery] Auto-generating BIA after scan...');
-    const biaReport = await autoGenerateBia(tenantId);
-    if (biaReport) {
-      logger.info('[Discovery] BIA auto-generated successfully');
-    } else {
-      logger.info('[Discovery] BIA auto-generation skipped because graph is empty');
+  if (autoGenerateBia) {
+    try {
+      logger.info('[Discovery] Auto-generating BIA after scan...');
+      const biaReport = await autoGenerateBia(tenantId);
+      if (biaReport) {
+        logger.info('[Discovery] BIA auto-generated successfully');
+      } else {
+        logger.info('[Discovery] BIA auto-generation skipped because graph is empty');
+      }
+    } catch (error) {
+      logger.warn('[Discovery] BIA auto-generation failed, can be triggered manually', error);
     }
-  } catch (error) {
-    logger.warn('[Discovery] BIA auto-generation failed, can be triggered manually', error);
   }
 
-  try {
-    logger.info('[Discovery] Auto-generating recommendations after scan...');
-    const recommendationContext = await autoGenerateRecommendations(tenantId);
-    const count = Array.isArray((recommendationContext as { recommendations?: unknown[] } | undefined)?.recommendations)
-      ? (recommendationContext as { recommendations?: unknown[] }).recommendations?.length
-      : undefined;
-    logger.info('[Discovery] Recommendations auto-generated successfully', {
-      tenantId,
-      ...(typeof count === 'number' ? { recommendations: count } : {}),
-    });
-  } catch (error) {
-    logger.warn('[Discovery] Recommendations auto-generation failed', error);
+  if (autoGenerateRecommendations) {
+    try {
+      logger.info('[Discovery] Auto-generating recommendations after scan...');
+      const recommendationContext = await autoGenerateRecommendations(tenantId);
+      const count = Array.isArray((recommendationContext as { recommendations?: unknown[] } | undefined)?.recommendations)
+        ? (recommendationContext as { recommendations?: unknown[] }).recommendations?.length
+        : undefined;
+      logger.info('[Discovery] Recommendations auto-generated successfully', {
+        tenantId,
+        ...(typeof count === 'number' ? { recommendations: count } : {}),
+      });
+    } catch (error) {
+      logger.warn('[Discovery] Recommendations auto-generation failed', error);
+    }
   }
 }
 
@@ -285,6 +293,7 @@ export async function runPostIngestionPipeline(
   tenantId: string,
   options?: {
     inferDependencies?: boolean;
+    postScanEnrichments?: PostScanEnrichmentOptions;
   },
 ): Promise<PostIngestionPipelineResult> {
   let inferredEdgesPersisted = 0;
@@ -350,7 +359,7 @@ export async function runPostIngestionPipeline(
   // Always refresh graph and recompute analysis/classification after ingest.
   await GraphService.loadGraphFromDB(prisma, tenantId);
   const analysisResult = await persistLatestGraphAnalysis(prisma, tenantId);
-  await runPostScanEnrichments(prisma, tenantId);
+  await runPostScanEnrichments(prisma, tenantId, options?.postScanEnrichments);
 
   return {
     inferredEdgesPersisted,
@@ -372,7 +381,7 @@ export async function ingestDiscoveredResources(
   resources: DiscoveredResource[],
   flows: DiscoveredFlow[],
   provider: string,
-  options?: { inferDependencies?: boolean }
+  options?: { inferDependencies?: boolean; postScanEnrichments?: PostScanEnrichmentOptions }
 ): Promise<IngestReport> {
   // 1. Transform discovered resources to ScanResult format
   const scanResult = transformToScanResult(resources, flows, provider);
@@ -387,7 +396,12 @@ export async function ingestDiscoveredResources(
   const report = await GraphService.ingestScanResults(prisma, tenantId, scanResult);
 
   // 4. Refresh resilience analysis so dashboard metrics stay in sync with latest scan.
-  await runPostIngestionPipeline(prisma, tenantId, { inferDependencies: false });
+  await runPostIngestionPipeline(prisma, tenantId, {
+    inferDependencies: false,
+    ...(options?.postScanEnrichments
+      ? { postScanEnrichments: options.postScanEnrichments }
+      : {}),
+  });
 
   // 5. Run post-scan validation checks automatically
   const validation = await validateScanConsistency(prisma, tenantId);
