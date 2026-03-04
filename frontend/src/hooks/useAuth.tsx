@@ -13,6 +13,7 @@ import {
   clearPendingSetupEmail,
   clearAuthTokens,
   configureAuthClientHandlers,
+  getAccessToken,
   getRefreshToken,
   setAuthTokens,
 } from '@/lib/authSession';
@@ -83,15 +84,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     void (async () => {
+      const accessToken = getAccessToken();
       const refreshToken = getRefreshToken();
-      if (!refreshToken) {
+      if (!accessToken && !refreshToken) {
         if (isMounted) {
           setIsLoading(false);
         }
         return;
       }
 
-      await refreshSession(true);
+      try {
+        const me = (await authApi.getMe()).data;
+        if (isMounted) {
+          startTransition(() => {
+            setUser(me);
+            setIsAuthenticated(true);
+          });
+        }
+      } catch {
+        if (refreshToken) {
+          await refreshSession(true);
+        } else {
+          clearSession();
+          queryClient.clear();
+        }
+      }
 
       if (isMounted) {
         setIsLoading(false);
@@ -105,7 +122,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         onAuthFailure: () => {},
       });
     };
-  }, [queryClient, clearSession, refreshSession]);
+  }, [queryClient]);
 
   const login = useEffectEvent(async (email: string, password: string) => {
     const { data } = await authApi.loginUser(email, password);

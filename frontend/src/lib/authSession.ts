@@ -1,3 +1,4 @@
+const ACCESS_TOKEN_SESSION_KEY = 'stronghold_access_token';
 const REFRESH_TOKEN_SESSION_KEY = 'stronghold_refresh_token';
 const PENDING_SETUP_EMAIL_SESSION_KEY = 'stronghold_pending_setup_email';
 
@@ -34,7 +35,16 @@ export function getAuthClientHandlers(): AuthClientHandlers {
 }
 
 export function getAccessToken(): string | null {
-  return accessToken;
+  if (!isBrowser()) {
+    return accessToken;
+  }
+
+  const stored = normalize(window.sessionStorage.getItem(ACCESS_TOKEN_SESSION_KEY));
+  if (!accessToken && stored) {
+    accessToken = stored;
+  }
+
+  return accessToken ?? stored;
 }
 
 export function getRefreshToken(): string | null {
@@ -43,7 +53,16 @@ export function getRefreshToken(): string | null {
 }
 
 export function setAccessToken(nextAccessToken: string | null): void {
-  accessToken = normalize(nextAccessToken);
+  const normalized = normalize(nextAccessToken);
+  accessToken = normalized;
+
+  if (!isBrowser()) return;
+  if (!normalized) {
+    window.sessionStorage.removeItem(ACCESS_TOKEN_SESSION_KEY);
+    return;
+  }
+
+  window.sessionStorage.setItem(ACCESS_TOKEN_SESSION_KEY, normalized);
 }
 
 export function setRefreshToken(nextRefreshToken: string | null): void {
@@ -67,6 +86,7 @@ export function setAuthTokens(tokens: {
 export function clearAuthTokens(): void {
   accessToken = null;
   if (!isBrowser()) return;
+  window.sessionStorage.removeItem(ACCESS_TOKEN_SESSION_KEY);
   window.sessionStorage.removeItem(REFRESH_TOKEN_SESSION_KEY);
 }
 
