@@ -27,6 +27,7 @@ const unitBase = [
   'tests/licenseRoutes.test.ts',
   'tests/ocrService.test.js',
   'tests/openAiAnalyzer.test.js',
+  'tests/paginateAws.test.ts',
   'tests/pricingSummary.test.js',
   'tests/ragFusion.test.js',
   'tests/ragServicePrompt.test.js',

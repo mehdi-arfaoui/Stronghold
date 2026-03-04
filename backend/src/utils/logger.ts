@@ -1,4 +1,4 @@
-type LogLevel = "info" | "warn" | "error";
+type LogLevel = "debug" | "info" | "warn" | "error";
 
 const SENSITIVE_KEY_PATTERN = /(password|secret|token|api[_-]?key|authorization|keyCiphertext|keyIv|keyTag)/i;
 const SENSITIVE_STRING_PATTERN =
@@ -49,6 +49,10 @@ function normalizeLogArgs(args: unknown[]): { message: string; meta?: unknown } 
 }
 
 function write(level: LogLevel, ...args: unknown[]) {
+  if (level === "debug" && process.env.LOG_LEVEL?.trim().toLowerCase() !== "debug") {
+    return;
+  }
+
   const { message, meta } = normalizeLogArgs(args);
   const payload = {
     level,
@@ -66,6 +70,9 @@ function write(level: LogLevel, ...args: unknown[]) {
 }
 
 export const appLogger = {
+  debug(...args: unknown[]) {
+    write("debug", ...args);
+  },
   info(...args: unknown[]) {
     write("info", ...args);
   },

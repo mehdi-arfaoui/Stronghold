@@ -53,6 +53,7 @@ import { SqlManagementClient } from "@azure/arm-sql";
 import { InstanceGroupManagersClient, InstancesClient, type protos } from "@google-cloud/compute";
 import { ClusterManagerClient } from "@google-cloud/container";
 import { SqlInstancesServiceClient } from "@google-cloud/sql";
+import { appLogger as logger } from "../utils/logger.js";
 
 function emptyResult(): DiscoveryConnectorResult {
   return { resources: [], flows: [], warnings: [] };
@@ -448,6 +449,35 @@ async function processInBatches<T, R>(
   return results;
 }
 
+/**
+ * Paginates an AWS SDK call and concatenates items from every page.
+ */
+export async function paginateAws<TResponse, TItem>(
+  callFn: (nextToken?: string) => Promise<TResponse>,
+  extractItems: (response: TResponse) => TItem[] | undefined,
+  getNextToken: (response: TResponse) => string | undefined | null,
+  serviceName = "AWS",
+): Promise<TItem[]> {
+  const allItems: TItem[] = [];
+  let nextToken: string | undefined;
+  let pageCount = 0;
+
+  do {
+    const response = await callFn(nextToken);
+    const items = extractItems(response) || [];
+    allItems.push(...items);
+    pageCount += 1;
+
+    if (pageCount > 1) {
+      logger.debug(`[AWS] ${serviceName}: page ${pageCount}, ${allItems.length} items cumules`);
+    }
+
+    nextToken = getNextToken(response) ?? undefined;
+  } while (nextToken);
+
+  return allItems;
+}
+
 function buildResource(input: Partial<DiscoveredResource> & { source: string; externalId: string }) {
   return {
     name: input.name || input.externalId,
@@ -586,8 +616,13 @@ async function scanAwsRegion(
   };
 
   // EC2 Instances
-  const instances = await ec2.send(new DescribeInstancesCommand({}));
-  instances.Reservations?.forEach((reservation) => {
+  const reservations = await paginateAws(
+    (nextToken) => ec2.send(new DescribeInstancesCommand({ NextToken: nextToken })),
+    (response) => response.Reservations,
+    (response) => response.NextToken,
+    "EC2",
+  );
+  reservations.forEach((reservation) => {
     reservation.Instances?.forEach((instance) => {
       const awsTags = Object.fromEntries(
         (instance.Tags || [])
@@ -693,8 +728,13 @@ async function scanAwsRegion(
   }
 
   // RDS Instances
-  const dbInstances = await rds.send(new DescribeDBInstancesCommand({}));
-  dbInstances.DBInstances?.forEach((db) => {
+  const dbInstances = await paginateAws(
+    (marker) => rds.send(new DescribeDBInstancesCommand({ Marker: marker })),
+    (response) => response.DBInstances,
+    (response) => response.Marker,
+    "RDS",
+  );
+  dbInstances.forEach((db) => {
     const dbIdentifier = db.DBInstanceIdentifier || "rds";
     resources.push(
       buildResource({
@@ -744,8 +784,13 @@ async function scanAwsRegion(
 
   // Lambda Functions
   try {
-    const lambdas = await lambda.send(new ListFunctionsCommand({}));
-    for (const fn of lambdas.Functions || []) {
+    const lambdas = await paginateAws(
+      (marker) => lambda.send(new ListFunctionsCommand({ Marker: marker })),
+      (response) => response.Functions,
+      (response) => response.NextMarker,
+      "Lambda Functions",
+    );
+    for (const fn of lambdas) {
       const functionExternalId = fn.FunctionArn || fn.FunctionName || "lambda";
       let environmentReferences: LambdaEnvReference[] = [];
       let environmentVariableNames: string[] = [];
@@ -779,12 +824,19 @@ async function scanAwsRegion(
       }
 
       try {
-        const mappings = await lambda.send(
-          new ListEventSourceMappingsCommand({
-            FunctionName: fn.FunctionName || fn.FunctionArn,
-          }),
+        const mappings = await paginateAws(
+          (marker) =>
+            lambda.send(
+              new ListEventSourceMappingsCommand({
+                FunctionName: fn.FunctionName || fn.FunctionArn,
+                Marker: marker,
+              }),
+            ),
+          (response) => response.EventSourceMappings,
+          (response) => response.NextMarker,
+          "Lambda EventSourceMappings",
         );
-        eventSourceMappings = (mappings.EventSourceMappings || []).map((mapping) => ({
+        eventSourceMappings = mappings.map((mapping) => ({
           uuid: mapping.UUID,
           eventSourceArn: mapping.EventSourceArn,
           batchSize: mapping.BatchSize,
@@ -838,9 +890,14 @@ async function scanAwsRegion(
 
   // ElastiCache Clusters
   try {
-    const replicationGroups = await elasticache.send(new DescribeReplicationGroupsCommand({}));
+    const replicationGroups = await paginateAws(
+      (marker) => elasticache.send(new DescribeReplicationGroupsCommand({ Marker: marker })),
+      (response) => response.ReplicationGroups,
+      (response) => response.Marker,
+      "ElastiCache ReplicationGroups",
+    );
     const memberClusterCountByReplicationGroup = new Map<string, number>();
-    for (const group of replicationGroups.ReplicationGroups || []) {
+    for (const group of replicationGroups) {
       if (!group.ReplicationGroupId) continue;
       memberClusterCountByReplicationGroup.set(
         group.ReplicationGroupId,
@@ -848,8 +905,19 @@ async function scanAwsRegion(
       );
     }
 
-    const cacheClusters = await elasticache.send(new DescribeCacheClustersCommand({ ShowCacheNodeInfo: true }));
-    for (const cluster of cacheClusters.CacheClusters || []) {
+    const cacheClusters = await paginateAws(
+      (marker) =>
+        elasticache.send(
+          new DescribeCacheClustersCommand({
+            ShowCacheNodeInfo: true,
+            Marker: marker,
+          }),
+        ),
+      (response) => response.CacheClusters,
+      (response) => response.Marker,
+      "ElastiCache CacheClusters",
+    );
+    for (const cluster of cacheClusters) {
       const clusterId = cluster.CacheClusterId || "elasticache";
       const replicationGroupId = cluster.ReplicationGroupId;
       const replicationGroupClusterCount = replicationGroupId
@@ -898,8 +966,14 @@ async function scanAwsRegion(
 
   // DynamoDB Tables
   try {
-    const tables = await dynamodb.send(new ListTablesCommand({}));
-    for (const tableName of tables.TableNames || []) {
+    const tables = await paginateAws(
+      (exclusiveStartTableName) =>
+        dynamodb.send(new ListTablesCommand({ ExclusiveStartTableName: exclusiveStartTableName })),
+      (response) => response.TableNames,
+      (response) => response.LastEvaluatedTableName,
+      "DynamoDB Tables",
+    );
+    for (const tableName of tables) {
       const details = await dynamodb.send(new DescribeTableCommand({ TableName: tableName }));
       const table = details.Table;
       if (!table) continue;
@@ -934,8 +1008,13 @@ async function scanAwsRegion(
 
   // SQS Queues
   try {
-    const queueList = await sqs.send(new ListQueuesCommand({}));
-    for (const queueUrl of queueList.QueueUrls || []) {
+    const queueList = await paginateAws(
+      (nextToken) => sqs.send(new ListQueuesCommand({ NextToken: nextToken })),
+      (response) => response.QueueUrls,
+      (response) => response.NextToken,
+      "SQS Queues",
+    );
+    for (const queueUrl of queueList) {
       const queueAttributes = await sqs.send(
         new GetQueueAttributesCommand({
           QueueUrl: queueUrl,
@@ -980,8 +1059,13 @@ async function scanAwsRegion(
 
   // SNS Topics
   try {
-    const topicList = await sns.send(new ListTopicsCommand({}));
-    for (const topic of topicList.Topics || []) {
+    const topicList = await paginateAws(
+      (nextToken) => sns.send(new ListTopicsCommand({ NextToken: nextToken })),
+      (response) => response.Topics,
+      (response) => response.NextToken,
+      "SNS Topics",
+    );
+    for (const topic of topicList) {
       if (!topic.TopicArn) continue;
       const attributes = await sns.send(new GetTopicAttributesCommand({ TopicArn: topic.TopicArn }));
       const attrs = attributes.Attributes || {};
@@ -989,10 +1073,19 @@ async function scanAwsRegion(
       let subscriptions: Array<{ protocol: string; endpoint: string }> = [];
 
       try {
-        const subscriptionsResult = await sns.send(
-          new ListSubscriptionsByTopicCommand({ TopicArn: topic.TopicArn }),
+        const subscriptionsResult = await paginateAws(
+          (nextToken) =>
+            sns.send(
+              new ListSubscriptionsByTopicCommand({
+                TopicArn: topic.TopicArn,
+                NextToken: nextToken,
+              }),
+            ),
+          (response) => response.Subscriptions,
+          (response) => response.NextToken,
+          "SNS SubscriptionsByTopic",
         );
-        subscriptions = (subscriptionsResult.Subscriptions || [])
+        subscriptions = subscriptionsResult
           .map((subscription) => ({
             protocol: String(subscription.Protocol || "").toLowerCase(),
             endpoint: String(subscription.Endpoint || ""),
@@ -1079,8 +1172,13 @@ async function scanAwsRegion(
   }
 
   // Auto Scaling Groups
-  const groups = await asg.send(new DescribeAutoScalingGroupsCommand({}));
-  groups.AutoScalingGroups?.forEach((group) => {
+  const groups = await paginateAws(
+    (nextToken) => asg.send(new DescribeAutoScalingGroupsCommand({ NextToken: nextToken })),
+    (response) => response.AutoScalingGroups,
+    (response) => response.NextToken,
+    "AutoScaling Groups",
+  );
+  groups.forEach((group) => {
     resources.push(
       buildResource({
         source: "aws",
@@ -1094,8 +1192,13 @@ async function scanAwsRegion(
   });
 
   // Load Balancers
-  const loadBalancers = await elb.send(new DescribeLoadBalancersCommand({}));
-  loadBalancers.LoadBalancers?.forEach((lb) => {
+  const loadBalancers = await paginateAws(
+    (marker) => elb.send(new DescribeLoadBalancersCommand({ Marker: marker })),
+    (response) => response.LoadBalancers,
+    (response) => response.NextMarker,
+    "ELBv2 LoadBalancers",
+  );
+  loadBalancers.forEach((lb) => {
     const lbExternalId = lb.LoadBalancerArn || lb.LoadBalancerName || "elb";
     resources.push(
       buildResource({
@@ -1130,8 +1233,13 @@ async function scanAwsRegion(
   });
 
   // EKS Clusters
-  const clusterList = await eks.send(new ListClustersCommand({}));
-  for (const clusterName of clusterList.clusters || []) {
+  const clusterList = await paginateAws(
+    (nextToken) => eks.send(new ListClustersCommand({ nextToken })),
+    (response) => response.clusters,
+    (response) => response.nextToken,
+    "EKS Clusters",
+  );
+  for (const clusterName of clusterList) {
     const clusterDetails = await eks.send(new DescribeClusterCommand({ name: clusterName }));
     const cluster = clusterDetails.cluster;
     if (!cluster) continue;
@@ -1186,8 +1294,13 @@ async function scanAwsRegion(
   }
 
   // VPCs
-  const vpcs = await ec2.send(new DescribeVpcsCommand({}));
-  vpcs.Vpcs?.forEach((vpc) => {
+  const vpcs = await paginateAws(
+    (nextToken) => ec2.send(new DescribeVpcsCommand({ NextToken: nextToken })),
+    (response) => response.Vpcs,
+    (response) => response.NextToken,
+    "EC2 VPCs",
+  );
+  vpcs.forEach((vpc) => {
     const vpcName = vpc.Tags?.find((t) => t.Key === "Name")?.Value || vpc.VpcId;
     resources.push(
       buildResource({
@@ -1208,8 +1321,13 @@ async function scanAwsRegion(
   });
 
   // Subnets
-  const subnets = await ec2.send(new DescribeSubnetsCommand({}));
-  subnets.Subnets?.forEach((subnet) => {
+  const subnets = await paginateAws(
+    (nextToken) => ec2.send(new DescribeSubnetsCommand({ NextToken: nextToken })),
+    (response) => response.Subnets,
+    (response) => response.NextToken,
+    "EC2 Subnets",
+  );
+  subnets.forEach((subnet) => {
     const subnetName = subnet.Tags?.find((t) => t.Key === "Name")?.Value || subnet.SubnetId;
     resources.push(
       buildResource({
@@ -1232,8 +1350,13 @@ async function scanAwsRegion(
   });
 
   // Security Groups
-  const securityGroups = await ec2.send(new DescribeSecurityGroupsCommand({}));
-  securityGroups.SecurityGroups?.forEach((sg) => {
+  const securityGroups = await paginateAws(
+    (nextToken) => ec2.send(new DescribeSecurityGroupsCommand({ NextToken: nextToken })),
+    (response) => response.SecurityGroups,
+    (response) => response.NextToken,
+    "EC2 SecurityGroups",
+  );
+  securityGroups.forEach((sg) => {
     resources.push(
       buildResource({
         source: "aws",
