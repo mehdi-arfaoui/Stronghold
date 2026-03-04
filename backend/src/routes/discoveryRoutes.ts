@@ -262,6 +262,13 @@ async function handleDiscoveryRun(req: TenantRequest, res: any) {
   }
 }
 
+async function handleDeprecatedDiscoveryRun(req: TenantRequest, res: any) {
+  appLogger.warn(
+    `[Discovery] POST ${req.baseUrl}${req.path} is deprecated — use POST /discovery-resilience/cloud-scan for cloud scans`
+  );
+  return handleDiscoveryRun(req, res);
+}
+
 router.post(
   "/run",
   scanRateLimit,
@@ -270,7 +277,7 @@ router.post(
   requireQuota("scans", 1),
   incrementQuotaOnSuccess(),
   requireRole("OPERATOR"),
-  handleDiscoveryRun
+  handleDeprecatedDiscoveryRun
 );
 router.post(
   "/scan",
@@ -280,7 +287,7 @@ router.post(
   requireQuota("scans", 1),
   incrementQuotaOnSuccess(),
   requireRole("OPERATOR"),
-  handleDiscoveryRun
+  handleDeprecatedDiscoveryRun
 );
 
 

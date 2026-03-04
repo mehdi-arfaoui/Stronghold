@@ -13,6 +13,9 @@ import { emitDiscoveryProgress } from "../services/discoveryProgressService.js";
 import { CloudEnrichmentService } from "../services/cloud-enrichment.service.js";
 import { runDriftCheck } from "../drift/driftDetectionService.js";
 import { toPrismaJson } from "../utils/prismaJson.js";
+import { ingestDiscoveredResources } from "../discovery/discoveryOrchestrator.js";
+import type { DiscoveredFlow, DiscoveredResource } from "../services/discoveryTypes.js";
+import type { IngestReport } from "../graph/types.js";
 
 export type DiscoveryQueuePayload = {
   jobId: string;
@@ -32,6 +35,161 @@ const discoverySteps = [
 ];
 
 const cloudEnrichmentService = new CloudEnrichmentService(prisma);
+
+type LegacyGraphSyncLoadResult = {
+  resources: DiscoveredResource[];
+  flows: DiscoveredFlow[];
+};
+
+type LegacyGraphSyncOptions = {
+  prismaClient?: typeof prisma;
+  inferDependencies?: boolean;
+  logger?: Pick<typeof appLogger, "info" | "warn">;
+  loadScanData?: (tenantId: string, jobId: string) => Promise<LegacyGraphSyncLoadResult>;
+  ingest?: typeof ingestDiscoveredResources;
+};
+
+function mapLegacyDiscoveryResource(resource: {
+  source: string;
+  externalId: string;
+  name: string;
+  kind: string;
+  type: string;
+  ip: string | null;
+  hostname: string | null;
+  tags: unknown;
+  metadata: unknown;
+}): DiscoveredResource {
+  const kind = resource.kind === "service" ? "service" : "infra";
+  const tags = Array.isArray(resource.tags)
+    ? resource.tags.filter((value): value is string => typeof value === "string")
+    : null;
+  const metadata =
+    resource.metadata && typeof resource.metadata === "object" && !Array.isArray(resource.metadata)
+      ? (resource.metadata as Record<string, unknown>)
+      : null;
+
+  return {
+    source: resource.source,
+    externalId: resource.externalId,
+    name: resource.name,
+    kind,
+    type: resource.type,
+    ip: resource.ip,
+    hostname: resource.hostname,
+    tags,
+    metadata,
+  };
+}
+
+function mapLegacyDiscoveryFlow(flow: {
+  sourceIp: string | null;
+  targetIp: string | null;
+  sourcePort: number | null;
+  targetPort: number | null;
+  protocol: string | null;
+  bytes: number | null;
+  packets: number | null;
+  observedAt: Date;
+}): DiscoveredFlow {
+  return {
+    sourceIp: flow.sourceIp,
+    targetIp: flow.targetIp,
+    sourcePort: flow.sourcePort,
+    targetPort: flow.targetPort,
+    protocol: flow.protocol,
+    bytes: flow.bytes,
+    packets: flow.packets,
+    observedAt: flow.observedAt,
+  };
+}
+
+async function loadLegacyDiscoveryJobData(
+  prismaClient: typeof prisma,
+  tenantId: string,
+  jobId: string,
+): Promise<LegacyGraphSyncLoadResult> {
+  const [resources, flows] = await Promise.all([
+    prismaClient.discoveryResource.findMany({
+      where: { tenantId, jobId },
+      select: {
+        source: true,
+        externalId: true,
+        name: true,
+        kind: true,
+        type: true,
+        ip: true,
+        hostname: true,
+        tags: true,
+        metadata: true,
+      },
+    }),
+    prismaClient.discoveryFlow.findMany({
+      where: { tenantId, jobId },
+      select: {
+        sourceIp: true,
+        targetIp: true,
+        sourcePort: true,
+        targetPort: true,
+        protocol: true,
+        bytes: true,
+        packets: true,
+        observedAt: true,
+      },
+    }),
+  ]);
+
+  return {
+    resources: resources.map(mapLegacyDiscoveryResource),
+    flows: flows.map(mapLegacyDiscoveryFlow),
+  };
+}
+
+export async function syncDiscoveryJobToResilienceGraph(
+  input: {
+    tenantId: string;
+    jobId: string;
+  } & LegacyGraphSyncOptions,
+): Promise<IngestReport | null> {
+  const prismaClient = input.prismaClient ?? prisma;
+  const logger = input.logger ?? appLogger;
+  const loadScanData = input.loadScanData ?? ((tenantId: string, jobId: string) => loadLegacyDiscoveryJobData(prismaClient, tenantId, jobId));
+  const ingest = input.ingest ?? ingestDiscoveredResources;
+  const inferDependencies = input.inferDependencies !== false;
+
+  logger.info("[DiscoveryWorker] Syncing scan results to resilience graph...", {
+    tenantId: input.tenantId,
+    jobId: input.jobId,
+    inferDependencies,
+  });
+
+  const discoveryData = await loadScanData(input.tenantId, input.jobId);
+  if (discoveryData.resources.length === 0 && discoveryData.flows.length === 0) {
+    logger.warn("[DiscoveryWorker] Graph sync skipped because no legacy scan data was found", {
+      tenantId: input.tenantId,
+      jobId: input.jobId,
+    });
+    return null;
+  }
+
+  const report = await ingest(
+    prismaClient,
+    input.tenantId,
+    discoveryData.resources,
+    discoveryData.flows,
+    "legacy-discovery",
+    { inferDependencies },
+  );
+
+  logger.info("[DiscoveryWorker] Graph sync completed", {
+    tenantId: input.tenantId,
+    jobId: input.jobId,
+    totalNodes: report.totalNodes,
+    totalEdges: report.totalEdges,
+  });
+
+  return report;
+}
 
 async function updateDiscoveryJob(tenantId: string, jobId: string, data: Record<string, unknown>) {
   const result = await prisma.discoveryJob.updateMany({
@@ -152,6 +310,24 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
           autoCreate: Boolean(parameters.autoCreate),
         });
 
+        let graphSyncReport: IngestReport | null = null;
+        try {
+          graphSyncReport = await syncDiscoveryJobToResilienceGraph({
+            tenantId,
+            jobId,
+            inferDependencies: parameters.inferDependencies !== false,
+          });
+        } catch (graphSyncError) {
+          appLogger.warn(
+            "[DiscoveryWorker] Graph sync failed — scan results are saved but resilience features unavailable",
+            {
+              tenantId,
+              jobId,
+              message: graphSyncError instanceof Error ? graphSyncError.message : "unknown",
+            },
+          );
+        }
+
         const resultSummary = {
           discoveredResources: summary.discoveredResources,
           discoveredFlows: summary.discoveredFlows,
@@ -172,6 +348,12 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
           mergedInfraMatches: summary.mergedInfraMatches,
           mergedServicesCreated: summary.mergedServicesCreated,
           mergedInfraCreated: summary.mergedInfraCreated,
+          graphNodesSynced: graphSyncReport?.totalNodes ?? 0,
+          graphEdgesSynced: graphSyncReport?.totalEdges ?? 0,
+          graphNodesCreated: graphSyncReport?.nodesCreated ?? 0,
+          graphNodesUpdated: graphSyncReport?.nodesUpdated ?? 0,
+          graphEdgesCreated: graphSyncReport?.edgesCreated ?? 0,
+          graphEdgesUpdated: graphSyncReport?.edgesUpdated ?? 0,
           warnings: summary.warnings,
         };
 
