@@ -42,6 +42,83 @@ export function getBiaBlastRadiusValue(entry: BIAEntry): number {
   return Number.isFinite(transitive) ? transitive : 0;
 }
 
+export function isBiaBlastSummaryLabel(label: string | null | undefined): boolean {
+  const normalized = String(label || '').trim();
+  return normalized.length > 0 && /\d/.test(normalized) && /%|impact/i.test(normalized);
+}
+
+function mapBiaSourceLabel(source: string | null | undefined): string | null {
+  switch (source) {
+    case 'override':
+    case 'override_user':
+    case 'custom':
+      return 'Override';
+    case 'blast_radius':
+      return 'Blast radius';
+    case 'profile_global':
+      return 'Profil financier';
+    case 'fallback_criticality':
+      return 'Criticité';
+    case 'not_configured':
+      return 'Non configuré';
+    case 'business_flow_validated':
+    case 'business_flow_not_validated':
+      return 'Flux métier';
+    case 'estimation_enriched':
+      return 'Estimation enrichie';
+    case 'estimation_base':
+      return 'Estimation';
+    default:
+      return null;
+  }
+}
+
+export function getBiaSourceLabel(entry: BIAEntry): string {
+  const explicitSource =
+    mapBiaSourceLabel(entry.financialIsOverride ? 'override' : null) ??
+    mapBiaSourceLabel(entry.downtimeCostSource) ??
+    mapBiaSourceLabel(entry.financialScope) ??
+    mapBiaSourceLabel(entry.financialPrecisionBadge);
+
+  if (explicitSource) return explicitSource;
+
+  const scopeLabel = String(entry.financialScopeLabel || '').trim();
+  if (scopeLabel.length > 0) return scopeLabel;
+
+  const rawDowntimeLabel = String(entry.downtimeCostSourceLabel || '').trim();
+  if (rawDowntimeLabel.length > 0 && !isBiaBlastSummaryLabel(rawDowntimeLabel)) {
+    return rawDowntimeLabel;
+  }
+
+  if (isBiaBlastSummaryLabel(rawDowntimeLabel) || Number(entry.blastRadius?.totalServices ?? 0) > 1) {
+    return 'Blast radius';
+  }
+
+  return '—';
+}
+
+export function getBiaBlastSummary(entry: BIAEntry): string {
+  const rawDowntimeLabel = String(entry.downtimeCostSourceLabel || '').trim();
+  if (isBiaBlastSummaryLabel(rawDowntimeLabel)) {
+    return rawDowntimeLabel;
+  }
+
+  if (entry.downtimeCostSource === 'fallback_criticality') {
+    return 'Graphe incomplet';
+  }
+
+  const transitive = Number(entry.blastRadius?.transitiveDependents ?? 0);
+  const totalServices = Number(entry.blastRadius?.totalServices ?? 0);
+  const denominator = totalServices > 1 ? totalServices - 1 : totalServices;
+  if (!Number.isFinite(denominator) || denominator <= 0) {
+    return '—';
+  }
+
+  const impacted = Math.max(0, Math.min(transitive, denominator));
+  const percentage = Math.round((impacted / denominator) * 100);
+  return `${percentage}% - ${impacted}/${denominator} impactés`;
+}
+
 function compareNullableNumber(left: number | null | undefined, right: number | null | undefined): number {
   const leftMissing = left == null || !Number.isFinite(left);
   const rightMissing = right == null || !Number.isFinite(right);
@@ -76,10 +153,7 @@ function compareValues(a: BIAEntry, b: BIAEntry, sortBy: BIASortKey, sortOrder: 
     case 'hourlyCost':
       return compareNullableNumber(getBiaHourlyCost(a), getBiaHourlyCost(b)) * direction;
     case 'source':
-      return compareString(
-        a.downtimeCostSourceLabel ?? a.financialScopeLabel ?? '',
-        b.downtimeCostSourceLabel ?? b.financialScopeLabel ?? '',
-      ) * direction;
+      return compareString(getBiaSourceLabel(a), getBiaSourceLabel(b)) * direction;
     case 'validated':
       return compareNullableNumber(a.validated ? 1 : 0, b.validated ? 1 : 0) * direction;
     default:

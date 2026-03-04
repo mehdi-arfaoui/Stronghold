@@ -1,5 +1,5 @@
 ﻿import { memo, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowDownUp, Check, CheckCircle2, ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react';
+import { AlertTriangle, ArrowDownUp, Check, ChevronDown, ChevronUp, RotateCcw, X } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -14,6 +14,8 @@ import type { BIAEntry } from '@/types/bia.types';
 import {
   DEFAULT_BIA_FILTERS,
   filterAndSortBiaEntries,
+  getBiaBlastSummary,
+  getBiaSourceLabel,
   type BIAFilters,
   type BIASortKey,
 } from '@/lib/biaTable';
@@ -65,69 +67,6 @@ function blastLabel(entry: BIAEntry): string {
     return 'fallback';
   }
   return '—';
-}
-
-function precisionBadgeModel(entry: BIAEntry): {
-  label: string;
-  className: string;
-  tooltip: string;
-} {
-  switch (entry.financialPrecisionBadge) {
-    case 'business_flow_validated':
-      return {
-        label: 'Flow valide',
-        className: 'border-green-300 bg-green-50 text-green-800',
-        tooltip: 'Calcule depuis un flux metier valide.',
-      };
-    case 'estimation_enriched':
-      return {
-        label: 'Estimation enrichie',
-        className: 'border-amber-300 bg-amber-50 text-amber-800',
-        tooltip: 'Estimation enrichie par les donnees cloud.',
-      };
-    case 'override_user':
-      return {
-        label: 'Override valide',
-        className: 'border-green-300 bg-green-50 text-green-800',
-        tooltip: 'Valeur saisie manuellement par utilisateur.',
-      };
-    case 'blast_radius':
-      return {
-        label: 'Blast radius',
-        className: 'border-blue-300 bg-blue-50 text-blue-800',
-        tooltip: 'Distribution du cout basee sur le graphe de dependances.',
-      };
-    case 'fallback_criticality':
-      return {
-        label: 'Graphe incomplet',
-        className: 'border-amber-300 bg-amber-50 text-amber-800',
-        tooltip: 'Fallback applique sur la criticite seule.',
-      };
-    case 'profile_global':
-      return {
-        label: 'Profil global',
-        className: 'border-blue-300 bg-blue-50 text-blue-800',
-        tooltip: 'Valeur du profil financier global appliquee a ce service.',
-      };
-    case 'not_configured':
-      return {
-        label: 'Non configure',
-        className: 'border-slate-300 bg-slate-50 text-slate-700',
-        tooltip: 'Impact financier non estime tant que le profil financier n est pas configure.',
-      };
-    case 'business_flow_not_validated':
-      return {
-        label: 'Flow non valide',
-        className: 'border-sky-300 bg-sky-50 text-sky-800',
-        tooltip: 'Flux metier detecte mais non valide.',
-      };
-    default:
-      return {
-        label: 'Estimation',
-        className: 'border-red-300 bg-red-50 text-red-800',
-        tooltip: 'Estimation de base generique.',
-      };
-  }
 }
 
 function BIATableComponent({
@@ -535,14 +474,27 @@ function BIATableComponent({
                 <TableCell className="text-center">
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <div className="mx-auto w-24">
-                        <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                          <div
-                            className="h-full rounded-full bg-sky-500 transition-all"
-                            style={{ width: `${Math.round(resolveBlastRatio(entry) * 100)}%` }}
-                          />
+                      <div className="mx-auto flex w-28 flex-col items-center gap-1.5">
+                        <div className="w-full">
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div
+                              className="h-full rounded-full bg-sky-500 transition-all"
+                              style={{ width: `${Math.round(resolveBlastRatio(entry) * 100)}%` }}
+                            />
+                          </div>
+                          <p className="mt-1 text-[10px] text-muted-foreground">{blastLabel(entry)}</p>
                         </div>
-                        <p className="mt-1 text-[10px] text-muted-foreground">{blastLabel(entry)}</p>
+                        {getBiaBlastSummary(entry) !== '—' ? (
+                          <p className="text-[10px] leading-tight text-muted-foreground">{getBiaBlastSummary(entry)}</p>
+                        ) : null}
+                        {getBiaSourceLabel(entry) === 'Blast radius' ? (
+                          <Badge
+                            variant="outline"
+                            className="border-blue-300 bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-800"
+                          >
+                            Blast radius
+                          </Badge>
+                        ) : null}
                       </div>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
@@ -567,56 +519,12 @@ function BIATableComponent({
                     }}
                   >
                     <PopoverTrigger asChild>
-                      <div className="inline-flex flex-col items-end gap-1">
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1.5 rounded-md border px-2 py-1 hover:bg-accent/40"
-                          onClick={() => openOverridePopover(entry)}
-                        >
-                          <span className="font-medium">
-                            {formatHourlyCost(entry.downtimeCostPerHour ?? entry.financialImpactPerHour, currency)}
-                          </span>
-                          {entry.financialScopeLabel && (
-                            <span className="text-[10px] text-muted-foreground">
-                              ({entry.financialScopeLabel})
-                            </span>
-                          )}
-                          {entry.financialIsOverride ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                              </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Valide par l'utilisateur</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                <p>Cliquez pour saisir votre chiffre metier.</p>
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </button>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span
-                              className={cn(
-                                'rounded-md border px-1.5 py-0.5 text-[10px] font-medium',
-                                precisionBadgeModel(entry).className,
-                              )}
-                            >
-                              {precisionBadgeModel(entry).label}
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent>
-                            <p>{precisionBadgeModel(entry).tooltip}</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded-md border px-2 py-1 font-medium whitespace-nowrap hover:bg-accent/40"
+                      >
+                        {formatHourlyCost(entry.downtimeCostPerHour ?? entry.financialImpactPerHour, currency)}
+                      </button>
                     </PopoverTrigger>
 
                     <PopoverContent align="end" className="w-80 space-y-3">
@@ -665,12 +573,7 @@ function BIATableComponent({
                   </Popover>
                 </TableCell>
                 <TableCell className="text-center">
-                  <span className="text-xs text-muted-foreground">
-                    {entry.downtimeCostSourceLabel || entry.financialScopeLabel || '—'}
-                  </span>
-                  {entry.downtimeCostSource === 'fallback_criticality' ? (
-                    <p className="mt-1 text-[10px] text-amber-600">graphe incomplet</p>
-                  ) : null}
+                  <span className="text-xs text-muted-foreground">{getBiaSourceLabel(entry)}</span>
                 </TableCell>
                 <TableCell className="text-center">
                   {entry.validated ? (

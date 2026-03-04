@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_BIA_FILTERS, filterAndSortBiaEntries } from '@/lib/biaTable';
+import {
+  DEFAULT_BIA_FILTERS,
+  filterAndSortBiaEntries,
+  getBiaBlastSummary,
+  getBiaSourceLabel,
+} from '@/lib/biaTable';
 import type { BIAEntry } from '@/types/bia.types';
 
 function createEntry(overrides: Partial<BIAEntry>): BIAEntry {
@@ -58,5 +63,31 @@ describe('filterAndSortBiaEntries', () => {
     });
 
     expect(result.map((entry) => entry.id)).toEqual(['3']);
+  });
+
+  it('derives a clean source label without reusing the blast summary text', () => {
+    const entry = createEntry({
+      downtimeCostSourceLabel: '8% - 0/11 impactés',
+      blastRadius: {
+        directDependents: 0,
+        transitiveDependents: 0,
+        totalServices: 12,
+        impactedServices: [],
+      },
+    });
+
+    expect(getBiaSourceLabel(entry)).toBe('Blast radius');
+    expect(getBiaBlastSummary(entry)).toBe('8% - 0/11 impactés');
+  });
+
+  it('prioritizes override as the displayed cost source', () => {
+    const entry = createEntry({
+      financialIsOverride: true,
+      downtimeCostSource: 'blast_radius',
+      financialPrecisionBadge: 'override_user',
+      downtimeCostSourceLabel: '50% - 1 service impacte',
+    });
+
+    expect(getBiaSourceLabel(entry)).toBe('Override');
   });
 });
