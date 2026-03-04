@@ -16,6 +16,8 @@ export interface BIAEntry {
   id: string;
   nodeId: string;
   serviceName: string;
+  serviceDisplayName?: string;
+  serviceTechnicalName?: string;
   serviceType: string;
   serviceTypeLabel?: string;
   tier: number;

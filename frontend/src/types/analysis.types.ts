@@ -15,6 +15,7 @@ export interface ScoreBreakdown {
 export interface SPOFItem {
   nodeId: string;
   nodeName: string;
+  technicalName?: string;
   nodeType: string;
   blastRadius: number;
   severity: 'critical' | 'high' | 'medium';

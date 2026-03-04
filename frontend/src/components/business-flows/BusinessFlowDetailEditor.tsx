@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Info, Loader2, Save, Trash2 } from 'lucide-rea
 import { toast } from 'sonner';
 import { businessFlowsApi, type BusinessFlow, type BusinessFlowNode } from '@/api/businessFlows.api';
 import { discoveryApi } from '@/api/discovery.api';
+import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { InfraGraph } from '@/components/graph/InfraGraph';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -12,6 +13,7 @@ import { Input } from '@/components/ui/input';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { buildVisibleFlowNodeIds } from '@/lib/businessFlowGraph';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
+import { resolveIdentityLabels } from '@/lib/serviceIdentity';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { InfraEdge, InfraNode } from '@/types/graph.types';
 
@@ -334,11 +336,15 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
       const linked = flowNodeById.get(node.id);
       if (linked) {
         const roleLabel = linked.role || 'processing';
+        const identity = resolveIdentityLabels(linked.infraNode || node);
         const tooltip = [
-          linked.infraNode?.name || node.name,
+          identity.primary,
+          identity.secondary ? `tech: ${identity.secondary}` : null,
           `role: ${roleLabel}`,
           linked.isCritical ? 'critical: yes' : 'critical: no',
-        ].join(' | ');
+        ]
+          .filter(Boolean)
+          .join(' | ');
 
         return {
           customBorderColor: FLOW_COLOR,
@@ -352,10 +358,11 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
       }
 
       if (graphFilterActive && visibleNodeIds.has(node.id)) {
+        const identity = resolveIdentityLabels(node);
         return {
           customBorderColor: '#94a3b8',
           dimmed: false,
-          flowTooltip: `${node.name} | dependance directe du flux`,
+          flowTooltip: `${identity.primary}${identity.secondary ? ` (${identity.secondary})` : ''} | dependance directe du flux`,
           customOpacity: 1,
           disablePointerEvents: false,
         };
@@ -496,15 +503,19 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
                   No node linked yet. Click nodes in the graph to build the flow.
                 </p>
               )}
-              {flowNodesSorted.map((entry) => (
+              {flowNodesSorted.map((entry) => {
+                const identity = resolveIdentityLabels(entry.infraNode || { id: entry.infraNodeId });
+                return (
                 <div
                   key={entry.id}
                   className="grid gap-2 rounded-md border p-2 md:grid-cols-[1.8fr_1fr_0.8fr_0.8fr_auto]"
                 >
                   <div>
-                    <p className="text-sm font-medium">
-                      {entry.infraNode?.name || entry.infraNodeId}
-                    </p>
+                    <ServiceIdentityLabel
+                      primary={identity.primary}
+                      secondary={identity.secondary}
+                      className="text-sm"
+                    />
                     <p className="text-xs text-muted-foreground">
                       Order: {entry.orderIndex}
                     </p>
@@ -556,7 +567,8 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </CardContent>
         </Card>
@@ -596,14 +608,19 @@ export function BusinessFlowDetailEditor({ flowId, onBack }: BusinessFlowDetailE
                       <p className="text-xs font-semibold">
                         Cout/h total : {formatMoney(flowDowntimeCostPerHour ?? 0, currency)}/h
                       </p>
-                      {flow.contributingServices.map((service) => (
-                        <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
-                          {service.serviceName}: {formatMoney(service.weightedContribution, currency)}/h
-                          {' '}(
-                          poids: {service.impactWeight.toFixed(1)},
-                          base {formatMoney(service.downtimeCostPerHour, currency)}/h)
-                        </div>
-                      ))}
+                      {flow.contributingServices.map((service) => {
+                        const identity = resolveIdentityLabels(service);
+                        return (
+                          <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
+                            {identity.primary}
+                            {identity.secondary ? ` (${identity.secondary})` : ''}:{' '}
+                            {formatMoney(service.weightedContribution, currency)}/h
+                            {' '}(
+                            poids: {service.impactWeight.toFixed(1)},
+                            base {formatMoney(service.downtimeCostPerHour, currency)}/h)
+                          </div>
+                        );
+                      })}
                     </TooltipContent>
                   </Tooltip>
                 )}

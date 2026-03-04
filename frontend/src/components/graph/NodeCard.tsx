@@ -12,6 +12,7 @@ import {
 
 export interface InfraNodeData {
   label: string;
+  technicalLabel?: string;
   nodeType: NodeType;
   nodeTypeLabel?: string;
   category?: GraphCategory;
@@ -52,6 +53,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
   const zoomBucket = useZoomBucket();
   const {
     label,
+    technicalLabel,
     nodeType,
     nodeTypeLabel,
     category = 'external',
@@ -97,7 +99,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
             background: palette.bg,
             borderColor: status === 'down' ? '#ef4444' : status === 'degraded' ? '#f59e0b' : borderColor,
           }}
-          title={label}
+          title={technicalLabel ? `${label}\n${technicalLabel}` : label}
         />
         <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !bg-muted-foreground/50" />
       </div>
@@ -126,6 +128,9 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
           <span className="max-w-[120px] truncate font-semibold">{label}</span>
           {isSPOF && <AlertTriangle className="h-3 w-3 text-severity-critical" />}
         </div>
+        {technicalLabel ? (
+          <div className="mt-0.5 truncate text-[10px] opacity-70">{technicalLabel}</div>
+        ) : null}
         <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !bg-muted-foreground/50" />
       </div>
     );
@@ -161,6 +166,9 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
         <NodeIcon type={nodeType} className="h-4 w-4 shrink-0" style={{ color: borderColor }} />
         <span className="truncate text-sm font-semibold">{label}</span>
       </div>
+      {technicalLabel ? (
+        <div className="mt-1 truncate text-[11px] text-muted-foreground">{technicalLabel}</div>
+      ) : null}
 
       <div className="mt-1 flex items-center gap-1 text-[11px] opacity-85">
         <span>{serviceType || nodeTypeLabel || nodeType}</span>

@@ -9,6 +9,7 @@ import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { NodeType, EdgeType } from '../graph/types.js';
+import { resolveServiceIdentity } from '../services/service-identity.service.js';
 
 const router = Router();
 
@@ -68,7 +69,12 @@ router.get('/graph/nodes/:nodeId', async (req: TenantRequest, res) => {
       subgraph,
       dependencies,
       dependents,
-      blastRadius: blastRadius.map(n => ({ id: n.id, name: n.name, type: n.type })),
+      blastRadius: blastRadius.map((n) => ({
+        id: n.id,
+        name: n.displayName || n.name,
+        technicalName: n.technicalName || n.name,
+        type: n.type,
+      })),
       blastRadiusCount: blastRadius.length,
     });
   } catch (error) {
@@ -95,7 +101,8 @@ router.get('/graph/blast-radius/:nodeId', async (req: TenantRequest, res) => {
       sourceNodeId: nodeId,
       impactedNodes: blastRadius.map(n => ({
         id: n.id,
-        name: n.name,
+        name: n.displayName || n.name,
+        technicalName: n.technicalName || n.name,
         type: n.type,
         region: n.region,
       })),
@@ -103,6 +110,61 @@ router.get('/graph/blast-radius/:nodeId', async (req: TenantRequest, res) => {
     });
   } catch (error) {
     appLogger.error('Error computing blast radius:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PATCH /resilience/graph/nodes/:nodeId/business-name - Manual business name override
+router.patch('/graph/nodes/:nodeId/business-name', async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const nodeId = req.params.nodeId as string;
+    const rawBusinessName = typeof req.body?.businessName === 'string' ? req.body.businessName.trim() : null;
+    const businessName = rawBusinessName && rawBusinessName.length > 0 ? rawBusinessName : null;
+
+    const existingNode = await prisma.infraNode.findFirst({
+      where: { id: nodeId, tenantId },
+      select: {
+        id: true,
+        name: true,
+        businessName: true,
+        type: true,
+        provider: true,
+        region: true,
+        availabilityZone: true,
+        metadata: true,
+        tags: true,
+      },
+    });
+    if (!existingNode) {
+      return res.status(404).json({ error: 'Node not found' });
+    }
+
+    await prisma.infraNode.updateMany({
+      where: { id: nodeId, tenantId },
+      data: { businessName },
+    });
+
+    const graph = await GraphService.loadGraphFromDB(prisma, tenantId);
+    const updatedNode = graph.getNodeAttributes(nodeId);
+    const identity = resolveServiceIdentity({
+      name: existingNode.name,
+      businessName,
+      type: existingNode.type,
+      metadata: existingNode.metadata,
+    });
+
+    return res.json({
+      ...updatedNode,
+      id: nodeId,
+      businessName,
+      displayName: identity.displayName,
+      technicalName: identity.technicalName,
+    });
+  } catch (error) {
+    appLogger.error('Error updating node business name:', error);
     return res.status(500).json({ error: 'Internal server error' });
   }
 });

@@ -14,6 +14,7 @@ import { Input } from '@/components/ui/input';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { invalidateFinancialProfileDependentQueries } from '@/lib/financialQueryInvalidation';
+import { resolveIdentityLabels } from '@/lib/serviceIdentity';
 import {
   Dialog,
   DialogContent,
@@ -36,7 +37,7 @@ function formatMoney(value: number, currency: string = 'EUR') {
 function summarizeFlowServices(flow: BusinessFlow): string {
   const names = flow.flowNodes
     .slice(0, 4)
-    .map((node) => node.infraNode?.name || node.infraNodeId)
+    .map((node) => resolveIdentityLabels(node.infraNode || { id: node.infraNodeId }).primary)
     .filter(Boolean);
   if (names.length === 0) return 'Aucun service associé';
   const suffix = flow.flowNodes.length > names.length ? ` +${flow.flowNodes.length - names.length}` : '';
@@ -432,12 +433,17 @@ export function BusinessFlowsPage() {
                               <p className="text-xs font-semibold">
                                 Coût/h total : {formatMoney(downtimeCostPerHour ?? 0, flowCurrency)}/h
                               </p>
-                              {flow.contributingServices.map((service) => (
-                                <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
-                                  {service.serviceName}: {formatMoney(service.weightedContribution, flowCurrency)}/h
-                                  {' '}(poids: {service.impactWeight.toFixed(1)}, base {formatMoney(service.downtimeCostPerHour, flowCurrency)}/h)
-                                </div>
-                              ))}
+                              {flow.contributingServices.map((service) => {
+                                const identity = resolveIdentityLabels(service);
+                                return (
+                                  <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
+                                    {identity.primary}
+                                    {identity.secondary ? ` (${identity.secondary})` : ''}:{' '}
+                                    {formatMoney(service.weightedContribution, flowCurrency)}/h
+                                    {' '}(poids: {service.impactWeight.toFixed(1)}, base {formatMoney(service.downtimeCostPerHour, flowCurrency)}/h)
+                                  </div>
+                                );
+                              })}
                             </TooltipContent>
                           </Tooltip>
                         )}

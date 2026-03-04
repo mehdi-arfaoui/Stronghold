@@ -475,6 +475,25 @@ export function DiscoveryPage() {
     },
   });
 
+  const updateBusinessNameMutation = useMutation({
+    mutationFn: ({ nodeId, businessName }: { nodeId: string; businessName: string | null }) =>
+      discoveryApi.updateBusinessName(nodeId, businessName),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['graph', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['graph-flow-editor', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['business-flows', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['recommendations', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['recommendations-summary', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['bia-summary', tenantScope] });
+      queryClient.invalidateQueries({ queryKey: ['spofs'] });
+      toast.success('Nom mÃ©tier mis Ã  jour');
+    },
+    onError: () => {
+      toast.error('Impossible de mettre Ã  jour le nom mÃ©tier');
+    },
+  });
+
   const handleNodeClick = useCallback((node: InfraNode) => {
     setSelectedNode(node.id);
   }, [setSelectedNode]);
@@ -867,6 +886,14 @@ export function DiscoveryPage() {
               edges={displayedAllEdges}
               allNodes={displayedAllNodes}
               onClose={() => setSelectedNode(null)}
+              onSaveBusinessName={(nodeId, businessName) =>
+                updateBusinessNameMutation.mutateAsync({ nodeId, businessName })
+              }
+              savingNodeId={
+                updateBusinessNameMutation.isPending
+                  ? updateBusinessNameMutation.variables?.nodeId ?? null
+                  : null
+              }
               className="w-screen max-w-[420px] shadow-2xl"
             />
           </div>

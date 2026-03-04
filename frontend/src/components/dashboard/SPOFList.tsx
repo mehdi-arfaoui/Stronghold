@@ -3,9 +3,11 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Eye, FlaskConical } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { normalizeLanguage } from '@/i18n/locales';
 import { SeverityBadge } from '@/components/common/SeverityBadge';
 import type { SPOFItem } from '@/types/analysis.types';
+import { resolveIdentityLabels } from '@/lib/serviceIdentity';
 
 interface SPOFListProps {
   spofs: SPOFItem[];
@@ -76,13 +78,15 @@ export function SPOFList({ spofs }: SPOFListProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3">
-        {spofs.slice(0, 5).map((spof, index) => (
+        {spofs.slice(0, 5).map((spof, index) => {
+          const identity = resolveIdentityLabels(spof);
+          return (
           <div key={spof.nodeId} className="flex items-center gap-3 rounded-lg border p-3">
             <span className="flex h-6 w-6 items-center justify-center rounded-full bg-severity-critical/10 text-xs font-bold text-severity-critical">
               {index + 1}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">{spof.nodeName}</p>
+              <ServiceIdentityLabel primary={identity.primary} secondary={identity.secondary} />
               <p className="text-xs text-muted-foreground">
                 {copy.blast}: {spof.blastRadius} {copy.services}
               </p>
@@ -107,7 +111,8 @@ export function SPOFList({ spofs }: SPOFListProps) {
               </Button>
             </div>
           </div>
-        ))}
+          );
+        })}
       </CardContent>
     </Card>
   );

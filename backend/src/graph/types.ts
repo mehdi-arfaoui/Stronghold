@@ -74,6 +74,9 @@ export interface InfraNodeAttrs {
   id: string;
   externalId?: string | null;
   name: string;
+  businessName?: string | null;
+  displayName?: string;
+  technicalName?: string;
   type: string;
   provider: string;
   region?: string | null;

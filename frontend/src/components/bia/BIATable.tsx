@@ -8,9 +8,11 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { cn } from '@/lib/utils';
 import { formatCurrency, formatDuration } from '@/lib/formatters';
 import type { BIAEntry } from '@/types/bia.types';
+import { resolveIdentityLabels } from '@/lib/serviceIdentity';
 import {
   DEFAULT_BIA_FILTERS,
   filterAndSortBiaEntries,
@@ -386,7 +388,9 @@ function BIATableComponent({
                 </TableCell>
               </TableRow>
             ) : null}
-            {rowsToRender.map(({ entry, index }: RowToRender) => (
+            {rowsToRender.map(({ entry, index }: RowToRender) => {
+              const identity = resolveIdentityLabels(entry);
+              return (
               <TableRow
                 key={`${entry.id}-${index}`}
                 className={cn(!entry.validated && 'bg-severity-medium/5')}
@@ -396,7 +400,12 @@ function BIATableComponent({
                     : { animation: 'fadeIn 0.35s ease forwards', animationDelay: `${index * 80}ms`, opacity: 0 }
                 }
               >
-                <TableCell className="font-medium">{entry.serviceName}</TableCell>
+                <TableCell>
+                  <ServiceIdentityLabel
+                    primary={identity.primary}
+                    secondary={identity.secondary}
+                  />
+                </TableCell>
                 <TableCell>
                   <Badge variant="outline" className="text-xs">{entry.serviceTypeLabel ?? entry.serviceType}</Badge>
                 </TableCell>
@@ -585,7 +594,8 @@ function BIATableComponent({
                   )}
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
             {shouldVirtualize && paddingBottom > 0 ? (
               <TableRow aria-hidden>
                 <TableCell colSpan={10} className="p-0" style={{ height: `${paddingBottom}px` }} />

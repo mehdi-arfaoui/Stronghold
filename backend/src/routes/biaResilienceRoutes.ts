@@ -18,6 +18,7 @@ import {
   normalizeCriticalityLevel,
   type ServiceDowntimeCost,
 } from '../services/pricing/downtimeDistribution.js';
+import { resolveServiceIdentity } from '../services/service-identity.service.js';
 
 const router = Router();
 
@@ -129,6 +130,21 @@ function resolveProcessCriticalityLevel(input: {
   return normalizeCriticalityLevel(input.process.criticalityScore);
 }
 
+function resolveProcessServiceIdentity(input: {
+  process: {
+    serviceName: string;
+    serviceType?: string | null;
+  };
+  node: InfraNodeAttrs | undefined;
+}) {
+  return resolveServiceIdentity({
+    name: input.node?.name ?? input.process.serviceName,
+    businessName: input.node?.businessName ?? null,
+    type: input.node?.type ?? input.process.serviceType ?? null,
+    metadata: input.node?.metadata ?? {},
+  });
+}
+
 function buildDowntimeCostMapForProcesses(input: {
   graph: Awaited<ReturnType<typeof GraphService.getGraph>>;
   processes: Array<{
@@ -158,9 +174,16 @@ function buildDowntimeCostMapForProcesses(input: {
     const criticality = node
       ? resolveProcessCriticalityLevel({ process, node })
       : resolveProcessCriticalityLevel({ process });
+    const identity = resolveProcessServiceIdentity({
+      process: {
+        serviceName: process.serviceName,
+        serviceType: node?.type ?? null,
+      },
+      node,
+    });
     return {
       nodeId: process.serviceNodeId,
-      name: process.serviceName,
+      name: identity.displayName,
       criticality,
       nodeType: node?.type ?? null,
       provider: node?.provider ?? null,
@@ -382,6 +405,13 @@ router.get('/entries', async (req: TenantRequest, res) => {
           metadata: {},
           criticalityScore: p.criticalityScore,
         };
+        const identity = resolveProcessServiceIdentity({
+          process: {
+            serviceName: p.serviceName,
+            serviceType: p.serviceType,
+          },
+          node,
+        });
 
         const rawSuggestion = biaSuggestionService.suggestForNode(node ?? fallbackNode, {
           graph,
@@ -438,7 +468,9 @@ router.get('/entries', async (req: TenantRequest, res) => {
         return {
           id: p.id,
           nodeId: p.serviceNodeId,
-          serviceName: p.serviceName,
+          serviceName: identity.displayName,
+          serviceDisplayName: identity.displayName,
+          serviceTechnicalName: identity.technicalName,
           serviceType: p.serviceType,
           serviceTypeLabel,
           tier: p.recoveryTier,

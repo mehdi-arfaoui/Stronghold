@@ -95,9 +95,12 @@ function toFlowNode(
       : undefined;
   const disablePointerEvents = overrides.disablePointerEvents === true;
   const displayName =
+    node.displayName ||
     (typeof metadata.displayName === 'string' && metadata.displayName.trim().length > 0
       ? metadata.displayName
-      : node.name) || node.id;
+      : node.name) ||
+    node.id;
+  const technicalName = node.technicalName || node.name;
 
   return {
     ...((overrides.dimmed || disablePointerEvents) ? { draggable: false, selectable: false } : {}),
@@ -113,6 +116,7 @@ function toFlowNode(
     },
     data: {
       label: displayName,
+      technicalLabel: technicalName !== displayName ? technicalName : undefined,
       nodeType: node.type,
       nodeTypeLabel: getNodeServiceType(node),
       category: getNodeCategory(node),

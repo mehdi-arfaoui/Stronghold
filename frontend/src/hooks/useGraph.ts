@@ -26,7 +26,12 @@ export function useGraph() {
       if (filters.regions.length > 0 && node.region && !filters.regions.includes(node.region)) return false;
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        return node.name.toLowerCase().includes(search) || node.id.toLowerCase().includes(search);
+        return (
+          node.name.toLowerCase().includes(search) ||
+          node.displayName?.toLowerCase().includes(search) ||
+          node.technicalName?.toLowerCase().includes(search) ||
+          node.id.toLowerCase().includes(search)
+        );
       }
       return true;
     });

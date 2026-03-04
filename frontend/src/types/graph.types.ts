@@ -42,6 +42,9 @@ export type EdgeType =
 export interface InfraNode {
   id: string;
   name: string;
+  businessName?: string | null;
+  displayName?: string;
+  technicalName?: string;
   type: NodeType;
   provider?: string;
   region?: string;

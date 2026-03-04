@@ -4,6 +4,8 @@ export interface Recommendation {
   id: string;
   nodeId?: string;
   serviceName?: string;
+  serviceDisplayName?: string;
+  serviceTechnicalName?: string;
   tier?: number;
   groupKey?: string | null;
   allocationShare?: number;

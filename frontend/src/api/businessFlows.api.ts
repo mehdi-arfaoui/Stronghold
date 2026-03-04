@@ -25,11 +25,15 @@ export interface BusinessFlowNode {
   infraNode?: {
     id: string;
     name: string;
+    businessName?: string | null;
+    displayName?: string;
+    technicalName?: string;
     type: string;
     provider?: string | null;
     region?: string | null;
     isSPOF?: boolean;
     criticalityScore?: number | null;
+    metadata?: Record<string, unknown>;
   } | null;
 }
 
@@ -71,6 +75,8 @@ export interface BusinessFlow {
   contributingServices?: Array<{
     serviceId: string;
     serviceName: string;
+    serviceDisplayName?: string;
+    serviceTechnicalName?: string;
     downtimeCostPerHour: number;
     downtimeCostSourceLabel: string;
     impactWeight: number;

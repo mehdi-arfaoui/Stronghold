@@ -1547,6 +1547,7 @@ model InfraNode {
   id               String  @id @default(cuid())
   externalId       String?
   name             String
+  businessName     String?
   type             String
   provider         String
   region           String?

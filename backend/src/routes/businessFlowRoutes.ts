@@ -30,6 +30,7 @@ import {
   type ServiceDowntimeCost,
 } from '../services/pricing/downtimeDistribution.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
+import { resolveServiceIdentity } from '../services/service-identity.service.js';
 
 const router = Router();
 const businessFlowFinancialEngine = new BusinessFlowFinancialEngineService(prisma);
@@ -68,6 +69,8 @@ type FlowDowntimeCostSource = 'blast_radius_max' | 'not_configured';
 type FlowContributingService = {
   serviceId: string;
   serviceName: string;
+  serviceDisplayName: string;
+  serviceTechnicalName: string;
   downtimeCostPerHour: number;
   downtimeCostSourceLabel: string;
   impactWeight: number;
@@ -87,6 +90,41 @@ type FlowDowntimeContext = {
   profileConfigured: boolean;
   byFlowId: Map<string, FlowDowntimeCost>;
 };
+
+const flowInfraNodeSelect = {
+  id: true,
+  name: true,
+  businessName: true,
+  type: true,
+  provider: true,
+  region: true,
+  isSPOF: true,
+  criticalityScore: true,
+  metadata: true,
+} as const;
+
+const flowNodesWithInfraInclude = {
+  orderBy: { orderIndex: 'asc' as const },
+  include: {
+    infraNode: {
+      select: flowInfraNodeSelect,
+    },
+  },
+} as const;
+
+function resolveInfraNodeIdentity(node: {
+  name: string;
+  businessName?: string | null;
+  type?: string | null;
+  metadata?: unknown;
+}) {
+  return resolveServiceIdentity({
+    name: node.name,
+    businessName: node.businessName ?? null,
+    type: node.type ?? null,
+    metadata: node.metadata ?? {},
+  });
+}
 
 function toNodeCriticality(node: {
   criticalityScore: number | null;
@@ -198,6 +236,7 @@ async function buildFlowDowntimeContext(
       select: {
         id: true,
         name: true,
+        businessName: true,
         type: true,
         provider: true,
         metadata: true,
@@ -224,6 +263,8 @@ async function buildFlowDowntimeContext(
       nodeId: entry.nodeId,
       customDowntimeCostPerHour: Number(entry.customCostPerHour),
     }));
+
+  const nodeSnapshotById = new Map(nodeSnapshots.map((node) => [node.id, node]));
 
   let blastResults: BlastRadiusResult[] = [];
   try {
@@ -252,7 +293,7 @@ async function buildFlowDowntimeContext(
       blastResults,
       nodeSnapshots.map((node) => ({
         nodeId: node.id,
-        name: node.name,
+        name: resolveInfraNodeIdentity(node).displayName,
         criticality: toNodeCriticality(node),
         nodeType: node.type,
         provider: node.provider,
@@ -307,13 +348,22 @@ async function buildFlowDowntimeContext(
       .map((flowNode) => {
         const serviceCost = downtimeByNodeId.get(flowNode.infraNodeId);
         if (!serviceCost) return null;
+        const snapshot = nodeSnapshotById.get(flowNode.infraNodeId);
+        const identity = snapshot
+          ? resolveInfraNodeIdentity(snapshot)
+          : {
+              displayName: serviceCost.serviceName,
+              technicalName: serviceCost.serviceName,
+            };
         const impactWeight = resolveFlowServiceImpactWeight({
           isCritical: flowNode.isCritical,
           hasAlternativePath: flowNode.hasAlternativePath,
         });
         return {
           serviceId: serviceCost.serviceNodeId,
-          serviceName: serviceCost.serviceName,
+          serviceName: identity.displayName,
+          serviceDisplayName: identity.displayName,
+          serviceTechnicalName: identity.technicalName,
           downtimeCostPerHour: serviceCost.downtimeCostPerHour,
           downtimeCostSourceLabel: serviceCost.sourceLabel,
           impactWeight,
@@ -698,7 +748,20 @@ function parseFlowInput(payload: Record<string, unknown>, isPatch: boolean): {
 
 async function serializeFlow(
   flow: Awaited<ReturnType<typeof prisma.businessFlow.findFirstOrThrow>> & {
-    flowNodes: Array<{ infraNodeId: string }>;
+    flowNodes: Array<{
+      infraNodeId: string;
+      infraNode?: {
+        id: string;
+        name: string;
+        businessName?: string | null;
+        type: string;
+        provider?: string | null;
+        region?: string | null;
+        isSPOF?: boolean;
+        criticalityScore?: number | null;
+        metadata?: unknown;
+      } | null;
+    }>;
   },
   currency: SupportedCurrency,
   tenantId: string,
@@ -766,8 +829,22 @@ async function serializeFlow(
         estimable: snapshot.estimable,
       }
     : null;
+  const flowNodes = flow.flowNodes.map((flowNode) => {
+    if (!flowNode.infraNode) return flowNode;
+    const identity = resolveInfraNodeIdentity(flowNode.infraNode);
+    return {
+      ...flowNode,
+      infraNode: {
+        ...flowNode.infraNode,
+        displayName: identity.displayName,
+        technicalName: identity.technicalName,
+        businessName: flowNode.infraNode.businessName ?? null,
+      },
+    };
+  });
   return {
     ...flow,
+    flowNodes,
     computedCost: computed,
     currency,
     downtimeCostPerHour: flowDowntime.downtimeCostPerHour,
@@ -830,7 +907,7 @@ router.post('/ai/suggest', requireRole('OPERATOR'), async (req: TenantRequest, r
       suggestions.map(async (suggestion) => {
         const flow = await prisma.businessFlow.findFirst({
           where: { id: suggestion.flowId, tenantId },
-          include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
+          include: { flowNodes: flowNodesWithInfraInclude },
         });
         return flow ?? null;
       }),
@@ -928,9 +1005,7 @@ router.post('/', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
           : {}),
       },
       include: {
-        flowNodes: {
-          orderBy: { orderIndex: 'asc' },
-        },
+        flowNodes: flowNodesWithInfraInclude,
       },
     });
 
@@ -939,7 +1014,7 @@ router.post('/', requireRole('OPERATOR'), async (req: TenantRequest, res) => {
 
     const persisted = await prisma.businessFlow.findFirstOrThrow({
       where: { id: flow.id, tenantId },
-      include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
+      include: { flowNodes: flowNodesWithInfraInclude },
     });
 
     return res.status(201).json(await serializeFlow(persisted, currency, tenantId));
@@ -958,9 +1033,7 @@ router.get('/', requireRole('READER'), async (req: TenantRequest, res) => {
     const flows = await prisma.businessFlow.findMany({
       where: { tenantId },
       include: {
-        flowNodes: {
-          orderBy: { orderIndex: 'asc' },
-        },
+        flowNodes: flowNodesWithInfraInclude,
       },
       orderBy: { updatedAt: 'desc' },
     });
@@ -995,22 +1068,7 @@ router.get('/:id', requireRole('READER'), async (req: TenantRequest, res) => {
     const flow = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
       include: {
-        flowNodes: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            infraNode: {
-              select: {
-                id: true,
-                name: true,
-                type: true,
-                provider: true,
-                region: true,
-                isSPOF: true,
-                criticalityScore: true,
-              },
-            },
-          },
-        },
+        flowNodes: flowNodesWithInfraInclude,
       },
     });
 
@@ -1054,16 +1112,14 @@ router.patch('/:id', requireRole('OPERATOR'), async (req: TenantRequest, res) =>
       where: { id: flowId },
       data: updateData,
       include: {
-        flowNodes: {
-          orderBy: { orderIndex: 'asc' },
-        },
+        flowNodes: flowNodesWithInfraInclude,
       },
     });
 
     await businessFlowFinancialEngine.recalculateFlowComputedCost(tenantId, flow.id);
     const refreshed = await prisma.businessFlow.findFirstOrThrow({
       where: { id: flow.id, tenantId },
-      include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
+      include: { flowNodes: flowNodesWithInfraInclude },
     });
 
     return res.json(await serializeFlow(refreshed, currency, tenantId));
@@ -1181,7 +1237,7 @@ router.post('/:id/validate', requireRole('OPERATOR'), async (req: TenantRequest,
 
     const updated = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
-      include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
+      include: { flowNodes: flowNodesWithInfraInclude },
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 
@@ -1316,14 +1372,7 @@ router.post('/:id/nodes', requireRole('OPERATOR'), async (req: TenantRequest, re
     const updatedFlow = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
       include: {
-        flowNodes: {
-          orderBy: { orderIndex: 'asc' },
-          include: {
-            infraNode: {
-              select: { id: true, name: true, type: true, provider: true, region: true },
-            },
-          },
-        },
+        flowNodes: flowNodesWithInfraInclude,
       },
     });
     if (!updatedFlow) return res.status(404).json({ error: 'Business flow not found' });
@@ -1359,7 +1408,7 @@ router.delete('/:id/nodes/:nodeId', requireRole('OPERATOR'), async (req: TenantR
 
     const updated = await prisma.businessFlow.findFirst({
       where: { id: flowId, tenantId },
-      include: { flowNodes: { orderBy: { orderIndex: 'asc' } } },
+      include: { flowNodes: flowNodesWithInfraInclude },
     });
     if (!updated) return res.status(404).json({ error: 'Business flow not found' });
 

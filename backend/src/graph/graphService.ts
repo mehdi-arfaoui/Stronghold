@@ -13,6 +13,7 @@ import type {
   CascadeNode,
   CriticalPath,
 } from './types.js';
+import { resolveServiceIdentity } from '../services/service-identity.service.js';
 
 // Graphology type: use the imported class directly
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -63,10 +64,19 @@ export async function loadGraphFromDB(prisma: PrismaClient, tenantId: string): P
   const edges = await prisma.infraEdge.findMany({ where: { tenantId } });
 
   for (const node of nodes) {
+    const identity = resolveServiceIdentity({
+      name: node.name,
+      businessName: node.businessName,
+      type: node.type,
+      metadata: node.metadata,
+    });
     const attrs: Record<string, unknown> = {
       id: node.id,
       externalId: node.externalId,
       name: node.name,
+      businessName: node.businessName,
+      displayName: identity.displayName,
+      technicalName: identity.technicalName,
       type: node.type,
       provider: node.provider,
       region: node.region,

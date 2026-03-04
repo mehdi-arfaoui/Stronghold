@@ -35,6 +35,7 @@ import {
   normalizeStrategyCostPercentages,
   partitionRecommendationsByAleCap,
 } from './landing-zone-cost-optimization.js';
+import { resolveServiceIdentity } from './service-identity.service.js';
 
 export type LandingZoneRecommendationStatus = 'pending' | 'validated' | 'rejected';
 
@@ -56,6 +57,8 @@ export type LandingZoneFinancialRecommendation = {
   id: string;
   nodeId: string;
   serviceName: string;
+  serviceDisplayName: string;
+  serviceTechnicalName: string;
   tier: number;
   groupKey: string | null;
   allocationShare: number;
@@ -143,6 +146,8 @@ type InternalRecommendationSeed = {
   id: string;
   nodeId: string;
   serviceName: string;
+  serviceDisplayName: string;
+  serviceTechnicalName: string;
   tier: number;
   strategyKey:
     | 'backup_restore'
@@ -523,6 +528,8 @@ export async function buildLandingZoneFinancialContext(
           },
           select: {
             id: true,
+            name: true,
+            businessName: true,
             type: true,
             provider: true,
             metadata: true,
@@ -558,6 +565,12 @@ export async function buildLandingZoneFinancialContext(
     const node = nodeByServiceId.get(recommendation.serviceId);
     const validatedProcess = validatedBiaByServiceId.get(recommendation.serviceId);
     const state = parsePersistedRecommendationState(node?.metadata);
+    const identity = resolveServiceIdentity({
+      name: node?.name ?? recommendation.serviceName,
+      businessName: node?.businessName ?? null,
+      type: node?.type || 'APPLICATION',
+      metadata: node?.metadata || {},
+    });
 
     const monthlyCostEstimate = await estimateServiceMonthlyProductionCostAsync(
       {
@@ -602,7 +615,7 @@ export async function buildLandingZoneFinancialContext(
       appLogger.warn('landing_zone.recommendation_skipped_no_rto_gain', {
         tenantId,
         serviceId: recommendation.serviceId,
-        serviceName: recommendation.serviceName,
+        serviceName: identity.displayName,
         strategy: selected.strategy,
         currentRtoMinutes,
       });
@@ -636,12 +649,12 @@ export async function buildLandingZoneFinancialContext(
 
     const strategy = strategyKeyToLegacySlug(effectiveStrategy);
     const probability = resolveIncidentProbabilityForNodeType(
-      node?.type || recommendation.serviceName,
+      node?.type || identity.technicalName,
       undefined,
       node?.metadata || {},
     );
     const serviceSpecificRecommendation = buildServiceSpecificRecommendation({
-      serviceName: recommendation.serviceName,
+      serviceName: identity.displayName,
       nodeType: node?.type || 'APPLICATION',
       provider: node?.provider || 'unknown',
       metadata: node?.metadata || {},
@@ -653,7 +666,9 @@ export async function buildLandingZoneFinancialContext(
     recommendationSeeds.push({
       id: recommendation.serviceId,
       nodeId: recommendation.serviceId,
-      serviceName: recommendation.serviceName,
+      serviceName: identity.displayName,
+      serviceDisplayName: identity.displayName,
+      serviceTechnicalName: identity.technicalName,
       tier: recommendation.recoveryTier,
       strategyKey: effectiveStrategy,
       strategy,
@@ -888,6 +903,8 @@ export async function buildLandingZoneFinancialContext(
       id: seed.id,
       nodeId: seed.nodeId,
       serviceName: seed.serviceName,
+      serviceDisplayName: seed.serviceDisplayName,
+      serviceTechnicalName: seed.serviceTechnicalName,
       tier: seed.tier,
       groupKey: seed.groupKey,
       allocationShare: seed.allocationShare,

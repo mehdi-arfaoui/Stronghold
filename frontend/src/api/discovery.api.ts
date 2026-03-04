@@ -25,6 +25,9 @@ export const discoveryApi = {
   rejectEdge: (edgeId: string) =>
     api.patch(`/resilience/graph/edges/${edgeId}`, { confirmed: false }),
 
+  updateBusinessName: (nodeId: string, businessName: string | null) =>
+    api.patch(`/resilience/graph/nodes/${nodeId}/business-name`, { businessName }),
+
   testCredentials: (provider: string, credentials: Record<string, string>) =>
     api.post<CredentialTestResult>('/discovery-resilience/test-credentials', { provider, credentials }),
 

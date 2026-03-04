@@ -10,6 +10,7 @@ import * as GraphService from '../graph/graphService.js';
 import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
+import { resolveServiceIdentity } from '../services/service-identity.service.js';
 
 const router = Router();
 
@@ -159,7 +160,12 @@ router.get('/nodes/:nodeId', async (req: TenantRequest, res) => {
       node,
       spofStatus,
       redundancy,
-      blastRadius: blastRadius.map(n => ({ id: n.id, name: n.name, type: n.type })),
+      blastRadius: blastRadius.map((n) => ({
+        id: n.id,
+        name: n.displayName || n.name,
+        technicalName: n.technicalName || n.name,
+        type: n.type,
+      })),
       blastRadiusCount: blastRadius.length,
       scores: dbNode ? {
         criticalityScore: dbNode.criticalityScore,
@@ -302,20 +308,52 @@ router.get('/spofs', async (req: TenantRequest, res) => {
     const infraNodes = spofNodeIds.length > 0
       ? await prisma.infraNode.findMany({
           where: { tenantId, id: { in: spofNodeIds } },
-          select: { id: true, metadata: true },
+          select: { id: true, name: true, businessName: true, type: true, metadata: true },
         })
       : [];
-    const metadataByNodeId = new Map<string, Record<string, unknown>>();
-    for (const node of infraNodes) {
-      if (node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)) {
-        metadataByNodeId.set(node.id, node.metadata as Record<string, unknown>);
+    const nodeById = new Map<
+      string,
+      {
+        name: string;
+        businessName: string | null;
+        type: string;
+        metadata: Record<string, unknown>;
       }
+    >();
+    for (const node of infraNodes) {
+      const metadata =
+        node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+          ? (node.metadata as Record<string, unknown>)
+          : {};
+      nodeById.set(node.id, {
+        name: node.name,
+        businessName: node.businessName,
+        type: node.type,
+        metadata,
+      });
     }
 
     let spofs = (report.spofs || []).map((s: any) => ({
+      ...(nodeById.has(s.nodeId)
+        ? (() => {
+            const storedNode = nodeById.get(s.nodeId)!;
+            const identity = resolveServiceIdentity({
+              name: storedNode.name,
+              businessName: storedNode.businessName,
+              type: storedNode.type,
+              metadata: storedNode.metadata,
+            });
+            return {
+              nodeName: identity.displayName,
+              technicalName: identity.technicalName,
+            };
+          })()
+        : {
+            nodeName: s.nodeName,
+            technicalName: s.nodeName,
+          }),
       nodeId: s.nodeId,
-      nodeName: s.nodeName,
-      nodeType: resolveNodeTypeLabel(s.nodeType, metadataByNodeId.get(s.nodeId)),
+      nodeType: resolveNodeTypeLabel(s.nodeType, nodeById.get(s.nodeId)?.metadata),
       nodeTypeRaw: s.nodeType,
       blastRadius: s.blastRadius ?? 0,
       severity: s.severity,

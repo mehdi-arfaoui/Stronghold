@@ -23,8 +23,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { cn } from '@/lib/utils';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
+import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatCurrency } from '@/lib/formatters';
+import { resolveIdentityLabels } from '@/lib/serviceIdentity';
 
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'] as const;
 const ROI_DISPLAY_CAP_ABS = 5_000;
@@ -440,6 +442,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
   const renderRecommendationCard = (card: (typeof recommendationCards)[number], isQuickWin: boolean) => {
     const recommendation = card.recommendation;
+    const identity = resolveIdentityLabels(recommendation);
     const individualRoiDisplay = formatRoiPercent(card.individualROI);
     const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
     const strategyLabel =
@@ -452,10 +455,16 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     });
 
     return (
-      <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
+        <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">{recommendation.serviceName ?? recommendation.title ?? recommendation.id}</h3>
+            <div className="min-w-[220px] flex-1">
+              <ServiceIdentityLabel
+                primary={identity.primary}
+                secondary={identity.secondary}
+                className="font-semibold"
+              />
+            </div>
             <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
             {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
             {recommendation.recommendationBand === 'secondary' && (
