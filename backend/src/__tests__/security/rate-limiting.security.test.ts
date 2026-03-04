@@ -4,8 +4,9 @@ import path from "node:path";
 import test from "node:test";
 import express from "express";
 import {
-  authRateLimit,
+  createLoginRateLimit,
   reportRateLimit,
+  resolveLoginRateLimitPolicy,
   scanRateLimit,
 } from "../../middleware/rateLimitMiddleware.js";
 
@@ -45,13 +46,35 @@ async function burst(baseUrl: string, route: string, count: number): Promise<num
   return statuses;
 }
 
-test("POST /auth/login equivalent limiter rejects burst traffic before request 10", { concurrency: false }, async () => {
-  const app = buildLimiterTestApp("/auth/login", authRateLimit);
+test("login rate limit policy allows 100 req/min in development", () => {
+  assert.deepEqual(resolveLoginRateLimitPolicy("development"), {
+    windowMs: 60_000,
+    limit: 100,
+  });
+});
+
+test("login rate limit policy allows 20 req/min in production", () => {
+  assert.deepEqual(resolveLoginRateLimitPolicy("production"), {
+    windowMs: 60_000,
+    limit: 20,
+  });
+});
+
+test("POST /auth/login limiter rejects burst traffic after request 20 in production", { concurrency: false }, async () => {
+  const app = buildLimiterTestApp("/auth/login", createLoginRateLimit("production"));
   await withServer(app, async (baseUrl) => {
-    const statuses = await burst(baseUrl, "/auth/login", 10);
+    const statuses = await burst(baseUrl, "/auth/login", 25);
     const first429 = statuses.findIndex((status) => status === 429);
     assert.ok(first429 >= 0, "auth limiter never returned 429");
-    assert.ok(first429 + 1 <= 10, `first 429 too late: request #${first429 + 1}`);
+    assert.equal(first429 + 1, 21, `unexpected first 429 position: request #${first429 + 1}`);
+  });
+});
+
+test("POST /auth/login limiter stays permissive in development", { concurrency: false }, async () => {
+  const app = buildLimiterTestApp("/auth/login", createLoginRateLimit("development"));
+  await withServer(app, async (baseUrl) => {
+    const statuses = await burst(baseUrl, "/auth/login", 25);
+    assert.ok(statuses.every((status) => status === 200), `unexpected status sequence: ${statuses.join(",")}`);
   });
 });
 

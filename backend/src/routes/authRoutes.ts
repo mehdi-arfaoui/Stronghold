@@ -5,7 +5,7 @@ import prisma from '../prismaClient.js';
 import { authMiddleware } from '../middleware/authMiddleware.js';
 import { requireRole as requireLegacyRole } from '../middleware/tenantMiddleware.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
-import { authProvisionRateLimit, authRateLimit } from '../middleware/rateLimitMiddleware.js';
+import { authProvisionRateLimit, authRateLimit, loginRateLimit } from '../middleware/rateLimitMiddleware.js';
 import { generateApiKey } from '../services/apiKeyService.js';
 import {
   AuthServiceError,
@@ -147,7 +147,7 @@ router.post('/setup', authProvisionRateLimit, async (req: TenantRequest, res) =>
   }
 });
 
-router.post('/login', authRateLimit, async (req: TenantRequest, res) => {
+router.post('/login', loginRateLimit, async (req: TenantRequest, res) => {
   const authService = getAuthService(req);
   if (!authService) {
     return res.status(500).json({

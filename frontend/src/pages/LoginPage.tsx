@@ -31,13 +31,34 @@ export function LoginPage() {
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const syncEmail = (value: string) => {
+    setEmail(value);
+  };
+
+  const syncPassword = (value: string) => {
+    setPassword(value);
+  };
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const submittedEmail = String(formData.get('email') ?? '').trim();
+    const submittedPassword = String(formData.get('password') ?? '');
+
+    setEmail(submittedEmail);
+    setPassword(submittedPassword);
     setError('');
+
+    if (!submittedEmail || !submittedPassword) {
+      setError('Email et mot de passe requis.');
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
+      await login(submittedEmail, submittedPassword);
     } catch (nextError) {
       setError(resolveErrorMessage(nextError));
     } finally {
@@ -96,9 +117,11 @@ export function LoginPage() {
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
+                    name="email"
                     type="email"
                     value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    onChange={(event) => syncEmail(event.target.value)}
+                    onInput={(event) => syncEmail(event.currentTarget.value)}
                     placeholder="admin@stronghold.local"
                     autoComplete="email"
                     required
@@ -109,9 +132,11 @@ export function LoginPage() {
                   <Label htmlFor="password">Mot de passe</Label>
                   <Input
                     id="password"
+                    name="password"
                     type="password"
                     value={password}
-                    onChange={(event) => setPassword(event.target.value)}
+                    onChange={(event) => syncPassword(event.target.value)}
+                    onInput={(event) => syncPassword(event.currentTarget.value)}
                     placeholder="********"
                     autoComplete="current-password"
                     required
