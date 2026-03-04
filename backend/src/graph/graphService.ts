@@ -87,6 +87,10 @@ export async function loadGraphFromDB(prisma: PrismaClient, tenantId: string): P
       validatedMTPD: node.validatedMTPD ?? undefined,
       impactCategory: node.impactCategory ?? undefined,
       financialImpactPerHour: node.financialImpactPerHour ?? undefined,
+      estimatedMonthlyCost: node.estimatedMonthlyCost ?? undefined,
+      estimatedMonthlyCostCurrency: node.estimatedMonthlyCostCurrency ?? undefined,
+      estimatedMonthlyCostSource: node.estimatedMonthlyCostSource ?? undefined,
+      estimatedMonthlyCostConfidence: node.estimatedMonthlyCostConfidence ?? undefined,
     };
     graph.addNode(node.id, attrs);
   }

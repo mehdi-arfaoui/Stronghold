@@ -162,6 +162,10 @@ function buildDowntimeCostMapForProcesses(input: {
       nodeId: process.serviceNodeId,
       name: process.serviceName,
       criticality,
+      nodeType: node?.type ?? null,
+      provider: node?.provider ?? null,
+      metadata: node?.metadata ?? {},
+      estimatedMonthlyCost: node?.estimatedMonthlyCost ?? null,
     };
   });
 

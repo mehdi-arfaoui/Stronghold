@@ -278,9 +278,30 @@ test('computes blast radius and distributes downtime with override and fallback'
   const costs = calculateServiceDowntimeCosts(
     blast,
     [
-      { nodeId: 'db', name: 'postgres', criticality: 'critical' },
-      { nodeId: 'cache', name: 'redis', criticality: 'high' },
-      { nodeId: 'api', name: 'api', criticality: 'critical' },
+      {
+        nodeId: 'db',
+        name: 'postgres',
+        criticality: 'critical',
+        nodeType: NodeType.DATABASE,
+        provider: 'aws',
+        metadata: { sourceType: 'RDS', engine: 'postgres' },
+      },
+      {
+        nodeId: 'cache',
+        name: 'redis',
+        criticality: 'high',
+        nodeType: NodeType.CACHE,
+        provider: 'aws',
+        metadata: { sourceType: 'ELASTICACHE', engine: 'redis' },
+      },
+      {
+        nodeId: 'api',
+        name: 'api',
+        criticality: 'critical',
+        nodeType: NodeType.VM,
+        provider: 'aws',
+        metadata: { sourceType: 'EC2', instanceType: 't3.small' },
+      },
     ],
     {
       estimatedDowntimeCostPerHour: 10000,
@@ -293,10 +314,95 @@ test('computes blast radius and distributes downtime with override and fallback'
 
   const fallbackCosts = calculateServiceDowntimeCosts(
     calculateBlastRadius(nodes as any, []),
-    [{ nodeId: 'db', name: 'postgres', criticality: 'critical' }],
+    [
+      {
+        nodeId: 'db',
+        name: 'postgres',
+        criticality: 'critical',
+        nodeType: NodeType.DATABASE,
+        provider: 'aws',
+        metadata: { sourceType: 'RDS', engine: 'postgres' },
+      },
+    ],
     { estimatedDowntimeCostPerHour: 10000, serviceOverrides: [] },
   );
   assert.equal(fallbackCosts[0]?.source, 'fallback_criticality');
+});
+
+test('normalizes downtime distribution across criticality, type, blast radius and infra cost', () => {
+  const nodes = [
+    { id: 'db', name: 'stronghold-db', type: NodeType.DATABASE, provider: 'aws', tags: {}, metadata: { sourceType: 'RDS', engine: 'postgres', instanceClass: 'db.t4g.medium' } },
+    { id: 'api', name: 'stronghold-api-server', type: NodeType.VM, provider: 'aws', tags: {}, metadata: { sourceType: 'EC2', instanceType: 't3.medium' } },
+    { id: 'lambda', name: 'stronghold-order-processor', type: NodeType.SERVERLESS, provider: 'aws', tags: {}, metadata: { sourceType: 'LAMBDA', memorySize: 256 } },
+    { id: 'bucket', name: 'stronghold-backups', type: NodeType.OBJECT_STORAGE, provider: 'aws', tags: {}, metadata: { sourceType: 'S3_BUCKET', storageGb: 50 } },
+    { id: 'dlq', name: 'stronghold-alerts-dlq', type: NodeType.MESSAGE_QUEUE, provider: 'aws', tags: {}, metadata: { sourceType: 'SQS_QUEUE' } },
+  ];
+
+  const edges = [
+    { sourceId: 'api', targetId: 'db', type: EdgeType.NETWORK_ACCESS },
+    { sourceId: 'lambda', targetId: 'db', type: EdgeType.USES },
+    { sourceId: 'dlq', targetId: 'lambda', type: EdgeType.TRIGGERS },
+  ];
+
+  const costs = calculateServiceDowntimeCosts(
+    calculateBlastRadius(nodes as any, edges as any),
+    [
+      {
+        nodeId: 'db',
+        name: 'stronghold-db',
+        criticality: 'high',
+        nodeType: NodeType.DATABASE,
+        provider: 'aws',
+        metadata: { sourceType: 'RDS', engine: 'postgres', instanceClass: 'db.t4g.medium' },
+      },
+      {
+        nodeId: 'api',
+        name: 'stronghold-api-server',
+        criticality: 'medium',
+        nodeType: NodeType.VM,
+        provider: 'aws',
+        metadata: { sourceType: 'EC2', instanceType: 't3.medium' },
+      },
+      {
+        nodeId: 'lambda',
+        name: 'stronghold-order-processor',
+        criticality: 'low',
+        nodeType: NodeType.SERVERLESS,
+        provider: 'aws',
+        metadata: { sourceType: 'LAMBDA', memorySize: 256 },
+      },
+      {
+        nodeId: 'bucket',
+        name: 'stronghold-backups',
+        criticality: 'low',
+        nodeType: NodeType.OBJECT_STORAGE,
+        provider: 'aws',
+        metadata: { sourceType: 'S3_BUCKET', storageGb: 50 },
+      },
+      {
+        nodeId: 'dlq',
+        name: 'stronghold-alerts-dlq',
+        criticality: 'low',
+        nodeType: NodeType.MESSAGE_QUEUE,
+        provider: 'aws',
+        metadata: { sourceType: 'SQS_QUEUE' },
+      },
+    ],
+    {
+      estimatedDowntimeCostPerHour: 10000,
+      serviceOverrides: [],
+    },
+  );
+
+  const byId = new Map(costs.map((entry) => [entry.serviceNodeId, entry]));
+  const totalDistributed = costs.reduce((sum, entry) => sum + entry.downtimeCostPerHour, 0);
+
+  assert.equal(totalDistributed, 10000);
+  assert.equal(byId.get('db')?.source, 'blast_radius');
+  assert.ok((byId.get('db')?.downtimeCostPerHour || 0) > (byId.get('api')?.downtimeCostPerHour || 0));
+  assert.ok((byId.get('api')?.downtimeCostPerHour || 0) > (byId.get('lambda')?.downtimeCostPerHour || 0));
+  assert.ok((byId.get('dlq')?.downtimeCostPerHour || 0) > (byId.get('bucket')?.downtimeCostPerHour || 0));
+  assert.ok((byId.get('bucket')?.downtimeCostPerHour || 0) < 1000);
 });
 
 test('best-effort inference creates probable edges for sparse demo metadata', () => {

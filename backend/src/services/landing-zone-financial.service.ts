@@ -526,6 +526,7 @@ export async function buildLandingZoneFinancialContext(
             type: true,
             provider: true,
             metadata: true,
+            estimatedMonthlyCost: true,
             criticalityScore: true,
             impactCategory: true,
             validatedRTO: true,
@@ -824,6 +825,10 @@ export async function buildLandingZoneFinancialContext(
         nodeId: seed.nodeId,
         name: seed.serviceName,
         criticality: seed.criticality,
+        nodeType: seed.nodeType,
+        provider: seed.provider,
+        metadata: seed.metadata,
+        estimatedMonthlyCost: seed.estimatedProductionMonthlyCost,
       })),
       {
         estimatedDowntimeCostPerHour:

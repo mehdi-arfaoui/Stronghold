@@ -198,8 +198,12 @@ async function buildFlowDowntimeContext(
       select: {
         id: true,
         name: true,
+        type: true,
+        provider: true,
+        metadata: true,
         criticalityScore: true,
         impactCategory: true,
+        estimatedMonthlyCost: true,
       },
     }),
     prisma.nodeFinancialOverride.findMany({
@@ -250,9 +254,17 @@ async function buildFlowDowntimeContext(
         nodeId: node.id,
         name: node.name,
         criticality: toNodeCriticality(node),
+        nodeType: node.type,
+        provider: node.provider,
+        metadata:
+          node.metadata && typeof node.metadata === 'object' && !Array.isArray(node.metadata)
+            ? (node.metadata as Record<string, unknown>)
+            : {},
+        estimatedMonthlyCost: node.estimatedMonthlyCost,
       })),
       {
-        estimatedDowntimeCostPerHour: Number(profile.hourlyDowntimeCost || 0),
+        estimatedDowntimeCostPerHour:
+          Number(profile.customDowntimeCostPerHour || 0) || Number(profile.hourlyDowntimeCost || 0),
         serviceOverrides,
       },
     ).map((item) => [item.serviceNodeId, item]),

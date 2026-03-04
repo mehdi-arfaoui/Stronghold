@@ -101,6 +101,10 @@ export interface InfraNodeAttrs {
   validatedMTPD?: number;
   impactCategory?: string;
   financialImpactPerHour?: number;
+  estimatedMonthlyCost?: number;
+  estimatedMonthlyCostCurrency?: string | null;
+  estimatedMonthlyCostSource?: string | null;
+  estimatedMonthlyCostConfidence?: number | null;
 }
 
 // --- Edge Attributes ---
