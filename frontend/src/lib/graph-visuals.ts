@@ -301,9 +301,9 @@ export function resolveBlastRatio(node: Pick<InfraNode, 'blastRadius' | 'critica
 }
 
 export function getNodeSize(blastRatio: number): { width: number; height: number } {
-  if (blastRatio > 0.4) return { width: 220, height: 80 };
-  if (blastRatio > 0.15) return { width: 180, height: 65 };
-  return { width: 150, height: 55 };
+  if (blastRatio > 0.4) return { width: 240, height: 84 };
+  if (blastRatio > 0.15) return { width: 220, height: 72 };
+  return { width: 200, height: 60 };
 }
 
 export function getTierColor(tier?: number): string {
@@ -460,4 +460,3 @@ export function computeBlastRadius(nodeId: string, edges: Array<Pick<InfraEdge, 
 
   return { nodeIds: visited, edgeIds: visitedEdges };
 }
-

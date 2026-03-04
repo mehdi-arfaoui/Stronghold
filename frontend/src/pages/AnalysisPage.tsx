@@ -117,7 +117,7 @@ export function AnalysisPage() {
     mutationFn: () => biaApi.regenerate(),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
-      toast.success('BIA regenere');
+      toast.success('BIA régénéré');
     },
   });
 
@@ -127,9 +127,9 @@ export function AnalysisPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['bia-entries', tenantScope] });
       queryClient.invalidateQueries({ queryKey: ['financial-summary', tenantScope] });
-      toast.success('Override financier enregistre');
+      toast.success('Override financier enregistré');
     },
-    onError: () => toast.error('Impossible d enregistrer l override financier'),
+    onError: () => toast.error('Impossible d’enregistrer l’override financier'),
   });
 
   const biaRaw: unknown = biaQuery.data;
@@ -194,14 +194,14 @@ export function AnalysisPage() {
           <TabsTrigger value="bia">BIA</TabsTrigger>
           <TabsTrigger value="risks">Risques</TabsTrigger>
           <TabsTrigger value="redundancy">Redondance</TabsTrigger>
-          <TabsTrigger value="regional">Concentration regionale</TabsTrigger>
+          <TabsTrigger value="regional">Concentration régionale</TabsTrigger>
         </TabsList>
 
         {/* BIA Tab */}
         <TabsContent value="bia" className="space-y-6">
           <div className="flex items-center gap-3 flex-wrap">
             <Button variant="outline" size="sm" onClick={() => regenerateMutation.mutate()} disabled={regenerateMutation.isPending}>
-              <RefreshCw className="mr-2 h-4 w-4" /> Regenerer le BIA
+              <RefreshCw className="mr-2 h-4 w-4" /> Régénérer le BIA
             </Button>
             {hasFeature('api-export') ? (
               <Button variant="outline" size="sm" onClick={() => setExportOpen(true)}>
@@ -237,12 +237,12 @@ export function AnalysisPage() {
 
           {orgProfileQuery.data?.mode === 'business_profile' ? (
             <div className="rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-              Profil financier configure. Les couts/h utilisent le profil global sauf override personnalise.
+              Profil financier configuré. Les coûts/h utilisent le profil global sauf override personnalisé.
             </div>
           ) : (
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-blue-300 bg-blue-50 px-3 py-2 text-sm text-blue-900">
               <span>
-                Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.
+                Calculs basés sur les coûts d’infrastructure uniquement. Configurez votre profil financier pour l’impact business.
               </span>
               <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=finance')}>
                 Configurer
@@ -343,13 +343,13 @@ export function AnalysisPage() {
                           <RiskCriticityBadge level={criticityLevel} score={score} />
                           <SeverityBadge severity={risk.severity} />
                           <h4 className="truncate font-semibold">{risk.title}</h4>
-                          {risk.autoDetected && <span className="text-xs text-muted-foreground">(auto-detecte)</span>}
+                          {risk.autoDetected && <span className="text-xs text-muted-foreground">(auto-détecté)</span>}
                         </div>
                         <p className="line-clamp-3 text-sm text-muted-foreground">{risk.description}</p>
                       </div>
                       <div className="text-right text-xs text-muted-foreground">
                         <p>Impact {risk.impact}</p>
-                        <p>Probabilite {risk.probability}</p>
+                        <p>Probabilité {risk.probability}</p>
                       </div>
                     </div>
 
@@ -369,7 +369,7 @@ export function AnalysisPage() {
                           </Button>
                         ))
                       ) : (
-                        <span className="text-xs text-muted-foreground">Aucun service rattache.</span>
+                        <span className="text-xs text-muted-foreground">Aucun service rattaché.</span>
                       )}
                     </div>
 
@@ -394,7 +394,7 @@ export function AnalysisPage() {
                 );
               })}
               {risks.length === 0 && (
-                <p className="text-sm text-muted-foreground">Aucun risque detecte. Lancez une analyse pour identifier les risques.</p>
+                <p className="text-sm text-muted-foreground">Aucun risque détecté. Lancez une analyse pour identifier les risques.</p>
               )}
               {risks.length > 0 && filteredRisks.length === 0 && (
                 <p className="text-sm text-muted-foreground">
@@ -414,7 +414,7 @@ export function AnalysisPage() {
         <TabsContent value="regional" className="space-y-6">
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">Concentration regionale</CardTitle>
+              <CardTitle className="text-base">Concentration régionale</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
@@ -425,14 +425,14 @@ export function AnalysisPage() {
                       <p className="text-xs text-muted-foreground">{item.provider}</p>
                     </div>
                     <div className="flex items-center gap-4 text-sm">
-                      <span>{item.nodeCount} noeuds ({Math.round(item.percentage)}%)</span>
+                      <span>{item.nodeCount} nœuds ({Math.round(item.percentage)}%)</span>
                       <span>{item.criticalNodeCount} critiques</span>
                       <SeverityBadge severity={item.risk === 'high' ? 'high' : item.risk === 'medium' ? 'medium' : 'low'} />
                     </div>
                   </div>
                 ))}
                 {regional.length === 0 && (
-                  <p className="text-sm text-muted-foreground">Aucune donnee regionale disponible.</p>
+                  <p className="text-sm text-muted-foreground">Aucune donnée régionale disponible.</p>
                 )}
               </div>
             </CardContent>

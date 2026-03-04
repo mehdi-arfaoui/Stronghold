@@ -80,17 +80,17 @@ function formatPercentNullable(value: number | null | undefined): { label: strin
   if (value > ROI_DISPLAY_HIGH_THRESHOLD) {
     return {
       label: '> 1000%',
-      tooltip: 'Gain tres eleve par rapport au cout annuel DR estime.',
+      tooltip: 'Gain très élevé par rapport au coût annuel DR estimé.',
     };
   }
   if (value < -ROI_DISPLAY_CAP_ABS) {
     return {
       label: '< -5000%',
-      tooltip: 'Affichage borne pour eviter une valeur extreme peu exploitable.',
+      tooltip: 'Affichage borné pour éviter une valeur extrême peu exploitable.',
     };
   }
   const bounded = Math.max(-ROI_DISPLAY_CAP_ABS, Math.min(ROI_DISPLAY_CAP_ABS, value));
-  return { label: `${bounded.toFixed(1)}%` };
+  return { label: `${bounded.toFixed(1).replace('.', ',')}%` };
 }
 
 function formatDate(dateString: string): string {
@@ -218,18 +218,18 @@ function FinancialDashboardInner() {
   const roiDisplay = formatPercentNullable(summary?.metrics.roiPercent ?? null);
   const potentialSavingsDisplay =
     potentialSavingsRaw < 0
-      ? 'Aucun gain - service deja protege'
+      ? 'Aucun gain - service déjà protégé'
       : formatMoney(potentialSavings, currency);
   const paybackValue =
     paybackLabel && paybackLabel.length > 0
       ? paybackLabel
       : paybackMonths != null && paybackMonths > 0
-        ? `${paybackMonths.toFixed(1)} mois`
+        ? `${paybackMonths.toFixed(1).replace('.', ',')} mois`
         : 'Non rentable';
   const paybackSubtitle =
     paybackMonths != null && paybackMonths > 0
       ? 'Temps de retour sur investissement'
-      : 'Les gains annuels estimes ne couvrent pas les couts';
+      : 'Les gains annuels estimés ne couvrent pas les coûts';
   const chartData = useMemo(() => {
     if (!summary) return [];
     const baselineRisk = Math.max(0, summary.metrics.annualRisk ?? 0);
@@ -381,13 +381,13 @@ function FinancialDashboardInner() {
           <CardContent className="flex flex-col items-center justify-center py-12">
             <AlertTriangle className="mb-3 h-10 w-10 text-red-600" />
             <p className="text-base font-semibold">
-              Impossible de calculer les estimations financieres.
+              Impossible de calculer les estimations financières.
             </p>
             <p className="mt-1 text-sm text-muted-foreground">
               Verifiez votre profil organisation.
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
-              <Button onClick={() => summaryQuery.refetch()}>Reessayer</Button>
+              <Button onClick={() => summaryQuery.refetch()}>Réessayer</Button>
               <Button variant="outline" onClick={() => navigate('/settings?tab=finance')}>
                 Configurer le profil financier
               </Button>
@@ -420,7 +420,7 @@ function FinancialDashboardInner() {
               ) : (
                 <FileDown className="mr-2 h-4 w-4" />
               )}
-              Exporter le rapport executif
+              Exporter le rapport exécutif
             </Button>
             <Button variant="outline" size="sm" onClick={() => navigate('/settings?tab=finance')}>
               Configurer le profil financier
@@ -429,8 +429,8 @@ function FinancialDashboardInner() {
         </div>
         <p className="text-sm text-muted-foreground">
           {flowCoverage
-            ? `Base sur ${flowCoverage.validatedFlows} flux metier valides couvrant ${flowCoverage.coveragePercent}% de l infrastructure critique.`
-            : 'Pilotage financier de la resilience base sur vos SPOFs, BIA et recommandations.'}
+            ? `Basé sur ${flowCoverage.validatedFlows} flux métier validés couvrant ${flowCoverage.coveragePercent}% de l'infrastructure critique.`
+            : 'Pilotage financier de la résilience basé sur vos SPOFs, BIA et recommandations.'}
         </p>
       </div>
 
@@ -444,7 +444,7 @@ function FinancialDashboardInner() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">
               {orgProfileQuery.data?.inferenceBanner ||
-                'Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.'}
+                'Calculs basés sur les coûts d’infrastructure uniquement. Configurez votre profil financier pour l’impact business.'}
             </p>
             <Button
               size="sm"
@@ -460,7 +460,7 @@ function FinancialDashboardInner() {
       {businessProfileConfigured && (
         <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-medium">Profil financier configure.</p>
+            <p className="text-sm font-medium">Profil financier configuré.</p>
             <Button
               size="sm"
               variant="outline"
@@ -476,7 +476,7 @@ function FinancialDashboardInner() {
       {flowCoverage && lowFlowCoverage && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
           <p className="text-sm font-medium">
-            Completez vos flux metier pour des estimations plus precises.
+            Complétez vos flux métier pour des estimations plus précises.
           </p>
         </div>
       )}
@@ -484,7 +484,7 @@ function FinancialDashboardInner() {
       {excludedBiaEstimations > 0 && (
         <div className="rounded-lg border border-blue-300 bg-blue-50 px-4 py-3 text-blue-900">
           <p className="text-sm font-medium">
-            {excludedBiaEstimations} estimation(s) BIA non validee(s) ne sont pas incluses dans ces calculs.
+            {excludedBiaEstimations} estimation(s) BIA non validée(s) ne sont pas incluses dans ces calculs.
           </p>
         </div>
       )}
@@ -493,7 +493,7 @@ function FinancialDashboardInner() {
         <Card className="border-muted/60">
           <CardHeader>
             <CardTitle className="text-base">
-              Precision financiere: {financialPrecision.scorePercent}%
+              Précision financière : {financialPrecision.scorePercent}%
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
@@ -505,25 +505,25 @@ function FinancialDashboardInner() {
             </div>
             <div className="space-y-1 text-sm">
               <p>
-                Precision couts infra: {financialPrecision.infraCostPrecisionPercent}% / 50
+                Précision coûts infra : {financialPrecision.infraCostPrecisionPercent}/50
               </p>
               <p>
-                Precision profil business: {financialPrecision.businessProfilePrecisionPercent}% / 50
+                Précision profil business : {financialPrecision.businessProfilePrecisionPercent}/50
               </p>
               <p>
-                [Prix reel ✓✓]: {financialPrecision.breakdown.pricingSources.costExplorer.costSharePercent}% du cout
+                [Prix réel ✓✓] : {financialPrecision.breakdown.pricingSources.costExplorer.costSharePercent}% du coût
                 infra
               </p>
               <p>
-                [Prix API ✓]: {financialPrecision.breakdown.pricingSources.pricingApi.costSharePercent}% du cout
+                [Prix API ✓] : {financialPrecision.breakdown.pricingSources.pricingApi.costSharePercent}% du coût
                 infra
               </p>
               <p>
-                [Estimation ≈]: {financialPrecision.breakdown.pricingSources.staticTable.costSharePercent}% du cout
+                [Estimation ≈] : {financialPrecision.breakdown.pricingSources.staticTable.costSharePercent}% du coût
                 infra
               </p>
               <p>
-                Niveau profil business: {financialPrecision.breakdown.businessProfile.level}
+                Niveau profil business : {financialPrecision.breakdown.businessProfile.level}
               </p>
             </div>
           </CardContent>
@@ -534,19 +534,19 @@ function FinancialDashboardInner() {
         <KpiCard
           title="Risque annuel"
           value={formatMoney(annualRisk, currency)}
-          subtitle={`Perte annuelle attendue (ALE), ${summary.totals.totalSPOFs} SPOFs detectes`}
+          subtitle={`Perte annuelle attendue (ALE), ${summary.totals.totalSPOFs} SPOFs détectés`}
           icon={ArrowDown}
           tone="risk"
         />
         <KpiCard
-          title="Economies potentielles"
+          title="Économies potentielles"
           value={potentialSavingsDisplay}
-          subtitle="Si les recommandations sont appliquees"
+          subtitle="Si les recommandations sont appliquées"
           icon={PiggyBank}
           tone={potentialSavingsRaw < 0 ? 'payback' : 'savings'}
         />
         <KpiCard
-          title="ROI estime"
+          title="ROI estimé"
           value={<span title={roiDisplay.tooltip}>{roiDisplay.label}</span>}
           subtitle="Retour sur investissement annuel net"
           icon={TrendingUp}
@@ -564,7 +564,7 @@ function FinancialDashboardInner() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <DollarSign className="h-5 w-5 text-primary" />
-            Cout du risque vs cout de protection
+            Coût du risque vs coût de protection
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -580,19 +580,19 @@ function FinancialDashboardInner() {
                 />
                 <Legend />
                 <Bar dataKey="ale" name="ALE" stackId="cost" fill="#ef4444" />
-                <Bar dataKey="remediation" name="Remediation annuelle" stackId="cost" fill="#64748b" />
+                <Bar dataKey="remediation" name="Remédiation annuelle" stackId="cost" fill="#64748b" />
               </BarChart>
             </ResponsiveContainer>
           </div>
           <p className="mt-3 text-sm text-muted-foreground">
-            Reduction de risque estimee: {summary.roi.riskReduction.toFixed(1)}% - source: calcul Stronghold
+            Réduction de risque estimée : {summary.roi.riskReduction.toFixed(1).replace('.', ',')}% - source : calcul Stronghold
           </p>
         </CardContent>
       </Card>
       {strategySplitData.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle>Repartition budget DR par strategie</CardTitle>
+            <CardTitle>Répartition budget DR par stratégie</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-6 lg:grid-cols-2">
             <div className="h-72 w-full">
@@ -605,7 +605,7 @@ function FinancialDashboardInner() {
                     innerRadius={55}
                     outerRadius={95}
                     label={(entry: any) =>
-                      `${String(entry?.displayName || '')} ${Number(entry?.share ?? 0).toFixed(1)}%`
+                      `${String(entry?.displayName || '')} ${Number(entry?.share ?? 0).toFixed(1).replace('.', ',')}%`
                     }
                   >
                     {strategySplitData.map((entry, index) => (
@@ -624,13 +624,13 @@ function FinancialDashboardInner() {
                 <div key={entry.strategy} className="rounded border px-3 py-2">
                   <p className="font-medium">{entry.displayName}</p>
                   <p className="text-muted-foreground">
-                    {formatMoney(entry.annualCost, currency)} / an ({entry.share.toFixed(1)}%)
+                    {formatMoney(entry.annualCost, currency)} / an ({entry.share.toFixed(1).replace('.', ',')}%)
                   </p>
                 </div>
               ))}
-              <p className="text-xs font-medium text-muted-foreground">Total affiche: {strategyShareTotal.toFixed(0)}%</p>
+              <p className="text-xs font-medium text-muted-foreground">Total affiché : {strategyShareTotal.toFixed(0)}%</p>
               <p className="text-xs text-muted-foreground">
-                Budget DR estime: {formatMoney(recommendationsSummaryQuery.data?.budgetAnnual ?? 0, currency)}
+                Budget DR estimé : {formatMoney(recommendationsSummaryQuery.data?.budgetAnnual ?? 0, currency)}
               </p>
             </div>
           </CardContent>
@@ -639,7 +639,7 @@ function FinancialDashboardInner() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Top 5 SPOF les plus couteux</CardTitle>
+          <CardTitle>Top 5 SPOF les plus coûteux</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -648,10 +648,10 @@ function FinancialDashboardInner() {
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="pb-2">Composant</th>
                   <th className="pb-2">Type</th>
-                  <th className="pb-2">Dependants</th>
-                  <th className="pb-2">Cout/mois</th>
+                  <th className="pb-2">Dépendants</th>
+                  <th className="pb-2">Coût/mois</th>
                   <th className="pb-2">Source prix</th>
-                  <th className="pb-2">Cout/h</th>
+                  <th className="pb-2">Coût/h</th>
                   <th className="pb-2">Risque/an</th>
                 </tr>
               </thead>
@@ -686,7 +686,7 @@ function FinancialDashboardInner() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-amber-600" />
-              Exposition reglementaire
+              Exposition réglementaire
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
@@ -698,7 +698,7 @@ function FinancialDashboardInner() {
                 <p className="font-semibold">{regulation.label}</p>
                 <p className="text-muted-foreground">Amende max: {regulation.maxFine}</p>
                 <p className="text-muted-foreground">
-                  Deadline de conformite: {formatDate(regulation.complianceDeadline)}
+                  Deadline de conformité : {formatDate(regulation.complianceDeadline)}
                 </p>
                 <p className="mt-1">
                   Couverture Stronghold: <strong>{regulation.coverageScore}%</strong>
@@ -709,10 +709,10 @@ function FinancialDashboardInner() {
 
             {summary.regulatoryExposure?.moduleSignals && (
               <div className="rounded-md border bg-muted/20 p-3">
-                <p className="font-medium">Score de couverture simplifie</p>
+                <p className="font-medium">Score de couverture simplifié</p>
                 <p className="text-muted-foreground">
                   {summary.regulatoryExposure.moduleSignals.completedControls}/
-                  {summary.regulatoryExposure.moduleSignals.totalControls} controles actifs
+                  {summary.regulatoryExposure.moduleSignals.totalControls} contrôles actifs
                   ({summary.regulatoryExposure.moduleSignals.coverageScore}%)
                 </p>
               </div>
@@ -723,7 +723,7 @@ function FinancialDashboardInner() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Tendance score de resilience vs ALE</CardTitle>
+          <CardTitle>Tendance score de résilience vs ALE</CardTitle>
         </CardHeader>
         <CardContent>
           {trendQuery.isLoading ? (
@@ -732,12 +732,12 @@ function FinancialDashboardInner() {
             </div>
           ) : trendQuery.isError ? (
             <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              Impossible de charger la tendance financiere.
+              Impossible de charger la tendance financière.
             </div>
           ) : !trendQuery.data?.hasEnoughHistory ? (
             <div className="rounded border border-dashed p-4 text-sm text-muted-foreground">
               {trendQuery.data?.message ||
-                'Lancez des scans reguliers pour visualiser la tendance de votre resilience.'}
+                'Lancez des scans réguliers pour visualiser la tendance de votre résilience.'}
             </div>
           ) : (
             <>
@@ -763,7 +763,7 @@ function FinancialDashboardInner() {
                       yAxisId="left"
                       type="monotone"
                       dataKey="resilienceScore"
-                      name="Score resilience"
+                      name="Score résilience"
                       stroke="#2563eb"
                       strokeWidth={2}
                       dot={{ r: 4 }}
@@ -772,7 +772,7 @@ function FinancialDashboardInner() {
                       yAxisId="right"
                       type="monotone"
                       dataKey="ale"
-                      name="ALE estime"
+                      name="ALE estimé"
                       stroke="#ef4444"
                       strokeWidth={2}
                       dot={{ r: 4 }}
@@ -815,7 +815,7 @@ function FinancialDashboardInner() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Methodologie & Sources</CardTitle>
+          <CardTitle>Méthodologie & Sources</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3 text-sm">
           <p className="text-muted-foreground">{summary.disclaimer}</p>
@@ -827,9 +827,9 @@ function FinancialDashboardInner() {
           </ul>
           {recommendationsSummaryQuery.data?.financialDisclaimers && (
             <div className="rounded border bg-muted/20 p-3 text-xs text-muted-foreground">
-              <p>Strategies DR: {recommendationsSummaryQuery.data.financialDisclaimers.strategy}</p>
-              <p>Probabilites: {recommendationsSummaryQuery.data.financialDisclaimers.probability}</p>
-              <p>Couts infra: {recommendationsSummaryQuery.data.financialDisclaimers.serviceCost}</p>
+              <p>Stratégies DR : {recommendationsSummaryQuery.data.financialDisclaimers.strategy}</p>
+              <p>Probabilités : {recommendationsSummaryQuery.data.financialDisclaimers.probability}</p>
+              <p>Coûts infra : {recommendationsSummaryQuery.data.financialDisclaimers.serviceCost}</p>
             </div>
           )}
         </CardContent>

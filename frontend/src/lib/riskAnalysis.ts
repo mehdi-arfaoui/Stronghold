@@ -23,7 +23,7 @@ export function getRiskCriticityLabel(level: RiskCriticityLevel): string {
     case 'critical':
       return 'Critique';
     case 'high':
-      return 'Eleve';
+      return 'Élevé';
     case 'medium':
       return 'Moyen';
     default:

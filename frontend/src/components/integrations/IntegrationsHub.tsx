@@ -62,9 +62,9 @@ const AVAILABLE_EVENTS = [
 ];
 
 const INTEGRATIONS: Integration[] = [
-  { type: 'email', name: 'Email', description: 'Reception et parsing automatique des incidents par email', icon: Mail, status: 'disconnected' },
+  { type: 'email', name: 'Email', description: 'Réception et parsing automatique des incidents par email', icon: Mail, status: 'disconnected' },
   { type: 'servicenow', name: 'ServiceNow', description: 'Synchronisation bidirectionnelle des incidents', icon: Ticket, status: 'disconnected' },
-  { type: 'webhook', name: 'Webhooks', description: 'Notifications sortantes via webhooks personnalises', icon: Webhook, status: 'disconnected' },
+  { type: 'webhook', name: 'Webhooks', description: 'Notifications sortantes via webhooks personnalisés', icon: Webhook, status: 'disconnected' },
   { type: 'pagerduty', name: 'PagerDuty', description: 'Gestion des astreintes et escalades', icon: Bell, status: 'disconnected', comingSoon: true },
   { type: 'opsgenie', name: 'Opsgenie', description: 'Alerting et gestion des incidents', icon: AlertCircle, status: 'disconnected', comingSoon: true },
   { type: 'jira', name: 'Jira Service Management', description: 'Gestion des tickets IT', icon: Globe, status: 'disconnected', comingSoon: true },
@@ -97,11 +97,11 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
   const getStatusBadge = (status: IntegrationStatus) => {
     switch (status) {
       case 'connected':
-        return <Badge className="bg-resilience-high/10 text-resilience-high gap-1"><Check className="h-3 w-3" />Connecte</Badge>;
+        return <Badge className="bg-resilience-high/10 text-resilience-high gap-1"><Check className="h-3 w-3" />Connecté</Badge>;
       case 'error':
         return <Badge className="bg-severity-critical/10 text-severity-critical gap-1"><AlertCircle className="h-3 w-3" />Erreur</Badge>;
       default:
-        return <Badge variant="outline" className="gap-1 text-muted-foreground">Non configure</Badge>;
+        return <Badge variant="outline" className="gap-1 text-muted-foreground">Non configuré</Badge>;
     }
   };
 
@@ -112,7 +112,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
     setIntegrations((prev) =>
       prev.map((i) => i.type === 'email' ? { ...i, status: 'connected' as IntegrationStatus } : i)
     );
-    toast.success('Connexion email verifiee');
+    toast.success('Connexion email vérifiée');
   };
 
   const handleTestServiceNow = async () => {
@@ -123,7 +123,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
       setIntegrations((prev) =>
         prev.map((i) => i.type === 'servicenow' ? { ...i, status: 'connected' as IntegrationStatus } : i)
       );
-      toast.success('Connexion ServiceNow verifiee');
+      toast.success('Connexion ServiceNow vérifiée');
     } else {
       toast.error('Veuillez remplir tous les champs');
     }
@@ -145,7 +145,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
     setIntegrations((prev) =>
       prev.map((i) => i.type === 'webhook' ? { ...i, status: 'connected' as IntegrationStatus } : i)
     );
-    toast.success('Webhook ajoute');
+    toast.success('Webhook ajouté');
   };
 
   const removeWebhook = (id: string) => {
@@ -167,7 +167,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
   const testWebhook = async (_id: string) => {
     toast.promise(new Promise((r) => setTimeout(r, 1000)), {
       loading: 'Envoi du test...',
-      success: 'Webhook test envoye (200 OK)',
+      success: 'Webhook test envoyé (200 OK)',
       error: 'Erreur lors du test',
     });
   };
@@ -175,8 +175,8 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
   return (
     <div className={cn('space-y-6', className)}>
       <div>
-        <h2 className="text-lg font-semibold">Integrations</h2>
-        <p className="text-sm text-muted-foreground">Connectez Stronghold a vos outils existants</p>
+        <h2 className="text-lg font-semibold">Intégrations</h2>
+        <p className="text-sm text-muted-foreground">Connectez Stronghold à vos outils existants</p>
       </div>
 
       {/* Integration Grid */}
@@ -212,7 +212,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
 
               <div className="mt-4">
                 {integration.comingSoon ? (
-                  <Badge variant="secondary">Bientot disponible</Badge>
+                  <Badge variant="secondary">Bientôt disponible</Badge>
                 ) : (
                   <Button
                     variant="outline"
@@ -239,11 +239,11 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
               <Mail className="h-5 w-5" />
               Configuration Email
             </DialogTitle>
-            <DialogDescription>Configurez une adresse email dediee pour la reception automatique d'incidents</DialogDescription>
+            <DialogDescription>Configurez une adresse email dédiée pour la r?ception automatique d'incidents</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div>
-              <Label className="mb-1.5 block">Adresse email dediee</Label>
+              <Label className="mb-1.5 block">Adresse email dédiée</Label>
               <Input
                 type="email"
                 placeholder="incidents@stronghold.domaine.com"
@@ -251,7 +251,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
                 onChange={(e) => setEmailAddress(e.target.value)}
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Les emails recus a cette adresse seront automatiquement parses et transformes en brouillons d'incidents.
+                Les emails re?us ? cette adresse seront automatiquement pars?s et transform?s en brouillons d'incidents.
               </p>
             </div>
             <Button onClick={handleTestEmail} disabled={!emailAddress || emailTesting} className="w-full">
@@ -301,7 +301,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
               <Webhook className="h-5 w-5" />
               Webhooks sortants
             </DialogTitle>
-            <DialogDescription>Configurez des webhooks pour recevoir des notifications en temps reel</DialogDescription>
+            <DialogDescription>Configurez des webhooks pour recevoir des notifications en temps r?el</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Add webhook */}
@@ -330,7 +330,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
                           variant="ghost"
                           size="icon"
                           className="h-6 w-6"
-                          onClick={() => { navigator.clipboard.writeText(wh.secret); toast.success('Secret copie'); }}
+                          onClick={() => { navigator.clipboard.writeText(wh.secret); toast.success('Secret copié'); }}
                           aria-label="Copier le secret"
                         >
                           <Copy className="h-3 w-3" />
@@ -352,7 +352,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
 
                   {/* Events */}
                   <div>
-                    <p className="text-xs font-medium mb-1.5">Evenements</p>
+                    <p className="text-xs font-medium mb-1.5">?v?nements</p>
                     <div className="flex flex-wrap gap-1.5">
                       {AVAILABLE_EVENTS.map((event) => (
                         <button
@@ -376,7 +376,7 @@ export function IntegrationsHub({ className }: IntegrationsHubProps) {
 
               {webhooks.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-6">
-                  Aucun webhook configure. Ajoutez une URL ci-dessus.
+                  Aucun webhook configuré. Ajoutez une URL ci-dessus.
                 </p>
               )}
             </div>

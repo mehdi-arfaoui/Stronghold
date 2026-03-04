@@ -211,19 +211,19 @@ function BIATableComponent({
     closeOverridePopover();
   };
 
-  const resultCountLabel = `${filteredEntries.length} service${filteredEntries.length > 1 ? 's' : ''} affich${filteredEntries.length > 1 ? 'es' : 'e'} sur ${entries.length} total`;
+  const resultCountLabel = `${filteredEntries.length} service${filteredEntries.length > 1 ? 's' : ''} affiché${filteredEntries.length > 1 ? 's' : ''} sur ${entries.length} total`;
 
   return (
     <TooltipProvider>
       <div className="space-y-3">
         <div className="flex flex-wrap justify-between gap-3">
           <span className="rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-[11px] text-sky-700 dark:border-sky-800 dark:bg-sky-950/30 dark:text-sky-300">
-            Cellule coloree = suggestion IA
+            Cellule colorée = suggestion IA
           </span>
           <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
             <span className="inline-flex items-center gap-1">
               <AlertTriangle className="h-3 w-3" />
-              Estimation financiere a valider
+              Estimation financière à valider
             </span>
           </span>
         </div>
@@ -292,7 +292,7 @@ function BIATableComponent({
             </div>
 
             <div className="min-w-[240px] flex-[1.2]">
-              <p className="mb-1 text-xs font-medium text-muted-foreground">Cout/h indisponibilite</p>
+              <p className="mb-1 text-xs font-medium text-muted-foreground">Coût/h indisponibilité</p>
               <div className="flex gap-2">
                 <Select
                   value={filters.hourlyCostOp}
@@ -329,7 +329,7 @@ function BIATableComponent({
                   size="icon"
                   className="shrink-0"
                   onClick={() => setFilters((current) => ({ ...current, sortBy: 'hourlyCost', sortOrder: 'asc' }))}
-                  aria-label="Trier le cout horaire par ordre croissant"
+                  aria-label="Trier le coût horaire par ordre croissant"
                 >
                   <ChevronUp className="h-4 w-4" />
                 </Button>
@@ -339,14 +339,14 @@ function BIATableComponent({
                   size="icon"
                   className="shrink-0"
                   onClick={() => setFilters((current) => ({ ...current, sortBy: 'hourlyCost', sortOrder: 'desc' }))}
-                  aria-label="Trier le cout horaire par ordre decroissant"
+                  aria-label="Trier le coût horaire par ordre décroissant"
                 >
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
-            <Button type="button" variant="ghost" size="icon" onClick={resetFilters} aria-label="Reinitialiser les filtres">
+            <Button type="button" variant="ghost" size="icon" onClick={resetFilters} aria-label="Réinitialiser les filtres">
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
@@ -368,7 +368,7 @@ function BIATableComponent({
                 <SortableTableHead label="RPO" sortBy="rpo" filters={filters} onSort={setSort} align="center" />
                 <SortableTableHead label="MTPD" sortBy="mtpd" filters={filters} onSort={setSort} align="center" />
                 <SortableTableHead label="Blast" sortBy="blastRadius" filters={filters} onSort={setSort} align="center" />
-                <SortableTableHead label="Cout/h indisponibilite" sortBy="hourlyCost" filters={filters} onSort={setSort} align="center" />
+                <SortableTableHead label="Coût/h indisponibilité" sortBy="hourlyCost" filters={filters} onSort={setSort} align="center" />
                 <SortableTableHead label="Source" sortBy="source" filters={filters} onSort={setSort} align="center" />
                 <SortableTableHead label="Valide" sortBy="validated" filters={filters} onSort={setSort} align="center" />
               </TableRow>
@@ -382,7 +382,7 @@ function BIATableComponent({
             {rowsToRender.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
-                  Aucun service ne correspond aux filtres selectionnes.
+                  Aucun service ne correspond aux filtres sélectionnés.
                 </TableCell>
               </TableRow>
             ) : null}
@@ -427,7 +427,7 @@ function BIATableComponent({
                           )}
                         </div>
                       ) : (
-                        <p>Tier calcule sans signaux detailles.</p>
+                          <p>Tier calculé sans signaux détaillés.</p>
                       )}
                     </TooltipContent>
                   </Tooltip>
@@ -529,9 +529,9 @@ function BIATableComponent({
 
                     <PopoverContent align="end" className="w-80 space-y-3">
                       <div>
-                        <p className="text-sm font-semibold">Override cout d indisponibilite</p>
+                        <p className="text-sm font-semibold">Override coût d’indisponibilité</p>
                         <p className="text-xs text-muted-foreground">
-                          Remplacez l estimation Stronghold par votre cout business reel.
+                          Remplacez l’estimation Stronghold par votre coût business réel.
                         </p>
                       </div>
                       <div className="space-y-1">

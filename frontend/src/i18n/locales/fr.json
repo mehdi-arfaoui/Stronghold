@@ -100,6 +100,9 @@
   "settings": {
     "title": "Paramètres",
     "language": "Langue",
+    "darkMode": "Mode sombre",
+    "darkModeDescription": "Activer le thème sombre pour l'interface",
+    "apiUrl": "URL de l'API",
     "languageNames": {
       "fr": "Français",
       "en": "English",

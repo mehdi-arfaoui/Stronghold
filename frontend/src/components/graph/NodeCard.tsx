@@ -73,7 +73,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
 
   const palette = CATEGORY_COLORS[category] || CATEGORY_COLORS.external;
   const borderColor = customBorderColor || palette.border;
-  const width = Math.max(120, Number(nodeWidth || 160));
+  const width = Math.max(200, Number(nodeWidth || 200));
   const height = Math.max(50, Number(nodeHeight || 60));
   const stripeColors = Array.isArray(flowStripeColors)
     ? flowStripeColors.filter((color) => typeof color === 'string' && color.trim().length > 0)
@@ -197,7 +197,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
         <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wide opacity-70">
           {flowRole && <span>{flowRole}</span>}
           {showUnknownCostIndicator && (
-            <span className="rounded-sm border border-dashed px-1">COUT ?</span>
+            <span className="rounded-sm border border-dashed px-1">COÛT ?</span>
           )}
         </div>
       )}

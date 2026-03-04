@@ -30,17 +30,17 @@ const SIZE_OPTIONS = [
   { value: 'smb', label: 'PME' },
   { value: 'midMarket', label: 'ETI' },
   { value: 'enterprise', label: 'Grande entreprise' },
-  { value: 'largeEnterprise', label: 'Tres grande entreprise' },
+  { value: 'largeEnterprise', label: 'Très grande entreprise' },
 ];
 
 const VERTICAL_OPTIONS = [
-  { value: '', label: 'Non precise' },
+  { value: '', label: 'Non précisé' },
   { value: 'banking_finance', label: 'Banque / Finance' },
-  { value: 'healthcare', label: 'Sante' },
+  { value: 'healthcare', label: 'Santé' },
   { value: 'manufacturing', label: 'Manufacturing' },
   { value: 'retail_ecommerce', label: 'Retail / eCommerce' },
   { value: 'technology_saas', label: 'Technologie / SaaS' },
-  { value: 'media_telecom', label: 'Telecom / Media' },
+  { value: 'media_telecom', label: 'Télécom / Media' },
   { value: 'government_public', label: 'Gouvernement / Public' },
 ];
 
@@ -49,7 +49,7 @@ const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF'] as const;
 const CRITICALITY_TIER_OPTIONS = [
   { value: '', label: 'Global' },
   { value: 'critical', label: 'Critique' },
-  { value: 'high', label: 'Elevee' },
+  { value: 'high', label: 'Élevée' },
   { value: 'medium', label: 'Moyenne' },
   { value: 'low', label: 'Faible' },
 ] as const;
@@ -109,9 +109,9 @@ function frequencyToInterval(frequency: ScheduleFrequency): number {
 }
 
 function formatScheduleDistance(dateValue: string | null | undefined): string {
-  if (!dateValue) return 'Non planifie';
+  if (!dateValue) return 'Non planifié';
   const target = new Date(dateValue);
-  if (Number.isNaN(target.getTime())) return 'Non planifie';
+  if (Number.isNaN(target.getTime())) return 'Non planifié';
   const diffMs = target.getTime() - Date.now();
   const future = diffMs >= 0;
   const totalMinutes = Math.round(Math.abs(diffMs) / 60000);
@@ -172,7 +172,7 @@ function describeServiceNode(node: {
     node.type ? String(node.type).replaceAll('_', ' ') : '',
     node.region || node.availabilityZone || '',
   ].filter(Boolean);
-  return parts.join(' - ') || 'Service detecte';
+  return parts.join(' - ') || 'Service détecté';
 }
 
 export function SettingsPage() {
@@ -352,11 +352,11 @@ export function SettingsPage() {
       });
     },
     onSuccess: async () => {
-      toast.success('Profil financier mis a jour');
+      toast.success('Profil financier mis à jour');
       await invalidateFinancialProfileDependentQueries(queryClient);
     },
     onError: (error) => {
-      const message = error instanceof Error ? error.message : 'Echec de la mise a jour du profil financier';
+      const message = error instanceof Error ? error.message : 'Échec de la mise à jour du profil financier';
       toast.error(message);
     },
   });
@@ -365,7 +365,7 @@ export function SettingsPage() {
     mutationFn: async (frequency: ScheduleFrequency) => {
       const enabled = frequency !== 'disabled';
       if (enabled && scheduledScanProviders.length === 0) {
-        throw new Error('Configurez au moins un provider cloud avant d activer le scan planifie.');
+        throw new Error('Configurez au moins un fournisseur cloud avant d’activer le scan planifié.');
       }
       await discoveryApi.updateSchedule({
         enabled,
@@ -375,11 +375,11 @@ export function SettingsPage() {
       });
     },
     onSuccess: async () => {
-      toast.success('Planification du scan mise a jour');
+      toast.success('Planification du scan mise à jour');
       await queryClient.invalidateQueries({ queryKey: ['discovery-schedules', tenantScope] });
     },
     onError: (error) => {
-      toast.error(error instanceof Error ? error.message : 'Mise a jour du scan planifie impossible');
+      toast.error(error instanceof Error ? error.message : 'Mise à jour du scan planifié impossible');
     },
   });
 
@@ -390,7 +390,7 @@ export function SettingsPage() {
         return;
       }
       if (scheduledScanProviders.length === 0) {
-        throw new Error('Configurez au moins un provider cloud avant de lancer un scan.');
+        throw new Error('Configurez au moins un fournisseur cloud avant de lancer un scan.');
       }
       await discoveryApi.launchScan({
         providers: scheduledScanProviders,
@@ -398,7 +398,7 @@ export function SettingsPage() {
       });
     },
     onSuccess: () => {
-      toast.success('Scan lance');
+      toast.success('Scan lancé');
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : 'Lancement du scan impossible');
@@ -498,14 +498,14 @@ export function SettingsPage() {
                 )}
                 {profileQuery.data?.mode === 'business_profile' && (
                   <div className="md:col-span-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-900">
-                    Profil financier configure.
+                    Profil financier configuré.
                   </div>
                 )}
                 <div className="md:col-span-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                  <span>Mode: {profileQuery.data?.mode || 'infra_only'}</span>
-                  <span>Source profil: {profileQuery.data?.profileSource || 'inferred'}</span>
+                  <span>Mode : {profileQuery.data?.mode || 'infra_only'}</span>
+                  <span>Source profil : {profileQuery.data?.profileSource || 'inferred'}</span>
                   <span>
-                    Confiance: {profileQuery.data?.profileConfidence != null
+                    Confiance : {profileQuery.data?.profileConfidence != null
                       ? `${Math.round(profileQuery.data.profileConfidence * 100)}%`
                       : 'N/A'}
                   </span>
@@ -559,7 +559,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="employeeCount">Nombre d&apos;employes</Label>
+                  <Label htmlFor="employeeCount">Nombre d&apos;employés</Label>
                   <Input
                     id="employeeCount"
                     type="number"
@@ -595,7 +595,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="drBudgetPercent">% budget IT alloue au DR</Label>
+                  <Label htmlFor="drBudgetPercent">% budget IT alloué au DR</Label>
                   <Input
                     id="drBudgetPercent"
                     type="number"
@@ -609,7 +609,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="hourlyDowntimeCost">Cout downtime horaire ({customCurrency}/h)</Label>
+                  <Label htmlFor="hourlyDowntimeCost">Coût downtime horaire ({customCurrency}/h)</Label>
                   <Input
                     id="hourlyDowntimeCost"
                     type="number"
@@ -649,7 +649,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="criticalStart">Heures critiques debut</Label>
+                  <Label htmlFor="criticalStart">Heures critiques début</Label>
                   <Input
                     id="criticalStart"
                     value={criticalStart}
@@ -669,7 +669,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="criticalTimezone">Timezone heures critiques</Label>
+                  <Label htmlFor="criticalTimezone">Fuseau horaire des heures critiques</Label>
                   <Input
                     id="criticalTimezone"
                     value={criticalTimezone}
@@ -679,7 +679,7 @@ export function SettingsPage() {
                 </div>
 
                 <div className="space-y-2 md:col-span-2">
-                  <Label htmlFor="regulatoryConstraints">Contraintes reglementaires (ligne ou virgule)</Label>
+                  <Label htmlFor="regulatoryConstraints">Contraintes réglementaires (ligne ou virgule)</Label>
                   <textarea
                     id="regulatoryConstraints"
                     value={regulatoryConstraintsText}
@@ -693,24 +693,24 @@ export function SettingsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Label>Overrides par service</Label>
                     <span className="text-xs text-muted-foreground">
-                      Overrides actifs: {activeOverrideCount}
+                      Overrides actifs : {activeOverrideCount}
                       {unknownOverrideCount > 0 ? ` (dont ${unknownOverrideCount} hors inventaire courant)` : ''}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Ajustez la criticite et/ou le cout downtime/h pour chaque service detecte.
+                    Ajustez la criticité et/ou le coût downtime/h pour chaque service détecté.
                   </p>
                   {graphQuery.isLoading ? (
                     <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                      Chargement des services detectes...
+                      Chargement des services détectés...
                     </div>
                   ) : graphQuery.isError ? (
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                      Impossible de charger la liste des services detectes. Vous pouvez enregistrer sans overrides.
+                      Impossible de charger la liste des services détectés. Vous pouvez enregistrer sans overrides.
                     </div>
                   ) : detectedServiceNodes.length === 0 ? (
                     <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                      Aucun service detecte pour l instant.
+                      Aucun service détecté pour l’instant.
                     </div>
                   ) : (
                     <div className="rounded-md border">
@@ -729,7 +729,7 @@ export function SettingsPage() {
                                 Downtime/h override ({customCurrency}/h)
                               </th>
                               <th className="px-3 py-2 text-left font-medium text-muted-foreground">
-                                Criticite override
+                                Criticité override
                               </th>
                               <th className="px-3 py-2 text-left font-medium text-muted-foreground">Action</th>
                             </tr>
@@ -788,7 +788,7 @@ export function SettingsPage() {
                                       onClick={() => clearOverrideDraft(node.id)}
                                       disabled={!hasOverride}
                                     >
-                                      Reinitialiser
+                                      Réinitialiser
                                     </Button>
                                   </td>
                                 </tr>
@@ -803,11 +803,11 @@ export function SettingsPage() {
 
                 <div className="md:col-span-2">
                   <p className="mb-3 text-xs text-muted-foreground">
-                    Les valeurs business ne sont jamais auto-estimees. Saisissez uniquement vos donnees valides.
+                    Les valeurs business ne sont jamais auto-estimées. Saisissez uniquement vos données valides.
                   </p>
                   <div className="mb-3">
                     <Button variant="secondary" onClick={() => setWizardOpen(true)}>
-                      Ouvrir l assistant onboarding financier
+                      Ouvrir l'assistant onboarding financier
                     </Button>
                   </div>
                   <Button
@@ -828,11 +828,11 @@ export function SettingsPage() {
 
             <Card>
               <CardHeader>
-                <CardTitle>Scan planifie</CardTitle>
+                <CardTitle>Scan planifié</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="space-y-2">
-                  <Label htmlFor="scan-frequency">Frequence</Label>
+                  <Label htmlFor="scan-frequency">Fréquence</Label>
                   <select
                     id="scan-frequency"
                     value={scheduleFrequency}
@@ -842,18 +842,18 @@ export function SettingsPage() {
                     <option value="hourly">Toutes les heures</option>
                     <option value="daily">Toutes les 24 heures</option>
                     <option value="weekly">Toutes les semaines</option>
-                    <option value="disabled">Desactive</option>
+                    <option value="disabled">Désactivé</option>
                   </select>
                 </div>
 
                 <div className="space-y-1 text-sm text-muted-foreground">
                   <p>
-                    Dernier scan: {activeSchedule?.lastScanAt ? formatScheduleDistance(activeSchedule.lastScanAt) : 'jamais'}
+                    Dernier scan : {activeSchedule?.lastScanAt ? formatScheduleDistance(activeSchedule.lastScanAt) : 'jamais'}
                   </p>
                   <p>
-                    Prochain scan: {activeSchedule?.enabled && activeSchedule?.nextScanAt
+                    Prochain scan : {activeSchedule?.enabled && activeSchedule?.nextScanAt
                       ? formatScheduleDistance(activeSchedule.nextScanAt)
-                      : 'desactive'}
+                      : 'désactivé'}
                   </p>
                 </div>
 

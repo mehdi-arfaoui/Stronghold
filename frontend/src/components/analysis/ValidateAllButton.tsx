@@ -63,7 +63,7 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
 
   const runValidation = useCallback(async () => {
     if (pendingEntries.length === 0) {
-      toast.info('Aucun element en attente de validation');
+      toast.info('Aucun élément en attente de validation');
       return;
     }
 
@@ -110,7 +110,7 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
           duration: 8000,
           action: firstProblemId
             ? {
-                label: 'Voir les problemes',
+                label: 'Voir les problèmes',
                 onClick: () => {
                   const el = document.querySelector(`[data-entry-id="${firstProblemId}"]`);
                   el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -119,14 +119,14 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
             : undefined,
         });
       } else {
-        toast.success(`${validatedCount} element(s) valide(s) avec succes`);
+        toast.success(`${validatedCount} élément(s) validé(s) avec succès`);
       }
 
       // Invalidate queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['bia-entries'] });
       queryClient.invalidateQueries({ queryKey: ['bia-summary'] });
     } catch {
-      toast.error('Erreur lors de la validation. Veuillez reessayer.');
+      toast.error('Erreur lors de la validation. Veuillez réessayer.');
     } finally {
       setTimeout(() => {
         setIsValidating(false);
@@ -142,7 +142,7 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
         size="sm"
         onClick={runValidation}
         disabled={isValidating || pendingEntries.length === 0}
-        aria-label="Valider tous les elements"
+        aria-label="Valider tous les éléments"
         className={cn(
           'transition-all duration-300',
           progress >= 100 && isValidating && 'border-resilience-high text-resilience-high'
@@ -157,7 +157,7 @@ export function ValidateAllButton({ entries, onValidationUpdate, className }: Va
           {isValidating
             ? `Validation... ${results.size}/${pendingEntries.length}`
             : pendingEntries.length === 0
-              ? 'Tout est valide'
+              ? 'Tout est validé'
               : `Valider tout (${pendingEntries.length})`}
         </span>
       </Button>

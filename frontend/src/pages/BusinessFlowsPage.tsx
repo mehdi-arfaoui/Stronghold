@@ -38,7 +38,7 @@ function summarizeFlowServices(flow: BusinessFlow): string {
     .slice(0, 4)
     .map((node) => node.infraNode?.name || node.infraNodeId)
     .filter(Boolean);
-  if (names.length === 0) return 'Aucun service associe';
+  if (names.length === 0) return 'Aucun service associé';
   const suffix = flow.flowNodes.length > names.length ? ` +${flow.flowNodes.length - names.length}` : '';
   return `${names.join(', ')}${suffix}`;
 }
@@ -82,19 +82,19 @@ export function BusinessFlowsPage() {
   const createMutation = useMutation({
     mutationFn: (payload: Record<string, unknown>) => businessFlowsApi.create(payload),
     onSuccess: async () => {
-      toast.success('Flux metier cree');
+      toast.success('Flux métier créé');
       setCreateOpen(false);
       setName('');
       setEstimatedCostPerHour('');
       await refreshFlows();
     },
-    onError: () => toast.error('Creation impossible'),
+    onError: () => toast.error('Création impossible'),
   });
 
   const validateMutation = useMutation({
     mutationFn: (flowId: string) => businessFlowsApi.validate(flowId),
     onSuccess: async () => {
-      toast.success('Flux valide');
+      toast.success('Flux validé');
       await refreshFlows();
     },
     onError: () => toast.error('Validation impossible'),
@@ -106,8 +106,8 @@ export function BusinessFlowsPage() {
       const validatedCount = Number(result.data?.validatedCount || 0);
       toast.success(
         validatedCount > 0
-          ? `${validatedCount} flux valides`
-          : 'Aucun flux en attente a valider',
+          ? `${validatedCount} flux validés`
+          : 'Aucun flux en attente à valider',
       );
       await refreshFlows();
     },
@@ -121,7 +121,7 @@ export function BusinessFlowsPage() {
         { ...flow, validatedByUser: false, validatedAt: null },
         ...current.filter((entry) => entry.id !== flow.id),
       ]);
-      toast.success('Flux rejete');
+      toast.success('Flux rejeté');
       await refreshFlows();
     },
     onError: () => toast.error('Rejet impossible'),
@@ -130,7 +130,7 @@ export function BusinessFlowsPage() {
   const suggestMutation = useMutation({
     mutationFn: () => businessFlowsApi.suggestAI(),
     onSuccess: async (result) => {
-      toast.success(`${result.data.suggestionsCreated} flux genere(s) par IA`);
+      toast.success(`${result.data.suggestionsCreated} flux généré(s) par IA`);
       setActiveFilter('pending');
       await refreshFlows();
     },
@@ -145,7 +145,7 @@ export function BusinessFlowsPage() {
         toast(data.message || 'Aucun flux enrichi automatiquement');
       } else {
         toast.success(
-          `${data.enrichedFlows} flux enrichis, ${data.servicesAdded} services ajoutes, ${data.ignoredEmptyFlows} ignores`,
+          `${data.enrichedFlows} flux enrichis, ${data.servicesAdded} services ajoutés, ${data.ignoredEmptyFlows} ignorés`,
         );
       }
       await refreshFlows();
@@ -239,7 +239,7 @@ export function BusinessFlowsPage() {
       <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold">Flux metier</h1>
+          <h1 className="text-2xl font-bold">Flux métier</h1>
           <p className="text-sm text-muted-foreground">
             Une seule interface pour valider, rejeter ou modifier les flux.
           </p>
@@ -251,7 +251,7 @@ export function BusinessFlowsPage() {
             disabled={suggestMutation.isPending}
           >
             <Bot className="mr-2 h-4 w-4" />
-            Generer IA
+            Générer IA
           </Button>
           <Button
             variant="outline"
@@ -270,12 +270,12 @@ export function BusinessFlowsPage() {
 
       <Card className="border-muted/60">
         <CardHeader>
-          <CardTitle className="text-base">Couverture financiere</CardTitle>
+          <CardTitle className="text-base">Couverture financière</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-sm">
             {coverage
-              ? `${coverage.coveredCriticalNodes}/${coverage.totalCriticalNodes} noeuds critiques couverts (${coverage.coveragePercent}%)`
+              ? `${coverage.coveredCriticalNodes}/${coverage.totalCriticalNodes} nœuds critiques couverts (${coverage.coveragePercent}%)`
               : 'Chargement de la couverture...'}
           </p>
           <Progress value={coverage?.coveragePercent || 0} className="h-2" />
@@ -283,7 +283,7 @@ export function BusinessFlowsPage() {
             <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="h-4 w-4" />
-                Couverture inferieure a 50%: les estimations ROI restent partielles.
+                Couverture inférieure à 50% : les estimations ROI restent partielles.
               </div>
             </div>
           )}
@@ -295,7 +295,7 @@ export function BusinessFlowsPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">
               {orgProfileQuery.data?.inferenceBanner ||
-                'Calculs bases sur les couts d infrastructure uniquement. Configurez votre profil financier pour l impact business.'}
+                'Calculs basés sur les coûts d’infrastructure uniquement. Configurez votre profil financier pour l’impact business.'}
             </p>
             <Button
               size="sm"
@@ -328,21 +328,21 @@ export function BusinessFlowsPage() {
                 variant={activeFilter === 'pending' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('pending')}
               >
-                A valider ({pendingFlows.length})
+                À valider ({pendingFlows.length})
               </Button>
               <Button
                 size="sm"
                 variant={activeFilter === 'validated' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('validated')}
               >
-                Valides ({validatedFlows.length})
+                Validés ({validatedFlows.length})
               </Button>
               <Button
                 size="sm"
                 variant={activeFilter === 'rejected' ? 'default' : 'outline'}
                 onClick={() => setActiveFilter('rejected')}
               >
-                Rejetes ({rejectedFlows.length})
+                Rejetés ({rejectedFlows.length})
               </Button>
             </div>
             {canValidateAll && (
@@ -365,7 +365,7 @@ export function BusinessFlowsPage() {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <h3 className="text-base font-semibold">{flow.name}</h3>
-                      <Badge variant="secondary">Rejete</Badge>
+                      <Badge variant="secondary">Rejeté</Badge>
                     </div>
                     <Button
                       size="sm"
@@ -378,7 +378,7 @@ export function BusinessFlowsPage() {
                     </Button>
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    Flux rejete pendant cette session.
+                    Flux rejeté pendant cette session.
                   </p>
                 </CardContent>
               </Card>
@@ -399,7 +399,7 @@ export function BusinessFlowsPage() {
                         <div className="flex items-center gap-2">
                           <h3 className="text-base font-semibold">{flow.name}</h3>
                           <Badge variant={isValidated ? 'default' : 'outline'}>
-                            {isValidated ? 'Valide' : 'A valider'}
+                            {isValidated ? 'Validé' : 'À valider'}
                           </Badge>
                           {flow.source !== 'manual' && (
                             <Badge variant="secondary">{flow.source}</Badge>
@@ -411,11 +411,11 @@ export function BusinessFlowsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium">
-                          Cout/h: {downtimeCostPerHour != null
+                          Coût/h : {downtimeCostPerHour != null
                             ? `${formatMoney(downtimeCostPerHour, flowCurrency)}/h`
                             : flow.flowNodes.length === 0
-                              ? 'Cout non calculable - associez des services'
-                              : flow.downtimeCostMessage || 'Cout non calculable'}
+                              ? 'Coût non calculable - associez des services'
+                              : flow.downtimeCostMessage || 'Coût non calculable'}
                         </p>
                         {flow.contributingServices && flow.contributingServices.length > 0 && (
                           <Tooltip>
@@ -423,14 +423,14 @@ export function BusinessFlowsPage() {
                               <button
                                 type="button"
                                 className="rounded-full border p-1 text-muted-foreground hover:bg-accent/40"
-                                aria-label="Voir le detail des services contributeurs"
+                                aria-label="Voir le détail des services contributeurs"
                               >
                                 <Info className="h-3.5 w-3.5" />
                               </button>
                             </TooltipTrigger>
                             <TooltipContent align="end" className="max-w-sm space-y-1">
                               <p className="text-xs font-semibold">
-                                Cout/h total : {formatMoney(downtimeCostPerHour ?? 0, flowCurrency)}/h
+                                Coût/h total : {formatMoney(downtimeCostPerHour ?? 0, flowCurrency)}/h
                               </p>
                               {flow.contributingServices.map((service) => (
                                 <div key={`${flow.id}-${service.serviceId}`} className="text-xs">
@@ -445,7 +445,7 @@ export function BusinessFlowsPage() {
                     </div>
 
                     <p className="text-xs text-muted-foreground">
-                      {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || 'Cout indisponibilite non disponible'}
+                      {flow.downtimeCostSourceLabel || flow.downtimeCostMessage || 'Coût d’indisponibilité non disponible'}
                     </p>
 
                     <div className="flex flex-wrap gap-2">
@@ -488,7 +488,7 @@ export function BusinessFlowsPage() {
             {activeFilter === 'rejected' && rejectedFlows.length === 0 && (
               <Card>
                 <CardContent className="p-6 text-sm text-muted-foreground">
-                  Aucun flux rejete sur cette session.
+                  Aucun flux rejeté sur cette session.
                 </CardContent>
               </Card>
             )}
@@ -507,9 +507,9 @@ export function BusinessFlowsPage() {
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Nouveau flux metier</DialogTitle>
+            <DialogTitle>Nouveau flux métier</DialogTitle>
             <DialogDescription>
-              Configurez un cout downtime/h manuel (optionnel).
+              Configurez un coût downtime/h manuel (optionnel).
             </DialogDescription>
           </DialogHeader>
 
@@ -534,7 +534,7 @@ export function BusinessFlowsPage() {
               min={0}
               value={estimatedCostPerHour}
               onChange={(event) => setEstimatedCostPerHour(event.target.value)}
-              placeholder="Cout downtime/h (manuel)"
+              placeholder="Coût downtime/h (manuel)"
             />
           </div>
 
@@ -543,7 +543,7 @@ export function BusinessFlowsPage() {
               Annuler
             </Button>
             <Button onClick={createFlow} disabled={createMutation.isPending || !name.trim()}>
-              Creer
+              Créer
             </Button>
           </DialogFooter>
         </DialogContent>

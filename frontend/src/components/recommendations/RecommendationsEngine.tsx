@@ -67,9 +67,9 @@ function strategyFilterLabel(selectedStrategies: StrategyFilterValue[]): string 
   if (selectedStrategies.length === 0) return 'Aucune';
   if (selectedStrategies.length === DEFAULT_STRATEGY_FILTERS.length) return 'Toutes';
   if (selectedStrategies.length === 1) {
-    return STRATEGY_FILTER_OPTIONS.find((option) => option.value === selectedStrategies[0])?.label ?? '1 strategie';
+    return STRATEGY_FILTER_OPTIONS.find((option) => option.value === selectedStrategies[0])?.label ?? '1 stratégie';
   }
-  return `${selectedStrategies.length} strategies`;
+  return `${selectedStrategies.length} stratégies`;
 }
 
 function recommendationRoiValue(value: number | null | undefined): number {
@@ -86,12 +86,12 @@ function formatPaybackMonths(paybackMonths: number | null | undefined, paybackLa
   if (paybackMonths == null || !Number.isFinite(paybackMonths) || paybackMonths <= 0) {
     return 'Non rentable';
   }
-  return `${paybackMonths.toFixed(1)} mois`;
+  return `${paybackMonths.toFixed(1).replace('.', ',')} mois`;
 }
 
 function formatMonthlyCostLabel(monthlyCost: number, currency: string): string {
   if (!Number.isFinite(monthlyCost) || monthlyCost <= 0) {
-    return 'Inclus dans le service manage';
+    return 'Inclus dans le service managé';
   }
   return `${money(monthlyCost, currency)}/mois`;
 }
@@ -138,18 +138,18 @@ function formatRoiPercent(value: number | null | undefined): { label: string; to
   if (value > ROI_DISPLAY_HIGH_THRESHOLD) {
     return {
       label: '> 1000%',
-      tooltip: 'Gain tres eleve par rapport au cout annuel DR estime.',
+      tooltip: 'Gain très élevé par rapport au coût annuel DR estimé.',
     };
   }
   if (value < -ROI_DISPLAY_CAP_ABS) {
     return {
       label: '< -5000%',
-      tooltip: 'Affichage borne pour eviter une valeur extreme peu exploitable.',
+      tooltip: 'Affichage borné pour éviter une valeur extrême peu exploitable.',
     };
   }
   const bounded = Math.max(-ROI_DISPLAY_CAP_ABS, Math.min(ROI_DISPLAY_CAP_ABS, value));
   return {
-    label: `${bounded.toFixed(1)}%`,
+    label: `${bounded.toFixed(1).replace('.', ',')}%`,
   };
 }
 
@@ -158,12 +158,12 @@ function mapCostSourceLabel(costSource: string | undefined): string {
   if (costSource.startsWith('budget_profile_calibration:')) {
     return `Calibration budget (${mapCostSourceLabel(costSource.split(':')[1])})`;
   }
-  if (costSource === 'cost-explorer') return '[Prix reel ✓✓]';
+  if (costSource === 'cost-explorer') return '[Prix réel ✓✓]';
   if (costSource === 'pricing-api') return '[Prix API ✓]';
   if (costSource === 'static-table') return '[Estimation ≈]';
   if (costSource === 'user_override') return 'Override utilisateur';
-  if (costSource === 'cloud_type_reference') return 'Reference cloud';
-  if (costSource === 'criticality_fallback') return 'Fallback criticite';
+  if (costSource === 'cloud_type_reference') return 'Référence cloud';
+  if (costSource === 'criticality_fallback') return 'Fallback criticité';
   return 'Estimation Stronghold';
 }
 
@@ -207,8 +207,8 @@ function resolveRecommendationStatus(recommendation: Recommendation): Recommenda
 }
 
 function recommendationStatusLabel(status: RecommendationStatus): string {
-  if (status === 'validated') return 'Validee';
-  if (status === 'rejected') return 'Rejetee';
+  if (status === 'validated') return 'Validée';
+  if (status === 'rejected') return 'Rejetée';
   return 'En attente';
 }
 
@@ -282,7 +282,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
       queryClient.invalidateQueries({ queryKey: ['financial-summary', tenantScope] });
     },
     onError: () => {
-      toast.error('Mise a jour de statut impossible');
+      toast.error('Mise à jour de statut impossible');
     },
   });
 
@@ -395,7 +395,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const summaryAnnualCostCap = recommendationsSummaryQuery.data?.annualCostCap ?? 0;
   const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
   const summaryRiskAvoidedDisplay =
-    summaryRiskAvoided < 0 ? 'Aucun gain - service deja protege' : money(summaryRiskAvoided, currency);
+    summaryRiskAvoided < 0 ? 'Aucun gain - service déjà protégé' : money(summaryRiskAvoided, currency);
   const resolvedSummaryPayback = resolveConsistentPayback({
     paybackMonths: summaryPaybackMonths,
     paybackLabel: summaryPaybackLabel,
@@ -431,10 +431,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     updateMutation.mutate({ id: recommendation.id, status });
     toast.success(
       status === 'validated'
-        ? 'Recommandation validee'
+        ? 'Recommandation validée'
         : status === 'rejected'
-          ? 'Recommandation rejetee'
-        : 'Recommandation reouverte',
+          ? 'Recommandation rejetée'
+        : 'Recommandation réouverte',
     );
   };
 
@@ -492,7 +492,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <div className="grid gap-3 sm:grid-cols-4">
             <MiniMetric
               icon={DollarSign}
-              label="Cout estime"
+              label="Coût estimé"
               value={
                 <span className="inline-flex flex-wrap items-center gap-1">
                   {formatMonthlyCostLabel(card.monthlyCost, currency)}
@@ -504,15 +504,15 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 </span>
               }
             />
-            <MiniMetric icon={DollarSign} label="Cout annuel DR" value={money(card.annualCost, currency)} />
+            <MiniMetric icon={DollarSign} label="Coût annuel DR" value={money(card.annualCost, currency)} />
             <MiniMetric
               icon={TrendingUp}
-              label="Economie annuelle estimee"
-              value={card.annualSavings < 0 ? 'Aucun gain - service deja protege' : money(card.annualSavings, currency)}
+              label="Économie annuelle estimée"
+              value={card.annualSavings < 0 ? 'Aucun gain - service déjà protégé' : money(card.annualSavings, currency)}
             />
             <MiniMetric
               icon={Clock}
-              label={card.individualROI == null ? 'ROI individuel' : card.individualROI >= 0 ? 'ROI individuel' : 'ROI negatif'}
+              label={card.individualROI == null ? 'ROI individuel' : card.individualROI >= 0 ? 'ROI individuel' : 'ROI négatif'}
               value={
                 <span title={individualRoiDisplay.tooltip}>
                   {individualRoiDisplay.label}
@@ -573,7 +573,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   onClick={() => setRecommendationStatus(recommendation, 'pending')}
                   disabled={updateMutation.isPending}
                 >
-                  Reouvrir
+                  Réouvrir
                 </Button>
               </>
             ) : (
@@ -593,27 +593,27 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   onClick={() => setRecommendationStatus(recommendation, 'pending')}
                   disabled={updateMutation.isPending}
                 >
-                  Reouvrir
+                  Réouvrir
                 </Button>
               </>
             )}
           </div>
           {recommendation.calculation && (
             <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
-              <summary className="cursor-pointer font-medium">Comment c est calcule</summary>
+              <summary className="cursor-pointer font-medium">Comment c’est calculé</summary>
               <div className="mt-2 space-y-1 text-muted-foreground">
                 <p>{recommendation.calculation.formula}</p>
-                <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
-                <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
+                <p>ALE actuel : {money(recommendation.calculation.aleCurrent, currency)}</p>
+                <p>ALE après DR : {money(recommendation.calculation.aleAfter, currency)}</p>
                 <p>
-                  Risque evite annuel:{' '}
+                  Risque annuel évité :{' '}
                   {recommendation.calculation.riskAvoidedAnnual < 0
-                    ? 'Aucun gain - service deja protege'
+                    ? 'Aucun gain - service déjà protégé'
                     : money(recommendation.calculation.riskAvoidedAnnual, currency)}
                 </p>
-                <p>Cout annuel DR: {money(recommendation.calculation.annualDrCost, currency)}</p>
+                <p>Coût annuel DR : {money(recommendation.calculation.annualDrCost, currency)}</p>
                 <p>
-                  Inputs: cout downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
+                  Inputs : coût downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
                   RTO actuel {recommendation.calculation.inputs.currentRtoHours}h,
                   RTO cible {recommendation.calculation.inputs.targetRtoHours}h,
                   proba {recommendation.calculation.inputs.incidentProbabilityAnnual}
@@ -652,16 +652,16 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <CardContent className="space-y-4 p-4">
             <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_auto_auto]">
               <div className="space-y-2">
-                <Label>Strategie DR</Label>
+                <Label>Stratégie DR</Label>
                 <Popover>
                   <PopoverTrigger asChild>
                     <Button variant="outline" className="w-full justify-between">
-                      <span className="truncate">Strategie DR: {strategyFilterLabel(selectedStrategies)}</span>
+                      <span className="truncate">Stratégie DR : {strategyFilterLabel(selectedStrategies)}</span>
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="start" className="w-72 space-y-3">
                     <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-medium">Filtrer par strategie</p>
+                      <p className="text-sm font-medium">Filtrer par stratégie</p>
                       <div className="flex items-center gap-1">
                         <Button
                           type="button"
@@ -696,7 +696,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="recommendations-max-annual-cost">Cout estime</Label>
+                <Label htmlFor="recommendations-max-annual-cost">Coût estimé</Label>
                 <div className="relative">
                   <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
                     ≤
@@ -731,7 +731,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                     size="sm"
                     variant={roiSortDirection === 'desc' ? 'default' : 'outline'}
                     onClick={() => setRoiSortDirection('desc')}
-                    aria-label="Trier par ROI decroissant"
+                    aria-label="Trier par ROI décroissant"
                   >
                     ↓
                   </Button>
@@ -745,17 +745,17 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   size="sm"
                   onClick={resetFilters}
                   disabled={!hasActiveFilters}
-                  aria-label="Reinitialiser les filtres"
+                  aria-label="Réinitialiser les filtres"
                 >
                   <RotateCcw className="mr-2 h-4 w-4" />
-                  Reset
+                  Réinitialiser
                 </Button>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p>
-                {filteredRecommendationCards.length} recommandations affichees sur {recommendationCards.length} total
+                {filteredRecommendationCards.length} recommandations affichées sur {recommendationCards.length} total
                 (dont {quickWinCards.length} Quick Wins)
               </p>
               {filteredSecondaryCount > 0 && (
@@ -787,12 +787,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <CardContent className="space-y-4 text-sm">
             <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
               <Metric
-                label="Risque annuel evite"
+                label="Risque annuel évité"
                 value={summaryRiskAvoidedDisplay}
                 color={summaryRiskAvoided < 0 ? 'text-amber-700' : 'text-green-600'}
               />
               <Metric
-                label="Cout annuel DR"
+                label="Coût annuel DR"
                 value={money(summaryAnnualCost, currency)}
               />
               <Metric
@@ -815,13 +815,13 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
             <div className="rounded-lg border bg-muted/20 p-4 space-y-1">
               <p>
-                Budget DR estime:{' '}
+                Budget DR estimé :{' '}
                 <span className="font-semibold">
                   {money(recommendationsSummaryQuery.data?.budgetAnnual, currency)}
                 </span>
               </p>
               <p>
-                Recommandations retenues: <span className="font-semibold">{summaryTotalRecommendations}</span>
+                Recommandations retenues : <span className="font-semibold">{summaryTotalRecommendations}</span>
               </p>
               {summarySecondaryRecommendations > 0 && (
                 <p>
@@ -833,13 +833,13 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               )}
               {summaryAnnualCostCap > 0 && (
                 <p>
-                  Cap DR applique:{' '}
+                  Cap DR appliqué :{' '}
                   <span className="font-semibold">{money(summaryAnnualCostCap, currency)}/an</span>
                 </p>
               )}
               <p>
-                Repartition budget DR par strategie: {Object.entries(recommendationsSummaryQuery.data?.costSharePercentByStrategy ?? {})
-                  .map(([strategy, share]) => `${STRATEGY_LABELS[strategy] ?? strategy}: ${Number(share).toFixed(1)}%`)
+                Répartition budget DR par stratégie : {Object.entries(recommendationsSummaryQuery.data?.costSharePercentByStrategy ?? {})
+                  .map(([strategy, share]) => `${STRATEGY_LABELS[strategy] ?? strategy} : ${Number(share).toFixed(1).replace('.', ',')}%`)
                   .join(' | ') || 'N/A'}
               </p>
               {recommendationsSummaryQuery.data?.financialDisclaimers?.strategy && (
@@ -865,7 +865,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         <Card>
           <CardContent className="py-10 text-center">
             <p className="font-medium">Aucune recommandation disponible</p>
-            <p className="text-sm text-muted-foreground">Lancez une analyse pour generer les mesures de resilience.</p>
+            <p className="text-sm text-muted-foreground">Lancez une analyse pour générer les mesures de résilience.</p>
           </CardContent>
         </Card>
       )}
@@ -877,11 +877,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <CardContent className="space-y-3 py-10 text-center">
               <p className="font-medium">Aucune recommandation ne correspond aux filtres actuels</p>
               <p className="text-sm text-muted-foreground">
-                Elargissez le cout maximal, re-selectionnez des strategies ou revenez au tri par defaut.
+                 Élargissez le coût maximal, re-sélectionnez des stratégies ou revenez au tri par défaut.
               </p>
               <div>
                 <Button type="button" variant="outline" onClick={resetFilters}>
-                  Reinitialiser les filtres
+                  Réinitialiser les filtres
                 </Button>
               </div>
             </CardContent>
@@ -894,14 +894,14 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold text-green-900">
-                  Quick Wins & forte valeur ajoutee ({quickWinCards.length})
+                  Quick Wins & forte valeur ajoutée ({quickWinCards.length})
                 </p>
                 <p className="text-xs text-green-800/80">
-                  ROI &gt; 100% avec faible poids budgetaire, ou payback inferieur a 6 mois.
+                  ROI &gt; 100% avec faible poids budgétaire, ou payback inférieur à 6 mois.
                 </p>
               </div>
               <Badge variant="outline" className="border-green-300 bg-white text-green-700">
-                Trie par ROI {roiSortDirection === 'asc' ? 'croissant' : 'decroissant'}
+                Trié par ROI {roiSortDirection === 'asc' ? 'croissant' : 'décroissant'}
               </Badge>
             </div>
             <div className="space-y-3">
@@ -918,7 +918,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               <div>
                 <p className="text-sm font-semibold">Autres recommandations ({otherRecommendationCards.length})</p>
                 <p className="text-xs text-muted-foreground">
-                  Mesures utiles a prioriser apres les gains rapides.
+                  Mesures utiles à prioriser après les gains rapides.
                 </p>
               </div>
             </div>

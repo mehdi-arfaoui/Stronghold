@@ -96,13 +96,13 @@ function getProviderStatusBadge(status: ScanHealthProvider['status']): 'default'
 function getProviderStatusLabel(status: ScanHealthProvider['status']): string {
   switch (status) {
     case 'connected':
-      return 'connecte';
+      return 'connecté';
     case 'partial':
       return 'partiel';
     case 'error':
       return 'erreur';
     default:
-      return 'non configure';
+      return 'non configuré';
   }
 }
 
@@ -152,18 +152,18 @@ function ScanHealthBar({
       <div className="flex h-14 items-center justify-between gap-3 px-4">
         <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           <span className="shrink-0 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-            Sante du scan
+            Santé du scan
           </span>
           {providers.length > 0 ? (
             providers.map((provider) => <ProviderHealthChip key={provider.name} provider={provider} />)
           ) : (
             <div className="inline-flex h-8 items-center rounded-full border border-dashed px-3 text-xs text-muted-foreground">
-              Aucun provider configure
+              Aucun fournisseur configuré
             </div>
           )}
           <div className="inline-flex h-8 items-center gap-2 rounded-full border border-border/70 bg-background/60 px-3 text-xs font-medium whitespace-nowrap">
             <CalendarClock className="h-3.5 w-3.5 text-muted-foreground" />
-            <span>Scan: {latestScanAt ? formatRelativeTime(latestScanAt) : 'jamais'}</span>
+            <span>Scan : {latestScanAt ? formatRelativeTime(latestScanAt) : 'jamais'}</span>
           </div>
           {issueCount > 0 && (
             <div className="inline-flex h-8 items-center gap-2 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 text-xs font-medium text-amber-700 dark:text-amber-300">
@@ -178,7 +178,7 @@ function ScanHealthBar({
           size="icon"
           className="h-8 w-8 shrink-0"
           onClick={() => onExpandedChange(!expanded)}
-          aria-label={expanded ? 'Masquer les details du scan' : 'Afficher les details du scan'}
+          aria-label={expanded ? 'Masquer les détails du scan' : 'Afficher les détails du scan'}
         >
           {expanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
         </Button>
@@ -204,9 +204,9 @@ function ScanHealthBar({
                   </Badge>
                 </div>
                 <div className="mt-2 space-y-1 text-muted-foreground">
-                  <p>Couverture: {Math.round(provider.coveragePercentage ?? 0)}%</p>
-                  <p>Dernier scan: {provider.lastScanAt ? formatRelativeTime(provider.lastScanAt) : 'jamais'}</p>
-                  <p>Ressources detectees: {resourceCount}</p>
+                  <p>Couverture : {Math.round(provider.coveragePercentage ?? 0)}%</p>
+                  <p>Dernier scan : {provider.lastScanAt ? formatRelativeTime(provider.lastScanAt) : 'jamais'}</p>
+                  <p>Ressources détectées : {resourceCount}</p>
                   {(provider.errors ?? []).slice(0, 2).map((err: ScanHealthIssue) => (
                     <p key={`${provider.name}-${err.code}-${err.message}`} className="text-rose-600 dark:text-rose-300">
                       {err.code}: {err.message}
@@ -219,13 +219,13 @@ function ScanHealthBar({
 
           {graphConsistency && (
             <div className="rounded-xl border bg-card/80 p-3 text-xs">
-              <p className="font-semibold">Coherence graphe</p>
+              <p className="font-semibold">Cohérence graphe</p>
               <div className="mt-2 space-y-1 text-muted-foreground">
                 <p>Orphelins: {graphConsistency.orphanNodes}</p>
                 <p>Reverse manquants: {graphConsistency.missingReverseEdges}</p>
-                <p>Noeuds stale: {graphConsistency.staleNodes}</p>
-                <p>Total noeuds: {graphConsistency.totalNodes}</p>
-                <p>Total dependances: {graphConsistency.totalEdges}</p>
+                <p>Nœuds stale : {graphConsistency.staleNodes}</p>
+                <p>Total nœuds : {graphConsistency.totalNodes}</p>
+                <p>Total dépendances : {graphConsistency.totalEdges}</p>
               </div>
             </div>
           )}
@@ -391,7 +391,7 @@ export function DiscoveryPage() {
         return {
           customBorderColor: '#9ca3af',
           showUnknownCostIndicator: true,
-          flowTooltip: 'Aucun flux metier detecte sur ce noeud',
+          flowTooltip: 'Aucun flux métier détecté sur ce nœud',
         };
       }
 
@@ -402,7 +402,7 @@ export function DiscoveryPage() {
       return {
         customBorderColor: colors[0],
         flowStripeColors: colors,
-        flowTooltip: `${flowNames.join(', ')} | cout/h ~ ${formatMoneyCompact(totalContribution)}`,
+        flowTooltip: `${flowNames.join(', ')} | coût/h : ${formatMoneyCompact(totalContribution)}`,
       };
     },
     [colorByBusinessFlow, nodeFlowMeta],
@@ -442,7 +442,7 @@ export function DiscoveryPage() {
   const launchScanMutation = useMutation({
     mutationFn: () => {
       if (cloudScanProviders.length === 0) {
-        throw new Error('Aucun provider cloud configure');
+        throw new Error('Aucun fournisseur cloud configuré');
       }
       return discoveryApi.launchScan({
         providers: cloudScanProviders,
@@ -451,7 +451,7 @@ export function DiscoveryPage() {
     },
     onSuccess: (res) => {
       setScanJobId(res.data.jobId);
-      toast.success('Scan lance');
+      toast.success('Scan lancé');
     },
     onError: (error) => {
       const message = error instanceof Error ? error.message : 'Erreur lors du lancement du scan';
@@ -463,7 +463,7 @@ export function DiscoveryPage() {
     mutationFn: (edgeId: string) => discoveryApi.confirmEdge(edgeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['graph'] });
-      toast.success('Dependance confirmee');
+      toast.success('Dépendance confirmée');
     },
   });
 
@@ -471,7 +471,7 @@ export function DiscoveryPage() {
     mutationFn: (edgeId: string) => discoveryApi.rejectEdge(edgeId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['graph'] });
-      toast.success('Dependance rejetee');
+      toast.success('Dépendance rejetée');
     },
   });
 
@@ -535,7 +535,7 @@ export function DiscoveryPage() {
         await target.requestFullscreen();
       }
     } catch {
-      toast.error('Impossible d\'activer le mode plein ecran');
+      toast.error('Impossible d’activer le mode plein écran');
     }
   }, []);
 
@@ -596,9 +596,9 @@ export function DiscoveryPage() {
             ))}
             <ProgressBar value={currentJob.progress} />
             <div className="flex gap-4 text-sm text-muted-foreground">
-              <span>{currentJob.nodesFound} noeuds</span>
-              <span>{currentJob.edgesFound} dependances</span>
-              <span>{currentJob.inferredEdges} inferees</span>
+              <span>{currentJob.nodesFound} nœuds</span>
+              <span>{currentJob.edgesFound} dépendances</span>
+              <span>{currentJob.inferredEdges} inférées</span>
             </div>
           </CardContent>
         </Card>
@@ -624,13 +624,13 @@ export function DiscoveryPage() {
   if (allNodes.length === 0) {
     return (
       <EmptyState
-        title={hasCloudProvidersConfigured ? 'Aucune infrastructure decouverte' : 'Aucun provider cloud configure'}
+        title={hasCloudProvidersConfigured ? 'Aucune infrastructure découverte' : 'Aucun fournisseur cloud configuré'}
         description={
           hasCloudProvidersConfigured
-            ? 'Lancez un scan pour decouvrir automatiquement votre infrastructure.'
-            : 'Configurez au moins un provider cloud pour lancer la decouverte.'
+            ? 'Lancez un scan pour découvrir automatiquement votre infrastructure.'
+            : 'Configurez au moins un provider cloud pour lancer la découverte.'
         }
-        actionLabel={hasCloudProvidersConfigured ? 'Lancer un scan' : 'Configurer un provider'}
+        actionLabel={hasCloudProvidersConfigured ? 'Lancer un scan' : 'Configurer un fournisseur'}
         onAction={() => {
           if (hasCloudProvidersConfigured) {
             launchScanMutation.mutate();
@@ -694,7 +694,7 @@ export function DiscoveryPage() {
               className="h-8"
               onClick={() => setColorByBusinessFlow((value) => !value)}
             >
-              Flux metier
+              Flux métier
             </Button>
 
             <Button
@@ -712,7 +712,7 @@ export function DiscoveryPage() {
               size="icon"
               className="h-8 w-8"
               onClick={handleToggleFullscreen}
-              title={isFullScreen ? 'Quitter le plein ecran' : 'Mode plein ecran'}
+              title={isFullScreen ? 'Quitter le plein écran' : 'Mode plein écran'}
             >
               {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
             </Button>
@@ -733,7 +733,7 @@ export function DiscoveryPage() {
                 className="h-8"
                 onClick={() => navigate('/settings?tab=cloud')}
               >
-                Configurer un provider
+                Configurer un fournisseur
               </Button>
             )}
           </div>
@@ -754,7 +754,7 @@ export function DiscoveryPage() {
                   <p className="font-semibold">{displayedAllNodes.length}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dependances</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Dépendances</p>
                   <p className="font-semibold">{displayedAllEdges.length}</p>
                 </div>
                 <div>
@@ -762,7 +762,7 @@ export function DiscoveryPage() {
                   <p className="font-semibold">{spofCount}</p>
                 </div>
                 <div>
-                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Resilience</p>
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Résilience</p>
                   <p className="font-semibold">{resilienceScore}/100</p>
                 </div>
               </div>
@@ -770,24 +770,24 @@ export function DiscoveryPage() {
               <div className="flex items-center gap-2">
                 {inferredCount > 0 && (
                   <Badge variant="secondary" className="hidden sm:inline-flex">
-                    {inferredCount} dependances a valider
+                    {inferredCount} dépendances à valider
                   </Badge>
                 )}
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Details techniques">
+                    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Détails techniques">
                       <Info className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent className="w-72">
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                      Details techniques
+                      Détails techniques
                     </p>
                     <div className="mt-2 space-y-1 text-xs">
                       <p>Orphans: {graphConsistency?.orphanNodes ?? 0}</p>
                       <p>Reverse manquants: {graphConsistency?.missingReverseEdges ?? 0}</p>
                       <p>Stale: {graphConsistency?.staleNodes ?? 0}</p>
-                      <p>Total noeuds: {graphConsistency?.totalNodes ?? allNodes.length}</p>
+                      <p>Total nœuds : {graphConsistency?.totalNodes ?? allNodes.length}</p>
                       <p>Total edges: {graphConsistency?.totalEdges ?? allEdges.length}</p>
                     </div>
                   </PopoverContent>
@@ -797,7 +797,7 @@ export function DiscoveryPage() {
 
             {inferredCount > 0 && (
               <Badge variant="secondary" className="mt-2 sm:hidden">
-                {inferredCount} dependances a valider
+                {inferredCount} dépendances à valider
               </Badge>
             )}
           </div>
@@ -832,7 +832,7 @@ export function DiscoveryPage() {
                   setContextMenuPosition(null);
                 }}
               >
-                {colorByBusinessFlow ? 'Desactiver la coloration metier' : 'Colorer par flux metier'}
+                {colorByBusinessFlow ? 'Désactiver la coloration métier' : 'Colorer par flux métier'}
               </button>
             </div>
           )}
@@ -843,7 +843,7 @@ export function DiscoveryPage() {
                 <span />
               </PopoverTrigger>
               <PopoverContent>
-                <p className="mb-2 text-sm font-semibold">Dependance inferee</p>
+                <p className="mb-2 text-sm font-semibold">Dépendance inférée</p>
                 <p className="mb-3 text-xs text-muted-foreground">
                   {edgePopover.source} &rarr; {edgePopover.target} ({edgePopover.type})
                 </p>
@@ -878,24 +878,24 @@ export function DiscoveryPage() {
           <DialogHeader>
             <DialogTitle>Onboarding post-scan</DialogTitle>
             <DialogDescription>
-              Etape {postScanStep} / 3 - Activez l analyse d impact business apres votre premier scan.
+              Étape {postScanStep} / 3 - Activez l’analyse d’impact business après votre premier scan.
             </DialogDescription>
           </DialogHeader>
 
           {postScanStep === 1 && (
             <div className="space-y-3 text-sm">
               <p className="font-medium">
-                Scan reussi: {currentJob?.nodesFound ?? allNodes.length} ressources decouvertes, {spofCount} SPOF detectes.
+                Scan réussi : {currentJob?.nodesFound ?? allNodes.length} ressources découvertes, {spofCount} SPOF détectés.
               </p>
               <p className="text-muted-foreground">
-                Votre cartographie technique est prete.
+                Votre cartographie technique est prête.
               </p>
             </div>
           )}
 
           {postScanStep === 2 && (
             <div className="space-y-3 text-sm">
-              <p className="font-medium">Configurez votre profil financier pour activer l impact business.</p>
+              <p className="font-medium">Configurez votre profil financier pour activer l’impact business.</p>
               <p className="text-muted-foreground">
                 Le wizard financier est accessible ici pendant l onboarding, puis uniquement dans Settings.
               </p>
@@ -904,9 +904,9 @@ export function DiscoveryPage() {
 
           {postScanStep === 3 && (
             <div className="space-y-3 text-sm">
-              <p className="font-medium">C est pret. Explorez vos resultats.</p>
+              <p className="font-medium">C’est prêt. Explorez vos résultats.</p>
               <p className="text-muted-foreground">
-                Vous pourrez modifier le profil financier uniquement depuis Parametres.
+                Vous pourrez modifier le profil financier uniquement depuis Paramètres.
               </p>
             </div>
           )}
@@ -932,7 +932,7 @@ export function DiscoveryPage() {
                   navigate('/dashboard');
                 }}
               >
-                Explorer le dashboard
+                Explorer le tableau de bord
               </Button>
             )}
           </DialogFooter>

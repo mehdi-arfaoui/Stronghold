@@ -224,43 +224,43 @@ describe('RecommendationsEngine', () => {
       </QueryClientProvider>,
     );
 
-    await screen.findByText('Quick Wins & forte valeur ajoutee (1)');
+    await screen.findByText('Quick Wins & forte valeur ajoutée (1)');
     expect(screen.getByText('Autres recommandations (2)')).toBeInTheDocument();
-    expect(screen.getByText('3 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    expect(screen.getByText('3 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
     expect(screen.queryByText(/Source cout:/i)).not.toBeInTheDocument();
 
-    const quickWinSection = screen.getByText('Quick Wins & forte valeur ajoutee (1)').closest('section') as HTMLElement;
+    const quickWinSection = screen.getByText('Quick Wins & forte valeur ajoutée (1)').closest('section') as HTMLElement;
     expect(within(quickWinSection).getByText('Payment API')).toBeInTheDocument();
     expect(within(quickWinSection).getByText('⚡ Quick Win')).toBeInTheDocument();
-    expect(within(quickWinSection).getByText(/3.0 mois/i)).toBeInTheDocument();
+    expect(within(quickWinSection).getByText(/3,0 mois/i)).toBeInTheDocument();
 
     const otherSection = screen.getByText('Autres recommandations (2)').closest('section') as HTMLElement;
     expect(within(otherSection).getByText('Order DB')).toBeInTheDocument();
     expect(within(otherSection).getByText('Managed Session Store')).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Strategie DR: Toutes/i }));
+    await user.click(screen.getByRole('button', { name: /Stratégie DR : Toutes/i }));
     await user.click(screen.getByRole('button', { name: 'Aucune' }));
     await user.click(screen.getByText('Warm Standby'));
 
-    expect(await screen.findByText('1 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    expect(await screen.findByText('1 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
     expect(screen.getByText('Payment API')).toBeInTheDocument();
     expect(screen.queryByText('Order DB')).not.toBeInTheDocument();
     expect(screen.queryByText('Managed Session Store')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Reinitialiser les filtres/i }));
-    expect(await screen.findByText('3 recommandations affichees sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Réinitialiser les filtres/i }));
+    expect(await screen.findByText('3 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
 
-    const maxCostInput = screen.getByLabelText('Cout estime');
+    const maxCostInput = screen.getByLabelText('Coût estimé');
     await user.clear(maxCostInput);
     await user.type(maxCostInput, '1500');
     await user.click(screen.getByRole('button', { name: /Trier par ROI croissant/i }));
 
-    expect(await screen.findByText('2 recommandations affichees sur 3 total (dont 0 Quick Wins)')).toBeInTheDocument();
+    expect(await screen.findByText('2 recommandations affichées sur 3 total (dont 0 Quick Wins)')).toBeInTheDocument();
     expect(screen.queryByText('Payment API')).not.toBeInTheDocument();
-    expect(screen.getByText('Quick Wins & forte valeur ajoutee (0)')).toBeInTheDocument();
+    expect(screen.getByText('Quick Wins & forte valeur ajoutée (0)')).toBeInTheDocument();
 
     const managedCard = screen.getByText('Managed Session Store').closest('[class*="border"]') as HTMLElement;
-    expect(within(managedCard).getByText('Inclus dans le service manage')).toBeInTheDocument();
+    expect(within(managedCard).getByText('Inclus dans le service managé')).toBeInTheDocument();
     expect(within(managedCard).getByText('Hors cap DR')).toBeInTheDocument();
     expect(within(managedCard).queryByText(/Payback:/i)).not.toBeInTheDocument();
 

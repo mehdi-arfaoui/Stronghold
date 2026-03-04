@@ -26,9 +26,9 @@ function getRedundancyLevel(item: RedundancyAnalysis): RedundancyLevel {
 }
 
 const LEVEL_CONFIG: Record<RedundancyLevel, { label: string; color: string; bgColor: string; borderColor: string; icon: typeof ShieldCheck }> = {
-  full: { label: 'Redondance complete', color: 'text-resilience-high', bgColor: 'bg-resilience-high/10', borderColor: 'border-l-resilience-high', icon: ShieldCheck },
+  full: { label: 'Redondance complète', color: 'text-resilience-high', bgColor: 'bg-resilience-high/10', borderColor: 'border-l-resilience-high', icon: ShieldCheck },
   partial: { label: 'Redondance partielle', color: 'text-severity-medium', bgColor: 'bg-severity-medium/10', borderColor: 'border-l-severity-medium', icon: ShieldAlert },
-  none: { label: 'SPOF detecte', color: 'text-severity-critical', bgColor: 'bg-severity-critical/10', borderColor: 'border-l-severity-critical', icon: Shield },
+  none: { label: 'SPOF détecté', color: 'text-severity-critical', bgColor: 'bg-severity-critical/10', borderColor: 'border-l-severity-critical', icon: Shield },
 };
 
 interface RedundancyGraphProps {
@@ -76,11 +76,11 @@ export function RedundancyGraph({ data }: RedundancyGraphProps) {
       <div className="flex items-center gap-3 rounded-lg border bg-card p-4">
         <AlertTriangle className="h-5 w-5 text-severity-critical shrink-0" />
         <p className="text-sm">
-          <span className="font-semibold text-severity-critical">{stats.none} SPOF detecte{stats.none > 1 ? 's' : ''}</span>
+          <span className="font-semibold text-severity-critical">{stats.none} SPOF détecté{stats.none > 1 ? 's' : ''}</span>
           {' — '}
-          <span className="text-severity-medium">{stats.partial} partiellement redonde{stats.partial > 1 ? 's' : ''}</span>
+          <span className="text-severity-medium">{stats.partial} partiellement redondé{stats.partial > 1 ? 's' : ''}</span>
           {' — '}
-          <span className="text-resilience-high">{stats.full} pleinement protege{stats.full > 1 ? 's' : ''}</span>
+          <span className="text-resilience-high">{stats.full} pleinement protégé{stats.full > 1 ? 's' : ''}</span>
         </p>
       </div>
 
@@ -185,7 +185,7 @@ export function RedundancyGraph({ data }: RedundancyGraphProps) {
       {filteredData.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <Search className="h-8 w-8 text-muted-foreground mb-3" />
-          <p className="text-sm text-muted-foreground">Aucun composant ne correspond a votre recherche.</p>
+          <p className="text-sm text-muted-foreground">Aucun composant ne correspond à votre recherche.</p>
         </div>
       )}
 
@@ -214,7 +214,7 @@ export function RedundancyGraph({ data }: RedundancyGraphProps) {
                 </Badge>
               </div>
               <div>
-                <p className="text-muted-foreground">Score de resilience</p>
+                <p className="text-muted-foreground">Score de résilience</p>
                 <div className="flex items-center gap-2">
                   <Progress value={selectedNode.redundancyScore} className="h-2 flex-1" />
                   <span className="font-medium">{selectedNode.redundancyScore}/100</span>

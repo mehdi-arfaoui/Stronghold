@@ -37,7 +37,7 @@ export function useLicense() {
     isOperational,
     plan,
     hasFeature: (feature: string) =>
-      Boolean(license?.features.some((entry) => normalizeFeature(entry) === normalizeFeature(feature))),
+      Boolean(license?.features?.some((entry) => normalizeFeature(entry) === normalizeFeature(feature))),
     needsActivation,
     isExpired: license?.status === 'expired',
     isGracePeriod: license?.status === 'grace_period',

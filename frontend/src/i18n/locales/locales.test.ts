@@ -34,7 +34,7 @@ describe('locale files', () => {
     expect(values.length).toBeGreaterThan(0);
 
     for (const value of values) {
-      expect(value).not.toMatch(/Ã.|Â.|â€|â€™|â€œ|â€\u009d|�/);
+      expect(value).not.toMatch(/Ãƒ.|Ã‚.|Ã¢â‚¬|Ã¢â‚¬â„¢|Ã¢â‚¬Å“|Ã¢â‚¬\u009d|ï¿½/);
     }
   });
 

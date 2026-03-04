@@ -59,7 +59,7 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
       return discoveryApi.testCredentials(payload.provider, payload.credentials);
     },
     onSuccess: (res) => {
-      toast.success(res.data.message || 'Connexion validee');
+      toast.success(res.data.message || 'Connexion validée');
     },
     onError: (error: unknown) => {
       const message =
@@ -69,8 +69,8 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
         (error as { response?: { data?: { message?: string; error?: string } } }).response?.data
           ? (error as { response?: { data?: { message?: string; error?: string } } }).response?.data?.message ||
             (error as { response?: { data?: { message?: string; error?: string } } }).response?.data?.error ||
-            'Test de connexion en echec'
-          : 'Test de connexion en echec';
+            'Test de connexion en échec'
+          : 'Test de connexion en échec';
       toast.error(message);
     },
     onSettled: () => setTestingProvider(null),
@@ -101,7 +101,7 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
     };
     setProviderConfigs(next);
     saveCloudProviderConfigs(next, tenantScope);
-    toast.success(`${activeProvider.label} configure`);
+    toast.success(`${activeProvider.label} configuré`);
     setActiveProvider(null);
     setCredentials({});
     setSelectedRegions(new Set());
@@ -110,7 +110,7 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
   const removeProvider = (provider: CloudProviderId) => {
     const next = removeCloudProviderConfig(provider, tenantScope);
     setProviderConfigs(next);
-    toast.success(`${provider.toUpperCase()} supprime`);
+    toast.success(`${provider.toUpperCase()} supprimé`);
   };
 
   const testProvider = (provider: CloudProviderId, sourceCredentials?: Record<string, string>) => {
@@ -129,8 +129,8 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
     <div className="space-y-4">
       <Card className="border-primary/20 bg-primary/5">
         <CardContent className="pt-6 text-sm text-muted-foreground">
-          {configuredCount} / {CLOUD_PROVIDER_DEFINITIONS.length} provider(s) configure(s). Chaque provider est gere
-          independamment et peut etre teste avant un scan complet.
+          {configuredCount}/{CLOUD_PROVIDER_DEFINITIONS.length} fournisseur(s) configuré(s). Chaque fournisseur est géré
+          indépendamment et peut être testé avant un scan complet.
         </CardContent>
       </Card>
 
@@ -148,11 +148,11 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
                   </span>
                   {isConfigured ? (
                     <Badge className="gap-1 bg-resilience-high/10 text-resilience-high">
-                      <Check className="h-3 w-3" /> Configure
+                      <Check className="h-3 w-3" /> Configuré
                     </Badge>
                   ) : (
                     <Badge variant="outline" className="text-muted-foreground">
-                      Non configure
+                      Non configuré
                     </Badge>
                   )}
                 </CardTitle>
@@ -192,7 +192,7 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Configurer {activeProvider.label}</DialogTitle>
-              <DialogDescription>Les credentials sont enregistres pour ce tenant uniquement.</DialogDescription>
+              <DialogDescription>Les identifiants sont enregistrés pour ce tenant uniquement.</DialogDescription>
             </DialogHeader>
 
             <div className="space-y-4 py-2">
@@ -212,7 +212,7 @@ export function CloudProvidersSettings({ tenantScope }: Props) {
 
               {activeProvider.regions && (
                 <div className="space-y-2">
-                  <Label>Regions</Label>
+                  <Label>Régions</Label>
                   <div className="grid grid-cols-2 gap-2">
                     {activeProvider.regions.map((region) => (
                       <label key={region} className="flex items-center gap-2 text-sm">

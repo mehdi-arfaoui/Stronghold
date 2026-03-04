@@ -24,17 +24,17 @@ const SIZE_OPTIONS = [
   { value: 'smb', label: 'PME' },
   { value: 'midMarket', label: 'ETI' },
   { value: 'enterprise', label: 'Grande entreprise' },
-  { value: 'largeEnterprise', label: 'Tres grande entreprise' },
+  { value: 'largeEnterprise', label: 'Très grande entreprise' },
 ] as const;
 
 const VERTICAL_OPTIONS = [
-  { value: '', label: 'Non precise' },
+  { value: '', label: 'Non précisé' },
   { value: 'banking_finance', label: 'Banque / Finance' },
-  { value: 'healthcare', label: 'Sante' },
+  { value: 'healthcare', label: 'Santé' },
   { value: 'manufacturing', label: 'Manufacturing' },
   { value: 'retail_ecommerce', label: 'Retail / eCommerce' },
   { value: 'technology_saas', label: 'Technologie / SaaS' },
-  { value: 'media_telecom', label: 'Telecom / Media' },
+  { value: 'media_telecom', label: 'Télécom / Media' },
   { value: 'government_public', label: 'Gouvernement / Public' },
   { value: 'other', label: 'Autre' },
 ] as const;
@@ -44,7 +44,7 @@ const CURRENCY_OPTIONS = ['EUR', 'USD', 'GBP', 'CHF'] as const;
 const CRITICALITY_TIER_OPTIONS = [
   { value: '', label: 'Global' },
   { value: 'critical', label: 'Critique' },
-  { value: 'high', label: 'Elevee' },
+  { value: 'high', label: 'Élevée' },
   { value: 'medium', label: 'Moyenne' },
   { value: 'low', label: 'Faible' },
 ] as const;
@@ -53,10 +53,10 @@ const DOWNTIME_BENCHMARK_HINTS = [
   'E-commerce: 10 000 - 50 000 EUR/h',
   'Finance/Banque: 50 000 - 500 000 EUR/h',
   'SaaS B2B: 5 000 - 30 000 EUR/h',
-  'Sante: 10 000 - 100 000 EUR/h',
+  'Santé: 10 000 - 100 000 EUR/h',
   'Manufacturing: 20 000 - 200 000 EUR/h',
   'Media/Streaming: 10 000 - 100 000 EUR/h',
-  'PME generaliste: 1 000 - 10 000 EUR/h',
+  'PME généraliste: 1 000 - 10 000 EUR/h',
 ];
 
 interface FinancialOnboardingWizardProps {
@@ -140,7 +140,7 @@ function describeServiceNode(node: {
     node.type ? String(node.type).replaceAll('_', ' ') : '',
     node.region || node.availabilityZone || '',
   ].filter(Boolean);
-  return parts.join(' - ') || 'Service detecte';
+  return parts.join(' - ') || 'Service détecté';
 }
 
 function formatDowntimeCost(amount: number | null | undefined, currency: string): string {
@@ -339,7 +339,7 @@ export function FinancialOnboardingWizard({
     },
     onSuccess: async () => {
       await invalidateFinancialProfileDependentQueries(queryClient);
-      toast.success('Profil financier configure');
+      toast.success('Profil financier configuré');
       onOpenChange(false);
       onCompleted?.();
     },
@@ -353,9 +353,9 @@ export function FinancialOnboardingWizard({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-[95vw] max-w-5xl md:w-[80vw] md:min-w-[700px]">
         <DialogHeader>
-          <DialogTitle>Assistant de configuration financiere</DialogTitle>
+          <DialogTitle>Assistant de configuration financière</DialogTitle>
           <DialogDescription>
-            Etape {step} / 3 - Le profil financier est optionnel, mais necessaire pour les calculs business.
+            Étape {step} / 3 - Le profil financier est optionnel, mais nécessaire pour les calculs business.
           </DialogDescription>
         </DialogHeader>
 
@@ -364,7 +364,7 @@ export function FinancialOnboardingWizard({
             <div className="rounded-lg border p-3">
               <p className="text-sm font-medium flex items-center gap-2">
                 <CircleDollarSign className="h-4 w-4 text-primary" />
-                Donnees essentielles (obligatoires)
+                Données essentielles (obligatoires)
               </p>
             </div>
 
@@ -380,7 +380,7 @@ export function FinancialOnboardingWizard({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Cout de downtime global par heure ({currency})</label>
+                <label className="text-sm font-medium">Coût de downtime global par heure ({currency})</label>
                 <Input
                   type="number"
                   min={0}
@@ -389,14 +389,14 @@ export function FinancialOnboardingWizard({
                   placeholder="Ex: 10000"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Si toute votre infrastructure etait indisponible simultanement, combien cela couterait-il par heure ?
-                  Ce montant sera distribue automatiquement sur chaque service selon son impact (blast radius), puis ajustable a l etape 3.
+                  Si toute votre infrastructure était indisponible simultanement, combien cela coûterait-il par heure ?
+                  Ce montant sera distribué automatiquement sur chaque service selon son impact (blast radius), puis ajustable ? l?Étape 3.
                 </p>
               </div>
             </div>
 
             <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground">
-              <p className="font-medium">Benchmarks indicatifs (jamais pre-remplis):</p>
+              <p className="font-medium">Benchmarks indicatifs (jamais pré-remplis) :</p>
               <ul className="mt-2 space-y-1">
                 {DOWNTIME_BENCHMARK_HINTS.map((hint) => (
                   <li key={hint}>- {hint}</li>
@@ -412,7 +412,7 @@ export function FinancialOnboardingWizard({
             <div className="rounded-lg border p-3">
               <p className="text-sm font-medium flex items-center gap-2">
                 <Building2 className="h-4 w-4 text-primary" />
-                Donnees complementaires (optionnelles)
+                Données complémentaires (optionnelles)
               </p>
             </div>
 
@@ -454,7 +454,7 @@ export function FinancialOnboardingWizard({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">Nombre d employes</label>
+                <label className="text-sm font-medium">Nombre d’employés</label>
                 <Input
                   type="number"
                   min={0}
@@ -484,7 +484,7 @@ export function FinancialOnboardingWizard({
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">% budget IT alloue au DR</label>
+                <label className="text-sm font-medium">% budget IT alloué au DR</label>
                 <Input
                   type="number"
                   min={0}
@@ -499,7 +499,7 @@ export function FinancialOnboardingWizard({
 
             <div className="grid gap-4 md:grid-cols-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium">Heures critiques debut</label>
+                <label className="text-sm font-medium">Heures critiques début</label>
                 <Input
                   value={criticalStart}
                   onChange={(event) => setCriticalStart(event.target.value)}
@@ -525,7 +525,7 @@ export function FinancialOnboardingWizard({
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">Contraintes reglementaires (ligne ou virgule)</label>
+              <label className="text-sm font-medium">Contraintes réglementaires (ligne ou virgule)</label>
               <textarea
                 value={regulatoryConstraintsText}
                 onChange={(event) => setRegulatoryConstraintsText(event.target.value)}
@@ -541,13 +541,13 @@ export function FinancialOnboardingWizard({
             <div className="rounded-lg border p-3">
               <p className="text-sm font-medium flex items-center gap-2">
                 <Coins className="h-4 w-4 text-primary" />
-                Overrides par service (optionnel, avance)
+                Overrides par service (optionnel, avancé)
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Ajustez la criticite et/ou le cout downtime/h pour chaque service detecte.
+                Ajustez la criticité et/ou le co?t downtime/h pour chaque service détecté.
               </p>
               <p className="mt-1 text-xs text-muted-foreground">
-                Overrides actifs: {activeOverrideCount}
+                Overrides actifs : {activeOverrideCount}
                 {unknownOverrideCount > 0 ? ` (dont ${unknownOverrideCount} hors inventaire courant)` : ''}
               </p>
             </div>
@@ -569,15 +569,15 @@ export function FinancialOnboardingWizard({
 
             {graphQuery.isLoading ? (
               <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                Chargement des services detectes...
+                Chargement des services détectés...
               </div>
             ) : graphQuery.isError ? (
               <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                Impossible de charger la liste des services detectes. Vous pouvez enregistrer le profil sans overrides.
+                Impossible de charger la liste des services détectés. Vous pouvez enregistrer le profil sans overrides.
               </div>
             ) : detectedServiceNodes.length === 0 ? (
               <div className="rounded-md border bg-muted/30 p-3 text-sm text-muted-foreground">
-                Aucun service detecte pour l instant.
+                Aucun service détecté pour l?instant.
               </div>
             ) : (
               <div className="rounded-md border">
@@ -595,11 +595,11 @@ export function FinancialOnboardingWizard({
                       <tr className="border-b">
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Service</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Blast radius</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Cout/h calcule</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Coût/h calculé</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">
                           Downtime/h override ({currency}/h)
                         </th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Criticite override</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Criticité override</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">Action</th>
                       </tr>
                     </thead>
@@ -627,7 +627,7 @@ export function FinancialOnboardingWizard({
                                 {blastPercent != null ? `${blastPercent}% (${transitive}/${blastDenominator})` : '—'}
                               </p>
                               <p className="text-[11px] text-muted-foreground">
-                                {biaEntry?.downtimeCostSourceLabel || 'BIA non genere'}
+                                {biaEntry?.downtimeCostSourceLabel || 'BIA non généré'}
                               </p>
                             </td>
                             <td className="px-3 py-2">
@@ -675,7 +675,7 @@ export function FinancialOnboardingWizard({
                                 onClick={() => clearOverrideDraft(node.id)}
                                 disabled={!hasOverride}
                               >
-                                Reinitialiser
+                                Réinitialiser
                               </Button>
                             </td>
                           </tr>

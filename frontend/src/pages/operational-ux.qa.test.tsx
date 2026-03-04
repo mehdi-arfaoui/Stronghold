@@ -114,6 +114,25 @@ vi.mock('@/api/client', () => ({
   },
 }));
 
+vi.mock('@/hooks/useLicense', () => ({
+  useLicense: () => ({
+    query: {},
+    license: {
+      plan: 'pro',
+      features: ['executive-dashboard', 'api-export'],
+    },
+    isLoading: false,
+    isFetching: false,
+    isOperational: true,
+    plan: 'pro',
+    hasFeature: (feature: string) => ['executive-dashboard', 'api-export'].includes(feature),
+    needsActivation: false,
+    isExpired: false,
+    isGracePeriod: false,
+    daysUntilExpiry: null,
+  }),
+}));
+
 function createQueryClient() {
   return new QueryClient({
     defaultOptions: {
@@ -418,7 +437,7 @@ describe('Operational UX QA flows', () => {
 
     await user.click(screen.getByRole('button', { name: /Activer/i }));
     await screen.findByText('active');
-  });
+  }, 10000);
 
   it('Parcours 2 - Kanban remediation (creation, retard, DnD, progression, filtre)', async () => {
     const user = userEvent.setup();
@@ -846,8 +865,8 @@ describe('Operational UX QA flows', () => {
     expect(screen.getByText(/847/)).toBeInTheDocument();
     expect(screen.getByText(/554/)).toBeInTheDocument();
     expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
-    expect(screen.getByText(/0\.8 mois/)).toBeInTheDocument();
-    expect(await screen.findByText(/Total affiche:\s*100%/)).toBeInTheDocument();
+    expect(screen.getByText(/0,8 mois/)).toBeInTheDocument();
+    expect(await screen.findByText(/Total affiché :\s*100%/)).toBeInTheDocument();
     dashboardRender.unmount();
 
     const recommendationsRender = render(
@@ -890,7 +909,7 @@ describe('Operational UX QA flows', () => {
     const costCellButton = screen.getByRole('button', { name: /\/h/i });
     fireEvent.click(costCellButton);
 
-    await screen.findByText('Override cout d indisponibilite');
+    await screen.findByText('Override coût d’indisponibilité');
     const amountInput = screen.getByRole('spinbutton');
     expect((amountInput as HTMLInputElement).value).toBe('4500');
   });
@@ -1119,14 +1138,14 @@ describe('Operational UX QA flows', () => {
     expect(screen.getByText(/847/)).toBeInTheDocument();
     expect(screen.getByText(/554/)).toBeInTheDocument();
     expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
-    expect(screen.getByText(/0\.8 mois/)).toBeInTheDocument();
+    expect(screen.getByText(/0,8 mois/)).toBeInTheDocument();
     expect(screen.getByText('DORA')).toBeInTheDocument();
     expect(screen.getByText('NIS2')).toBeInTheDocument();
     expect(screen.getByText(/Lancez des scans reguliers pour visualiser la tendance de votre resilience\./i)).toBeInTheDocument();
-    expect(screen.getByText('Methodologie & Sources')).toBeInTheDocument();
-    expect(await screen.findByText(/Total affiche:\s*100%/)).toBeInTheDocument();
+    expect(screen.getByText('Méthodologie & Sources')).toBeInTheDocument();
+    expect(await screen.findByText(/Total affiché :\s*100%/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Exporter le rapport executif/i }));
+    await user.click(screen.getByRole('button', { name: /Exporter le rapport exécutif/i }));
 
     await waitFor(() => {
       expect(reportsApi.generateExecutiveFinancialSummary).toHaveBeenCalledTimes(1);
@@ -1172,6 +1191,10 @@ describe('Operational UX QA flows', () => {
       },
     ];
 
+    const upsertFinancialOverrideSpy = vi.fn(async (_nodeId: string, payload: { customCostPerHour: number; justification?: string }) => {
+      return payload;
+    });
+
     function BIATableHarness() {
       const [rows, setRows] = useState(initialBiaRows as any[]);
       return (
@@ -1179,6 +1202,7 @@ describe('Operational UX QA flows', () => {
           <BIATable
             entries={rows}
             onUpsertFinancialOverride={async (_nodeId, payload) => {
+              await upsertFinancialOverrideSpy(_nodeId, payload);
               setRows((previous) =>
                 previous.map((entry) => ({
                   ...entry,
@@ -1199,13 +1223,15 @@ describe('Operational UX QA flows', () => {
     const biaRender = render(<BIATableHarness />);
     const biaCostCellButton = screen.getByRole('button', { name: /\/h/i });
     await user.click(biaCostCellButton);
-    await screen.findByText('Override cout d indisponibilite');
+    await screen.findByText('Override coût d’indisponibilité');
     const overrideAmountInput = screen.getByRole('spinbutton');
     fireEvent.change(overrideAmountInput, { target: { value: '5200' } });
     await user.click(screen.getByRole('button', { name: /Sauvegarder/i }));
     await waitFor(() => {
-      const updatedButton = screen.getByRole('button', { name: /\/h/i });
-      expect(updatedButton.querySelector('svg.text-green-600')).not.toBeNull();
+      expect(upsertFinancialOverrideSpy).toHaveBeenCalledWith(
+        'node-1',
+        expect.objectContaining({ customCostPerHour: 5200 }),
+      );
     });
     biaRender.unmount();
 

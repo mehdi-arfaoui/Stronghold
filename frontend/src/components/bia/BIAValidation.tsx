@@ -28,13 +28,13 @@ export function BIAValidation({ totalServices, validatedCount }: BIAValidationPr
       <CardContent>
         <div className="space-y-2">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">{validatedCount} / {totalServices} services valides</span>
+            <span className="text-muted-foreground">{validatedCount}/{totalServices} services validés</span>
             <span className="font-medium">{Math.round(percentage)}%</span>
           </div>
           <Progress value={percentage} className="h-2" />
           {!isComplete && (
             <p className="text-xs text-muted-foreground">
-              Validez chaque ligne du BIA pour confirmer les valeurs RTO/RPO suggerees ou les ajuster.
+              Validez chaque ligne du BIA pour confirmer les valeurs RTO/RPO suggérées ou les ajuster.
             </p>
           )}
         </div>

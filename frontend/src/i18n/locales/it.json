@@ -100,6 +100,9 @@
   "settings": {
     "title": "Impostazioni",
     "language": "Lingua",
+    "darkMode": "Tema scuro",
+    "darkModeDescription": "Attiva il tema scuro per l'interfaccia",
+    "apiUrl": "URL API",
     "languageNames": {
       "fr": "Français",
       "en": "English",
