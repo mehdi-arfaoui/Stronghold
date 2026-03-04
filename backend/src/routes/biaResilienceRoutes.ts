@@ -8,12 +8,11 @@ import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { requireFeature } from '../middleware/licenseMiddleware.js';
-import { analyzeFullGraph } from '../graph/graphAnalysisEngine.js';
 import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
-import { generateBIA } from '../graph/biaEngine.js';
 import { biaSuggestionService, validateRTORPOConsistency } from '../bia/services/bia-suggestion.service.js';
 import type { InfraNodeAttrs } from '../graph/types.js';
 import { resolveCompanyFinancialProfile } from '../services/company-financial-profile.service.js';
+import { generateAndPersistBiaReport } from '../services/biaAutoGenerationService.js';
 import {
   calculateServiceDowntimeCosts,
   normalizeCriticalityLevel,
@@ -280,71 +279,9 @@ router.post('/auto-generate', async (req: TenantRequest, res) => {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const graph = await GraphService.getGraph(prisma, tenantId);
-
-    if (graph.order === 0) {
+    const dbReport = await generateAndPersistBiaReport(prisma, tenantId);
+    if (!dbReport) {
       return res.status(400).json({ error: 'Graph is empty. Run a discovery scan first.' });
-    }
-
-    // Run analysis first
-    const analysis = await analyzeFullGraph(graph);
-
-    // Generate BIA
-    const biaReport = generateBIA(graph, analysis);
-    const consistentProcesses = biaReport.processes.map((process) => {
-      const bounded = capRtoRpoByTier(process.recoveryTier, {
-        rtoMinutes: process.suggestedRTO,
-        rpoMinutes: process.suggestedRPO,
-      });
-      return {
-        ...process,
-        suggestedRTO: bounded.rtoMinutes ?? process.suggestedRTO,
-        suggestedRPO: bounded.rpoMinutes ?? process.suggestedRPO,
-      };
-    });
-
-    // Persist BIA report
-    const dbReport = await prisma.bIAReport2.create({
-      data: {
-        generatedAt: biaReport.generatedAt,
-        summary: biaReport.summary as any,
-        tenantId,
-        processes: {
-          create: consistentProcesses.map(p => ({
-            serviceNodeId: p.serviceNodeId,
-            serviceName: p.serviceName,
-            serviceType: p.serviceType,
-            suggestedMAO: p.suggestedMAO,
-            suggestedMTPD: p.suggestedMTPD,
-            suggestedRTO: p.suggestedRTO,
-            suggestedRPO: p.suggestedRPO,
-            suggestedMBCO: p.suggestedMBCO,
-            impactCategory: p.impactCategory,
-            criticalityScore: p.criticalityScore,
-            recoveryTier: p.recoveryTier,
-            dependencyChain: p.dependencyChain as any,
-            weakPoints: p.weakPoints as any,
-            financialImpact: p.financialImpact as any,
-            validationStatus: 'pending',
-            tenantId,
-          })),
-        },
-      },
-      include: { processes: true },
-    });
-
-    // Also update node BIA data
-    for (const p of consistentProcesses) {
-      await prisma.infraNode.updateMany({
-        where: { id: p.serviceNodeId, tenantId },
-        data: {
-          suggestedRTO: p.suggestedRTO,
-          suggestedRPO: p.suggestedRPO,
-          suggestedMTPD: p.suggestedMTPD,
-          impactCategory: p.impactCategory,
-          financialImpactPerHour: null,
-        },
-      });
     }
 
     return res.json(dbReport);

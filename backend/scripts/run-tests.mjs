@@ -15,6 +15,7 @@ const unitBase = [
   'tests/dependencyInferenceAndDowntimeDistribution.test.ts',
   'tests/dependencyRiskEngine.test.js',
   'tests/discoveryConnectors.test.cjs',
+  'tests/discoveryOrchestrator.postScanEnrichments.test.ts',
   'tests/documentIngestionService.test.js',
   'tests/documentIntelligenceService.test.js',
   'tests/drStrategyEngine.test.js',

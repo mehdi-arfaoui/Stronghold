@@ -13,11 +13,14 @@ import { calculateBlastRadius } from '../graph/blastRadiusEngine.js';
 import { classifyServiceCriticality } from '../graph/criticalityClassifier.js';
 import { transformToScanResult } from './graphBridge.js';
 import { validateScanConsistency } from '../services/discoveryHealthService.js';
+import { generateAndPersistBiaReport } from '../services/biaAutoGenerationService.js';
+import { buildLandingZoneFinancialContext } from '../services/landing-zone-financial.service.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
 import {
   encryptScanConfigCredentials,
   sanitizeScanConfig,
 } from "../services/scanConfigSecurityService.js";
+import { appLogger } from '../utils/logger.js';
 
 export interface DiscoveryScanConfig {
   providers: Array<{
@@ -231,6 +234,52 @@ export type PostIngestionPipelineResult = {
   classificationUpdates: number;
 };
 
+type PostScanEnrichmentOptions = {
+  logger?: Pick<typeof appLogger, 'info' | 'warn'>;
+  autoGenerateBia?: (tenantId: string) => Promise<unknown>;
+  autoGenerateRecommendations?: (tenantId: string) => Promise<{ recommendations?: unknown[] } | void>;
+};
+
+export async function runPostScanEnrichments(
+  prisma: PrismaClient,
+  tenantId: string,
+  options?: PostScanEnrichmentOptions,
+): Promise<void> {
+  const logger = options?.logger ?? appLogger;
+  const autoGenerateBia =
+    options?.autoGenerateBia ??
+    ((currentTenantId: string) => generateAndPersistBiaReport(prisma, currentTenantId));
+  const autoGenerateRecommendations =
+    options?.autoGenerateRecommendations ??
+    ((currentTenantId: string) => buildLandingZoneFinancialContext(prisma, currentTenantId));
+
+  try {
+    logger.info('[Discovery] Auto-generating BIA after scan...');
+    const biaReport = await autoGenerateBia(tenantId);
+    if (biaReport) {
+      logger.info('[Discovery] BIA auto-generated successfully');
+    } else {
+      logger.info('[Discovery] BIA auto-generation skipped because graph is empty');
+    }
+  } catch (error) {
+    logger.warn('[Discovery] BIA auto-generation failed, can be triggered manually', error);
+  }
+
+  try {
+    logger.info('[Discovery] Auto-generating recommendations after scan...');
+    const recommendationContext = await autoGenerateRecommendations(tenantId);
+    const count = Array.isArray((recommendationContext as { recommendations?: unknown[] } | undefined)?.recommendations)
+      ? (recommendationContext as { recommendations?: unknown[] }).recommendations?.length
+      : undefined;
+    logger.info('[Discovery] Recommendations auto-generated successfully', {
+      tenantId,
+      ...(typeof count === 'number' ? { recommendations: count } : {}),
+    });
+  } catch (error) {
+    logger.warn('[Discovery] Recommendations auto-generation failed', error);
+  }
+}
+
 export async function runPostIngestionPipeline(
   prisma: PrismaClient,
   tenantId: string,
@@ -301,6 +350,7 @@ export async function runPostIngestionPipeline(
   // Always refresh graph and recompute analysis/classification after ingest.
   await GraphService.loadGraphFromDB(prisma, tenantId);
   const analysisResult = await persistLatestGraphAnalysis(prisma, tenantId);
+  await runPostScanEnrichments(prisma, tenantId);
 
   return {
     inferredEdgesPersisted,
