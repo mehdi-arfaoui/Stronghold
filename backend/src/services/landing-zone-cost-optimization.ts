@@ -123,82 +123,36 @@ export function deriveRecommendationGroupKey(input: {
 export function allocateRecommendationCosts(
   seeds: RecommendationCostSeed[],
 ): RecommendationCostAllocation[] {
-  const groups = new Map<string, RecommendationCostSeed[]>();
-  const allocations: RecommendationCostAllocation[] = [];
-
-  for (const seed of seeds) {
-    const groupKey = deriveRecommendationGroupKey({
+  return seeds.map((seed) => ({
+    id: seed.id,
+    groupKey: deriveRecommendationGroupKey({
       strategyKey: seed.strategyKey,
       nodeType: seed.nodeType,
       provider: seed.provider,
       metadata: seed.metadata,
-    });
-    if (!groupKey) {
-      allocations.push({
-        id: seed.id,
-        groupKey: null,
-        allocatedMonthlyCost: roundMoney(seed.estimatedCost),
-        allocatedAnnualCost: roundMoney(seed.estimatedAnnualCost),
-        countedInSummary: true,
-        allocationShare: 1,
-      });
-      continue;
-    }
-    const bucket = groups.get(groupKey) ?? [];
-    bucket.push(seed);
-    groups.set(groupKey, bucket);
-  }
-
-  for (const [groupKey, members] of groups.entries()) {
-    const sharedMonthlyCost = roundMoney(
-      members.reduce(
-        (highest, member) => Math.max(highest, Number(member.estimatedCost) || 0),
-        0,
-      ),
-    );
-    const weightTotal =
-      members.reduce(
-        (sum, member) =>
-          sum + Math.max(1, Number(member.estimatedProductionMonthlyCost) || Number(member.estimatedCost) || 1),
-        0,
-      ) || members.length;
-
-    let allocatedMonthlySum = 0;
-    members.forEach((member, index) => {
-      const weight = Math.max(
-        1,
-        Number(member.estimatedProductionMonthlyCost) || Number(member.estimatedCost) || 1,
-      );
-      const isLast = index === members.length - 1;
-      const allocatedMonthlyCost = isLast
-        ? roundMoney(Math.max(0, sharedMonthlyCost - allocatedMonthlySum))
-        : roundMoney((sharedMonthlyCost * weight) / weightTotal);
-      allocatedMonthlySum += allocatedMonthlyCost;
-      allocations.push({
-        id: member.id,
-        groupKey,
-        allocatedMonthlyCost,
-        allocatedAnnualCost: roundMoney(allocatedMonthlyCost * 12),
-        countedInSummary: true,
-        allocationShare: roundMoney(weight / weightTotal),
-      });
-    });
-  }
-
-  return allocations;
+    }),
+    allocatedMonthlyCost: roundMoney(seed.estimatedCost),
+    allocatedAnnualCost: roundMoney(seed.estimatedAnnualCost),
+    countedInSummary: true,
+    allocationShare: 1,
+  }));
 }
 
 export function partitionRecommendationsByAleCap(
   candidates: RecommendationRoiCandidate[],
   aleTotal: number,
   maxCostShare = 0.35,
+  explicitAnnualCap?: number | null,
 ): {
   primaryIds: Set<string>;
   secondaryIds: Set<string>;
   annualCap: number;
   primaryAnnualCost: number;
 } {
-  const annualCap = roundMoney(Math.max(0, aleTotal) * Math.max(0, maxCostShare));
+  const annualCap =
+    Number(explicitAnnualCap) > 0
+      ? roundMoney(Number(explicitAnnualCap))
+      : roundMoney(Math.max(0, aleTotal) * Math.max(0, maxCostShare));
   const ordered = [...candidates].sort((left, right) => {
     const leftRoi = left.roi == null || !Number.isFinite(left.roi) ? Number.NEGATIVE_INFINITY : left.roi;
     const rightRoi = right.roi == null || !Number.isFinite(right.roi) ? Number.NEGATIVE_INFINITY : right.roi;

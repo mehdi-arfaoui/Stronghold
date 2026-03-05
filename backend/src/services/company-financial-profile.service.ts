@@ -1,4 +1,4 @@
-﻿import type { OrganizationProfile, PrismaClient } from '@prisma/client';
+import type { OrganizationProfile, PrismaClient } from '@prisma/client';
 import type { SupportedCurrency } from '../constants/market-financial-data.js';
 import { SUPPORTED_CURRENCIES } from '../constants/market-financial-data.js';
 import {
@@ -95,7 +95,7 @@ export type StrategySelectionResult = {
   monthlyDrCost: number;
   annualDrCost: number;
   budgetWarning: string | null;
-  strategySource: 'recommended' | 'user_override' | 'budget_adjusted';
+  strategySource: 'recommended' | 'user_override';
   rationale: string[];
 };
 
@@ -732,7 +732,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(override),
       costSource: 'user_override',
       pricingSource: 'cost-explorer',
-      pricingSourceLabel: '[Prix reel ✓✓]',
+      pricingSourceLabel: 'Prix reel',
       confidence: 0.95,
       currency,
       note: 'Override utilisateur applique',
@@ -757,7 +757,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(observedInCurrency),
       costSource: 'cloud_type_reference',
       pricingSource: 'cost-explorer',
-      pricingSourceLabel: '[Prix reel ✓✓]',
+      pricingSourceLabel: 'Prix reel',
       confidence: 0.95,
       currency,
       note: 'Cout observe via metadonnees cloud billing',
@@ -774,7 +774,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.95,
       currency,
       note: 'Service tiers externe (pas de redondance infra DR directe)',
@@ -798,7 +798,7 @@ export function estimateServiceMonthlyProductionCost(
       ),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.75,
       currency,
       note: `Reference ${providerLabel} (${resolution.kind})`,
@@ -811,7 +811,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.9,
       currency,
       note: 'Serverless pay-per-use (standby quasi nul)',
@@ -827,7 +827,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.9,
       currency,
       note: 'Queue/topic managed (cout operationnel minimal)',
@@ -840,7 +840,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: 0,
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.9,
       currency,
       note: 'DynamoDB/Firestore pay-per-use',
@@ -857,7 +857,7 @@ export function estimateServiceMonthlyProductionCost(
         estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
         costSource: 'cloud_type_reference',
         pricingSource: 'static-table',
-        pricingSourceLabel: '[Estimation ≈]',
+        pricingSourceLabel: 'Table statique',
         confidence: 0.7,
         currency,
         note: 'Reference Elasticsearch/OpenSearch',
@@ -874,7 +874,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: `Reference DB ${instanceSize}`,
@@ -888,7 +888,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference cache manage',
@@ -909,7 +909,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(tb * midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference stockage',
@@ -923,7 +923,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference load balancer',
@@ -937,7 +937,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference API Gateway/DNS',
@@ -951,7 +951,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference CDN',
@@ -965,7 +965,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(midpoint(range.min, range.max)),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: 0.7,
       currency,
       note: 'Reference messaging queue',
@@ -1006,7 +1006,7 @@ export function estimateServiceMonthlyProductionCost(
       estimatedMonthlyCost: roundMoney(base),
       costSource: 'cloud_type_reference',
       pricingSource: 'static-table',
-      pricingSourceLabel: '[Estimation ≈]',
+      pricingSourceLabel: 'Table statique',
       confidence: provider === 'on_premise' ? 0.5 : 0.7,
       currency,
       note: `Reference compute ${instanceSize} x${replicas}`,
@@ -1025,7 +1025,7 @@ export function estimateServiceMonthlyProductionCost(
     estimatedMonthlyCost: roundMoney(fallback),
     costSource: 'criticality_fallback',
     pricingSource: 'static-table',
-    pricingSourceLabel: '[Estimation ≈]',
+    pricingSourceLabel: 'Table statique',
     confidence: 0.45,
     currency,
     note: `Fallback criticite (${criticality})`,
@@ -1158,7 +1158,6 @@ export function selectDrStrategyForService(options: {
   targetRpoMinutes?: number | null;
   criticality: 'critical' | 'high' | 'medium' | 'low';
   monthlyProductionCost: number;
-  budgetRemainingMonthly?: number | null;
   overrideStrategy?: string | null;
   nodeType?: string;
   provider?: string | null;
@@ -1187,8 +1186,6 @@ export function selectDrStrategyForService(options: {
     };
   }
 
-  const sorted = orderedStrategies();
-
   const targetRto = toPositiveNumber(options.targetRtoMinutes);
   const targetRpo = toPositiveNumber(options.targetRpoMinutes);
 
@@ -1210,46 +1207,18 @@ export function selectDrStrategyForService(options: {
     rationale.push(`Fallback criticite/service ${options.criticality}`);
   }
 
-  let monthlyDrCost = estimateStrategyMonthlyDrCost(
+  const monthlyDrCost = estimateStrategyMonthlyDrCost(
     options.monthlyProductionCost,
     selected,
     strategyContext,
   );
-  let strategySource: StrategySelectionResult['strategySource'] = 'recommended';
-  let budgetWarning: string | null = null;
-
-  const budgetRemaining = toPositiveNumber(options.budgetRemainingMonthly);
-  if (budgetRemaining && monthlyDrCost > budgetRemaining) {
-    let selectedIndex = sorted.indexOf(selected);
-    const floorIndex = sorted.indexOf(floorByServiceAndCriticality);
-
-    while (monthlyDrCost > budgetRemaining && selectedIndex > floorIndex) {
-      selectedIndex -= 1;
-      selected = sorted[selectedIndex] as DrStrategyKey;
-      strategySource = 'budget_adjusted';
-      monthlyDrCost = estimateStrategyMonthlyDrCost(
-        options.monthlyProductionCost,
-        selected,
-        strategyContext,
-      );
-      rationale.push('Ajustement budget');
-    }
-
-    if (monthlyDrCost > budgetRemaining) {
-      budgetWarning =
-        'Budget depasse: aucune strategie inferieure disponible, verification budget recommandee';
-    } else if (strategySource === 'budget_adjusted') {
-      budgetWarning =
-        'Budget depasse: strategie ajustee au niveau inferieur pour respecter le budget DR estime';
-    }
-  }
 
   return {
     strategy: selected,
     monthlyDrCost,
     annualDrCost: roundMoney(monthlyDrCost * 12),
-    budgetWarning,
-    strategySource,
+    budgetWarning: null,
+    strategySource: 'recommended',
     rationale,
   };
 }
@@ -1437,4 +1406,5 @@ export function buildFinancialDisclaimers() {
     serviceCost: DR_FINANCIAL_SOURCES.serviceCost,
   };
 }
+
 

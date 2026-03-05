@@ -112,20 +112,18 @@ test('selectDrStrategyForService yields a mixed strategy set across varied servi
   assert.ok(new Set(selectedStrategies).size >= 3);
 });
 
-test('selectDrStrategyForService downgrades strategy when DR budget is exceeded', () => {
+test('selectDrStrategyForService keeps technical strategy independent from budget remaining', () => {
   const selected = selectDrStrategyForService({
     targetRtoMinutes: 6,
     targetRpoMinutes: 4,
     criticality: 'critical',
     monthlyProductionCost: 1_000,
-    budgetRemainingMonthly: 450,
   });
 
-  assert.equal(selected.strategy, 'warm_standby');
-  assert.equal(selected.strategySource, 'budget_adjusted');
-  assert.equal(selected.monthlyDrCost, 420);
-  assert.equal(selected.annualDrCost, 5_040);
-  assert.ok(selected.budgetWarning?.length);
+  assert.equal(selected.strategy, 'hot_standby');
+  assert.equal(selected.strategySource, 'recommended');
+  assert.equal(selected.annualDrCost, selected.monthlyDrCost * 12);
+  assert.equal(selected.budgetWarning, null);
 });
 
 test('selectDrStrategyForService applies service-native EC2 scaling cost for AWS single instance', () => {

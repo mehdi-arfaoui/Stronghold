@@ -31,11 +31,11 @@ import {
   strategyTargetRtoMinutes,
 } from './company-financial-profile.service.js';
 import {
-  allocateRecommendationCosts,
   normalizeStrategyCostPercentages,
   partitionRecommendationsByAleCap,
 } from './landing-zone-cost-optimization.js';
 import { resolveServiceIdentity } from './service-identity.service.js';
+import { resolveServiceResolution } from './dr-recommendation-engine/recommendationEngine.js';
 
 export type LandingZoneRecommendationStatus = 'pending' | 'validated' | 'rejected';
 
@@ -84,6 +84,8 @@ export type LandingZoneFinancialRecommendation = {
   priority: number;
   notes: string | null;
   budgetWarning: string | null;
+  requiresVerification: boolean;
+  withinBudgetCap: boolean;
   calculation: {
     aleCurrent: number;
     aleAfter: number;
@@ -121,6 +123,9 @@ export type LandingZoneFinancialSummary = {
   secondaryRecommendations: number;
   secondaryAnnualCost: number;
   annualCostCap: number;
+  budgetAnnual: number | null;
+  selectedAnnualCost: number;
+  remainingBudgetAnnual: number | null;
   riskAvoidedAnnual: number;
   roiPercent: number | null;
   paybackMonths: number | null;
@@ -179,6 +184,7 @@ type InternalRecommendationSeed = {
   allocationShare: number;
   recommendationBand: 'primary' | 'secondary';
   costCountedInSummary: boolean;
+  requiresVerification: boolean;
 };
 
 function roundMoney(value: number): number {
@@ -280,6 +286,120 @@ function resolveStrategyOverride(metadata: unknown): string | null {
     return metadata.recoveryStrategy;
   }
   return null;
+}
+
+function hasMetadataValue(metadata: Record<string, unknown>, key: string): boolean {
+  const value = metadata[key];
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function hasAnyMetadataValue(metadata: Record<string, unknown>, keys: string[]): boolean {
+  return keys.some((key) => hasMetadataValue(metadata, key));
+}
+
+function isServiceResilientByDesign(input: {
+  nodeType: string;
+  provider: string | null | undefined;
+  metadata: Record<string, unknown>;
+}): boolean {
+  const nodeType = String(input.nodeType || '').toUpperCase();
+  const resolution = resolveServiceResolution({
+    nodeType,
+    provider: input.provider ?? null,
+    metadata: input.metadata,
+  });
+
+  if (resolution.provider === 'aws') {
+    return ['lambda', 'sqs', 'sns', 'alb', 'apiGateway'].includes(resolution.kind);
+  }
+  if (resolution.provider === 'azure') {
+    return resolution.kind === 'functions' || nodeType === 'LOAD_BALANCER';
+  }
+  if (resolution.provider === 'gcp') {
+    return resolution.kind === 'cloudFunctions';
+  }
+  return false;
+}
+
+function requiresRecommendationVerification(input: {
+  nodeType: string;
+  provider: string | null | undefined;
+  metadata: Record<string, unknown>;
+}): boolean {
+  const resolution = resolveServiceResolution({
+    nodeType: String(input.nodeType || '').toUpperCase(),
+    provider: input.provider ?? null,
+    metadata: input.metadata,
+  });
+  const metadata = input.metadata;
+
+  if (resolution.provider === 'aws') {
+    if (resolution.kind === 'ec2') {
+      return !(
+        hasAnyMetadataValue(metadata, ['autoScalingGroupName', 'autoScalingGroup', 'asgName']) &&
+        hasAnyMetadataValue(metadata, ['asgMinSize', 'minSize']) &&
+        hasAnyMetadataValue(metadata, ['asgAZCount', 'availabilityZones'])
+      );
+    }
+    if (resolution.kind === 'rds') {
+      return !hasAnyMetadataValue(metadata, ['isMultiAZ', 'multiAZ', 'multiAz', 'multi_az']);
+    }
+    if (resolution.kind === 'elasticache') {
+      return !(
+        hasAnyMetadataValue(metadata, ['replicaCount', 'readReplicaCount']) &&
+        hasAnyMetadataValue(metadata, ['isMultiAZ', 'multiAZ', 'multiAz', 'multi_az'])
+      );
+    }
+    if (resolution.kind === 's3') {
+      return !(
+        hasAnyMetadataValue(metadata, ['replicationConfiguration']) &&
+        hasAnyMetadataValue(metadata, ['versioningStatus'])
+      );
+    }
+    if (resolution.kind === 'dynamodb') {
+      return !hasAnyMetadataValue(metadata, ['pointInTimeRecovery']);
+    }
+  }
+
+  if (resolution.provider === 'azure') {
+    if (resolution.kind === 'vm' || resolution.kind === 'virtualMachineScaleSet') {
+      return !hasAnyMetadataValue(metadata, ['vmScaleSet', 'vmssId', 'virtualMachineScaleSetId']);
+    }
+    if (resolution.kind === 'sqlDatabase') {
+      return !hasAnyMetadataValue(metadata, ['geoReplicaLocation', 'failoverGroupId']);
+    }
+    if (resolution.kind === 'postgresqlFlexible' || resolution.kind === 'mysqlFlexible') {
+      return !hasAnyMetadataValue(metadata, ['haMode', 'highAvailabilityMode', 'highAvailability']);
+    }
+    if (resolution.kind === 'storageAccount') {
+      return !hasAnyMetadataValue(metadata, ['replication', 'replicationType', 'skuName', 'sku']);
+    }
+  }
+
+  if (resolution.provider === 'gcp') {
+    if (resolution.kind === 'computeEngine') {
+      return !hasAnyMetadataValue(metadata, ['instanceGroupManager', 'managedInstanceGroup']);
+    }
+    if (resolution.kind === 'cloudSQL') {
+      return !hasAnyMetadataValue(metadata, ['availabilityType', 'settingsAvailabilityType']);
+    }
+    if (resolution.kind === 'memorystore') {
+      return !hasAnyMetadataValue(metadata, ['tier', 'redisTier']);
+    }
+    if (resolution.kind === 'cloudStorage') {
+      return !hasAnyMetadataValue(metadata, ['locationType', 'location_type']);
+    }
+  }
+
+  return false;
+}
+
+function normalizeDisplayKey(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
 function toFinancialProfileInput(
@@ -464,6 +584,9 @@ function buildDefaultContext(
       secondaryRecommendations: 0,
       secondaryAnnualCost: 0,
       annualCostCap: 0,
+      budgetAnnual: profile.estimatedDrBudgetAnnual ?? null,
+      selectedAnnualCost: 0,
+      remainingBudgetAnnual: profile.estimatedDrBudgetAnnual ?? null,
       riskAvoidedAnnual: 0,
       roiPercent: null,
       paybackMonths: null,
@@ -550,10 +673,9 @@ export async function buildLandingZoneFinancialContext(
     (latestValidatedBia?.processes || []).map((process) => [process.serviceNodeId, process]),
   );
   const nodeByServiceId = new Map(nodeSnapshots.map((node) => [node.id, node]));
-
-  let budgetRemainingMonthly =
+  const configuredBudgetAnnual =
     profile.estimatedDrBudgetAnnual && profile.estimatedDrBudgetAnnual > 0
-      ? profile.estimatedDrBudgetAnnual / 12
+      ? roundMoney(profile.estimatedDrBudgetAnnual)
       : null;
 
   const sortedRecommendations = [...report.recommendations].sort(
@@ -565,18 +687,37 @@ export async function buildLandingZoneFinancialContext(
     const node = nodeByServiceId.get(recommendation.serviceId);
     const validatedProcess = validatedBiaByServiceId.get(recommendation.serviceId);
     const state = parsePersistedRecommendationState(node?.metadata);
+    const nodeType = node?.type || 'APPLICATION';
+    const provider = node?.provider || 'unknown';
+    const metadata = (node?.metadata as Record<string, unknown>) || {};
     const identity = resolveServiceIdentity({
       name: node?.name ?? recommendation.serviceName,
       businessName: node?.businessName ?? null,
-      type: node?.type || 'APPLICATION',
-      metadata: node?.metadata || {},
+      type: nodeType,
+      metadata,
+    });
+
+    if (
+      isServiceResilientByDesign({
+        nodeType,
+        provider,
+        metadata,
+      })
+    ) {
+      continue;
+    }
+
+    const requiresVerification = requiresRecommendationVerification({
+      nodeType,
+      provider,
+      metadata,
     });
 
     const monthlyCostEstimate = await estimateServiceMonthlyProductionCostAsync(
       {
-        type: node?.type || 'APPLICATION',
-        provider: node?.provider || 'unknown',
-        metadata: node?.metadata || {},
+        type: nodeType,
+        provider,
+        metadata,
         criticalityScore: node?.criticalityScore ?? validatedProcess?.criticalityScore ?? null,
         impactCategory: node?.impactCategory ?? validatedProcess?.impactCategory ?? null,
       },
@@ -602,11 +743,10 @@ export async function buildLandingZoneFinancialContext(
       targetRpoMinutes,
       criticality,
       monthlyProductionCost: estimatedProductionMonthlyCost,
-      budgetRemainingMonthly,
-      overrideStrategy: resolveStrategyOverride(node?.metadata),
-      nodeType: node?.type || 'APPLICATION',
-      provider: node?.provider || 'unknown',
-      metadata: node?.metadata || {},
+      overrideStrategy: resolveStrategyOverride(metadata),
+      nodeType,
+      provider,
+      metadata,
     });
     const improvingStrategy = findNextImprovingStrategy(selected.strategy, currentRtoMinutes);
     const effectiveStrategy = improvingStrategy ?? selected.strategy;
@@ -624,9 +764,9 @@ export async function buildLandingZoneFinancialContext(
     const strategyUpgraded = effectiveStrategy !== selected.strategy;
     const monthlyDrCost = strategyUpgraded
       ? estimateStrategyMonthlyDrCost(estimatedProductionMonthlyCost, effectiveStrategy, {
-          nodeType: node?.type || 'APPLICATION',
-          provider: node?.provider || 'unknown',
-          metadata: node?.metadata || {},
+          nodeType,
+          provider,
+          metadata,
         })
       : selected.monthlyDrCost;
     const annualDrCost = roundMoney(monthlyDrCost * 12);
@@ -643,21 +783,17 @@ export async function buildLandingZoneFinancialContext(
         ? `${budgetWarning} | ${noGainWarning}`
         : budgetWarning || noGainWarning;
 
-    if (budgetRemainingMonthly && monthlyDrCost > 0) {
-      budgetRemainingMonthly = Math.max(0, budgetRemainingMonthly - monthlyDrCost);
-    }
-
     const strategy = strategyKeyToLegacySlug(effectiveStrategy);
     const probability = resolveIncidentProbabilityForNodeType(
       node?.type || identity.technicalName,
       undefined,
-      node?.metadata || {},
+      metadata,
     );
     const serviceSpecificRecommendation = buildServiceSpecificRecommendation({
       serviceName: identity.displayName,
-      nodeType: node?.type || 'APPLICATION',
-      provider: node?.provider || 'unknown',
-      metadata: node?.metadata || {},
+      nodeType,
+      provider,
+      metadata,
       strategy: effectiveStrategy,
       monthlyDrCost,
       currency: profile.currency,
@@ -688,46 +824,49 @@ export async function buildLandingZoneFinancialContext(
       accepted: acceptedFromStatus(state.status),
       probabilitySource: probability.source,
       criticality,
-      nodeType: node?.type || 'APPLICATION',
-      provider: node?.provider || 'unknown',
-      metadata: (node?.metadata as Record<string, unknown>) || {},
+      nodeType,
+      provider,
+      metadata,
       groupKey: null,
       allocationShare: 1,
       recommendationBand: 'primary',
       costCountedInSummary: true,
+      requiresVerification,
     });
   }
 
-  const costAllocations = new Map(
-    allocateRecommendationCosts(
-      recommendationSeeds.map((entry) => ({
-        id: entry.id,
-        nodeId: entry.nodeId,
-        serviceName: entry.serviceName,
-        strategyKey: entry.strategyKey,
-        estimatedCost: entry.estimatedCost,
-        estimatedAnnualCost: entry.estimatedAnnualCost,
-        estimatedProductionMonthlyCost: entry.estimatedProductionMonthlyCost,
-        nodeType: entry.nodeType,
-        provider: entry.provider,
-        metadata: entry.metadata,
-        priority: entry.priority,
-      })),
-    ).map((allocation) => [allocation.id, allocation]),
-  );
+  const duplicateDisplayNames = new Map<string, number>();
+  for (const seed of recommendationSeeds) {
+    const key = normalizeDisplayKey(seed.serviceDisplayName);
+    duplicateDisplayNames.set(key, (duplicateDisplayNames.get(key) || 0) + 1);
+  }
 
-  const adjustedRecommendationSeeds = recommendationSeeds.map((entry) => {
-    const allocation = costAllocations.get(entry.id);
-    if (!allocation) return entry;
+  const adjustedRecommendationSeeds = recommendationSeeds.map((seed) => {
+    const duplicateCount = duplicateDisplayNames.get(normalizeDisplayKey(seed.serviceDisplayName)) || 0;
+    if (duplicateCount <= 1) return seed;
+
     return {
-      ...entry,
-      groupKey: allocation.groupKey,
-      estimatedCost: allocation.allocatedMonthlyCost,
-      estimatedAnnualCost: allocation.allocatedAnnualCost,
-      allocationShare: allocation.allocationShare,
-      costCountedInSummary: allocation.countedInSummary,
+      ...seed,
+      serviceDisplayName: `${seed.serviceDisplayName} (${seed.nodeType})`,
     };
   });
+
+  const withinBudgetByRecommendationId = new Map<string, boolean>();
+  let runningBudgetAnnual = 0;
+  for (const seed of adjustedRecommendationSeeds) {
+    if (configuredBudgetAnnual == null) {
+      withinBudgetByRecommendationId.set(seed.id, true);
+      continue;
+    }
+
+    const annualCost = roundMoney(Math.max(0, seed.estimatedAnnualCost));
+    const withinBudget =
+      annualCost <= 0 || runningBudgetAnnual + annualCost <= configuredBudgetAnnual;
+    withinBudgetByRecommendationId.set(seed.id, withinBudget);
+    if (withinBudget) {
+      runningBudgetAnnual = roundMoney(runningBudgetAnnual + annualCost);
+    }
+  }
 
   await Promise.all(
     adjustedRecommendationSeeds.map((entry) =>
@@ -796,6 +935,8 @@ export async function buildLandingZoneFinancialContext(
       };
     }),
     ale.totalALE,
+    0.35,
+    profile.estimatedDrBudgetAnnual,
   );
   const primaryRecommendationInputs = recommendationInputs.filter((entry) =>
     costPartition.primaryIds.has(String(entry.recommendationId || entry.id || '')),
@@ -855,6 +996,7 @@ export async function buildLandingZoneFinancialContext(
 
   const recommendations: LandingZoneFinancialRecommendation[] = adjustedRecommendationSeeds.map((seed) => {
     const isSecondary = costPartition.secondaryIds.has(seed.id);
+    const withinBudgetCap = withinBudgetByRecommendationId.get(seed.id) ?? true;
     const recommendationBand: LandingZoneFinancialRecommendation['recommendationBand'] = isSecondary
       ? 'secondary'
       : 'primary';
@@ -891,8 +1033,8 @@ export async function buildLandingZoneFinancialContext(
     const riskAvoidedAnnual = breakdown?.riskReduction ?? 0;
     const aleCurrent = breakdown?.currentALE ?? 0;
     const aleAfter = breakdown?.projectedALE ?? Math.max(0, aleCurrent - riskAvoidedAnnual);
-    const capWarning = isSecondary
-      ? `Recommendation secondaire: cout hors cap DR (${Math.round(costPartition.annualCap)} ${profile.currency}/an max).`
+    const capWarning = !withinBudgetCap && configuredBudgetAnnual != null
+      ? `Recommendation hors budget DR configure (${Math.round(configuredBudgetAnnual)} ${profile.currency}/an).`
       : null;
     const combinedBudgetWarning =
       seed.budgetWarning && capWarning
@@ -930,6 +1072,8 @@ export async function buildLandingZoneFinancialContext(
       priority: seed.priority,
       notes: seed.notes,
       budgetWarning: combinedBudgetWarning,
+      requiresVerification: seed.requiresVerification,
+      withinBudgetCap,
       calculation: {
         aleCurrent: roundMoney(aleCurrent),
         aleAfter: roundMoney(aleAfter),
@@ -946,7 +1090,7 @@ export async function buildLandingZoneFinancialContext(
       ],
       downtimeCostPerHour: downtimeCost?.downtimeCostPerHour ?? 0,
       downtimeCostSource: downtimeCost?.source ?? 'not_configured',
-      downtimeCostSourceLabel: downtimeCost?.sourceLabel ?? '—',
+      downtimeCostSourceLabel: downtimeCost?.sourceLabel ?? '-',
       downtimeCostRationale: downtimeCost?.rationale ?? 'Profil financier non configure',
       ...(downtimeCost?.blastRadius ? { blastRadius: downtimeCost.blastRadius } : {}),
     };
@@ -1007,6 +1151,15 @@ export async function buildLandingZoneFinancialContext(
       absoluteCost,
     })),
   );
+  const selectedAnnualCost = roundMoney(
+    recommendations
+      .filter((entry) => entry.withinBudgetCap && entry.status === 'validated')
+      .reduce((sum, entry) => sum + entry.estimatedAnnualCost, 0),
+  );
+  const remainingBudgetAnnual =
+    configuredBudgetAnnual != null
+      ? roundMoney(Math.max(0, configuredBudgetAnnual - selectedAnnualCost))
+      : null;
 
   return {
     recommendations,
@@ -1024,6 +1177,9 @@ export async function buildLandingZoneFinancialContext(
           .reduce((sum, entry) => sum + entry.estimatedAnnualCost, 0),
       ),
       annualCostCap: roundMoney(costPartition.annualCap),
+      budgetAnnual: configuredBudgetAnnual,
+      selectedAnnualCost,
+      remainingBudgetAnnual,
       riskAvoidedAnnual: roundMoney(cappedRiskAvoidedAnnual),
       roiPercent: roi.roiPercent,
       paybackMonths: roi.paybackMonths,
@@ -1038,3 +1194,4 @@ export async function buildLandingZoneFinancialContext(
     validationScope: financialContext.validationScope,
   };
 }
+
