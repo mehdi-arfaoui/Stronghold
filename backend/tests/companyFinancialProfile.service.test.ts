@@ -197,7 +197,7 @@ test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for kno
     'USD',
   );
 
-  assert.equal(ec2Cost.estimatedMonthlyCost, 8.5);
+  assert.equal(ec2Cost.estimatedMonthlyCost, 10.21);
   assert.equal(ec2Cost.costSource, 'cloud_type_reference');
   assert.ok(ec2Cost.note.includes('eu-west-3'));
 
@@ -210,7 +210,7 @@ test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for kno
     'USD',
   );
 
-  assert.equal(rdsCost.estimatedMonthlyCost, 15);
+  assert.equal(rdsCost.estimatedMonthlyCost, 17.85);
   assert.ok(rdsCost.note.includes('(rds)'));
 
   const cacheCost = estimateServiceMonthlyProductionCost(
@@ -222,7 +222,7 @@ test('estimateServiceMonthlyProductionCost uses AWS eu-west-3 references for kno
     'USD',
   );
 
-  assert.equal(cacheCost.estimatedMonthlyCost, 13);
+  assert.equal(cacheCost.estimatedMonthlyCost, 16.66);
   assert.ok(cacheCost.note.includes('(elasticache)'));
 });
 
@@ -254,7 +254,7 @@ test('estimateServiceMonthlyProductionCost supports Azure and GCP provider prici
     },
     'EUR',
   );
-  assert.equal(azureVmCost.estimatedMonthlyCost, 8.5);
+  assert.equal(azureVmCost.estimatedMonthlyCost, 8.46);
   assert.equal(azureVmCost.costSource, 'cloud_type_reference');
   assert.ok(azureVmCost.note.toLowerCase().includes('azure'));
 
@@ -269,7 +269,7 @@ test('estimateServiceMonthlyProductionCost supports Azure and GCP provider prici
     },
     'EUR',
   );
-  assert.equal(gcpComputeCost.estimatedMonthlyCost, 7.5);
+  assert.equal(gcpComputeCost.estimatedMonthlyCost, 6.15);
   assert.equal(gcpComputeCost.costSource, 'cloud_type_reference');
   assert.ok(gcpComputeCost.note.toLowerCase().includes('gcp'));
 });

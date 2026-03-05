@@ -1,0 +1,60 @@
+{
+  "_meta": {
+    "lastUpdated": "2025-03-01",
+    "source": "GCP public pricing, on-demand",
+    "defaultRegion": "europe-west1",
+    "currency": "USD",
+    "assumptions": "On-demand prices without CUD. 730h/month."
+  },
+  "regions": {
+    "europe-west1": {
+      "computeEngine": {
+        "e2-micro": 6.69,
+        "e2-small": 13.37,
+        "e2-medium": 26.74,
+        "e2-standard-2": 53.49,
+        "e2-standard-4": 106.98,
+        "e2-standard-8": 213.96,
+        "n2-standard-2": 68.24,
+        "n2-standard-4": 136.48,
+        "n2-standard-8": 272.96,
+        "n2d-standard-2": 58.72,
+        "n2d-standard-4": 117.44,
+        "c2-standard-4": 142.38,
+        "c2-standard-8": 284.76
+      },
+      "cloudSQL": {
+        "db-f1-micro": 9.52,
+        "db-g1-small": 28.57,
+        "db-custom-1-3840": 53.49,
+        "db-custom-2-7680": 106.98,
+        "db-custom-4-15360": 213.96,
+        "db-custom-8-30720": 427.91
+      },
+      "memorystore": {
+        "M1_1GB": 32.53,
+        "M1_2GB": 65.07,
+        "M1_5GB": 162.66,
+        "M2_1GB": 65.07,
+        "M2_5GB": 325.33
+      }
+    },
+    "europe-west9": {
+      "computeEngine": {
+        "e2-micro": 7.03,
+        "e2-small": 14.05,
+        "e2-medium": 28.10,
+        "e2-standard-2": 56.19,
+        "e2-standard-4": 112.38,
+        "n2-standard-2": 71.66,
+        "n2-standard-4": 143.31
+      },
+      "cloudSQL": {
+        "db-f1-micro": 10.00,
+        "db-g1-small": 30.00,
+        "db-custom-1-3840": 56.19,
+        "db-custom-2-7680": 112.38
+      }
+    }
+  }
+}

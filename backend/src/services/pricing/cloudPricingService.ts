@@ -2,10 +2,7 @@ import type { SupportedCurrency } from '../../constants/market-financial-data.js
 import { SUPPORTED_CURRENCIES } from '../../constants/market-financial-data.js';
 import { appLogger } from '../../utils/logger.js';
 import { CurrencyService } from '../currency.service.js';
-import {
-  lookupEstimatedMonthlyReference,
-  resolveServiceResolution,
-} from '../dr-recommendation-engine/recommendationEngine.js';
+import { resolveCloudServiceResolution } from '../dr-recommendation-engine/cloudServiceMapping.js';
 import { asRecord, readPositiveNumberFromKeys, readStringFromKeys } from '../dr-recommendation-engine/metadataUtils.js';
 import type { CloudServiceResolution } from '../dr-recommendation-engine/types.js';
 import {
@@ -25,10 +22,12 @@ import {
   type PricingResult,
   type PricingSource,
 } from './pricingTypes.js';
+import { lookupStaticPrice } from './pricingLoader.js';
 
 type CloudPricingInput = {
   nodeType: string;
   provider?: string | null;
+  region?: string | null;
   metadata?: unknown;
   preferredCurrency?: unknown;
 };
@@ -121,6 +120,117 @@ function resolveGcpZone(metadata: Record<string, unknown>): string {
   return zone || 'europe-west1-b';
 }
 
+function resolveGcpRegion(metadata: Record<string, unknown>): string {
+  const explicitRegion = readStringFromKeys(metadata, ['region']);
+  if (explicitRegion) return explicitRegion;
+  const zone = resolveGcpZone(metadata);
+  return zone.replace(/-[a-z]$/, '');
+}
+
+function normalizeInstanceToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const trimmed = String(value).trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.includes('/') ? trimmed.split('/').pop() || trimmed : trimmed;
+  return cleaned.trim() || null;
+}
+
+function normalizeRegionToken(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const normalized = String(value).trim().toLowerCase();
+  if (!normalized) return null;
+  return normalized.replace(/-[a-z]$/, '');
+}
+
+function resolutionRegion(resolution: CloudServiceResolution): string | undefined {
+  const metadata = resolution.metadata;
+  if (resolution.provider === 'aws') return resolveAwsRegion(metadata);
+  if (resolution.provider === 'azure') return resolveAzureRegion(metadata);
+  if (resolution.provider === 'gcp') return resolveGcpRegion(metadata);
+  return undefined;
+}
+
+function resolutionInstanceType(resolution: CloudServiceResolution): string | null {
+  const metadata = resolution.metadata;
+  if (resolution.provider === 'aws') {
+    if (resolution.kind === 'ec2') {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['instanceType', 'instance_type', 'vmSize']),
+      );
+    }
+    if (resolution.kind === 'rds') {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['dbInstanceClass', 'instanceClass', 'instanceType']),
+      );
+    }
+    if (resolution.kind === 'elasticache') {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['cacheNodeType', 'instanceType', 'nodeType']),
+      );
+    }
+    return normalizeInstanceToken(
+      readStringFromKeys(metadata, ['instanceType', 'dbInstanceClass', 'cacheNodeType', 'tier']),
+    );
+  }
+
+  if (resolution.provider === 'azure') {
+    if (resolution.kind === 'vm' || resolution.kind === 'virtualMachineScaleSet') {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['vmSize', 'armSkuName', 'skuName', 'instanceType']),
+      );
+    }
+    if (
+      resolution.kind === 'sqlDatabase' ||
+      resolution.kind === 'postgresqlFlexible' ||
+      resolution.kind === 'mysqlFlexible'
+    ) {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['tier', 'skuName', 'sku', 'serviceObjectiveName', 'currentServiceObjectiveName']),
+      );
+    }
+    if (resolution.kind === 'redis') {
+      return normalizeInstanceToken(readStringFromKeys(metadata, ['skuName', 'sku', 'tier']));
+    }
+    return normalizeInstanceToken(
+      readStringFromKeys(metadata, ['instanceType', 'vmSize', 'skuName', 'tier']),
+    );
+  }
+
+  if (resolution.provider === 'gcp') {
+    if (resolution.kind === 'computeEngine') {
+      return normalizeInstanceToken(
+        readStringFromKeys(metadata, ['machineType', 'instanceType', 'tier']),
+      );
+    }
+    if (resolution.kind === 'cloudSQL') {
+      return normalizeInstanceToken(readStringFromKeys(metadata, ['tier', 'instanceType']));
+    }
+    if (resolution.kind === 'memorystore') {
+      return normalizeInstanceToken(readStringFromKeys(metadata, ['tier', 'nodeType', 'sku']));
+    }
+    return normalizeInstanceToken(
+      readStringFromKeys(metadata, ['instanceType', 'machineType', 'tier']),
+    );
+  }
+
+  return normalizeInstanceToken(
+    readStringFromKeys(metadata, ['instanceType', 'tier', 'skuName']),
+  );
+}
+
+function isResilientByDesign(resolution: CloudServiceResolution): boolean {
+  if (resolution.provider === 'aws') {
+    return ['lambda', 'sqs', 'sns', 'alb', 'apiGateway'].includes(resolution.kind);
+  }
+  if (resolution.provider === 'azure') {
+    return resolution.kind === 'functions';
+  }
+  if (resolution.provider === 'gcp') {
+    return resolution.kind === 'cloudFunctions';
+  }
+  return false;
+}
+
 function resolveObservedMonthlyCostUsd(metadata: Record<string, unknown>): number | null {
   const cloudCost = asRecord(metadata.cloudCost);
   const monthlyUsd = readPositiveNumberFromKeys(metadata, [
@@ -146,6 +256,83 @@ function resolveObservedMonthlyCostUsd(metadata: Record<string, unknown>): numbe
   if (monthlyEur == null) return null;
 
   return CurrencyService.convertAmount(monthlyEur, 'EUR', 'USD');
+}
+
+function normalizeNodeType(nodeType: string): string {
+  return String(nodeType || '').trim().toUpperCase();
+}
+
+function firstPositive(
+  metadata: Record<string, unknown>,
+  keys: string[],
+): number | null {
+  for (const key of keys) {
+    const numeric = toPositiveNumber(metadata[key]);
+    if (numeric != null) return numeric;
+  }
+  return null;
+}
+
+function estimateByCategoryMonthlyUsd(
+  resolution: CloudServiceResolution,
+): { monthlyCostUsd: number; note: string } {
+  const metadata = resolution.metadata;
+  const nodeType = normalizeNodeType(resolution.nodeType);
+  const vcpus = firstPositive(metadata, ['vCPUs', 'vcpu', 'cpu', 'cpuCount']);
+  const memoryGb = firstPositive(metadata, ['memoryGB', 'memoryGb', 'memory', 'memoryGiB']);
+  if (vcpus != null && memoryGb != null) {
+    const hourlyUsd = vcpus * 0.04 + memoryGb * 0.005;
+    return {
+      monthlyCostUsd: Number((hourlyUsd * 730).toFixed(4)),
+      note: 'Category estimate from CPU/RAM metadata',
+    };
+  }
+
+  const memoryMb = firstPositive(metadata, ['memoryMB', 'memoryMb']);
+  if (memoryMb != null) {
+    return {
+      monthlyCostUsd: Number((((memoryMb / 1024) * 0.05) * 730).toFixed(4)),
+      note: 'Category estimate from memory metadata',
+    };
+  }
+
+  const storageGb = firstPositive(metadata, ['storageGB', 'storageGb', 'sizeGB', 'sizeGb']);
+  if (storageGb != null && (nodeType === 'STORAGE' || resolution.category === 'storage')) {
+    return {
+      monthlyCostUsd: Number((storageGb * 0.023).toFixed(4)),
+      note: 'Category estimate from storage metadata',
+    };
+  }
+
+  const defaultByTypeUsd: Record<string, number> = {
+    VM: 43,
+    PHYSICAL_SERVER: 43,
+    APPLICATION: 43,
+    MICROSERVICE: 43,
+    CONTAINER: 65,
+    KUBERNETES_CLUSTER: 65,
+    KUBERNETES_SERVICE: 65,
+    KUBERNETES_POD: 65,
+    DATABASE: 87,
+    CACHE: 54,
+    SEARCH: 217,
+    STORAGE: 11,
+    OBJECT_STORAGE: 11,
+    FILE_STORAGE: 11,
+    SERVERLESS: 0,
+    MESSAGE_QUEUE: 0,
+    QUEUE: 0,
+    TOPIC: 0,
+    LOAD_BALANCER: 0,
+    CDN: 0,
+    DNS: 0,
+  };
+
+  const amount = defaultByTypeUsd[nodeType] ?? 33;
+  return {
+    monthlyCostUsd: amount,
+    note: `Category estimate fallback for nodeType=${nodeType || 'UNKNOWN'}`,
+  };
 }
 
 function isDemoPricingContext(metadata: Record<string, unknown>): boolean {
@@ -252,21 +439,38 @@ export class CloudPricingService {
     };
   }
 
+  private buildCacheKey(
+    resolution: CloudServiceResolution,
+    currency: SupportedCurrency,
+    explicitRegion?: string | null,
+  ): string {
+    const instanceType = resolutionInstanceType(resolution) || resolution.kind || 'unknown';
+    const region =
+      normalizeRegionToken(explicitRegion || undefined) ||
+      normalizeRegionToken(resolutionRegion(resolution)) ||
+      'default';
+    return `${resolution.provider}:${instanceType}:${region}:${currency}`;
+  }
+
   async getResourceMonthlyCost(input: CloudPricingInput): Promise<PricingResult> {
     const currency = normalizeCurrency(input.preferredCurrency);
     const metadata = asRecord(input.metadata);
-    const resolution = resolveServiceResolution({
+    const resolution = resolveCloudServiceResolution({
       nodeType: input.nodeType,
       provider: input.provider ?? null,
       metadata,
     });
+    const instanceType = resolutionInstanceType(resolution);
+    const region = normalizeRegionToken(input.region ?? null) || resolutionRegion(resolution);
 
-    const cacheKey = `${resolution.provider}:${resolution.kind}:${currency}:${JSON.stringify(metadata)}`;
+    const cacheKey = this.buildCacheKey(resolution, currency, region);
     const now = Date.now();
     const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > now) {
-      appLogger.info('financial.live_pricing.cache_hit', {
+      appLogger.debug('financial.live_pricing.cache_hit', {
         provider: resolution.provider,
+        instanceType: instanceType || null,
+        region: region || null,
         kind: resolution.kind,
         source: cached.result.source,
       });
@@ -276,6 +480,7 @@ export class CloudPricingService {
     if (process.env.BUILD_TARGET === 'internal' && isDemoPricingContext(metadata)) {
       const fallback = this.getStaticFallback(resolution, currency, {
         noteOverride: 'Stronghold demo pricing table (live pricing disabled)',
+        ...(region ? { regionOverride: region } : {}),
       });
       this.cache.set(cacheKey, { result: fallback, expiresAt: now + this.cacheTtlMs });
       return fallback;
@@ -301,19 +506,16 @@ export class CloudPricingService {
 
     let fallbackReason: LivePricingFallbackReason = 'no_live_match';
     try {
-      appLogger.info('financial.live_pricing.fetch_attempt', {
-        provider: resolution.provider,
-        kind: resolution.kind,
-        metadataKeys: metadataDebugKeys(metadata),
-      });
       const liveMonthlyCostUsd = await withTimeout(
         this.fetchLiveMonthlyCostUsd(resolution),
         this.requestTimeoutMs,
       );
-      if (liveMonthlyCostUsd != null) {
+      if (liveMonthlyCostUsd != null && liveMonthlyCostUsd > 0) {
         appLogger.info('financial.live_pricing.fetch_success', {
           provider: resolution.provider,
           kind: resolution.kind,
+          instanceType: instanceType || null,
+          region: region || null,
           monthlyCostUsd: Number(liveMonthlyCostUsd.toFixed(4)),
         });
         appLogger.info('financial.live_pricing.source.api_live', {
@@ -325,39 +527,66 @@ export class CloudPricingService {
           monthlyCostUsd: liveMonthlyCostUsd,
           source: 'pricing-api',
           currency,
-          confidence: 0.88,
+          confidence: 0.9,
           note: 'Live cloud pricing API',
         });
         this.cache.set(cacheKey, { result, expiresAt: now + this.cacheTtlMs });
         return result;
       }
-      appLogger.warn('financial.live_pricing.no_live_match', {
+      appLogger.debug('financial.live_pricing.fallback_level2_to_level3', {
         provider: resolution.provider,
         kind: resolution.kind,
+        instanceType: instanceType || null,
+        region: region || null,
+        reason: liveMonthlyCostUsd == null ? 'no_live_match' : 'live_price_zero',
         metadataKeys: metadataDebugKeys(metadata),
       });
     } catch (error) {
       fallbackReason = 'error';
+      appLogger.debug('financial.live_pricing.fallback_level2_to_level3', {
+        provider: resolution.provider,
+        kind: resolution.kind,
+        instanceType: instanceType || null,
+        region: region || null,
+        reason: error instanceof Error ? error.message : 'unknown_error',
+      });
       appLogger.warn('financial.live_pricing.unavailable', {
         provider: resolution.provider,
         kind: resolution.kind,
+        instanceType: instanceType || null,
+        region: region || null,
         reason: error instanceof Error ? error.message : 'unknown_error',
       });
     }
 
-    const fallback = this.getStaticFallback(resolution, currency);
+    const fallback = this.getStaticFallback(resolution, currency, {
+      ...(region ? { regionOverride: region } : {}),
+    });
     appLogger.info('financial.live_pricing.fallback_static', {
       provider: resolution.provider,
       kind: resolution.kind,
+      instanceType: instanceType || null,
+      region: region || null,
       note: fallback.note,
+      source: fallback.source,
       fallbackReason,
     });
     appLogger.info('financial.live_pricing.source.static', {
       provider: resolution.provider,
       kind: resolution.kind,
       monthlyCostUsd: Number(fallback.monthlyCostUsd.toFixed(4)),
+      source: fallback.source,
       fallbackReason,
     });
+    if (fallback.monthlyCost <= 0 && !isResilientByDesign(resolution)) {
+      appLogger.warn('financial.live_pricing.invariant_zero_cost', {
+        provider: resolution.provider,
+        kind: resolution.kind,
+        instanceType: instanceType || null,
+        region: region || null,
+        source: fallback.source,
+      });
+    }
     this.cache.set(cacheKey, { result: fallback, expiresAt: now + this.cacheTtlMs });
     return fallback;
   }
@@ -769,32 +998,70 @@ export class CloudPricingService {
     currency: SupportedCurrency,
     options?: {
       noteOverride?: string;
+      regionOverride?: string;
     },
   ): PricingResult {
-    const staticEstimate = lookupEstimatedMonthlyReference(resolution);
-    if (staticEstimate) {
-      const monthlyCostUsd = CurrencyService.convertAmount(
-        staticEstimate.amount,
-        staticEstimate.currency,
-        'USD',
-      );
-      return buildPricingResult({
-        monthlyCostUsd,
-        source: 'static-table',
-        currency,
-        confidence: 0.6,
-        note: options?.noteOverride ?? staticEstimate.source,
+    const instanceType = resolutionInstanceType(resolution);
+    const region = normalizeRegionToken(options?.regionOverride) || resolutionRegion(resolution);
+
+    if (instanceType) {
+      const staticLookup = lookupStaticPrice(resolution.provider, instanceType, region);
+      if (staticLookup && staticLookup.priceUSD > 0) {
+        if (staticLookup.matchType === 'family-fallback') {
+          appLogger.debug('financial.live_pricing.fallback_level3_to_level4', {
+            provider: resolution.provider,
+            kind: resolution.kind,
+            instanceType,
+            region: region || null,
+            matchedRegion: staticLookup.matchedRegion,
+            category: staticLookup.category,
+          });
+        }
+
+        const source: PricingSource =
+          staticLookup.matchType === 'exact' ? 'static-table' : 'family-estimate';
+        const confidence = staticLookup.matchType === 'exact' ? 0.75 : 0.6;
+        return buildPricingResult({
+          monthlyCostUsd: staticLookup.priceUSD,
+          source,
+          currency,
+          confidence,
+          note:
+            options?.noteOverride ??
+            `Static ${staticLookup.matchType} (${staticLookup.category}, ${staticLookup.matchedRegion})`,
+        });
+      }
+    }
+
+    appLogger.warn('financial.live_pricing.fallback_level4_to_level5', {
+      provider: resolution.provider,
+      kind: resolution.kind,
+      instanceType: instanceType || null,
+      region: region || null,
+    });
+
+    const categoryEstimate = estimateByCategoryMonthlyUsd(resolution);
+    const resilientByDesign = isResilientByDesign(resolution);
+    const monthlyCostUsd =
+      categoryEstimate.monthlyCostUsd > 0 || resilientByDesign
+        ? Number(categoryEstimate.monthlyCostUsd.toFixed(4))
+        : 0.01;
+
+    if (monthlyCostUsd <= 0 && !resilientByDesign) {
+      appLogger.warn('financial.live_pricing.category_estimate_zero', {
+        provider: resolution.provider,
+        kind: resolution.kind,
+        instanceType: instanceType || null,
+        region: region || null,
       });
     }
 
-    // Ultimate deterministic fallback for unknown services.
-    const fallbackUsd = toPositiveNumber(process.env.DEFAULT_MONTHLY_COST_USD) ?? 50;
     return buildPricingResult({
-      monthlyCostUsd: fallbackUsd,
-      source: 'static-table',
+      monthlyCostUsd,
+      source: 'category-estimate',
       currency,
-      confidence: 0.6,
-      note: options?.noteOverride ?? 'Static fallback default',
+      confidence: 0.4,
+      note: options?.noteOverride ?? categoryEstimate.note,
     });
   }
 }

@@ -698,20 +698,16 @@ export async function estimateServiceMonthlyProductionCostAsync(
     preferredCurrency: currency,
   });
 
-  if (pricing.monthlyCost > 0 || pricing.source === 'static-table') {
-    return {
-      estimatedMonthlyCost: roundMoney(pricing.monthlyCost),
-      costSource: 'cloud_type_reference',
-      pricingSource: pricing.source,
-      pricingSourceLabel: pricing.sourceLabel,
-      confidence: pricing.confidence,
-      currency,
-      note: pricing.note,
-      sourceReference: pricing.note,
-    };
-  }
-
-  return estimateServiceMonthlyProductionCost(node, currency);
+  return {
+    estimatedMonthlyCost: roundMoney(pricing.monthlyCost),
+    costSource: 'cloud_type_reference',
+    pricingSource: pricing.source,
+    pricingSourceLabel: pricing.sourceLabel,
+    confidence: pricing.confidence,
+    currency,
+    note: pricing.note,
+    sourceReference: pricing.note,
+  };
 }
 
 export function estimateServiceMonthlyProductionCost(

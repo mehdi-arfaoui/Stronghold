@@ -1,0 +1,142 @@
+{
+  "_meta": {
+    "lastUpdated": "2025-03-01",
+    "source": "AWS public pricing, on-demand, Linux",
+    "defaultRegion": "eu-west-3",
+    "currency": "USD",
+    "assumptions": "On-demand prices without RI or Savings Plans. 730h/month. European regions."
+  },
+  "regions": {
+    "eu-west-3": {
+      "ec2": {
+        "t3.nano": 5.10,
+        "t3.micro": 10.21,
+        "t3.small": 20.41,
+        "t3.medium": 40.82,
+        "t3.large": 81.63,
+        "t3.xlarge": 163.26,
+        "t3.2xlarge": 326.52,
+        "t3a.nano": 4.59,
+        "t3a.micro": 9.17,
+        "t3a.small": 18.37,
+        "t3a.medium": 36.74,
+        "t3a.large": 73.48,
+        "t3a.xlarge": 146.95,
+        "m5.large": 95.22,
+        "m5.xlarge": 190.43,
+        "m5.2xlarge": 380.87,
+        "m5.4xlarge": 761.74,
+        "m6i.large": 95.22,
+        "m6i.xlarge": 190.43,
+        "m6i.2xlarge": 380.87,
+        "m6g.large": 85.70,
+        "m6g.xlarge": 171.39,
+        "m6g.2xlarge": 342.78,
+        "c5.large": 84.11,
+        "c5.xlarge": 168.22,
+        "c5.2xlarge": 336.43,
+        "c6i.large": 84.11,
+        "c6i.xlarge": 168.22,
+        "c6g.large": 75.70,
+        "c6g.xlarge": 151.40,
+        "r5.large": 125.37,
+        "r5.xlarge": 250.74,
+        "r5.2xlarge": 501.48,
+        "r6i.large": 125.37,
+        "r6i.xlarge": 250.74,
+        "r6g.large": 112.84,
+        "r6g.xlarge": 225.67,
+        "r6g.2xlarge": 451.33
+      },
+      "rds": {
+        "db.t3.micro": 17.85,
+        "db.t3.small": 35.71,
+        "db.t3.medium": 71.41,
+        "db.t3.large": 142.83,
+        "db.t4g.micro": 16.07,
+        "db.t4g.small": 32.13,
+        "db.t4g.medium": 64.27,
+        "db.t4g.large": 128.54,
+        "db.m5.large": 171.39,
+        "db.m5.xlarge": 342.78,
+        "db.m5.2xlarge": 685.57,
+        "db.m6g.large": 154.25,
+        "db.m6g.xlarge": 308.50,
+        "db.m6g.2xlarge": 617.01,
+        "db.r5.large": 228.52,
+        "db.r5.xlarge": 457.04,
+        "db.r5.2xlarge": 914.09,
+        "db.r6g.large": 205.67,
+        "db.r6g.xlarge": 411.34,
+        "db.r6g.2xlarge": 822.67,
+        "db.r6g.4xlarge": 1645.36
+      },
+      "elasticache": {
+        "cache.t3.micro": 16.66,
+        "cache.t3.small": 33.33,
+        "cache.t3.medium": 66.65,
+        "cache.m5.large": 157.89,
+        "cache.m5.xlarge": 315.78,
+        "cache.r5.large": 210.27,
+        "cache.r5.xlarge": 420.54,
+        "cache.r6g.large": 189.24,
+        "cache.r6g.xlarge": 378.49
+      },
+      "opensearch": {
+        "t3.small.search": 29.76,
+        "t3.medium.search": 59.51,
+        "r6g.large.search": 168.62,
+        "r6g.xlarge.search": 337.23,
+        "m6g.large.search": 146.12,
+        "m6g.xlarge.search": 292.25
+      }
+    },
+    "eu-west-1": {
+      "ec2": {
+        "t3.nano": 4.96,
+        "t3.micro": 9.93,
+        "t3.small": 19.86,
+        "t3.medium": 39.71,
+        "t3.large": 79.42,
+        "t3.xlarge": 158.85,
+        "t3.2xlarge": 317.69,
+        "m5.large": 92.71,
+        "m5.xlarge": 185.42,
+        "m5.2xlarge": 370.84,
+        "r5.large": 122.05,
+        "r5.xlarge": 244.10
+      },
+      "rds": {
+        "db.t3.micro": 17.37,
+        "db.t3.small": 34.75,
+        "db.t3.medium": 69.50,
+        "db.m5.large": 166.73,
+        "db.m5.xlarge": 333.45,
+        "db.r6g.large": 200.18,
+        "db.r6g.xlarge": 400.36
+      }
+    },
+    "us-east-1": {
+      "ec2": {
+        "t3.nano": 3.80,
+        "t3.micro": 7.59,
+        "t3.small": 15.18,
+        "t3.medium": 30.37,
+        "t3.large": 60.74,
+        "t3.xlarge": 121.47,
+        "m5.large": 70.08,
+        "m5.xlarge": 140.16,
+        "m5.2xlarge": 280.32
+      },
+      "rds": {
+        "db.t3.micro": 13.14,
+        "db.t3.small": 26.28,
+        "db.t3.medium": 52.56,
+        "db.m5.large": 126.29,
+        "db.m5.xlarge": 252.58,
+        "db.r6g.large": 151.55,
+        "db.r6g.xlarge": 303.10
+      }
+    }
+  }
+}

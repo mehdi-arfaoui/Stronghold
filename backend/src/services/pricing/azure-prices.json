@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "lastUpdated": "2025-03-01",
+    "source": "Azure Retail Prices API, on-demand, Linux",
+    "defaultRegion": "westeurope",
+    "currency": "USD",
+    "assumptions": "On-demand prices without RI. 730h/month."
+  },
+  "regions": {
+    "westeurope": {
+      "vm": {
+        "Standard_B1s": 9.20,
+        "Standard_B1ms": 18.41,
+        "Standard_B2s": 36.81,
+        "Standard_B2ms": 73.63,
+        "Standard_B4ms": 147.27,
+        "Standard_D2s_v5": 85.70,
+        "Standard_D4s_v5": 171.39,
+        "Standard_D8s_v5": 342.78,
+        "Standard_D2as_v5": 77.13,
+        "Standard_D4as_v5": 154.25,
+        "Standard_E2s_v5": 112.84,
+        "Standard_E4s_v5": 225.67,
+        "Standard_E8s_v5": 451.33,
+        "Standard_F2s_v2": 75.70,
+        "Standard_F4s_v2": 151.40
+      },
+      "sqlDatabase": {
+        "GP_S_Gen5_1": 47.61,
+        "GP_S_Gen5_2": 95.22,
+        "GP_S_Gen5_4": 190.43,
+        "GP_Gen5_2": 171.39,
+        "GP_Gen5_4": 342.78,
+        "GP_Gen5_8": 685.57,
+        "BC_Gen5_2": 342.78,
+        "BC_Gen5_4": 685.57
+      },
+      "postgresqlFlexible": {
+        "Standard_B1ms": 18.41,
+        "Standard_B2s": 36.81,
+        "Standard_D2s_v3": 85.70,
+        "Standard_D4s_v3": 171.39,
+        "Standard_E2s_v3": 112.84,
+        "Standard_E4s_v3": 225.67
+      },
+      "redis": {
+        "C0_Basic": 15.87,
+        "C1_Basic": 31.74,
+        "C0_Standard": 47.61,
+        "C1_Standard": 95.22,
+        "P1_Premium": 190.43,
+        "P2_Premium": 380.87
+      }
+    },
+    "francecentral": {
+      "vm": {
+        "Standard_B1s": 9.66,
+        "Standard_B1ms": 19.35,
+        "Standard_B2s": 38.69,
+        "Standard_D2s_v5": 90.01,
+        "Standard_D4s_v5": 180.02,
+        "Standard_E2s_v5": 118.48,
+        "Standard_E4s_v5": 236.97
+      }
+    }
+  }
+}

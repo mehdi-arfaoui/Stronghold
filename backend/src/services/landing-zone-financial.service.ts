@@ -723,6 +723,16 @@ export async function buildLandingZoneFinancialContext(
       },
       profile.currency,
     );
+    if (monthlyCostEstimate.estimatedMonthlyCost <= 0) {
+      appLogger.warn('landing_zone.pricing_invariant_violation', {
+        tenantId,
+        serviceId: recommendation.serviceId,
+        serviceName: identity.displayName,
+        nodeType,
+        provider,
+        pricingSource: monthlyCostEstimate.pricingSource,
+      });
+    }
 
     const criticality = normalizeCriticality(
       validatedProcess?.recoveryTier ?? recommendation.recoveryTier,

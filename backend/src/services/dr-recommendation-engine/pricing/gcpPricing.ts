@@ -1,3 +1,5 @@
+// @deprecated Replaced by JSON catalogs in backend/src/services/pricing/*.json.
+// Kept temporarily for backward compatibility with legacy tests.
 import {
   readPositiveNumberFromKeys,
   readStringFromKeys,

@@ -4,13 +4,14 @@ import type {
   IncidentProbabilityKey,
 } from '../../constants/dr-financial-reference-data.js';
 import { CurrencyService } from '../currency.service.js';
+import { cloudPricingService } from '../pricing/cloudPricingService.js';
+import type { PricingResult } from '../pricing/pricingTypes.js';
+import { lookupStaticPrice } from '../pricing/pricingLoader.js';
 import {
   resolveCloudProvider,
   resolveCloudServiceResolution,
 } from './cloudServiceMapping.js';
-import { lookupAwsEstimatedMonthlyUsd } from './pricing/awsPricing.js';
-import { lookupAzureEstimatedMonthlyEur } from './pricing/azurePricing.js';
-import { lookupGcpEstimatedMonthlyEur } from './pricing/gcpPricing.js';
+import { readStringFromKeys } from './metadataUtils.js';
 import { awsProviderAdapter } from './recommendations/awsRecommendations.js';
 import { azureProviderAdapter } from './recommendations/azureRecommendations.js';
 import { gcpProviderAdapter } from './recommendations/gcpRecommendations.js';
@@ -51,36 +52,33 @@ export function resolveServiceResolution(options: {
 export function lookupEstimatedMonthlyReference(
   resolution: CloudServiceResolution,
 ): EstimateReference | null {
-  if (resolution.provider === 'aws') {
-    const amount = lookupAwsEstimatedMonthlyUsd(resolution);
-    if (amount == null) return null;
+  if (resolution.provider === 'other') return null;
+
+  const metadata = resolution.metadata;
+  const rawRegion =
+    readStringFromKeys(metadata, ['region', 'location', 'zone', 'availabilityZone']) ||
+    undefined;
+  const region = rawRegion ? rawRegion.replace(/-[a-z]$/i, '') : undefined;
+  const candidates = [
+    readStringFromKeys(metadata, ['instanceType', 'instance_type', 'vmSize', 'machineType']),
+    readStringFromKeys(metadata, ['dbInstanceClass', 'instanceClass', 'tier']),
+    readStringFromKeys(metadata, ['cacheNodeType', 'nodeType', 'skuName', 'sku']),
+  ]
+    .filter((value): value is string => Boolean(value))
+    .map((value) => {
+      const segments = value.split('/');
+      return segments[segments.length - 1] || value;
+    });
+
+  for (const candidate of candidates) {
+    const staticPrice = lookupStaticPrice(resolution.provider, candidate, region);
+    if (!staticPrice || staticPrice.priceUSD <= 0) continue;
     return {
-      amount,
+      amount: staticPrice.priceUSD,
       currency: 'USD',
-      source: 'AWS public on-demand estimates (eu-west-3)',
+      source: `Static pricing catalog (${staticPrice.matchType}, ${staticPrice.matchedRegion})`,
     };
   }
-
-  if (resolution.provider === 'azure') {
-    const amount = lookupAzureEstimatedMonthlyEur(resolution);
-    if (amount == null) return null;
-    return {
-      amount,
-      currency: 'EUR',
-      source: 'Azure public retail estimates (West Europe/France Central)',
-    };
-  }
-
-  if (resolution.provider === 'gcp') {
-    const amount = lookupGcpEstimatedMonthlyEur(resolution);
-    if (amount == null) return null;
-    return {
-      amount,
-      currency: 'EUR',
-      source: 'GCP public pricing estimates (europe-west1/europe-west9)',
-    };
-  }
-
   return null;
 }
 
@@ -137,6 +135,20 @@ export function buildProviderServiceRecommendation(options: {
 
 export function normalizeCloudProvider(provider: string | null | undefined): CloudProvider {
   return resolveCloudProvider(provider);
+}
+
+export async function resolveRecommendationPricing(options: {
+  provider?: string | null;
+  nodeType: string;
+  metadata?: unknown;
+  preferredCurrency?: unknown;
+}): Promise<PricingResult> {
+  return cloudPricingService.getResourceMonthlyCost({
+    provider: options.provider ?? null,
+    nodeType: options.nodeType,
+    metadata: options.metadata,
+    preferredCurrency: options.preferredCurrency,
+  });
 }
 
 export type { CloudProvider, CloudServiceResolution } from './types.js';

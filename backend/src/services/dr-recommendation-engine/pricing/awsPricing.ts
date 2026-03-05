@@ -1,3 +1,5 @@
+// @deprecated Replaced by JSON catalogs in backend/src/services/pricing/*.json.
+// Kept temporarily for backward compatibility with legacy tests.
 import { AWS_PRICING_ESTIMATES_EU_WEST_3 } from '../../../constants/dr-financial-reference-data.js';
 import {
   readPositiveNumberFromKeys,
