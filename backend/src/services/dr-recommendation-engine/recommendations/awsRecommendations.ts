@@ -14,6 +14,7 @@ import {
   isMultiAzEnabled,
   readReplicaCount,
 } from './commonChecks.js';
+import { readPositiveNumberFromKeys, readStringFromKeys } from '../metadataUtils.js';
 
 function strongest(
   left: DrStrategyKey,
@@ -217,9 +218,13 @@ function buildAwsRecommendation(input: ServiceRecommendationBuildInput): Service
   const metadata = input.resolution.metadata;
 
   if (input.resolution.kind === 'ec2') {
+    const instanceType =
+      readStringFromKeys(metadata, ['instanceType', 'instance_type', 'vmSize']) || 'instance';
+    const availabilityZone =
+      readStringFromKeys(metadata, ['availabilityZone', 'availability_zone']) || 'AZ inconnue';
     if (!hasAwsAutoScalingGroup(metadata)) {
       const action =
-        'Creer un Auto Scaling Group avec min_size=2 et repartir les instances sur au moins 2 Availability Zones.';
+        `Deployer ${input.serviceName} (${instanceType}, ${availabilityZone}) dans un Auto Scaling Group min=2 sur 2+ Availability Zones.`;
       const resilienceImpact =
         'Supprime le SPOF instance/AZ et permet un redemarrage automatique en cas de panne.';
       return {
@@ -229,8 +234,12 @@ function buildAwsRecommendation(input: ServiceRecommendationBuildInput): Service
       };
     }
 
+    const currentZones = Math.max(
+      countKnownZones(metadata),
+      readPositiveNumberFromKeys(metadata, ['asgAZCount']) || 0,
+    );
     const action =
-      'Etendre la distribution de l Auto Scaling Group sur 2+ Availability Zones (sans changer la capacite cible).';
+      `Etendre l Auto Scaling Group de ${input.serviceName} sur 2+ Availability Zones (etat actuel: ${currentZones || 1} zone).`;
     const resilienceImpact =
       'Reduit le risque de panne liee a une seule AZ avec impact cout quasi nul.';
     return {
@@ -241,9 +250,15 @@ function buildAwsRecommendation(input: ServiceRecommendationBuildInput): Service
   }
 
   if (input.resolution.kind === 'rds' && !isMultiAzEnabled(metadata)) {
-    const action = `Activer l option Multi-AZ sur ${input.serviceName}.`;
+    const engine = readStringFromKeys(metadata, ['engine', 'databaseEngine']) || 'database';
+    const instanceClass =
+      readStringFromKeys(metadata, ['dbInstanceClass', 'instanceClass', 'instanceType']) || 'instance';
+    const availabilityZone =
+      readStringFromKeys(metadata, ['availabilityZone', 'availability_zone']) || 'AZ inconnue';
+    const action =
+      `Activer Multi-AZ sur ${input.serviceName} (RDS ${engine} ${instanceClass}, ${availabilityZone}).`;
     const resilienceImpact =
-      'AWS maintient un replica synchrone dans une autre AZ avec bascule automatique.';
+      'AWS maintient un replica synchrone dans une autre AZ avec bascule automatique (~60s).';
     return {
       action,
       resilienceImpact,
@@ -252,8 +267,10 @@ function buildAwsRecommendation(input: ServiceRecommendationBuildInput): Service
   }
 
   if (input.resolution.kind === 'elasticache' && readReplicaCount(metadata) <= 0) {
+    const cacheNodeType =
+      readStringFromKeys(metadata, ['cacheNodeType', 'instanceType', 'nodeType']) || 'cache node';
     const action =
-      `Migrer ${input.serviceName} vers un Replication Group ElastiCache avec au moins 1 replica dans une autre AZ.`;
+      `Ajouter un replica multi-AZ pour ${input.serviceName} (${cacheNodeType}).`;
     const resilienceImpact =
       'Permet un failover automatique en quelques secondes en cas de perte du noeud primaire.';
     return {

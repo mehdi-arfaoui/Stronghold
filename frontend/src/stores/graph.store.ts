@@ -1,11 +1,15 @@
 import { create } from 'zustand';
 import type { InfraNode, InfraEdge, NodeStatus } from '@/types/graph.types';
 import type { LayoutType } from '@/lib/graph-layout';
+import type { CriticalityFilter, DiscoveryDomain } from '@/lib/discovery-graph';
 
 interface GraphFilters {
   types: string[];
   providers: string[];
   regions: string[];
+  tiers: number[];
+  domains: DiscoveryDomain[];
+  criticality: CriticalityFilter;
   search: string;
 }
 
@@ -34,6 +38,9 @@ export const useGraphStore = create<GraphState>((set) => ({
     types: [],
     providers: [],
     regions: [],
+    tiers: [],
+    domains: [],
+    criticality: 'all',
     search: '',
   },
   nodeStatuses: new Map(),

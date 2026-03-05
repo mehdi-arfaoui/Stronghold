@@ -15,7 +15,6 @@ import {
 } from '../constants/dr-financial-reference-data.js';
 import { CurrencyService } from './currency.service.js';
 import {
-  buildProviderServiceRecommendation,
   convertEstimateToCurrency,
   lookupEstimatedMonthlyReference,
   resolveProviderFloorStrategy,
@@ -24,6 +23,11 @@ import {
   resolveServiceResolution,
   type CloudServiceResolution,
 } from './dr-recommendation-engine/recommendationEngine.js';
+import {
+  buildRecommendationRuleNode,
+  evaluatePrimaryRuleForNode,
+  isNodeResilientByDesign,
+} from './dr-recommendation-engine/rules/index.js';
 import { cloudPricingService } from './pricing/cloudPricingService.js';
 import type { PricingResult } from './pricing/pricingTypes.js';
 
@@ -103,6 +107,10 @@ export type ServiceSpecificRecommendation = {
   action: string;
   resilienceImpact: string;
   text: string;
+  requiresVerification?: boolean;
+  resilientByDesign?: boolean;
+  ruleId?: string;
+  estimatedCostDeltaMonthly?: number;
 };
 
 export type RecommendationRoiResult = {
@@ -1270,20 +1278,58 @@ export function buildServiceSpecificRecommendation(options: {
   metadata?: unknown;
   strategy: DrStrategyKey;
   monthlyDrCost: number;
+  baseMonthlyCost?: number;
   currency: SupportedCurrency;
+  nodeId?: string;
+  pricingSource?: string;
+  pricingConfidence?: number;
 }): ServiceSpecificRecommendation {
   const metadata = asMetadataRecord(options.metadata);
   const resolution = resolveCloudContext(options.nodeType, options.provider, metadata);
-  const monthlyLabel = formatMonthlyCost(options.monthlyDrCost, options.currency);
-  const providerSpecific = buildProviderServiceRecommendation({
-    serviceName: options.serviceName,
-    monthlyLabel,
-    resolution,
-    strategy: options.strategy,
+  const baseCostMonthly = Math.max(0, options.baseMonthlyCost ?? options.monthlyDrCost);
+  const ruleNode = buildRecommendationRuleNode({
+    id: options.nodeId || options.serviceName,
+    name: options.serviceName,
+    nodeType: options.nodeType,
+    provider: options.provider ?? null,
+    metadata,
   });
-  if (providerSpecific) {
-    return providerSpecific;
+  if (isNodeResilientByDesign(ruleNode)) {
+    const action = 'Aucune action recommandee.';
+    const resilienceImpact = 'Service resilient par conception.';
+    return {
+      action,
+      resilienceImpact,
+      text: `${action} ${resilienceImpact} Cout additionnel estime: ${formatMonthlyCost(0, options.currency)}.`,
+      resilientByDesign: true,
+      requiresVerification: false,
+      estimatedCostDeltaMonthly: 0,
+    };
   }
+
+  const evaluatedRule = evaluatePrimaryRuleForNode(
+    ruleNode,
+    baseCostMonthly,
+    options.pricingSource || 'cloudPricingService',
+    options.pricingConfidence ?? 1,
+  );
+  if (evaluatedRule) {
+    const costLabel = formatMonthlyCost(evaluatedRule.costDeltaMonthly, options.currency);
+    const verificationSuffix = evaluatedRule.result.requiresVerification
+      ? ' Verification des metadonnees requise.'
+      : '';
+    return {
+      action: evaluatedRule.result.action,
+      resilienceImpact: evaluatedRule.result.description,
+      text: `${evaluatedRule.result.action} ${evaluatedRule.result.description} Cout additionnel estime: ${costLabel}.${verificationSuffix}`,
+      requiresVerification: evaluatedRule.result.requiresVerification === true,
+      resilientByDesign: false,
+      ruleId: evaluatedRule.ruleId,
+      estimatedCostDeltaMonthly: evaluatedRule.costDeltaMonthly,
+    };
+  }
+
+  const monthlyLabel = formatMonthlyCost(options.monthlyDrCost, options.currency);
 
   if (
     resolution.category === 'serverless' ||

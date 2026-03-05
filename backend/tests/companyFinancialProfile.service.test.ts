@@ -10,6 +10,12 @@ import {
   selectDrStrategyForService,
   strategyTargetRtoMinutes,
 } from '../src/services/company-financial-profile.service.js';
+import {
+  buildRecommendationRuleNode,
+  evaluatePrimaryRuleForNode,
+  evaluateRulesForNode,
+  isNodeResilientByDesign,
+} from '../src/services/dr-recommendation-engine/rules/index.js';
 
 test('estimateServiceMonthlyProductionCost returns 0 DR infra cost for third-party services', () => {
   const cost = estimateServiceMonthlyProductionCost({
@@ -331,6 +337,74 @@ test('buildServiceSpecificRecommendation returns provider-specific Azure/GCP rem
     currency: 'EUR',
   });
   assert.ok(gcpRecommendation.text.includes('availability_type=REGIONAL'));
+});
+
+test('rules engine does not emit recommendation when protection is already configured', () => {
+  const protectedRds = buildRecommendationRuleNode({
+    id: 'node-rds-1',
+    name: 'orders-db',
+    nodeType: 'DATABASE',
+    provider: 'aws',
+    metadata: {
+      sourceType: 'RDS',
+      dbInstanceClass: 'db.t3.micro',
+      multi_az: true,
+    },
+  });
+
+  const recommendations = evaluateRulesForNode(protectedRds, 20, 'cloudPricingService', 1);
+  assert.equal(recommendations.length, 0);
+});
+
+test('rules engine sets requiresVerification when critical metadata is missing', () => {
+  const unknownS3 = buildRecommendationRuleNode({
+    id: 'node-s3-1',
+    name: 'archive-bucket',
+    nodeType: 'OBJECT_STORAGE',
+    provider: 'aws',
+    metadata: {
+      sourceType: 'S3',
+    },
+  });
+
+  const recommendation = evaluatePrimaryRuleForNode(unknownS3, 12, 'cloudPricingService', 1);
+  assert.ok(recommendation);
+  assert.equal(recommendation?.ruleId, 'aws-s3-cross-region-replication');
+  assert.equal(recommendation?.result.requiresVerification, true);
+});
+
+test('rules engine targets SQL geo replication for Azure SQL (not VM guidance)', () => {
+  const azureSql = buildRecommendationRuleNode({
+    id: 'node-azure-sql-1',
+    name: 'billing-sql',
+    nodeType: 'DATABASE',
+    provider: 'azure',
+    metadata: {
+      sourceType: 'azure_sql_database',
+      geoReplicaLocation: null,
+      hasGeoReplication: false,
+    },
+  });
+
+  const recommendation = evaluatePrimaryRuleForNode(azureSql, 80, 'cloudPricingService', 0.9);
+  assert.ok(recommendation);
+  assert.equal(recommendation?.ruleId, 'azure-sql-active-geo-replication');
+  assert.ok(!recommendation?.result.action.includes('VMSS'));
+});
+
+test('rules engine marks AWS Lambda as resilient by design', () => {
+  const lambdaNode = buildRecommendationRuleNode({
+    id: 'node-lambda-1',
+    name: 'image-resizer',
+    nodeType: 'SERVERLESS',
+    provider: 'aws',
+    metadata: {
+      sourceType: 'Lambda',
+    },
+  });
+
+  assert.equal(isNodeResilientByDesign(lambdaNode), true);
+  assert.equal(evaluateRulesForNode(lambdaNode, 2, 'cloudPricingService', 1).length, 0);
 });
 
 test('strategyTargetRtoMinutes uses strategy typical RTO values (not worst-case max)', () => {

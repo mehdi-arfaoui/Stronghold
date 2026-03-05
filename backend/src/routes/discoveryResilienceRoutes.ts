@@ -549,6 +549,8 @@ router.post('/cloud-scan', async (req: TenantRequest, res) => {
     const discoveredResources: DiscoveryConnectorResult['resources'] = [];
     const discoveredFlows: DiscoveryConnectorResult['flows'] = [];
     const warnings: string[] = [];
+    const enrichmentCredentials: Pick<DiscoveryCredentials, 'aws' | 'azure' | 'gcp'> = {};
+    const enrichmentRegions: { aws?: string; azure?: string; gcp?: string } = {};
     const providerSummaries: CloudScanProviderSummary[] = [];
     const providerErrors: CloudScanProviderError[] = [];
     const scannedProviders: string[] = [];
@@ -562,6 +564,17 @@ router.post('/cloud-scan', async (req: TenantRequest, res) => {
 
       try {
         const credentials = toDiscoveryCredentials(provider, providerConfig.credentials);
+        if (credentials.aws) {
+          enrichmentCredentials.aws = credentials.aws;
+          const awsRegion = providerConfig.regions[0] || credentials.aws.region || null;
+          if (awsRegion) enrichmentRegions.aws = awsRegion;
+        }
+        if (credentials.azure) {
+          enrichmentCredentials.azure = credentials.azure;
+        }
+        if (credentials.gcp) {
+          enrichmentCredentials.gcp = credentials.gcp;
+        }
         let connectorResult: DiscoveryConnectorResult;
 
         if (provider === 'aws') {
@@ -629,6 +642,16 @@ router.post('/cloud-scan', async (req: TenantRequest, res) => {
               postScanEnrichments: {
                 autoGenerateBia: false,
               },
+              ...(
+                enrichmentCredentials.aws || enrichmentCredentials.azure || enrichmentCredentials.gcp
+                  ? {
+                      metadataEnrichment: {
+                        credentials: enrichmentCredentials,
+                        ...(Object.keys(enrichmentRegions).length > 0 ? { regions: enrichmentRegions } : {}),
+                      },
+                    }
+                  : {}
+              ),
             }
           )
         : null;

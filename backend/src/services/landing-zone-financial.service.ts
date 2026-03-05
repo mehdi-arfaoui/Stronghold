@@ -35,7 +35,10 @@ import {
   partitionRecommendationsByAleCap,
 } from './landing-zone-cost-optimization.js';
 import { resolveServiceIdentity } from './service-identity.service.js';
-import { resolveServiceResolution } from './dr-recommendation-engine/recommendationEngine.js';
+import {
+  buildRecommendationRuleNode,
+  isNodeResilientByDesign as isNodeResilientByDesignRule,
+} from './dr-recommendation-engine/rules/index.js';
 
 export type LandingZoneRecommendationStatus = 'pending' | 'validated' | 'rejected';
 
@@ -71,6 +74,7 @@ export type LandingZoneFinancialRecommendation = {
   costSource: string;
   costSourceLabel: string;
   costConfidence: number;
+  roiReliable: boolean;
   roi: number | null;
   roiStatus: string;
   roiMessage: string;
@@ -130,6 +134,7 @@ export type LandingZoneFinancialSummary = {
   roiPercent: number | null;
   paybackMonths: number | null;
   paybackLabel: string;
+  financialProfileConfigured: boolean;
 };
 
 export type LandingZoneFinancialContext = {
@@ -187,6 +192,11 @@ type InternalRecommendationSeed = {
   requiresVerification: boolean;
 };
 
+type FinancialProfileForRoiVisibility = {
+  hourlyDowntimeCost: number | null;
+  customDowntimeCostPerHour: number | null;
+};
+
 function roundMoney(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.round(value * 100) / 100;
@@ -194,6 +204,17 @@ function roundMoney(value: number): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isFinancialProfileConfigured(
+  profile: FinancialProfileForRoiVisibility | null | undefined,
+): boolean {
+  const hourlyDowntimeCost = Number(profile?.hourlyDowntimeCost ?? 0);
+  if (Number.isFinite(hourlyDowntimeCost) && hourlyDowntimeCost > 0) {
+    return true;
+  }
+  const legacyHourlyCost = Number(profile?.customDowntimeCostPerHour ?? 0);
+  return Number.isFinite(legacyHourlyCost) && legacyHourlyCost > 0;
 }
 
 function normalizeRecommendationStatus(value: unknown): LandingZoneRecommendationStatus | null {
@@ -288,114 +309,19 @@ function resolveStrategyOverride(metadata: unknown): string | null {
   return null;
 }
 
-function hasMetadataValue(metadata: Record<string, unknown>, key: string): boolean {
-  const value = metadata[key];
-  if (value == null) return false;
-  if (typeof value === 'string') return value.trim().length > 0;
-  if (Array.isArray(value)) return value.length > 0;
-  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
-  return true;
-}
-
-function hasAnyMetadataValue(metadata: Record<string, unknown>, keys: string[]): boolean {
-  return keys.some((key) => hasMetadataValue(metadata, key));
-}
-
 function isServiceResilientByDesign(input: {
   nodeType: string;
   provider: string | null | undefined;
   metadata: Record<string, unknown>;
 }): boolean {
-  const nodeType = String(input.nodeType || '').toUpperCase();
-  const resolution = resolveServiceResolution({
-    nodeType,
+  const ruleNode = buildRecommendationRuleNode({
+    id: 'landing-zone-check',
+    name: 'landing-zone-check',
+    nodeType: input.nodeType,
     provider: input.provider ?? null,
     metadata: input.metadata,
   });
-
-  if (resolution.provider === 'aws') {
-    return ['lambda', 'sqs', 'sns', 'alb', 'apiGateway'].includes(resolution.kind);
-  }
-  if (resolution.provider === 'azure') {
-    return resolution.kind === 'functions' || nodeType === 'LOAD_BALANCER';
-  }
-  if (resolution.provider === 'gcp') {
-    return resolution.kind === 'cloudFunctions';
-  }
-  return false;
-}
-
-function requiresRecommendationVerification(input: {
-  nodeType: string;
-  provider: string | null | undefined;
-  metadata: Record<string, unknown>;
-}): boolean {
-  const resolution = resolveServiceResolution({
-    nodeType: String(input.nodeType || '').toUpperCase(),
-    provider: input.provider ?? null,
-    metadata: input.metadata,
-  });
-  const metadata = input.metadata;
-
-  if (resolution.provider === 'aws') {
-    if (resolution.kind === 'ec2') {
-      return !(
-        hasAnyMetadataValue(metadata, ['autoScalingGroupName', 'autoScalingGroup', 'asgName']) &&
-        hasAnyMetadataValue(metadata, ['asgMinSize', 'minSize']) &&
-        hasAnyMetadataValue(metadata, ['asgAZCount', 'availabilityZones'])
-      );
-    }
-    if (resolution.kind === 'rds') {
-      return !hasAnyMetadataValue(metadata, ['isMultiAZ', 'multiAZ', 'multiAz', 'multi_az']);
-    }
-    if (resolution.kind === 'elasticache') {
-      return !(
-        hasAnyMetadataValue(metadata, ['replicaCount', 'readReplicaCount']) &&
-        hasAnyMetadataValue(metadata, ['isMultiAZ', 'multiAZ', 'multiAz', 'multi_az'])
-      );
-    }
-    if (resolution.kind === 's3') {
-      return !(
-        hasAnyMetadataValue(metadata, ['replicationConfiguration']) &&
-        hasAnyMetadataValue(metadata, ['versioningStatus'])
-      );
-    }
-    if (resolution.kind === 'dynamodb') {
-      return !hasAnyMetadataValue(metadata, ['pointInTimeRecovery']);
-    }
-  }
-
-  if (resolution.provider === 'azure') {
-    if (resolution.kind === 'vm' || resolution.kind === 'virtualMachineScaleSet') {
-      return !hasAnyMetadataValue(metadata, ['vmScaleSet', 'vmssId', 'virtualMachineScaleSetId']);
-    }
-    if (resolution.kind === 'sqlDatabase') {
-      return !hasAnyMetadataValue(metadata, ['geoReplicaLocation', 'failoverGroupId']);
-    }
-    if (resolution.kind === 'postgresqlFlexible' || resolution.kind === 'mysqlFlexible') {
-      return !hasAnyMetadataValue(metadata, ['haMode', 'highAvailabilityMode', 'highAvailability']);
-    }
-    if (resolution.kind === 'storageAccount') {
-      return !hasAnyMetadataValue(metadata, ['replication', 'replicationType', 'skuName', 'sku']);
-    }
-  }
-
-  if (resolution.provider === 'gcp') {
-    if (resolution.kind === 'computeEngine') {
-      return !hasAnyMetadataValue(metadata, ['instanceGroupManager', 'managedInstanceGroup']);
-    }
-    if (resolution.kind === 'cloudSQL') {
-      return !hasAnyMetadataValue(metadata, ['availabilityType', 'settingsAvailabilityType']);
-    }
-    if (resolution.kind === 'memorystore') {
-      return !hasAnyMetadataValue(metadata, ['tier', 'redisTier']);
-    }
-    if (resolution.kind === 'cloudStorage') {
-      return !hasAnyMetadataValue(metadata, ['locationType', 'location_type']);
-    }
-  }
-
-  return false;
+  return isNodeResilientByDesignRule(ruleNode);
 }
 
 function normalizeDisplayKey(value: string): string {
@@ -558,6 +484,7 @@ async function resolveNodeCostsFromBusinessFlows(
 
 function buildDefaultContext(
   profile: Awaited<ReturnType<typeof resolveCompanyFinancialProfile>>,
+  financialProfileConfigured: boolean,
 ): LandingZoneFinancialContext {
   const financialProfileInput = toFinancialProfileInput(profile);
   const emptyAle = FinancialEngineService.calculateAnnualExpectedLoss(
@@ -591,6 +518,7 @@ function buildDefaultContext(
       roiPercent: null,
       paybackMonths: null,
       paybackLabel: 'Non rentable',
+      financialProfileConfigured,
     },
     recommendationInputs: [],
     roi: emptyRoi,
@@ -612,12 +540,22 @@ export async function buildLandingZoneFinancialContext(
     preferredCurrency?: unknown;
   },
 ): Promise<LandingZoneFinancialContext> {
-  const profile = await resolveCompanyFinancialProfile(prismaClient, tenantId, {
-    preferredCurrency: options?.preferredCurrency,
-  });
-  const graph = await GraphService.getGraph(prismaClient, tenantId);
+  const [profile, financialProfile, graph] = await Promise.all([
+    resolveCompanyFinancialProfile(prismaClient, tenantId, {
+      preferredCurrency: options?.preferredCurrency,
+    }),
+    prismaClient.organizationProfile.findUnique({
+      where: { tenantId },
+      select: {
+        hourlyDowntimeCost: true,
+        customDowntimeCostPerHour: true,
+      },
+    }),
+    GraphService.getGraph(prismaClient, tenantId),
+  ]);
+  const financialProfileConfigured = isFinancialProfileConfigured(financialProfile);
   if (graph.order === 0) {
-    return buildDefaultContext(profile);
+    return buildDefaultContext(profile, financialProfileConfigured);
   }
 
   const analysis = await analyzeFullGraph(graph);
@@ -706,12 +644,6 @@ export async function buildLandingZoneFinancialContext(
     ) {
       continue;
     }
-
-    const requiresVerification = requiresRecommendationVerification({
-      nodeType,
-      provider,
-      metadata,
-    });
 
     const monthlyCostEstimate = await estimateServiceMonthlyProductionCostAsync(
       {
@@ -806,8 +738,16 @@ export async function buildLandingZoneFinancialContext(
       metadata,
       strategy: effectiveStrategy,
       monthlyDrCost,
+      baseMonthlyCost: estimatedProductionMonthlyCost,
       currency: profile.currency,
+      nodeId: recommendation.serviceId,
+      pricingSource: monthlyCostEstimate.pricingSource,
+      pricingConfidence: monthlyCostEstimate.confidence,
     });
+    if (serviceSpecificRecommendation.resilientByDesign) {
+      continue;
+    }
+    const requiresVerification = serviceSpecificRecommendation.requiresVerification === true;
 
     recommendationSeeds.push({
       id: recommendation.serviceId,
@@ -1069,6 +1009,7 @@ export async function buildLandingZoneFinancialContext(
       costSource: seed.costSource,
       costSourceLabel: seed.costSourceLabel,
       costConfidence: seed.costConfidence,
+      roiReliable: financialProfileConfigured,
       roi: breakdown?.individualROI ?? null,
       roiStatus: breakdown?.roiStatus ?? (riskAvoidedAnnual > 0 ? 'rentable' : 'non_applicable'),
       roiMessage: breakdown?.roiMessage ?? (riskAvoidedAnnual > 0 ? 'Rentable' : 'Non applicable'),
@@ -1194,6 +1135,7 @@ export async function buildLandingZoneFinancialContext(
       roiPercent: roi.roiPercent,
       paybackMonths: roi.paybackMonths,
       paybackLabel: roi.paybackLabel,
+      financialProfileConfigured,
     },
     recommendationInputs: filteredRecommendationInputs,
     roi,

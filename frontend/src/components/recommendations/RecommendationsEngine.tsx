@@ -1,6 +1,7 @@
 ﻿import { memo, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Link } from 'react-router-dom';
 import {
   AlertTriangle,
   Check,
@@ -26,7 +27,11 @@ import { financialApi } from '@/api/financial.api';
 import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatCurrency } from '@/lib/formatters';
-import { resolveIdentityLabels } from '@/lib/serviceIdentity';
+import {
+  buildCriticalMetadataSummary,
+  buildRecommendationHeading,
+  buildRecommendationNarrative,
+} from './helpers';
 
 const CURRENCIES = ['EUR', 'USD', 'GBP', 'CHF'] as const;
 const ROI_DISPLAY_CAP_ABS = 5_000;
@@ -157,15 +162,15 @@ function formatRoiPercent(value: number | null | undefined): { label: string; to
 
 function mapCostSourceLabel(costSource: string | undefined): string {
   if (!costSource) return 'Table statique';
-  if (costSource === 'cost-explorer') return 'Prix reel';
-  if (costSource === 'pricing-api') return 'Prix API live';
+  if (costSource === 'cost-explorer') return 'Prix API cloud';
+  if (costSource === 'pricing-api') return 'Prix API cloud';
   if (costSource === 'static-table') return 'Table statique';
-  if (costSource === 'family-estimate') return 'Estimation famille';
-  if (costSource === 'category-estimate') return 'Estimation categorie';
+  if (costSource === 'family-estimate') return 'Reference famille';
+  if (costSource === 'category-estimate') return 'Reference categorie';
   if (costSource === 'user_override') return 'Override utilisateur';
   if (costSource === 'cloud_type_reference') return 'Reference cloud';
   if (costSource === 'criticality_fallback') return 'Fallback criticite';
-  return 'Estimation Stronghold';
+  return 'Source Stronghold';
 }
 
 function resolveCompactCostSourceLabel(input: {
@@ -178,6 +183,71 @@ function resolveCompactCostSourceLabel(input: {
   }
   if (!input.costSource) return null;
   return mapCostSourceLabel(input.costSource);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function readNumberValue(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value !== 'string') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function readNumberFromKeys(metadata: Record<string, unknown> | null, keys: readonly string[]): number | null {
+  if (!metadata) return null;
+  for (const key of keys) {
+    const value = readNumberValue(metadata[key]);
+    if (value != null) return value;
+  }
+  return null;
+}
+
+function resolvePriceSourceKind(costSource: string | undefined): string {
+  if (!costSource) return 'Statique';
+  if (costSource === 'pricing-api' || costSource === 'cost-explorer') return 'API';
+  if (costSource === 'user_override') return 'Manuelle';
+  return 'Statique';
+}
+
+function resolvePricingRegionLabel(recommendation: Recommendation): string {
+  const metadata = asRecord(recommendation.metadata);
+  const region =
+    readStringValue(recommendation.region) ??
+    readStringValue(metadata?.region) ??
+    readStringValue(metadata?.primaryRegion) ??
+    readStringValue(metadata?.awsRegion) ??
+    readStringValue(metadata?.location);
+  const availabilityZone =
+    readStringValue(recommendation.availabilityZone) ??
+    readStringValue(metadata?.availabilityZone) ??
+    readStringValue(metadata?.zone) ??
+    readStringValue(metadata?.az);
+  if (region && availabilityZone) {
+    return availabilityZone.toLowerCase().includes(region.toLowerCase())
+      ? availabilityZone
+      : `${region} / ${availabilityZone}`;
+  }
+  return region ?? availabilityZone ?? 'non precisee';
+}
+
+function resolveReplicationMonthlyCost(recommendation: Recommendation): number | null {
+  const metadata = asRecord(recommendation.metadata);
+  return readNumberFromKeys(metadata, [
+    'replicationMonthlyCost',
+    'crossRegionReplicationMonthlyCost',
+    'crossRegionReplicationCost',
+    'backupStorageMonthlyCost',
+  ]);
 }
 
 function roiToneClass(status: string | undefined, roi: number | null | undefined): string {
@@ -232,7 +302,6 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     return (CURRENCIES as readonly string[]).includes(resolved) ? resolved : 'EUR';
   }, [orgProfileQuery.data?.customCurrency]);
   const currency = currencyOverride ?? profileCurrency;
-  const isFinancialProfileConfigured = Boolean(orgProfileQuery.data?.isConfigured);
 
   const recommendationsQuery = useQuery({
     queryKey: ['recommendations', tenantScope],
@@ -243,6 +312,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     queryFn: async () => (await recommendationsApi.getSummary()).data,
     staleTime: 60_000,
   });
+  const isFinancialProfileConfigured =
+    recommendationsSummaryQuery.data?.financialProfileConfigured ??
+    Boolean(orgProfileQuery.data?.isConfigured);
 
   const baseRecommendations = recommendationsQuery.data ?? [];
   const roiPayloadDigest = useMemo(
@@ -299,6 +371,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
       const annualCost = recommendation.estimatedAnnualCost ?? breakdown?.annualCost ?? monthlyCost * 12;
       const annualSavings = recommendation.calculation?.riskAvoidedAnnual ?? breakdown?.riskReduction ?? 0;
       const individualROI = recommendation.roi ?? breakdown?.individualROI ?? null;
+      const roiReliable =
+        recommendation.roiReliable ??
+        recommendationsSummaryQuery.data?.financialProfileConfigured ??
+        isFinancialProfileConfigured;
       const paybackMonths = recommendation.paybackMonths ?? breakdown?.paybackMonths ?? null;
       const paybackLabel = recommendation.paybackLabel ?? breakdown?.paybackLabel;
       const resolvedPayback =
@@ -320,12 +396,18 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         annualCost,
         annualSavings,
         individualROI,
+        roiReliable,
         roiStatus: recommendation.roiStatus ?? breakdown?.roiStatus,
         roiMessage: recommendation.roiMessage ?? breakdown?.roiMessage,
         resolvedPayback,
       };
     });
-  }, [baseRecommendations, breakdownByRecommendationId]);
+  }, [
+    baseRecommendations,
+    breakdownByRecommendationId,
+    isFinancialProfileConfigured,
+    recommendationsSummaryQuery.data?.financialProfileConfigured,
+  ]);
 
   const totalDrBudget = useMemo(
     () => recommendationCards.reduce((sum, card) => sum + Math.max(0, card.annualCost || 0), 0),
@@ -363,7 +445,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   }, [maxAnnualCostInput, recommendationCards, roiSortDirection, selectedStrategies]);
 
   const { quickWinCards, otherRecommendationCards } = useMemo(() => {
-    if (!isFinancialProfileConfigured) {
+    const isRoiReliable = (card: (typeof filteredRecommendationCards)[number]) => card.roiReliable;
+
+    if (!filteredRecommendationCards.some((card) => isRoiReliable(card))) {
       return {
         quickWinCards: [] as typeof filteredRecommendationCards,
         otherRecommendationCards: filteredRecommendationCards,
@@ -371,6 +455,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     }
 
     const quickWins = filteredRecommendationCards.filter((card) => {
+      if (!isRoiReliable(card)) return false;
       const quickWinByBudget =
         recommendationRoiValue(card.individualROI) > 100 &&
         Math.max(0, card.annualCost) < totalDrBudget * 0.2;
@@ -385,7 +470,10 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         (card) => !quickWinIds.has(card.recommendation.id),
       ),
     };
-  }, [filteredRecommendationCards, isFinancialProfileConfigured, totalDrBudget]);
+  }, [filteredRecommendationCards, totalDrBudget]);
+  const hasRoiReliableCards = recommendationCards.some(
+    (card) => card.roiReliable,
+  );
 
   const summaryRiskAvoided =
     recommendationsSummaryQuery.data?.riskAvoidedAnnual ?? roiQuery.data?.riskReductionAmount ?? 0;
@@ -457,23 +545,38 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
   const renderRecommendationCard = (card: (typeof recommendationCards)[number], isQuickWin: boolean) => {
     const recommendation = card.recommendation;
-    const identity = resolveIdentityLabels(recommendation);
+    const heading = buildRecommendationHeading(recommendation);
+    const narrative = buildRecommendationNarrative(recommendation);
+    const criticalMetadata = buildCriticalMetadataSummary(recommendation);
     const individualRoiDisplay = formatRoiPercent(card.individualROI);
     const status = localStatuses[recommendation.id] ?? resolveRecommendationStatus(recommendation);
     const strategyLabel =
       STRATEGY_LABELS[card.strategyKey ?? ''] ??
       STRATEGY_LABELS[String(recommendation.strategy)] ??
       recommendation.strategy;
-    const costSourceBadge = resolveCompactCostSourceLabel({
+    const costSourceLabel = resolveCompactCostSourceLabel({
       costSource: recommendation.costSource,
       costSourceLabel: recommendation.costSourceLabel,
-    });
+    }) || mapCostSourceLabel(recommendation.costSource);
+    const costSourceKind = resolvePriceSourceKind(recommendation.costSource);
+    const pricingRegionLabel = resolvePricingRegionLabel(recommendation);
+    const replicationMonthlyCost = resolveReplicationMonthlyCost(recommendation);
     const isOutOfBudget = recommendation.withinBudgetCap === false;
-    const secondaryActionBadge = isQuickWin
-      ? 'Quick Win'
-      : Number(recommendation.tier || 0) === 1
-        ? 'Prioritaire'
+    const showBusinessMetrics = card.roiReliable;
+    const secondaryActionBadge = showBusinessMetrics
+      ? isQuickWin
+        ? 'Quick Win'
+        : Number(recommendation.tier || 0) === 1
+          ? 'Prioritaire'
+          : null
+      : null;
+    const primaryMonthlyCost =
+      recommendation.estimatedProductionMonthlyCost != null &&
+      Number.isFinite(recommendation.estimatedProductionMonthlyCost)
+        ? recommendation.estimatedProductionMonthlyCost
         : null;
+    const conversionAssumption =
+      currency === 'USD' ? 'Aucune conversion de devise.' : `Conversion USD vers ${currency}.`;
 
     return (
       <Card
@@ -484,15 +587,15 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         )}
       >
         <CardContent className="p-4 space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-start gap-2">
             <div className="min-w-[220px] flex-1">
               <ServiceIdentityLabel
-                primary={identity.primary}
-                secondary={identity.secondary}
+                primary={heading.title}
+                secondary={heading.subtitle}
                 className="font-semibold"
               />
             </div>
-            {strategyLabel && <Badge variant="outline">{strategyLabel}</Badge>}
+            {strategyLabel && <Badge variant="outline">Action: {strategyLabel}</Badge>}
             {secondaryActionBadge && (
               <Badge
                 className={cn(
@@ -506,7 +609,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             )}
           </div>
 
-          <p className="text-sm text-muted-foreground">{recommendation.description}</p>
+          <p className="text-sm text-muted-foreground">{narrative}</p>
           {recommendation.requiresVerification && (
             <p className="inline-flex items-center gap-1 text-xs text-amber-700">
               <AlertTriangle className="h-3.5 w-3.5" />
@@ -522,25 +625,27 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             </div>
           )}
 
-          <div className={cn('grid gap-3', isFinancialProfileConfigured ? 'sm:grid-cols-3' : 'sm:grid-cols-1')}>
+          <div className={cn('grid gap-3', showBusinessMetrics ? 'sm:grid-cols-3' : 'sm:grid-cols-1')}>
             <MiniMetric
               icon={DollarSign}
               label="Cout additionnel"
               value={
                 <span className="inline-flex flex-col items-start gap-1">
                   <span>{formatMonthlyCostLabel(card.monthlyCost, currency)}</span>
-                  {costSourceBadge && <span className="text-xs text-muted-foreground">Source prix: {costSourceBadge}</span>}
+                  <span className="text-xs text-muted-foreground">
+                    Source prix: {costSourceLabel}
+                  </span>
                 </span>
               }
             />
-            {isFinancialProfileConfigured && (
+            {showBusinessMetrics && (
               <MiniMetric
                 icon={TrendingUp}
                 label="Economie annuelle"
                 value={card.annualSavings < 0 ? 'Aucun gain - service deja protege' : money(card.annualSavings, currency)}
               />
             )}
-            {isFinancialProfileConfigured && (
+            {showBusinessMetrics && (
               <MiniMetric
                 icon={Clock}
                 label="ROI"
@@ -552,12 +657,15 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               />
             )}
           </div>
-          {!isFinancialProfileConfigured && (
-            <p className="text-xs text-muted-foreground">
-              Configurez votre profil financier pour afficher ROI, payback et economie annuelle.
-            </p>
+          {!showBusinessMetrics && (
+            <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+              <p>Configurez votre profil financier pour voir le ROI.</p>
+              <Button asChild size="sm" variant="outline" className="mt-2 h-7">
+                <Link to="/settings?tab=finance">Configurer le profil financier</Link>
+              </Button>
+            </div>
           )}
-          {isFinancialProfileConfigured && card.annualCost > 0 && (
+          {showBusinessMetrics && card.annualCost > 0 && (
             <div className="text-xs text-muted-foreground">
               Payback:{' '}
               <span className="font-medium">
@@ -567,11 +675,9 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           )}
 
           <div className="flex items-center justify-end gap-2">
-            <Badge
-              variant={status === 'validated' ? 'default' : status === 'rejected' ? 'secondary' : 'outline'}
-            >
-              {recommendationStatusLabel(status)}
-            </Badge>
+            <span className="mr-auto text-xs text-muted-foreground">
+              Statut: <span className="font-medium text-foreground">{recommendationStatusLabel(status)}</span>
+            </span>
             {status === 'pending' ? (
               <>
                 <Button
@@ -637,29 +743,60 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           </div>
           <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
             <summary className="cursor-pointer font-medium">Comment c'est calcule</summary>
-            <div className="mt-2 space-y-1 text-muted-foreground">
-              <p>
-                Ressource: {identity.primary}
-                {identity.secondary ? ` (${identity.secondary})` : ''}
-              </p>
-              <p>Source du prix: {costSourceBadge || mapCostSourceLabel(recommendation.costSource)}</p>
-              <p>Hypotheses: on-demand, sans RI/Savings Plans. Conversion USD vers EUR selon taux configure.</p>
-              <p>Cout DR additionnel: {money(card.monthlyCost, currency)}/mois ({money(card.annualCost, currency)}/an)</p>
-              {isFinancialProfileConfigured && recommendation.calculation ? (
-                <>
-                  <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
-                  <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
+            <div className="mt-3 space-y-3 text-muted-foreground">
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Hypotheses de prix</p>
+                <p>Source du prix: {costSourceLabel} ({costSourceKind})</p>
+                <p>
+                  Hypotheses: region {pricingRegionLabel}, on-demand, sans RI/Savings Plans. {conversionAssumption}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Cout</p>
+                <p>
+                  Instance primaire: {primaryMonthlyCost == null ? 'N/A' : `${money(primaryMonthlyCost, currency)}/mois`}
+                </p>
+                <p>Standby: {money(card.monthlyCost, currency)}/mois</p>
+                <p>
+                  Replication: {replicationMonthlyCost == null ? 'Inclus / non detaille' : `${money(replicationMonthlyCost, currency)}/mois`}
+                </p>
+                <p>
+                  Cout DR additionnel total: {money(card.monthlyCost, currency)}/mois ({money(card.annualCost, currency)}/an)
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">ROI</p>
+                {showBusinessMetrics && recommendation.calculation ? (
+                  <>
+                    <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
+                    <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
+                    <p>
+                      Risque annuel evite:{' '}
+                      {recommendation.calculation.riskAvoidedAnnual < 0
+                        ? 'Aucun gain - service deja protege'
+                        : money(recommendation.calculation.riskAvoidedAnnual, currency)}
+                    </p>
+                    <p>ROI: {individualRoiDisplay.label}</p>
+                  </>
+                ) : (
                   <p>
-                    Risque annuel evite:{' '}
-                    {recommendation.calculation.riskAvoidedAnnual < 0
-                      ? 'Aucun gain - service deja protege'
-                      : money(recommendation.calculation.riskAvoidedAnnual, currency)}
+                    Le ROI necessite un cout d indisponibilite horaire.{' '}
+                    <Link to="/settings?tab=finance" className="underline">
+                      Configurer le profil financier
+                    </Link>
+                    .
                   </p>
-                  <p>ROI: {individualRoiDisplay.label}</p>
-                </>
-              ) : (
-                <p>Activez le profil financier pour afficher le calcul ROI detaille.</p>
-              )}
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <p className="font-medium text-foreground">Metadonnees critiques utilisees</p>
+                {criticalMetadata.map((item) => (
+                  <p key={`${recommendation.id}-${item}`}>- {item}</p>
+                ))}
+              </div>
             </div>
           </details>
         </CardContent>
@@ -797,7 +934,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p>
                 {filteredRecommendationCards.length} recommandations affichées sur {recommendationCards.length} total
-                {isFinancialProfileConfigured ? ` (dont ${quickWinCards.length} Quick Wins)` : ''}
+                {hasRoiReliableCards ? ` (dont ${quickWinCards.length} Quick Wins)` : ''}
               </p>
               {filteredOutOfBudgetCount > 0 && (
                 <p className="text-muted-foreground">
@@ -868,9 +1005,12 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   .join(' | ') || 'N/A'}
               </p>
               {!isFinancialProfileConfigured && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  Configurez le profil financier pour afficher ROI, payback et economie annuelle.
-                </p>
+                <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                  <p>Profil financier non configure - ROI non disponible.</p>
+                  <Button asChild size="sm" variant="outline" className="mt-2 h-7">
+                    <Link to="/settings?tab=finance">Configurer le profil financier</Link>
+                  </Button>
+                </div>
               )}
               {recommendationsSummaryQuery.data?.financialDisclaimers?.strategy && (
                 <p className="text-xs text-muted-foreground mt-2">
@@ -949,7 +1089,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
       {!recommendationsQuery.isLoading && filteredRecommendationCards.length > 0 && (
         <div className="space-y-4">
-          {isFinancialProfileConfigured && (
+          {hasRoiReliableCards && (
             <section className="space-y-3 rounded-xl border border-green-200 bg-green-50/60 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -978,22 +1118,22 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <p className="text-sm font-semibold">
-                  {isFinancialProfileConfigured
+                  {hasRoiReliableCards
                     ? `Autres recommandations (${otherRecommendationCards.length})`
                     : `Recommandations (${filteredRecommendationCards.length})`}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {isFinancialProfileConfigured
+                  {hasRoiReliableCards
                     ? 'Mesures utiles à prioriser après les gains rapides.'
                     : 'Mesures de resilience priorisees selon votre contexte technique.'}
                 </p>
               </div>
             </div>
             <div className="space-y-3">
-              {(isFinancialProfileConfigured ? otherRecommendationCards.length : filteredRecommendationCards.length) === 0 ? (
+              {(hasRoiReliableCards ? otherRecommendationCards.length : filteredRecommendationCards.length) === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucune autre recommandation pour les filtres actifs.</p>
               ) : (
-                (isFinancialProfileConfigured ? otherRecommendationCards : filteredRecommendationCards)
+                (hasRoiReliableCards ? otherRecommendationCards : filteredRecommendationCards)
                   .map((card) => renderRecommendationCard(card, false))
               )}
             </div>

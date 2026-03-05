@@ -20,7 +20,7 @@ function staticFallback(currency: SupportedCurrency, usd = 7): PricingResult {
     monthlyCost: usd,
     monthlyCostUsd: usd,
     source: 'static-table',
-    sourceLabel: '[Estimation ≈]',
+    sourceLabel: 'Table statique',
     confidence: 0.6,
     currency,
     note: 'test static fallback',
@@ -70,7 +70,7 @@ test('CloudPricingService uses observed monthly cost before live API', async () 
   });
 
   assert.equal(result.source, 'cost-explorer');
-  assert.equal(result.sourceLabel, '[Prix reel ✓✓]');
+  assert.equal(result.sourceLabel, 'Prix reel');
   assert.equal(result.monthlyCostUsd, 123.45);
   assert.equal(result.confidence, 0.95);
   assert.equal(liveCalls, 0);
@@ -95,9 +95,9 @@ test('CloudPricingService uses live pricing API when observed cost is missing', 
   });
 
   assert.equal(result.source, 'pricing-api');
-  assert.equal(result.sourceLabel, '[Prix API ✓]');
+  assert.equal(result.sourceLabel, 'Prix API live');
   assert.equal(result.monthlyCostUsd, 33);
-  assert.equal(result.confidence, 0.88);
+  assert.equal(result.confidence, 0.9);
   assert.equal(staticCalls, 0);
 });
 
@@ -123,7 +123,7 @@ test('CloudPricingService falls back to static table when live pricing throws', 
   });
 
   assert.equal(result.source, 'static-table');
-  assert.equal(result.sourceLabel, '[Estimation ≈]');
+  assert.equal(result.sourceLabel, 'Table statique');
   assert.equal(result.monthlyCostUsd, 19);
   assert.equal(result.confidence, 0.6);
   assert.equal(staticCalls, 1);
@@ -153,7 +153,7 @@ test('CloudPricingService enforces timeout and falls back to static pricing', as
   const elapsedMs = Date.now() - startedAt;
 
   assert.equal(result.source, 'static-table');
-  assert.equal(result.sourceLabel, '[Estimation ≈]');
+  assert.equal(result.sourceLabel, 'Table statique');
   assert.equal(result.confidence, 0.6);
   assert.ok(elapsedMs < 150, `expected timeout fallback to be fast, got ${elapsedMs}ms`);
 });

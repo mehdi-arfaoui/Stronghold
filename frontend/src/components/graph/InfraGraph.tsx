@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import {
   ReactFlow,
   Controls,
@@ -16,6 +17,13 @@ import { NodeCard, type InfraNodeData } from './NodeCard';
 import { GraphMinimap } from './GraphMinimap';
 import { applyHierarchicalGrouping, augmentEdgesForGrouping, type GroupZoneData } from '@/lib/graph-grouping';
 import { applyLayout, type LayoutType } from '@/lib/graph-layout';
+import {
+  DISCOVERY_DOMAIN_LABELS,
+  buildDiscoveryNodeTooltip,
+  getDiscoveryNodeDomain,
+  resolveDiscoveryNodeLabels,
+  type DiscoveryDomain,
+} from '@/lib/discovery-graph';
 import {
   computeBlastRadius,
   getEdgeHoverLabel,
@@ -48,16 +56,20 @@ interface InfraGraphProps {
   fitViewNonce?: number;
   enableDependencyHighlight?: boolean;
   enableNetworkGrouping?: boolean;
+  domainGroupingEnabled?: boolean;
+  collapsedDomains?: DiscoveryDomain[];
 }
 
 const nodeTypes = {
   infraNode: NodeCard,
   groupZone: GroupZoneNode,
+  domainCluster: DomainClusterNode,
 };
 
 type FlowBuildResult = {
   nodes: Node[];
   edges: Edge[];
+  edgeLookup: Map<string, InfraEdge>;
 };
 
 const FIT_OPTIONS = {
@@ -66,6 +78,16 @@ const FIT_OPTIONS = {
   maxZoom: 1.5,
   minZoom: 0.1,
 };
+
+interface DomainClusterData {
+  label: string;
+  domain: DiscoveryDomain;
+  memberCount: number;
+  spofCount: number;
+  avgCriticality: number | null;
+  memberIds: string[];
+  collapsed: boolean;
+}
 
 function GroupZoneNode({ data }: NodeProps) {
   const groupData = (data as unknown as GroupZoneData | undefined) || { label: '', groupType: 'region', memberIds: [] };
@@ -78,6 +100,38 @@ function GroupZoneNode({ data }: NodeProps) {
   );
 }
 
+function DomainClusterNode({ data }: NodeProps) {
+  const cluster = (data as unknown as DomainClusterData | undefined) || {
+    label: 'Cluster',
+    domain: 'foundation' as DiscoveryDomain,
+    memberCount: 0,
+    spofCount: 0,
+    avgCriticality: null,
+    memberIds: [],
+    collapsed: true,
+  };
+  const avgCriticality =
+    typeof cluster.avgCriticality === 'number' && Number.isFinite(cluster.avgCriticality)
+      ? Math.round(cluster.avgCriticality)
+      : null;
+
+  return (
+    <div className="h-full w-full rounded-lg border-2 border-sky-500/50 bg-sky-500/10 px-3 py-2 shadow-sm">
+      <p className="truncate text-xs font-semibold uppercase tracking-wide text-sky-700">
+        {cluster.label}
+      </p>
+      <div className="mt-1 flex items-center gap-2 text-[11px] text-sky-900/90">
+        <span>{cluster.memberCount} noeuds</span>
+        <span>{cluster.spofCount} SPOF</span>
+        {avgCriticality != null && <span>Crit {avgCriticality}</span>}
+      </div>
+      <p className="mt-1 text-[10px] text-sky-900/70">
+        Vue pliee du domaine {DISCOVERY_DOMAIN_LABELS[cluster.domain] || cluster.domain}
+      </p>
+    </div>
+  );
+}
+
 function toFlowNode(
   node: InfraNode,
   statuses?: Map<string, NodeStatus>,
@@ -86,6 +140,7 @@ function toFlowNode(
   const metadata = node.metadata && typeof node.metadata === 'object'
     ? (node.metadata as Record<string, unknown>)
     : {};
+  const labels = resolveDiscoveryNodeLabels(node);
   const blastRatio = resolveBlastRatio(node);
   const size = getNodeSize(blastRatio);
   const overrides = getNodeDataOverrides?.(node) || {};
@@ -94,13 +149,7 @@ function toFlowNode(
       ? overrides.customOpacity
       : undefined;
   const disablePointerEvents = overrides.disablePointerEvents === true;
-  const displayName =
-    node.displayName ||
-    (typeof metadata.displayName === 'string' && metadata.displayName.trim().length > 0
-      ? metadata.displayName
-      : node.name) ||
-    node.id;
-  const technicalName = node.technicalName || node.name;
+  const tooltipText = buildDiscoveryNodeTooltip(node);
 
   return {
     ...((overrides.dimmed || disablePointerEvents) ? { draggable: false, selectable: false } : {}),
@@ -115,13 +164,15 @@ function toFlowNode(
       ...(disablePointerEvents ? { pointerEvents: 'none' } : {}),
     },
     data: {
-      label: displayName,
-      technicalLabel: technicalName !== displayName ? technicalName : undefined,
+      label: labels.shortLabel,
+      fullLabel: labels.fullLabel,
+      technicalLabel: labels.secondaryLabel || undefined,
       nodeType: node.type,
       nodeTypeLabel: getNodeServiceType(node),
       category: getNodeCategory(node),
       serviceType: getNodeServiceType(node),
       tier: getNodeTier(metadata),
+      domain: getDiscoveryNodeDomain(node),
       blastRatio,
       nodeWidth: size.width,
       nodeHeight: size.height,
@@ -131,8 +182,48 @@ function toFlowNode(
       isSPOF: node.isSPOF,
       status: statuses?.get(node.id) || 'healthy',
       criticality: node.criticality,
+      tooltipText,
       ...overrides,
     } satisfies InfraNodeData,
+  };
+}
+
+function toEdge(
+  edge: InfraEdge,
+  getEdgeStyleOverrides?: (edge: InfraEdge) => {
+    style?: CSSProperties;
+    animated?: boolean;
+    type?: Edge['type'];
+  },
+  weight = 1,
+  idOverride?: string,
+): Edge {
+  const override = getEdgeStyleOverrides?.(edge);
+  const baseStyle = getEdgeStyle(edge.type, edge.inferred);
+  const baseStrokeWidth = Number(
+    (baseStyle as Record<string, unknown> | undefined)?.strokeWidth ?? 1.5,
+  );
+  const bundledWidth = baseStrokeWidth + Math.min(2.5, Math.log2(weight + 1));
+
+  return {
+    ...(override?.animated !== undefined ? { animated: override.animated } : {}),
+    id: idOverride || edge.id,
+    source: edge.source,
+    target: edge.target,
+    type: override?.type || 'smoothstep',
+    data: {
+      edgeType: edge.type,
+      inferred: edge.inferred,
+      confidence: edge.confidence,
+      weight,
+      bundled: weight > 1,
+    },
+    style: {
+      ...baseStyle,
+      strokeWidth: bundledWidth,
+      opacity: Math.min(1, Number(baseStyle.opacity ?? 0.75) + Math.min(0.25, (weight - 1) * 0.06)),
+      ...(override?.style || {}),
+    },
   };
 }
 
@@ -146,29 +237,118 @@ function buildFlow(
     animated?: boolean;
     type?: Edge['type'];
   },
+  collapsedDomains?: Set<DiscoveryDomain>,
 ): FlowBuildResult {
-  const nodes = infraNodes.map((node) => toFlowNode(node, statuses, getNodeDataOverrides));
-  const edges: Edge[] = infraEdges.map((edge) => {
-    const override = getEdgeStyleOverrides?.(edge);
-    return {
-      ...(override?.animated !== undefined ? { animated: override.animated } : {}),
-      id: edge.id,
-      source: edge.source,
-      target: edge.target,
-      type: override?.type || 'smoothstep',
-      data: {
-        edgeType: edge.type,
-        inferred: edge.inferred,
-        confidence: edge.confidence,
-      },
-      style: {
-        ...getEdgeStyle(edge.type, edge.inferred),
-        ...(override?.style || {}),
-      },
-    };
+  const collapsed = collapsedDomains && collapsedDomains.size > 0 ? collapsedDomains : null;
+  const edgeLookup = new Map<string, InfraEdge>();
+
+  if (!collapsed) {
+    const nodes = infraNodes.map((node) => toFlowNode(node, statuses, getNodeDataOverrides));
+    const edges: Edge[] = infraEdges.map((edge) => {
+      edgeLookup.set(edge.id, edge);
+      return toEdge(edge, getEdgeStyleOverrides);
+    });
+    return { nodes, edges, edgeLookup };
+  }
+
+  const representatives = new Map<string, string>();
+  const collapsedMembers = new Map<DiscoveryDomain, InfraNode[]>();
+  const visibleNodes: Node[] = [];
+
+  infraNodes.forEach((node) => {
+    const domain = getDiscoveryNodeDomain(node);
+    if (collapsed.has(domain)) {
+      const group = collapsedMembers.get(domain) || [];
+      group.push(node);
+      collapsedMembers.set(domain, group);
+      representatives.set(node.id, `cluster:${domain}`);
+      return;
+    }
+
+    representatives.set(node.id, node.id);
+    visibleNodes.push(toFlowNode(node, statuses, getNodeDataOverrides));
   });
 
-  return { nodes, edges };
+  for (const [domain, members] of collapsedMembers.entries()) {
+    if (members.length === 0) continue;
+
+    const criticalities = members
+      .map((node) => Number(node.criticality))
+      .filter((value) => Number.isFinite(value));
+    const avgCriticality =
+      criticalities.length > 0
+        ? criticalities.reduce((sum, value) => sum + value, 0) / criticalities.length
+        : null;
+    const spofCount = members.filter((node) => node.isSPOF).length;
+
+    visibleNodes.push({
+      id: `cluster:${domain}`,
+      type: 'domainCluster',
+      position: { x: 0, y: 0 },
+      data: {
+        label: `${DISCOVERY_DOMAIN_LABELS[domain] || domain} (${members.length})`,
+        domain,
+        memberCount: members.length,
+        spofCount,
+        avgCriticality,
+        memberIds: members.map((member) => member.id),
+        collapsed: true,
+      } satisfies DomainClusterData,
+      style: {
+        width: 230,
+        height: 86,
+        zIndex: 8,
+      },
+      draggable: false,
+      selectable: false,
+      connectable: false,
+      focusable: false,
+    } satisfies Node);
+  }
+
+  const bundled = new Map<string, { source: string; target: string; edges: InfraEdge[] }>();
+
+  infraEdges.forEach((edge) => {
+    const source = representatives.get(edge.source) || edge.source;
+    const target = representatives.get(edge.target) || edge.target;
+    if (source === target) return;
+
+    const key = `${source}->${target}`;
+    const bucket = bundled.get(key);
+    if (bucket) {
+      bucket.edges.push(edge);
+      return;
+    }
+    bundled.set(key, {
+      source,
+      target,
+      edges: [edge],
+    });
+  });
+
+  const edges: Edge[] = [];
+
+  for (const bucket of bundled.values()) {
+    const sample = bucket.edges[0];
+    if (!sample) continue;
+    const weight = bucket.edges.length;
+    const id = weight === 1 ? sample.id : `bundle:${bucket.source}:${bucket.target}:${weight}`;
+
+    const projected: InfraEdge = {
+      ...sample,
+      id,
+      source: bucket.source,
+      target: bucket.target,
+    };
+    edgeLookup.set(id, sample);
+    edges.push(toEdge(projected, getEdgeStyleOverrides, weight, id));
+  }
+
+  return {
+    nodes: visibleNodes,
+    edges,
+    edgeLookup,
+  };
 }
 
 function InfraGraphComponent({
@@ -185,20 +365,26 @@ function InfraGraphComponent({
   fitViewNonce = 0,
   enableDependencyHighlight = false,
   enableNetworkGrouping = false,
+  domainGroupingEnabled = false,
+  collapsedDomains = [],
 }: InfraGraphProps) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [layoutedNodes, setLayoutedNodes] = useState<Node[]>([]);
+  const [appliedLayoutSignature, setAppliedLayoutSignature] = useState('');
   const [reactFlowInstance, setReactFlowInstance] = useState<ReactFlowInstance<Node, Edge> | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const fitTimeoutRef = useRef<number | null>(null);
+  const lastZoomRef = useRef(1);
 
   const infraNodeMap = useMemo(
     () => new Map(infraNodes.map((node) => [node.id, node])),
     [infraNodes],
   );
-  const infraEdgeMap = useMemo(
-    () => new Map(infraEdges.map((edge) => [edge.id, edge])),
-    [infraEdges],
+  const collapsedDomainSet = useMemo(
+    () => new Set(domainGroupingEnabled ? collapsedDomains : []),
+    [collapsedDomains, domainGroupingEnabled],
   );
 
   const baseFlow = useMemo<FlowBuildResult>(
@@ -209,6 +395,7 @@ function InfraGraphComponent({
         nodeStatuses,
         getNodeDataOverrides,
         getEdgeStyleOverrides,
+        collapsedDomainSet,
       ),
     [
       infraNodes,
@@ -216,6 +403,7 @@ function InfraGraphComponent({
       nodeStatuses,
       getNodeDataOverrides,
       getEdgeStyleOverrides,
+      collapsedDomainSet,
     ],
   );
 
@@ -224,15 +412,41 @@ function InfraGraphComponent({
     [enableNetworkGrouping, baseFlow.nodes, baseFlow.edges],
   );
 
-  const layoutedFlow = useMemo(
-    () => applyLayout(baseFlow.nodes, layoutEdges, layoutType),
-    [baseFlow.nodes, layoutEdges, layoutType],
+  const layoutSignature = useMemo(
+    () =>
+      [
+        layoutType,
+        enableNetworkGrouping ? '1' : '0',
+        baseFlow.nodes.map((node) => node.id).join('|'),
+        layoutEdges.map((edge) => `${edge.source}->${edge.target}`).join('|'),
+      ].join('::'),
+    [layoutType, enableNetworkGrouping, baseFlow.nodes, layoutEdges],
   );
 
-  const layoutedNodes = useMemo(
-    () => (enableNetworkGrouping ? applyHierarchicalGrouping(layoutedFlow.nodes) : layoutedFlow.nodes),
-    [enableNetworkGrouping, layoutedFlow.nodes],
-  );
+  useEffect(() => {
+    let cancelled = false;
+
+    const frame = window.requestAnimationFrame(() => {
+      const layouted = applyLayout(baseFlow.nodes, layoutEdges, layoutType, {
+        direction: 'LR',
+        nodeSpacing: 70,
+        rankSpacing: 130,
+      });
+      const grouped = enableNetworkGrouping ? applyHierarchicalGrouping(layouted.nodes) : layouted.nodes;
+      if (cancelled) return;
+      setLayoutedNodes(grouped);
+      setAppliedLayoutSignature(layoutSignature);
+    });
+
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+    };
+  }, [layoutSignature, baseFlow.nodes, layoutEdges, layoutType, enableNetworkGrouping]);
+
+  const positionedNodes = layoutedNodes.length > 0 ? layoutedNodes : baseFlow.nodes;
+  const isLargeGraph = baseFlow.nodes.length + baseFlow.edges.length > 220;
+  const isLayoutBusy = isLargeGraph && appliedLayoutSignature !== layoutSignature;
 
   const highlight = useMemo(() => {
     if (!enableDependencyHighlight || !hoveredNodeId) return null;
@@ -240,11 +454,23 @@ function InfraGraphComponent({
   }, [enableDependencyHighlight, hoveredNodeId, infraEdges]);
 
   const nodesForRender = useMemo(() => {
-    if (!highlight) return layoutedNodes;
+    if (!highlight) return positionedNodes;
 
-    return layoutedNodes.map((node) => {
+    return positionedNodes.map((node) => {
       if (node.type === 'groupZone') {
         const data = node.data as unknown as GroupZoneData | undefined;
+        const hasHighlightedChild = (data?.memberIds || []).some((id) => highlight.nodeIds.has(id));
+        return {
+          ...node,
+          style: {
+            ...(node.style || {}),
+            opacity: hasHighlightedChild ? 1 : 0.2,
+          },
+        };
+      }
+
+      if (node.type === 'domainCluster') {
+        const data = (node.data as unknown as DomainClusterData | undefined) || undefined;
         const hasHighlightedChild = (data?.memberIds || []).some((id) => highlight.nodeIds.has(id));
         return {
           ...node,
@@ -269,44 +495,69 @@ function InfraGraphComponent({
         },
       };
     });
-  }, [highlight, layoutedNodes]);
+  }, [highlight, positionedNodes]);
 
   const edgesForRender = useMemo(() => {
+    const zoomOpacityFactor = zoomLevel < 0.35 ? 0.4 : zoomLevel < 0.6 ? 0.65 : 1;
+
     return baseFlow.edges.map((edge) => {
+      const data = (edge.data as Record<string, unknown> | undefined) || {};
+      const weight = Math.max(1, Number(data.weight ?? 1));
+      const bundled = data.bundled === true;
       const highlighted = highlight ? highlight.edgeIds.has(String(edge.id)) : true;
       const isHovered = hoveredEdgeId === edge.id;
+      const hiddenByZoom = zoomLevel < 0.2 && weight < 4;
+      const baseStrokeWidth = Number((edge.style as Record<string, unknown> | undefined)?.strokeWidth ?? 1.5);
+      const targetStrokeWidth = highlighted
+        ? Math.max(1.4, baseStrokeWidth)
+        : Math.max(1, baseStrokeWidth - 0.8);
+      const hoverLabel = getEdgeHoverLabel(
+        (data.edgeType as string | undefined) || 'dependency',
+      );
+
       return {
         ...edge,
-        label: isHovered
-          ? getEdgeHoverLabel(
-              (edge.data as Record<string, unknown> | undefined)?.edgeType as string || 'dependency',
-            )
+        hidden: hiddenByZoom,
+        label: isHovered && zoomLevel >= 0.35
+          ? `${hoverLabel}${bundled ? ` x${weight}` : ''}`
           : undefined,
         labelStyle: isHovered ? { fontSize: 10, fontWeight: 600 } : edge.labelStyle,
         style: {
           ...(edge.style || {}),
-          opacity: highlighted ? (edge.style?.opacity ?? 1) : 0.14,
-          strokeWidth: highlighted
-            ? Math.max(1.8, Number((edge.style as Record<string, unknown> | undefined)?.strokeWidth ?? 1.8))
-            : 1,
+          opacity: hiddenByZoom
+            ? 0
+            : highlighted
+              ? Number(edge.style?.opacity ?? 1) * zoomOpacityFactor
+              : 0.12 * zoomOpacityFactor,
+          strokeWidth: targetStrokeWidth,
         },
       };
     });
-  }, [highlight, hoveredEdgeId, baseFlow.edges]);
+  }, [highlight, hoveredEdgeId, baseFlow.edges, zoomLevel]);
 
   const fitToView = useCallback(() => {
-    if (!reactFlowInstance || infraNodes.length === 0) return;
+    if (!reactFlowInstance || positionedNodes.length === 0) return;
     if (fitTimeoutRef.current !== null) {
       window.clearTimeout(fitTimeoutRef.current);
     }
     fitTimeoutRef.current = window.setTimeout(() => {
       reactFlowInstance.fitView(FIT_OPTIONS);
     }, 100);
-  }, [reactFlowInstance, infraNodes.length]);
+  }, [reactFlowInstance, positionedNodes.length]);
 
   useEffect(() => {
     fitToView();
-  }, [fitToView, layoutType, graphViewMode, fitViewNonce, infraNodes, infraEdges, enableNetworkGrouping]);
+  }, [
+    fitToView,
+    layoutType,
+    graphViewMode,
+    fitViewNonce,
+    positionedNodes,
+    edgesForRender,
+    enableNetworkGrouping,
+    domainGroupingEnabled,
+    collapsedDomains,
+  ]);
 
   useEffect(
     () => () => {
@@ -316,6 +567,13 @@ function InfraGraphComponent({
     },
     [],
   );
+
+  const handleMove = useCallback((_: MouseEvent | TouchEvent | null, viewport: { zoom: number }) => {
+    const nextZoom = Number(viewport.zoom ?? 1);
+    if (Math.abs(nextZoom - lastZoomRef.current) < 0.04) return;
+    lastZoomRef.current = nextZoom;
+    setZoomLevel(nextZoom);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -347,10 +605,10 @@ function InfraGraphComponent({
 
   const handleEdgeClick = useCallback(
     (_: React.MouseEvent, edge: Edge) => {
-      const infra = infraEdgeMap.get(String(edge.id));
+      const infra = baseFlow.edgeLookup.get(String(edge.id));
       if (infra && onEdgeClick) onEdgeClick(infra);
     },
-    [infraEdgeMap, onEdgeClick],
+    [baseFlow.edgeLookup, onEdgeClick],
   );
 
   const handleNodeMouseEnter = useCallback(
@@ -374,7 +632,15 @@ function InfraGraphComponent({
   }, []);
 
   return (
-    <div ref={containerRef} className="h-full w-full">
+    <div ref={containerRef} className="relative h-full w-full">
+      {isLayoutBusy && (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+          <div className="inline-flex items-center gap-2 rounded-md border bg-background/90 px-3 py-1 text-xs shadow-sm backdrop-blur">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Calcul du layout...
+          </div>
+        </div>
+      )}
       <ReactFlow
         nodes={nodesForRender}
         edges={edgesForRender}
@@ -385,6 +651,7 @@ function InfraGraphComponent({
         onNodeMouseLeave={handleNodeMouseLeave}
         onEdgeMouseEnter={handleEdgeMouseEnter}
         onEdgeMouseLeave={handleEdgeMouseLeave}
+        onMove={handleMove}
         nodeTypes={nodeTypes}
         minZoom={0.05}
         maxZoom={2}

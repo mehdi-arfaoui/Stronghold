@@ -16,6 +16,7 @@ import { validateScanConsistency } from '../services/discoveryHealthService.js';
 import { generateAndPersistBiaReport } from '../services/biaAutoGenerationService.js';
 import { buildLandingZoneFinancialContext } from '../services/landing-zone-financial.service.js';
 import type { DiscoveredResource, DiscoveredFlow } from '../services/discoveryTypes.js';
+import { enrichAllNodes, type MetadataEnrichmentContext } from './enrichers/index.js';
 import {
   encryptScanConfigCredentials,
   sanitizeScanConfig,
@@ -240,6 +241,23 @@ type PostScanEnrichmentOptions = {
   autoGenerateRecommendations?: false | ((tenantId: string) => Promise<{ recommendations?: unknown[] } | void>);
 };
 
+export type IngestDiscoveredResourcesOptions = {
+  inferDependencies?: boolean;
+  postScanEnrichments?: PostScanEnrichmentOptions;
+  metadataEnrichment?: MetadataEnrichmentContext;
+};
+
+function hasMetadataEnrichmentCredentials(
+  context: MetadataEnrichmentContext | undefined,
+): context is MetadataEnrichmentContext {
+  if (!context) return false;
+  return Boolean(
+    context.credentials.aws ||
+      context.credentials.azure ||
+      context.credentials.gcp,
+  );
+}
+
 export async function runPostScanEnrichments(
   prisma: PrismaClient,
   tenantId: string,
@@ -381,10 +399,31 @@ export async function ingestDiscoveredResources(
   resources: DiscoveredResource[],
   flows: DiscoveredFlow[],
   provider: string,
-  options?: { inferDependencies?: boolean; postScanEnrichments?: PostScanEnrichmentOptions }
+  options?: IngestDiscoveredResourcesOptions
 ): Promise<IngestReport> {
   // 1. Transform discovered resources to ScanResult format
   const scanResult = transformToScanResult(resources, flows, provider);
+
+  if (hasMetadataEnrichmentCredentials(options?.metadataEnrichment)) {
+    try {
+      const enrichmentResults = await enrichAllNodes(
+        scanResult.nodes,
+        options.metadataEnrichment.credentials,
+        options.metadataEnrichment.regions,
+      );
+      appLogger.info('[Discovery] Metadata enrichment complete', {
+        tenantId,
+        provider,
+        enrichers: enrichmentResults,
+      });
+    } catch (error) {
+      appLogger.debug('[Discovery] Metadata enrichment failed', {
+        tenantId,
+        provider,
+        message: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
 
   // 2. Optionally run dependency inference
   if (options?.inferDependencies !== false) {

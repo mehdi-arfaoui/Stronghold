@@ -14,7 +14,12 @@ import { CloudEnrichmentService } from "../services/cloud-enrichment.service.js"
 import { runDriftCheck } from "../drift/driftDetectionService.js";
 import { toPrismaJson } from "../utils/prismaJson.js";
 import { ingestDiscoveredResources } from "../discovery/discoveryOrchestrator.js";
-import type { DiscoveredFlow, DiscoveredResource } from "../services/discoveryTypes.js";
+import type { MetadataEnrichmentContext } from "../discovery/enrichers/index.js";
+import type {
+  DiscoveryCredentials,
+  DiscoveredFlow,
+  DiscoveredResource,
+} from "../services/discoveryTypes.js";
 import type { IngestReport } from "../graph/types.js";
 
 export type DiscoveryQueuePayload = {
@@ -45,6 +50,7 @@ type LegacyGraphSyncOptions = {
   prismaClient?: typeof prisma;
   inferDependencies?: boolean;
   logger?: Pick<typeof appLogger, "info" | "warn">;
+  metadataEnrichment?: MetadataEnrichmentContext;
   loadScanData?: (tenantId: string, jobId: string) => Promise<LegacyGraphSyncLoadResult>;
   ingest?: typeof ingestDiscoveredResources;
 };
@@ -101,6 +107,31 @@ function mapLegacyDiscoveryFlow(flow: {
     bytes: flow.bytes,
     packets: flow.packets,
     observedAt: flow.observedAt,
+  };
+}
+
+function toMetadataEnrichmentContext(
+  credentials: Record<string, unknown>,
+): MetadataEnrichmentContext | undefined {
+  const discoveryCredentials = credentials as DiscoveryCredentials;
+  const enrichmentCredentials: MetadataEnrichmentContext["credentials"] = {};
+  if (discoveryCredentials.aws) enrichmentCredentials.aws = discoveryCredentials.aws;
+  if (discoveryCredentials.azure) enrichmentCredentials.azure = discoveryCredentials.azure;
+  if (discoveryCredentials.gcp) enrichmentCredentials.gcp = discoveryCredentials.gcp;
+
+  if (!enrichmentCredentials.aws && !enrichmentCredentials.azure && !enrichmentCredentials.gcp) {
+    return undefined;
+  }
+
+  const regions: NonNullable<MetadataEnrichmentContext["regions"]> = {};
+  const awsRegion = discoveryCredentials.aws?.region?.trim();
+  if (awsRegion) {
+    regions.aws = awsRegion;
+  }
+
+  return {
+    credentials: enrichmentCredentials,
+    ...(Object.keys(regions).length > 0 ? { regions } : {}),
   };
 }
 
@@ -178,7 +209,10 @@ export async function syncDiscoveryJobToResilienceGraph(
     discoveryData.resources,
     discoveryData.flows,
     "legacy-discovery",
-    { inferDependencies },
+    {
+      inferDependencies,
+      ...(input.metadataEnrichment ? { metadataEnrichment: input.metadataEnrichment } : {}),
+    },
   );
 
   logger.info("[DiscoveryWorker] Graph sync completed", {
@@ -311,11 +345,13 @@ async function processDiscoveryJob(job: Job<DiscoveryQueuePayload>) {
         });
 
         let graphSyncReport: IngestReport | null = null;
+        const metadataEnrichment = toMetadataEnrichmentContext(credentials);
         try {
           graphSyncReport = await syncDiscoveryJobToResilienceGraph({
             tenantId,
             jobId,
             inferDependencies: parameters.inferDependencies !== false,
+            ...(metadataEnrichment ? { metadataEnrichment } : {}),
           });
         } catch (graphSyncError) {
           appLogger.warn(

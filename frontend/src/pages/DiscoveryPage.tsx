@@ -49,6 +49,7 @@ import {
 } from '@/lib/cloudProviderConfigs';
 import { formatRelativeTime } from '@/lib/formatters';
 import { filterServiceNodes } from '@/lib/graph-visuals';
+import { DISCOVERY_DOMAIN_LABELS, type DiscoveryDomain } from '@/lib/discovery-graph';
 import { cn } from '@/lib/utils';
 import type { InfraNode, InfraEdge } from '@/types/graph.types';
 import type { ScanHealthProvider, ScanHealthIssue, ScanHealthReport } from '@/types/discovery.types';
@@ -247,7 +248,18 @@ export function DiscoveryPage() {
   const navigate = useNavigate();
   const tenantScope = getCredentialScopeKey();
   const [searchParams] = useSearchParams();
-  const { nodes, edges, allNodes, allEdges, isLoading: graphLoading } = useGraph();
+  const {
+    nodes,
+    edges,
+    allNodes,
+    allEdges,
+    availableTypes,
+    availableProviders,
+    availableRegions,
+    availableTiers,
+    availableDomains,
+    isLoading: graphLoading,
+  } = useGraph();
   const { layout, selectedNodeId, setSelectedNode } = useGraphStore();
   const { isScanning, currentJob } = useDiscoveryStore();
   const [scanJobId, setScanJobId] = useState<string | null>(null);
@@ -257,6 +269,8 @@ export function DiscoveryPage() {
   const [showInfrastructure, setShowInfrastructure] = useState(false);
   const [colorByBusinessFlow, setColorByBusinessFlow] = useState(false);
   const [showMiniMap, setShowMiniMap] = useState(true);
+  const [domainGroupingEnabled, setDomainGroupingEnabled] = useState(true);
+  const [collapsedDomains, setCollapsedDomains] = useState<DiscoveryDomain[]>([]);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [showPostScanOnboarding, setShowPostScanOnboarding] = useState(false);
   const [financialWizardOpen, setFinancialWizardOpen] = useState(false);
@@ -271,6 +285,11 @@ export function DiscoveryPage() {
   const hasCloudProvidersConfigured = cloudScanProviders.length > 0;
 
   useDiscovery(scanJobId ?? undefined);
+
+  const effectiveCollapsedDomains = useMemo(
+    () => collapsedDomains.filter((domain) => availableDomains.includes(domain)),
+    [collapsedDomains, availableDomains],
+  );
 
   const healthQuery = useQuery({
     queryKey: ['discovery-health'],
@@ -562,6 +581,22 @@ export function DiscoveryPage() {
     setFitViewNonce((value) => value + 1);
   }, []);
 
+  const handleToggleDomainCollapsed = useCallback((domain: DiscoveryDomain) => {
+    setCollapsedDomains((previous) =>
+      previous.includes(domain)
+        ? previous.filter((item) => item !== domain)
+        : [...previous, domain],
+    );
+  }, []);
+
+  const handleCollapseAllDomains = useCallback(() => {
+    setCollapsedDomains(availableDomains);
+  }, [availableDomains]);
+
+  const handleExpandAllDomains = useCallback(() => {
+    setCollapsedDomains([]);
+  }, []);
+
   const handleGraphContextMenu = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
     event.preventDefault();
     setContextMenuPosition({ x: event.clientX, y: event.clientY });
@@ -632,6 +667,8 @@ export function DiscoveryPage() {
               showMiniMap={showMiniMap}
               fitViewNonce={fitViewNonce}
               enableNetworkGrouping
+              domainGroupingEnabled={domainGroupingEnabled}
+              collapsedDomains={effectiveCollapsedDomains}
             />
           </div>
         )}
@@ -680,6 +717,17 @@ export function DiscoveryPage() {
             compact
             className="pointer-events-auto w-full xl:max-w-[440px]"
             onAutoLayout={handleAutoLayout}
+            availableTypes={availableTypes}
+            availableProviders={availableProviders}
+            availableRegions={availableRegions}
+            availableTiers={availableTiers}
+            availableDomains={availableDomains}
+            domainGroupingEnabled={domainGroupingEnabled}
+            collapsedDomains={effectiveCollapsedDomains}
+            onToggleDomainGrouping={setDomainGroupingEnabled}
+            onToggleDomainCollapsed={handleToggleDomainCollapsed}
+            onCollapseAllDomains={handleCollapseAllDomains}
+            onExpandAllDomains={handleExpandAllDomains}
           />
 
           <div
@@ -787,6 +835,16 @@ export function DiscoveryPage() {
               </div>
 
               <div className="flex items-center gap-2">
+                {domainGroupingEnabled && (
+                  <Badge variant="outline" className="hidden lg:inline-flex">
+                    Clusters plies {effectiveCollapsedDomains.length}/{availableDomains.length}
+                    {effectiveCollapsedDomains.length > 0 &&
+                      ` - ${effectiveCollapsedDomains
+                        .slice(0, 2)
+                        .map((domain) => DISCOVERY_DOMAIN_LABELS[domain] || domain)
+                        .join(', ')}`}
+                  </Badge>
+                )}
                 {inferredCount > 0 && (
                   <Badge variant="secondary" className="hidden sm:inline-flex">
                     {inferredCount} dépendances à valider
@@ -835,6 +893,8 @@ export function DiscoveryPage() {
             fitViewNonce={fitViewNonce}
             enableDependencyHighlight
             enableNetworkGrouping
+            domainGroupingEnabled={domainGroupingEnabled}
+            collapsedDomains={effectiveCollapsedDomains}
           />
 
           {contextMenuPosition && (

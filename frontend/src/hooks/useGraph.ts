@@ -3,6 +3,15 @@ import { useGraphStore } from '@/stores/graph.store';
 import { discoveryApi } from '@/api/discovery.api';
 import { useMemo } from 'react';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
+import {
+  getDiscoveryNodeDomain,
+  getDiscoveryNodeSearchText,
+  getDiscoveryNodeTier,
+  matchesCriticalityFilter,
+  type DiscoveryDomain,
+} from '@/lib/discovery-graph';
+
+const DOMAIN_ORDER: DiscoveryDomain[] = ['foundation', 'platform', 'application', 'network'];
 
 export function useGraph() {
   const { nodes, edges, filters, setGraphData } = useGraphStore();
@@ -22,16 +31,26 @@ export function useGraph() {
   const filteredNodes = useMemo(() => {
     return nodes.filter((node) => {
       if (filters.types.length > 0 && !filters.types.includes(node.type)) return false;
-      if (filters.providers.length > 0 && node.provider && !filters.providers.includes(node.provider)) return false;
-      if (filters.regions.length > 0 && node.region && !filters.regions.includes(node.region)) return false;
+      if (filters.providers.length > 0 && !filters.providers.includes(node.provider || '')) return false;
+      if (filters.regions.length > 0 && !filters.regions.includes(node.region || '')) return false;
+
+      if (filters.tiers.length > 0) {
+        const tier = getDiscoveryNodeTier(node);
+        if (tier == null || !filters.tiers.includes(tier)) return false;
+      }
+
+      if (filters.domains.length > 0) {
+        const domain = getDiscoveryNodeDomain(node);
+        if (!filters.domains.includes(domain)) return false;
+      }
+
+      if (!matchesCriticalityFilter(node.criticality, filters.criticality)) {
+        return false;
+      }
+
       if (filters.search) {
         const search = filters.search.toLowerCase();
-        return (
-          node.name.toLowerCase().includes(search) ||
-          node.displayName?.toLowerCase().includes(search) ||
-          node.technicalName?.toLowerCase().includes(search) ||
-          node.id.toLowerCase().includes(search)
-        );
+        return getDiscoveryNodeSearchText(node).includes(search);
       }
       return true;
     });
@@ -48,6 +67,24 @@ export function useGraph() {
   const availableTypes = useMemo(() => [...new Set(nodes.map((n) => n.type))], [nodes]);
   const availableProviders = useMemo(() => [...new Set(nodes.map((n) => n.provider).filter(Boolean) as string[])], [nodes]);
   const availableRegions = useMemo(() => [...new Set(nodes.map((n) => n.region).filter(Boolean) as string[])], [nodes]);
+  const availableTiers = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          nodes
+            .map((node) => getDiscoveryNodeTier(node))
+            .filter((value): value is number => value != null),
+        ),
+      ).sort((left, right) => left - right),
+    [nodes],
+  );
+  const availableDomains = useMemo(
+    () => {
+      const domains = new Set(nodes.map((node) => getDiscoveryNodeDomain(node)));
+      return DOMAIN_ORDER.filter((domain) => domains.has(domain));
+    },
+    [nodes],
+  );
 
   return {
     ...query,
@@ -58,5 +95,7 @@ export function useGraph() {
     availableTypes,
     availableProviders,
     availableRegions,
+    availableTiers,
+    availableDomains,
   };
 }

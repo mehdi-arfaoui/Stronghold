@@ -57,6 +57,29 @@ router.get("/", async (req: TenantRequest, res) => {
   }
 });
 
+// --- POST /recommendations/landing-zone/regenerate - Force recommendation recalculation ---
+router.post("/regenerate", async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: "Tenant not resolved" });
+
+    const graph = await GraphService.getGraph(prisma, tenantId);
+    if (graph.order === 0) {
+      return res.status(400).json({ error: "Graph is empty. Run a discovery scan first." });
+    }
+
+    const context = await buildLandingZoneFinancialContext(prisma, tenantId);
+    return res.json({
+      regeneratedAt: new Date().toISOString(),
+      recommendations: context.recommendations.length,
+      summary: context.summary,
+    });
+  } catch (error) {
+    appLogger.error("Error regenerating landing zone recommendations:", error);
+    return res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // --- PATCH /recommendations/landing-zone - Accept/reject recommendations ---
 router.patch("/", async (req: TenantRequest, res) => {
   try {
@@ -206,12 +229,15 @@ router.get("/cost-summary", async (req: TenantRequest, res) => {
       secondaryRecommendations: context.summary.secondaryRecommendations,
       secondaryAnnualCost: context.summary.secondaryAnnualCost,
       annualCostCap: context.summary.annualCostCap,
+      selectedAnnualCost: context.summary.selectedAnnualCost,
+      remainingBudgetAnnual: context.summary.remainingBudgetAnnual,
       riskAvoidedAnnual: context.summary.riskAvoidedAnnual,
       roiPercent: context.summary.roiPercent,
       paybackMonths: context.summary.paybackMonths,
       paybackLabel: context.summary.paybackLabel,
+      financialProfileConfigured: context.summary.financialProfileConfigured,
       currency: context.profile.currency,
-      budgetAnnual: context.profile.estimatedDrBudgetAnnual,
+      budgetAnnual: context.summary.budgetAnnual,
       financialDisclaimers: context.financialDisclaimers,
     });
   } catch (error) {

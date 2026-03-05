@@ -6,6 +6,12 @@ export interface Recommendation {
   serviceName?: string;
   serviceDisplayName?: string;
   serviceTechnicalName?: string;
+  businessName?: string | null;
+  nodeType?: string | null;
+  provider?: string | null;
+  region?: string | null;
+  availabilityZone?: string | null;
+  metadata?: Record<string, unknown> | null;
   tier?: number;
   groupKey?: string | null;
   allocationShare?: number;
@@ -23,6 +29,7 @@ export interface Recommendation {
   costSource?: 'cloud_type_reference' | 'criticality_fallback' | 'user_override' | string;
   costSourceLabel?: string;
   costConfidence?: number;
+  roiReliable?: boolean;
   roi?: number | null;
   roiStatus?: 'strongly_recommended' | 'rentable' | 'cost_exceeds_avoided_risk' | 'non_applicable' | string;
   roiMessage?: string;
@@ -49,6 +56,8 @@ export interface Recommendation {
   normativeReference?: string;
   effort?: 'low' | 'medium' | 'high';
   budgetWarning?: string | null;
+  requiresVerification?: boolean;
+  withinBudgetCap?: boolean;
   calculation?: {
     aleCurrent: number;
     aleAfter: number;
@@ -86,10 +95,13 @@ export interface RecommendationsSummary {
   secondaryRecommendations?: number;
   secondaryAnnualCost?: number;
   annualCostCap?: number;
+  selectedAnnualCost?: number;
+  remainingBudgetAnnual?: number | null;
   riskAvoidedAnnual?: number;
   roiPercent?: number | null;
   paybackMonths?: number | null;
   paybackLabel?: string;
+  financialProfileConfigured?: boolean;
   currency?: string;
   budgetAnnual?: number | null;
   financialDisclaimers?: {
@@ -115,6 +127,9 @@ export const recommendationsApi = {
     data: { status?: 'pending' | 'validated' | 'rejected'; accepted?: boolean | null; notes?: string | null },
   ) =>
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, ...data }] }),
+
+  regenerate: () =>
+    api.post('/recommendations/regenerate'),
 
   resetStatus: (id: string) =>
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, status: 'pending', notes: null }] }),

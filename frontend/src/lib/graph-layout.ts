@@ -12,6 +12,11 @@ interface LayoutOptions {
   rankSpacing?: number;
 }
 
+type LayoutCacheEntry = Map<string, { x: number; y: number }>;
+
+const LAYOUT_CACHE_LIMIT = 30;
+const layoutCache = new Map<string, LayoutCacheEntry>();
+
 function toNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
   if (typeof value === 'string') {
@@ -42,6 +47,60 @@ function resolveLayer(node: Node): number {
     name: typeof data.label === 'string' ? data.label : undefined,
     metadata,
   });
+}
+
+function buildLayoutKey(nodes: Node[], edges: Edge[], layout: LayoutType, options?: LayoutOptions): string {
+  const nodeSignature = [...nodes]
+    .map((node) => {
+      const style = (node.style as Record<string, unknown> | undefined) || {};
+      const width = toNumber(style.width) ?? toNumber(node.width) ?? 'auto';
+      const height = toNumber(style.height) ?? toNumber(node.height) ?? 'auto';
+      const parent = node.parentId || '';
+      return `${node.id}:${width}x${height}:${parent}`;
+    })
+    .sort()
+    .join('|');
+
+  const edgeSignature = [...edges]
+    .map((edge) => `${edge.source}->${edge.target}`)
+    .sort()
+    .join('|');
+
+  const optionsSignature = options
+    ? `${options.direction || ''}:${options.nodeWidth || ''}:${options.nodeHeight || ''}:${options.nodeSpacing || ''}:${options.rankSpacing || ''}`
+    : '';
+
+  return `${layout}|${optionsSignature}|n:${nodeSignature}|e:${edgeSignature}`;
+}
+
+function readFromCache(nodes: Node[], key: string): Node[] | null {
+  const cached = layoutCache.get(key);
+  if (!cached) return null;
+
+  layoutCache.delete(key);
+  layoutCache.set(key, cached);
+
+  return nodes.map((node) => {
+    const position = cached.get(node.id);
+    if (!position) return node;
+    return {
+      ...node,
+      position: { ...position },
+    };
+  });
+}
+
+function writeToCache(nodes: Node[], key: string): void {
+  const entry: LayoutCacheEntry = new Map(
+    nodes.map((node) => [node.id, { x: node.position.x, y: node.position.y }]),
+  );
+  layoutCache.set(key, entry);
+  if (layoutCache.size <= LAYOUT_CACHE_LIMIT) return;
+
+  const oldestKey = layoutCache.keys().next().value;
+  if (typeof oldestKey === 'string') {
+    layoutCache.delete(oldestKey);
+  }
 }
 
 export function applyHierarchicalLayout(
@@ -161,12 +220,25 @@ export function applyLayout(
   layout: LayoutType,
   options?: LayoutOptions
 ): { nodes: Node[]; edges: Edge[] } {
+  const key = buildLayoutKey(nodes, edges, layout, options);
+  const cachedNodes = readFromCache(nodes, key);
+  if (cachedNodes) {
+    return { nodes: cachedNodes, edges };
+  }
+
+  let result: { nodes: Node[]; edges: Edge[] };
   switch (layout) {
     case 'hierarchical':
-      return applyHierarchicalLayout(nodes, edges, options);
+      result = applyHierarchicalLayout(nodes, edges, options);
+      break;
     case 'force':
-      return applyForceLayout(nodes, edges);
+      result = applyForceLayout(nodes, edges);
+      break;
     case 'radial':
-      return applyRadialLayout(nodes, edges);
+      result = applyRadialLayout(nodes, edges);
+      break;
   }
+
+  writeToCache(result.nodes, key);
+  return result;
 }

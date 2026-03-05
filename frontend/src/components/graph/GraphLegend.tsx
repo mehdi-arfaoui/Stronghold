@@ -2,12 +2,12 @@ import { CATEGORY_COLORS, type GraphCategory } from '@/lib/graph-visuals';
 import { cn } from '@/lib/utils';
 
 const DISPLAY_TYPES: Array<{ category: GraphCategory; icon: string; label: string }> = [
-  { category: 'database', icon: 'DB', label: 'Database' },
-  { category: 'compute', icon: 'CP', label: 'Compute' },
+  { category: 'database', icon: 'DB', label: 'Base de donnees' },
+  { category: 'compute', icon: 'CP', label: 'Calcul' },
   { category: 'serverless', icon: 'SV', label: 'Serverless' },
-  { category: 'messaging', icon: 'MQ', label: 'Messaging' },
-  { category: 'storage', icon: 'ST', label: 'Storage' },
-  { category: 'loadbalancer', icon: 'LB', label: 'LoadBalancer' },
+  { category: 'messaging', icon: 'MQ', label: 'Messagerie' },
+  { category: 'storage', icon: 'ST', label: 'Stockage' },
+  { category: 'loadbalancer', icon: 'LB', label: 'Load balancer' },
 ];
 
 interface GraphLegendProps {

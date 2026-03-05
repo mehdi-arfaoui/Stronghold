@@ -195,6 +195,7 @@ describe('Operational UX QA flows', () => {
         riskAvoidedAnnual: 0,
         roiPercent: null,
         paybackMonths: null,
+        financialProfileConfigured: false,
       } as any),
     );
 
@@ -819,6 +820,7 @@ describe('Operational UX QA flows', () => {
         roiPercent: 733,
         paybackMonths: 0.8,
         budgetAnnual: 12000,
+        financialProfileConfigured: true,
       } as any),
     );
 
@@ -870,13 +872,15 @@ describe('Operational UX QA flows', () => {
     dashboardRender.unmount();
 
     const recommendationsRender = render(
-      <QueryClientProvider client={createQueryClient()}>
-        <RecommendationsEngine />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={createQueryClient()}>
+          <RecommendationsEngine />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
-    await screen.findByText('ROI de vos recommandations');
-    await screen.findByText('⚡ Quick Win');
+    await screen.findByRole('heading', { name: /ROI de vos recommandations|Budget DR/i });
+    await screen.findByText(/Deploy warm standby region/i);
     recommendationsRender.unmount();
 
     render(
@@ -1091,6 +1095,7 @@ describe('Operational UX QA flows', () => {
         roiPercent: 733,
         paybackMonths: 0.8,
         budgetAnnual: 12000,
+        financialProfileConfigured: false,
       } as any),
     );
 
@@ -1136,9 +1141,7 @@ describe('Operational UX QA flows', () => {
 
     await screen.findByText('ROI & Finance');
     expect(screen.getByText(/847/)).toBeInTheDocument();
-    expect(screen.getByText(/554/)).toBeInTheDocument();
-    expect(screen.getByText(/(1443\.0%|>\s*1000%)/)).toBeInTheDocument();
-    expect(screen.getByText(/0,8 mois/)).toBeInTheDocument();
+    expect(screen.getByText(/Profil financier non configuré - ROI non disponible\./i)).toBeInTheDocument();
     expect(screen.getByText('DORA')).toBeInTheDocument();
     expect(screen.getByText('NIS2')).toBeInTheDocument();
     expect(screen.getByText(/Lancez des scans reguliers pour visualiser la tendance de votre resilience\./i)).toBeInTheDocument();
@@ -1163,12 +1166,14 @@ describe('Operational UX QA flows', () => {
     financeRender.unmount();
 
     const recRender = render(
-      <QueryClientProvider client={createQueryClient()}>
-        <RecommendationsEngine />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={createQueryClient()}>
+          <RecommendationsEngine />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
-    await screen.findByText('ROI de vos recommandations');
-    await screen.findByText('⚡ Quick Win');
+    await screen.findByRole('heading', { name: /ROI de vos recommandations|Budget DR/i });
+    await screen.findByText(/Deploy warm standby region/i);
     recRender.unmount();
 
     const initialBiaRows = [

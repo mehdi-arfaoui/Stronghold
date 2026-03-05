@@ -108,20 +108,20 @@ Note securite dependances discovery:
 - Statut actuel: risque accepte temporairement (surface limitee aux workers de discovery).
 - Plan: remplacement de `node-nmap` et `node-wmi` par des adaptateurs maintenus sans `xml2js`.
 
-Permissions AWS minimales recommandees pour le scan de dependances:
-```json
-{
-  "Effect": "Allow",
-  "Action": [
-    "lambda:ListEventSourceMappings",
-    "lambda:GetFunction",
-    "sns:ListSubscriptionsByTopic",
-    "sqs:GetQueueAttributes",
-    "ec2:DescribeSecurityGroups"
-  ],
-  "Resource": "*"
-}
-```
+Permissions optionnelles pour l'enrichissement des metadata:
+
+| Provider | Permission / Role | Usage |
+| --- | --- | --- |
+| AWS | `autoscaling:Describe*` | Détails Auto Scaling Group (EC2) |
+| AWS | `s3:GetBucketVersioning` | Etat du versioning S3 |
+| AWS | `s3:GetReplication*` | Réplication S3 (CRR) |
+| AWS | `dynamodb:Describe*` | PITR DynamoDB |
+| AWS | `elasticache:Describe*` | Failover automatique ElastiCache |
+| Azure | Role `Reader` sur le scope scanné | Lecture des propriétés SQL/Postgres/Blob |
+| GCP | Role `roles/viewer` sur le projet | Lecture des propriétés Storage/Memorystore |
+
+Sans ces permissions, le scan continue mais certaines metadata restent a `null`.
+Dans ce cas, les recommandations marquent la protection comme "verification requise" au lieu de "desactivee".
 
 Payload JSON attendu pour `/discovery/scan` :
 ```json

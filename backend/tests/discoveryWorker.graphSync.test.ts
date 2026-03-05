@@ -9,6 +9,8 @@ test('syncDiscoveryJobToResilienceGraph bridges legacy discovery results into th
         tenantId: string;
         provider: string;
         inferDependencies: boolean;
+        metadataEnrichmentEnabled: boolean;
+        metadataEnrichmentAwsRegion: string | null;
         resources: Array<{ externalId: string }>;
         flows: Array<{ sourceIp?: string | null; targetIp?: string | null }>;
       }
@@ -19,6 +21,16 @@ test('syncDiscoveryJobToResilienceGraph bridges legacy discovery results into th
     tenantId: 'tenant-legacy',
     jobId: 'job-legacy',
     inferDependencies: false,
+    metadataEnrichment: {
+      credentials: {
+        aws: {
+          accessKeyId: 'AKIA_TEST',
+          secretAccessKey: 'secret-test',
+          region: 'eu-west-1',
+        },
+      },
+      regions: { aws: 'eu-west-1' },
+    },
     logger: {
       info() {
         return undefined;
@@ -52,6 +64,8 @@ test('syncDiscoveryJobToResilienceGraph bridges legacy discovery results into th
         tenantId,
         provider,
         inferDependencies: options?.inferDependencies !== false,
+        metadataEnrichmentEnabled: Boolean(options?.metadataEnrichment),
+        metadataEnrichmentAwsRegion: options?.metadataEnrichment?.regions?.aws || null,
         resources,
         flows,
       };
@@ -74,6 +88,8 @@ test('syncDiscoveryJobToResilienceGraph bridges legacy discovery results into th
   assert.equal(captured?.tenantId, 'tenant-legacy');
   assert.equal(captured?.provider, 'legacy-discovery');
   assert.equal(captured?.inferDependencies, false);
+  assert.equal(captured?.metadataEnrichmentEnabled, true);
+  assert.equal(captured?.metadataEnrichmentAwsRegion, 'eu-west-1');
   assert.equal(captured?.resources.length, 1);
   assert.equal(captured?.flows.length, 1);
   assert.equal(report?.totalNodes, 1);

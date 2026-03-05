@@ -12,7 +12,9 @@ import {
 
 export interface InfraNodeData {
   label: string;
+  fullLabel?: string;
   technicalLabel?: string;
+  tooltipText?: string;
   nodeType: NodeType;
   nodeTypeLabel?: string;
   category?: GraphCategory;
@@ -53,7 +55,9 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
   const zoomBucket = useZoomBucket();
   const {
     label,
+    fullLabel,
     technicalLabel,
+    tooltipText,
     nodeType,
     nodeTypeLabel,
     category = 'external',
@@ -72,6 +76,13 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
     flowTooltip,
     showUnknownCostIndicator,
   } = data;
+  const tooltip =
+    typeof tooltipText === 'string'
+      ? tooltipText
+      : typeof flowTooltip === 'string'
+        ? flowTooltip
+        : undefined;
+  const expandedLabel = fullLabel || label;
 
   const palette = CATEGORY_COLORS[category] || CATEGORY_COLORS.external;
   const borderColor = customBorderColor || palette.border;
@@ -99,7 +110,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
             background: palette.bg,
             borderColor: status === 'down' ? '#ef4444' : status === 'degraded' ? '#f59e0b' : borderColor,
           }}
-          title={technicalLabel ? `${label}\n${technicalLabel}` : label}
+          title={tooltip || (technicalLabel ? `${expandedLabel}\n${technicalLabel}` : expandedLabel)}
         />
         <Handle type="source" position={Position.Bottom} className="!h-1.5 !w-1.5 !bg-muted-foreground/50" />
       </div>
@@ -120,7 +131,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
           background: palette.bg,
           color: palette.text,
         }}
-        title={typeof flowTooltip === 'string' ? flowTooltip : undefined}
+        title={tooltip}
       >
         <Handle type="target" position={Position.Top} className="!h-1.5 !w-1.5 !bg-muted-foreground/50" />
         <div className="flex items-center gap-1.5">
@@ -151,7 +162,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
         background: palette.bg,
         color: palette.text,
       }}
-      title={typeof flowTooltip === 'string' ? flowTooltip : undefined}
+      title={tooltip}
     >
       <Handle type="target" position={Position.Top} className="!h-2 !w-2 !bg-muted-foreground/50" />
 
@@ -164,7 +175,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
 
       <div className="flex items-center gap-2">
         <NodeIcon type={nodeType} className="h-4 w-4 shrink-0" style={{ color: borderColor }} />
-        <span className="truncate text-sm font-semibold">{label}</span>
+        <span className="truncate text-sm font-semibold">{expandedLabel}</span>
       </div>
       {technicalLabel ? (
         <div className="mt-1 truncate text-[11px] text-muted-foreground">{technicalLabel}</div>
@@ -205,7 +216,7 @@ export const NodeCard = memo(function NodeCard({ data, selected }: InfraNodeProp
         <div className="mt-1 flex items-center gap-2 text-[10px] uppercase tracking-wide opacity-70">
           {flowRole && <span>{flowRole}</span>}
           {showUnknownCostIndicator && (
-            <span className="rounded-sm border border-dashed px-1">COÛT ?</span>
+            <span className="rounded-sm border border-dashed px-1">COUT ?</span>
           )}
         </div>
       )}

@@ -180,6 +180,8 @@ function FinancialDashboardInner() {
   const flowCoverage = flowCoverageQuery.data;
   const lowFlowCoverage = (flowCoverage?.coveragePercent ?? 0) < 50;
   const businessProfileConfigured = orgProfileQuery.data?.mode === 'business_profile';
+  const financialProfileConfigured =
+    recommendationsSummaryQuery.data?.financialProfileConfigured ?? businessProfileConfigured;
   const currency = summary?.currency || 'EUR';
   const financialPrecision = summary?.financialPrecision;
   const excludedBiaEstimations = summary?.validationScope?.biaExcludedPending ?? 0;
@@ -404,7 +406,7 @@ function FinancialDashboardInner() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold">ROI & Finance</h1>
           <div className="flex items-center gap-2">
-            {!businessProfileConfigured && (
+            {!financialProfileConfigured && (
               <Badge variant="outline" className="border-amber-300 bg-amber-50 text-amber-800">
                 Mode infra uniquement
               </Badge>
@@ -439,7 +441,7 @@ function FinancialDashboardInner() {
           <p className="text-sm font-medium">{orgProfileQuery.data.reviewBanner}</p>
         </div>
       )}
-      {!orgProfileQuery.data?.reviewBanner && !businessProfileConfigured && (
+      {!orgProfileQuery.data?.reviewBanner && !financialProfileConfigured && (
         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-amber-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">
@@ -457,7 +459,7 @@ function FinancialDashboardInner() {
           </div>
         </div>
       )}
-      {businessProfileConfigured && (
+      {financialProfileConfigured && (
         <div className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-3 text-emerald-900">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-medium">Profil financier configuré.</p>
@@ -511,15 +513,15 @@ function FinancialDashboardInner() {
                 Précision profil business : {financialPrecision.businessProfilePrecisionPercent}/50
               </p>
               <p>
-                [Prix réel ✓✓] : {financialPrecision.breakdown.pricingSources.costExplorer.costSharePercent}% du coût
+                Prix reel : {financialPrecision.breakdown.pricingSources.costExplorer.costSharePercent}% du coût
                 infra
               </p>
               <p>
-                [Prix API ✓] : {financialPrecision.breakdown.pricingSources.pricingApi.costSharePercent}% du coût
+                Prix API live : {financialPrecision.breakdown.pricingSources.pricingApi.costSharePercent}% du coût
                 infra
               </p>
               <p>
-                [Estimation ≈] : {financialPrecision.breakdown.pricingSources.staticTable.costSharePercent}% du coût
+                Table statique : {financialPrecision.breakdown.pricingSources.staticTable.costSharePercent}% du coût
                 infra
               </p>
               <p>
@@ -538,27 +540,45 @@ function FinancialDashboardInner() {
           icon={ArrowDown}
           tone="risk"
         />
-        <KpiCard
-          title="Économies potentielles"
-          value={potentialSavingsDisplay}
-          subtitle="Si les recommandations sont appliquées"
-          icon={PiggyBank}
-          tone={potentialSavingsRaw < 0 ? 'payback' : 'savings'}
-        />
-        <KpiCard
-          title="ROI estimé"
-          value={<span title={roiDisplay.tooltip}>{roiDisplay.label}</span>}
-          subtitle="Retour sur investissement annuel net"
-          icon={TrendingUp}
-          tone="roi"
-        />
-        <KpiCard
-          title="Payback"
-          value={paybackValue}
-          subtitle={paybackSubtitle}
-          icon={Clock3}
-          tone="payback"
-        />
+        {financialProfileConfigured ? (
+          <>
+            <KpiCard
+              title="Économies potentielles"
+              value={potentialSavingsDisplay}
+              subtitle="Si les recommandations sont appliquées"
+              icon={PiggyBank}
+              tone={potentialSavingsRaw < 0 ? 'payback' : 'savings'}
+            />
+            <KpiCard
+              title="ROI estimé"
+              value={<span title={roiDisplay.tooltip}>{roiDisplay.label}</span>}
+              subtitle="Retour sur investissement annuel net"
+              icon={TrendingUp}
+              tone="roi"
+            />
+            <KpiCard
+              title="Payback"
+              value={paybackValue}
+              subtitle={paybackSubtitle}
+              icon={Clock3}
+              tone="payback"
+            />
+          </>
+        ) : (
+          <Card className="border-dashed md:col-span-1 xl:col-span-3">
+            <CardContent className="flex h-full flex-col justify-center gap-2 p-4">
+              <p className="text-sm font-medium">Profil financier non configuré - ROI non disponible.</p>
+              <p className="text-xs text-muted-foreground">
+                Renseignez le coût d indisponibilite horaire pour afficher les économies et le payback.
+              </p>
+              <div>
+                <Button size="sm" variant="outline" onClick={() => navigate('/settings?tab=finance')}>
+                  Configurer le profil financier
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
       </div>
       <Card>
         <CardHeader>
@@ -584,9 +604,15 @@ function FinancialDashboardInner() {
               </BarChart>
             </ResponsiveContainer>
           </div>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Réduction de risque estimée : {summary.roi.riskReduction.toFixed(1).replace('.', ',')}% - source : calcul Stronghold
-          </p>
+          {financialProfileConfigured ? (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Réduction de risque estimée : {summary.roi.riskReduction.toFixed(1).replace('.', ',')}% - source : calcul Stronghold
+            </p>
+          ) : (
+            <p className="mt-3 text-sm text-muted-foreground">
+              Profil financier non configuré - les métriques ROI sont masquées.
+            </p>
+          )}
         </CardContent>
       </Card>
       {strategySplitData.length > 0 && (
@@ -666,7 +692,7 @@ function FinancialDashboardInner() {
                     </td>
                     <td className="py-2">
                       <span className="inline-flex items-center gap-1 rounded border px-2 py-0.5 text-xs">
-                        {spof.monthlyCostSourceLabel || '[Estimation ≈]'}
+                        {spof.monthlyCostSourceLabel || 'Table statique'}
                       </span>
                     </td>
                     <td className="py-2">{formatMoney(spof.costPerHour, currency)}</td>

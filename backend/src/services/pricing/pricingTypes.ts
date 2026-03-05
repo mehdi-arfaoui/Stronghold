@@ -1,8 +1,18 @@
-﻿import type { SupportedCurrency } from '../../constants/market-financial-data.js';
+import type { SupportedCurrency } from '../../constants/market-financial-data.js';
 
-export type PricingSource = 'cost-explorer' | 'pricing-api' | 'static-table';
+export type PricingSource =
+  | 'cost-explorer'
+  | 'pricing-api'
+  | 'static-table'
+  | 'family-estimate'
+  | 'category-estimate';
 
-export type PricingSourceLabel = '[Prix reel ✓✓]' | '[Prix API ✓]' | '[Estimation ≈]';
+export type PricingSourceLabel =
+  | 'Prix reel'
+  | 'Prix API live'
+  | 'Table statique'
+  | 'Estimation famille'
+  | 'Estimation categorie';
 
 export type PricingResult = {
   monthlyCost: number;
@@ -15,8 +25,9 @@ export type PricingResult = {
 };
 
 export function pricingSourceLabel(source: PricingSource): PricingSourceLabel {
-  if (source === 'cost-explorer') return '[Prix reel ✓✓]';
-  if (source === 'pricing-api') return '[Prix API ✓]';
-  return '[Estimation ≈]';
+  if (source === 'cost-explorer') return 'Prix reel';
+  if (source === 'pricing-api') return 'Prix API live';
+  if (source === 'family-estimate') return 'Estimation famille';
+  if (source === 'category-estimate') return 'Estimation categorie';
+  return 'Table statique';
 }
-

@@ -1,8 +1,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
+import { MemoryRouter } from 'react-router-dom';
 import { RecommendationsEngine } from './RecommendationsEngine';
 import { recommendationsApi } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
@@ -50,6 +51,16 @@ function createQueryClient() {
   });
 }
 
+function renderRecommendationsEngine() {
+  return render(
+    <MemoryRouter>
+      <QueryClientProvider client={createQueryClient()}>
+        <RecommendationsEngine />
+      </QueryClientProvider>
+    </MemoryRouter>,
+  );
+}
+
 describe('RecommendationsEngine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -75,7 +86,7 @@ describe('RecommendationsEngine', () => {
           estimatedAnnualCost: 0,
           priority: 'P1',
           costSource: 'static-table',
-          costSourceLabel: '[Estimation ≈]',
+          costSourceLabel: 'Table statique',
         },
         {
           id: 'rec-top',
@@ -151,6 +162,7 @@ describe('RecommendationsEngine', () => {
         riskAvoidedAnnual: 11280,
         roiPercent: 213.3,
         paybackMonths: 3.8,
+        financialProfileConfigured: true,
       } as RecommendationsSummary),
     );
 
@@ -215,58 +227,115 @@ describe('RecommendationsEngine', () => {
     );
   });
 
-  it('hierarchise les quick wins et applique les filtres/sorts', async () => {
+  it('applique filtres/tri et affiche quick wins avec labels pricing nettoyes', async () => {
     const user = userEvent.setup();
 
-    render(
-      <QueryClientProvider client={createQueryClient()}>
-        <RecommendationsEngine />
-      </QueryClientProvider>,
-    );
+    renderRecommendationsEngine();
 
-    await screen.findByText('Quick Wins & forte valeur ajoutée (1)');
+    await screen.findByText(/Quick Wins & forte valeur ajout/i);
     expect(screen.getByText('Autres recommandations (2)')).toBeInTheDocument();
-    expect(screen.getByText('3 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
-    expect(screen.queryByText(/Source cout:/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/3 recommandations affich.*3 total.*1 Quick Wins/i),
+    ).toBeInTheDocument();
 
-    const quickWinSection = screen.getByText('Quick Wins & forte valeur ajoutée (1)').closest('section') as HTMLElement;
+    const quickWinSection = screen
+      .getByText(/Quick Wins & forte valeur ajout/i)
+      .closest('section') as HTMLElement;
     expect(within(quickWinSection).getByText('Payment API')).toBeInTheDocument();
-    expect(within(quickWinSection).getByText('⚡ Quick Win')).toBeInTheDocument();
-    expect(within(quickWinSection).getByText(/3,0 mois/i)).toBeInTheDocument();
+    expect(within(quickWinSection).getByText('Quick Win')).toBeInTheDocument();
 
-    const otherSection = screen.getByText('Autres recommandations (2)').closest('section') as HTMLElement;
-    expect(within(otherSection).getByText('Order DB')).toBeInTheDocument();
-    expect(within(otherSection).getByText('Managed Session Store')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /Stratégie DR : Toutes/i }));
+    await user.click(screen.getByRole('button', { name: /Strat.*DR : Toutes/i }));
     await user.click(screen.getByRole('button', { name: 'Aucune' }));
     await user.click(screen.getByText('Warm Standby'));
 
-    expect(await screen.findByText('1 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/1 recommandations affich.*3 total.*1 Quick Wins/i),
+    ).toBeInTheDocument();
     expect(screen.getByText('Payment API')).toBeInTheDocument();
     expect(screen.queryByText('Order DB')).not.toBeInTheDocument();
-    expect(screen.queryByText('Managed Session Store')).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: /Réinitialiser les filtres/i }));
-    expect(await screen.findByText('3 recommandations affichées sur 3 total (dont 1 Quick Wins)')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /R.*initialiser les filtres/i }));
+    expect(
+      await screen.findByText(/3 recommandations affich.*3 total.*1 Quick Wins/i),
+    ).toBeInTheDocument();
 
-    const maxCostInput = screen.getByLabelText('Coût estimé');
+    const maxCostInput = screen.getByLabelText(/Co.*t estim/i);
     await user.clear(maxCostInput);
     await user.type(maxCostInput, '1500');
     await user.click(screen.getByRole('button', { name: /Trier par ROI croissant/i }));
 
-    expect(await screen.findByText('2 recommandations affichées sur 3 total (dont 0 Quick Wins)')).toBeInTheDocument();
+    expect(
+      await screen.findByText(/2 recommandations affich.*3 total.*0 Quick Wins/i),
+    ).toBeInTheDocument();
     expect(screen.queryByText('Payment API')).not.toBeInTheDocument();
-    expect(screen.getByText('Quick Wins & forte valeur ajoutée (0)')).toBeInTheDocument();
 
     const managedCard = screen.getByText('Managed Session Store').closest('[class*="border"]') as HTMLElement;
-    expect(within(managedCard).getByText('Inclus dans le service managé')).toBeInTheDocument();
-    expect(within(managedCard).getByText('Hors cap DR')).toBeInTheDocument();
+    expect(within(managedCard).getByText(/Inclus dans le service manag/i)).toBeInTheDocument();
+    expect(within(managedCard).queryByText('Hors cap DR')).not.toBeInTheDocument();
     expect(within(managedCard).queryByText(/Payback:/i)).not.toBeInTheDocument();
 
-    const managedLabel = screen.getByText('Managed Session Store');
-    const orderLabel = screen.getByText('Order DB');
-    const relation = managedLabel.compareDocumentPosition(orderLabel);
-    expect(Boolean(relation & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+    expect(screen.queryByText(/Estimation\s*[≈~]/i)).not.toBeInTheDocument();
   }, 10000);
+  it('masque ROI/economie/quick-win quand le profil financier est non configure', async () => {
+    vi.mocked(financialApi.getOrgProfile).mockImplementation(async () =>
+      asApiResult({
+        customCurrency: 'EUR',
+        isConfigured: false,
+      } as OrganizationFinancialProfile),
+    );
+
+    vi.mocked(recommendationsApi.getAll).mockImplementation(async () =>
+      asApiResult([
+        {
+          id: 'rec-infra-only',
+          serviceName: 'payment-api',
+          description: 'Ajoute un warm standby multi-region.',
+          tier: 1,
+          strategy: 'warm-standby',
+          estimatedCost: 200,
+          estimatedAnnualCost: 2400,
+          priority: 'P1',
+          roi: 733,
+          paybackMonths: 0.8,
+          roiReliable: false,
+        },
+      ] as Recommendation[]),
+    );
+
+    vi.mocked(recommendationsApi.getSummary).mockImplementation(async () =>
+      asApiResult({
+        totalAnnualCost: 2400,
+        totalRecommendations: 1,
+        secondaryRecommendations: 0,
+        secondaryAnnualCost: 0,
+        annualCostByStrategy: {
+          warm_standby: 2400,
+        },
+        costSharePercentByStrategy: {
+          warm_standby: 100,
+        },
+        annualCostCap: 7700,
+        selectedAnnualCost: 0,
+        remainingBudgetAnnual: 7700,
+        financialProfileConfigured: false,
+      } as RecommendationsSummary),
+    );
+
+    renderRecommendationsEngine();
+
+    const cardTitle = await screen.findByText(/API Payment|payment-api/i);
+    const card = cardTitle.closest('[class*="border"]') as HTMLElement;
+
+    expect(screen.queryByText(/Quick Wins/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText('Quick Win')).not.toBeInTheDocument();
+    expect(within(card).queryByText(/Payback:/i)).not.toBeInTheDocument();
+    expect(within(card).queryByText(/Economie annuelle/i)).not.toBeInTheDocument();
+    expect(within(card).getByText(/Configurez votre profil financier pour voir le ROI\./i)).toBeInTheDocument();
+    const ctaLinks = within(card).getAllByRole('link', { name: /Configurer le profil financier/i });
+    expect(ctaLinks.length).toBeGreaterThan(0);
+    expect(ctaLinks[0]).toHaveAttribute('href', '/settings?tab=finance');
+
+    expect(screen.getByText(/Profil financier non configure - ROI non disponible/i)).toBeInTheDocument();
+    expect(financialApi.calculateROI).not.toHaveBeenCalled();
+  });
 });

@@ -90,20 +90,27 @@ const PATTERN_RULES: PatternRule[] = [
     fallbackQualifier: 'principal',
   },
   {
-    label: 'Serveur API',
+    label: 'Serveur applicatif',
     matchers: [/(^|[-_])(api|api[-_]?server|backend)([-_]|$)/i],
     removeTokens: ['api', 'server', 'backend', 'apiserver'],
     preferredTypes: ['VM', 'APPLICATION', 'MICROSERVICE', 'CONTAINER', 'KUBERNETES_SERVICE'],
     fallbackQualifier: 'principal',
   },
   {
-    label: 'Worker',
+    label: 'Interface web',
+    matchers: [/(^|[-_])(web|frontend|front)([-_]|$)/i],
+    removeTokens: ['web', 'frontend', 'front'],
+    preferredTypes: ['VM', 'APPLICATION', 'MICROSERVICE', 'CONTAINER', 'KUBERNETES_SERVICE'],
+    fallbackQualifier: 'principale',
+  },
+  {
+    label: 'Service de traitement',
     matchers: [/(^|[-_])(worker|processor|consumer|job)([-_]|$)/i],
     removeTokens: ['worker', 'processor', 'consumer', 'job'],
     fallbackQualifier: 'principal',
   },
   {
-    label: 'File de messages',
+    label: "File d'attente",
     matchers: [/(^|[-_])(queue|sqs)([-_]|$)/i],
     removeTokens: ['queue', 'sqs'],
     preferredTypes: ['MESSAGE_QUEUE'],
@@ -113,6 +120,12 @@ const PATTERN_RULES: PatternRule[] = [
     matchers: [/(^|[-_])(topic|sns|notification|notifications)([-_]|$)/i],
     removeTokens: ['topic', 'sns', 'notification', 'notifications'],
     preferredTypes: ['MESSAGE_QUEUE'],
+  },
+  {
+    label: 'Moteur de recherche',
+    matchers: [/(^|[-_])(search|elastic|opensearch|elasticsearch)([-_]|$)/i],
+    removeTokens: ['search', 'elastic', 'opensearch', 'elasticsearch'],
+    fallbackQualifier: 'principal',
   },
   {
     label: 'Stockage',
@@ -160,12 +173,12 @@ const TYPE_FALLBACK_RULES: Record<string, PatternRule> = {
     fallbackQualifier: 'principal',
   },
   VM: {
-    label: 'Service applicatif',
+    label: 'Serveur applicatif',
     matchers: [],
     removeTokens: [],
   },
   APPLICATION: {
-    label: 'Service applicatif',
+    label: 'Serveur applicatif',
     matchers: [],
     removeTokens: [],
   },
@@ -180,12 +193,17 @@ const TYPE_FALLBACK_RULES: Record<string, PatternRule> = {
     removeTokens: [],
   },
   MESSAGE_QUEUE: {
-    label: 'File de messages',
+    label: "File d'attente",
     matchers: [],
     removeTokens: [],
   },
   OBJECT_STORAGE: {
     label: 'Stockage',
+    matchers: [],
+    removeTokens: [],
+  },
+  SEARCH: {
+    label: 'Moteur de recherche',
     matchers: [],
     removeTokens: [],
   },
@@ -221,6 +239,43 @@ function toMetadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function readTagValue(container: Record<string, unknown>, key: string): string | null {
+  const direct = readString(container[key]);
+  if (direct) return direct;
+
+  const lowerKey = key.toLowerCase();
+  for (const [entryKey, entryValue] of Object.entries(container)) {
+    if (entryKey.toLowerCase() !== lowerKey) continue;
+    const parsed = readString(entryValue);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+function extractNameFromCloudTags(metadata: Record<string, unknown>): string | null {
+  const candidates: Record<string, unknown>[] = [];
+
+  if (metadata.businessTags && typeof metadata.businessTags === 'object' && !Array.isArray(metadata.businessTags)) {
+    candidates.push(metadata.businessTags as Record<string, unknown>);
+  }
+  if (metadata.awsTags && typeof metadata.awsTags === 'object' && !Array.isArray(metadata.awsTags)) {
+    candidates.push(metadata.awsTags as Record<string, unknown>);
+  }
+  if (metadata.tags && typeof metadata.tags === 'object' && !Array.isArray(metadata.tags)) {
+    candidates.push(metadata.tags as Record<string, unknown>);
+  }
+
+  for (const tagMap of candidates) {
+    const name =
+      readTagValue(tagMap, 'Name') ??
+      readTagValue(tagMap, 'application') ??
+      readTagValue(tagMap, 'service');
+    if (name) return name;
+  }
+
+  return null;
 }
 
 function stripNamingNoise(name: string): string {
@@ -293,6 +348,18 @@ function buildGeneratedBusinessName(input: {
   return `${rule.label} ${qualifier}`;
 }
 
+function looksTechnicalIdentifier(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return true;
+  if (normalized.startsWith('arn:')) return true;
+  if (normalized.startsWith('/subscriptions/')) return true;
+  if (normalized.startsWith('projects/')) return true;
+  if (/^i-[0-9a-f]{8,}$/.test(normalized)) return true;
+  if (/^sg-[0-9a-f]{8,}$/.test(normalized)) return true;
+  if (/^[0-9a-f]{16,}$/.test(normalized)) return true;
+  return false;
+}
+
 export function resolveServiceIdentity(input: ServiceIdentityInput): ServiceIdentity {
   const metadata = toMetadataRecord(input.metadata);
   const technicalName = readString(input.name) ?? 'Service';
@@ -303,6 +370,16 @@ export function resolveServiceIdentity(input: ServiceIdentityInput): ServiceIden
       technicalName,
       businessName: manualBusinessName,
       source: 'manual_override',
+    };
+  }
+
+  const cloudTagName = extractNameFromCloudTags(metadata);
+  if (cloudTagName) {
+    return {
+      displayName: cloudTagName,
+      technicalName,
+      businessName: cloudTagName,
+      source: 'metadata_override',
     };
   }
 
@@ -340,6 +417,18 @@ export function resolveServiceIdentity(input: ServiceIdentityInput): ServiceIden
       businessName: null,
       source: 'metadata_display',
     };
+  }
+
+  if (looksTechnicalIdentifier(technicalName)) {
+    const fallbackRule = TYPE_FALLBACK_RULES[String(input.type || '').toUpperCase()];
+    if (fallbackRule) {
+      return {
+        displayName: fallbackRule.label,
+        technicalName,
+        businessName: null,
+        source: 'generated',
+      };
+    }
   }
 
   return {
