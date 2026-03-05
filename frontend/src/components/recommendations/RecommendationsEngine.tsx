@@ -156,16 +156,15 @@ function formatRoiPercent(value: number | null | undefined): { label: string; to
 }
 
 function mapCostSourceLabel(costSource: string | undefined): string {
-  if (!costSource) return 'Estimation Stronghold';
-  if (costSource.startsWith('budget_profile_calibration:')) {
-    return `Calibration budget (${mapCostSourceLabel(costSource.split(':')[1])})`;
-  }
-  if (costSource === 'cost-explorer') return '[Prix réel ✓✓]';
-  if (costSource === 'pricing-api') return '[Prix API ✓]';
-  if (costSource === 'static-table') return '[Estimation ≈]';
+  if (!costSource) return 'Table statique';
+  if (costSource === 'cost-explorer') return 'Prix reel';
+  if (costSource === 'pricing-api') return 'Prix API live';
+  if (costSource === 'static-table') return 'Table statique';
+  if (costSource === 'family-estimate') return 'Estimation famille';
+  if (costSource === 'category-estimate') return 'Estimation categorie';
   if (costSource === 'user_override') return 'Override utilisateur';
-  if (costSource === 'cloud_type_reference') return 'Référence cloud';
-  if (costSource === 'criticality_fallback') return 'Fallback criticité';
+  if (costSource === 'cloud_type_reference') return 'Reference cloud';
+  if (costSource === 'criticality_fallback') return 'Fallback criticite';
   return 'Estimation Stronghold';
 }
 
@@ -174,12 +173,11 @@ function resolveCompactCostSourceLabel(input: {
   costSourceLabel?: string;
 }): string | null {
   const explicit = input.costSourceLabel?.trim();
-  if (explicit && explicit.startsWith('[')) {
-    return explicit;
+  if (explicit) {
+    return explicit.replace(/^\[/, '').replace(/\]$/, '').replace('≈', '').trim();
   }
   if (!input.costSource) return null;
-  const mapped = mapCostSourceLabel(input.costSource);
-  return mapped.startsWith('[') ? mapped : null;
+  return mapCostSourceLabel(input.costSource);
 }
 
 function roiToneClass(status: string | undefined, roi: number | null | undefined): string {
@@ -234,6 +232,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     return (CURRENCIES as readonly string[]).includes(resolved) ? resolved : 'EUR';
   }, [orgProfileQuery.data?.customCurrency]);
   const currency = currencyOverride ?? profileCurrency;
+  const isFinancialProfileConfigured = Boolean(orgProfileQuery.data?.isConfigured);
 
   const recommendationsQuery = useQuery({
     queryKey: ['recommendations', tenantScope],
@@ -256,7 +255,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
   const roiQuery = useQuery({
     queryKey: ['financial-recommendations-roi', tenantScope, currency, roiPayloadDigest],
-    enabled: baseRecommendations.length > 0,
+    enabled: baseRecommendations.length > 0 && isFinancialProfileConfigured,
     staleTime: 5 * 60 * 1000,
     queryFn: async () =>
       (
@@ -364,6 +363,13 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   }, [maxAnnualCostInput, recommendationCards, roiSortDirection, selectedStrategies]);
 
   const { quickWinCards, otherRecommendationCards } = useMemo(() => {
+    if (!isFinancialProfileConfigured) {
+      return {
+        quickWinCards: [] as typeof filteredRecommendationCards,
+        otherRecommendationCards: filteredRecommendationCards,
+      };
+    }
+
     const quickWins = filteredRecommendationCards.filter((card) => {
       const quickWinByBudget =
         recommendationRoiValue(card.individualROI) > 100 &&
@@ -379,7 +385,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
         (card) => !quickWinIds.has(card.recommendation.id),
       ),
     };
-  }, [filteredRecommendationCards, totalDrBudget]);
+  }, [filteredRecommendationCards, isFinancialProfileConfigured, totalDrBudget]);
 
   const summaryRiskAvoided =
     recommendationsSummaryQuery.data?.riskAvoidedAnnual ?? roiQuery.data?.riskReductionAmount ?? 0;
@@ -395,6 +401,15 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
   const summarySecondaryRecommendations = recommendationsSummaryQuery.data?.secondaryRecommendations ?? 0;
   const summarySecondaryAnnualCost = recommendationsSummaryQuery.data?.secondaryAnnualCost ?? 0;
   const summaryAnnualCostCap = recommendationsSummaryQuery.data?.annualCostCap ?? 0;
+  const summaryBudgetAnnual = recommendationsSummaryQuery.data?.budgetAnnual ?? null;
+  const hasConfiguredBudgetCap =
+    summaryBudgetAnnual != null &&
+    Number.isFinite(Number(summaryBudgetAnnual)) &&
+    Number(summaryBudgetAnnual) > 0;
+  const summarySelectedAnnualCost =
+    recommendationsSummaryQuery.data?.selectedAnnualCost ?? summaryAnnualCost;
+  const summaryRemainingBudgetAnnual =
+    recommendationsSummaryQuery.data?.remainingBudgetAnnual ?? null;
   const summaryRoiDisplay = formatRoiPercent(summaryRoiPercent);
   const summaryRiskAvoidedDisplay =
     summaryRiskAvoided < 0 ? 'Aucun gain - service déjà protégé' : money(summaryRiskAvoided, currency);
@@ -405,8 +420,8 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     riskAvoidedAnnual: summaryRiskAvoided,
     annualCost: summaryAnnualCost,
   });
-  const filteredSecondaryCount = filteredRecommendationCards.filter(
-    (card) => card.recommendation.recommendationBand === 'secondary',
+  const filteredOutOfBudgetCount = filteredRecommendationCards.filter(
+    (card) => card.recommendation.withinBudgetCap === false,
   ).length;
   const hasActiveFilters =
     maxAnnualCostInput.trim().length > 0 ||
@@ -453,9 +468,21 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
       costSource: recommendation.costSource,
       costSourceLabel: recommendation.costSourceLabel,
     });
+    const isOutOfBudget = recommendation.withinBudgetCap === false;
+    const secondaryActionBadge = isQuickWin
+      ? 'Quick Win'
+      : Number(recommendation.tier || 0) === 1
+        ? 'Prioritaire'
+        : null;
 
     return (
-        <Card key={recommendation.id} className={cn(isQuickWin && 'border-green-500/40')}>
+      <Card
+        key={recommendation.id}
+        className={cn(
+          isOutOfBudget ? 'opacity-60' : 'border-green-500/35',
+          isQuickWin && 'border-green-500/50',
+        )}
+      >
         <CardContent className="p-4 space-y-3">
           <div className="flex flex-wrap items-center gap-2">
             <div className="min-w-[220px] flex-1">
@@ -465,30 +492,27 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 className="font-semibold"
               />
             </div>
-            <Badge variant="outline">Tier {recommendation.tier ?? '-'}</Badge>
-            {recommendation.strategy && <Badge>{strategyLabel}</Badge>}
-            {recommendation.recommendationBand === 'secondary' && (
-              <Badge variant="secondary">Hors cap DR</Badge>
-            )}
-            {isQuickWin && (
-              <Badge className="border-green-500/20 bg-green-500/10 text-green-700">⚡ Quick Win</Badge>
-            )}
-            {card.roiMessage && (
+            {strategyLabel && <Badge variant="outline">{strategyLabel}</Badge>}
+            {secondaryActionBadge && (
               <Badge
                 className={cn(
-                  'border',
-                  card.roiStatus === 'strongly_recommended' && 'border-green-300 bg-green-50 text-green-800',
-                  card.roiStatus === 'rentable' && 'border-amber-300 bg-amber-50 text-amber-800',
-                  card.roiStatus === 'cost_exceeds_avoided_risk' && 'border-red-300 bg-red-50 text-red-800',
-                  card.roiStatus === 'non_applicable' && 'border-muted bg-muted/20 text-muted-foreground',
+                  secondaryActionBadge === 'Quick Win'
+                    ? 'border-green-500/20 bg-green-500/10 text-green-700'
+                    : 'border-orange-500/20 bg-orange-500/10 text-orange-700',
                 )}
               >
-                {card.roiMessage}
+                {secondaryActionBadge}
               </Badge>
             )}
           </div>
 
           <p className="text-sm text-muted-foreground">{recommendation.description}</p>
+          {recommendation.requiresVerification && (
+            <p className="inline-flex items-center gap-1 text-xs text-amber-700">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              Verification manuelle recommandee (metadonnees incompletes)
+            </p>
+          )}
           {recommendation.budgetWarning && (
             <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
               <span className="inline-flex items-center gap-1 font-medium">
@@ -498,38 +522,42 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             </div>
           )}
 
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className={cn('grid gap-3', isFinancialProfileConfigured ? 'sm:grid-cols-3' : 'sm:grid-cols-1')}>
             <MiniMetric
               icon={DollarSign}
-              label="Coût estimé"
+              label="Cout additionnel"
               value={
-                <span className="inline-flex flex-wrap items-center gap-1">
-                  {formatMonthlyCostLabel(card.monthlyCost, currency)}
-                  {costSourceBadge && (
-                    <Badge variant="outline" className="text-[10px] leading-none">
-                      {costSourceBadge}
-                    </Badge>
-                  )}
+                <span className="inline-flex flex-col items-start gap-1">
+                  <span>{formatMonthlyCostLabel(card.monthlyCost, currency)}</span>
+                  {costSourceBadge && <span className="text-xs text-muted-foreground">Source prix: {costSourceBadge}</span>}
                 </span>
               }
             />
-            <MiniMetric icon={DollarSign} label="Coût annuel DR" value={money(card.annualCost, currency)} />
-            <MiniMetric
-              icon={TrendingUp}
-              label="Économie annuelle estimée"
-              value={card.annualSavings < 0 ? 'Aucun gain - service déjà protégé' : money(card.annualSavings, currency)}
-            />
-            <MiniMetric
-              icon={Clock}
-              label={card.individualROI == null ? 'ROI individuel' : card.individualROI >= 0 ? 'ROI individuel' : 'ROI négatif'}
-              value={
-                <span title={individualRoiDisplay.tooltip}>
-                  {individualRoiDisplay.label}
-                </span>
-              }
-            />
+            {isFinancialProfileConfigured && (
+              <MiniMetric
+                icon={TrendingUp}
+                label="Economie annuelle"
+                value={card.annualSavings < 0 ? 'Aucun gain - service deja protege' : money(card.annualSavings, currency)}
+              />
+            )}
+            {isFinancialProfileConfigured && (
+              <MiniMetric
+                icon={Clock}
+                label="ROI"
+                value={
+                  <span title={individualRoiDisplay.tooltip}>
+                    {individualRoiDisplay.label}
+                  </span>
+                }
+              />
+            )}
           </div>
-          {card.annualCost > 0 && (
+          {!isFinancialProfileConfigured && (
+            <p className="text-xs text-muted-foreground">
+              Configurez votre profil financier pour afficher ROI, payback et economie annuelle.
+            </p>
+          )}
+          {isFinancialProfileConfigured && card.annualCost > 0 && (
             <div className="text-xs text-muted-foreground">
               Payback:{' '}
               <span className="font-medium">
@@ -607,29 +635,33 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
               </>
             )}
           </div>
-          {recommendation.calculation && (
-            <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
-              <summary className="cursor-pointer font-medium">Comment c’est calculé</summary>
-              <div className="mt-2 space-y-1 text-muted-foreground">
-                <p>{recommendation.calculation.formula}</p>
-                <p>ALE actuel : {money(recommendation.calculation.aleCurrent, currency)}</p>
-                <p>ALE après DR : {money(recommendation.calculation.aleAfter, currency)}</p>
-                <p>
-                  Risque annuel évité :{' '}
-                  {recommendation.calculation.riskAvoidedAnnual < 0
-                    ? 'Aucun gain - service déjà protégé'
-                    : money(recommendation.calculation.riskAvoidedAnnual, currency)}
-                </p>
-                <p>Coût annuel DR : {money(recommendation.calculation.annualDrCost, currency)}</p>
-                <p>
-                  Inputs : coût downtime/h {money(recommendation.calculation.inputs.hourlyDowntimeCost, currency)},
-                  RTO actuel {recommendation.calculation.inputs.currentRtoHours}h,
-                  RTO cible {recommendation.calculation.inputs.targetRtoHours}h,
-                  proba {recommendation.calculation.inputs.incidentProbabilityAnnual}
-                </p>
-              </div>
-            </details>
-          )}
+          <details className="rounded-md border bg-muted/20 px-3 py-2 text-xs">
+            <summary className="cursor-pointer font-medium">Comment c'est calcule</summary>
+            <div className="mt-2 space-y-1 text-muted-foreground">
+              <p>
+                Ressource: {identity.primary}
+                {identity.secondary ? ` (${identity.secondary})` : ''}
+              </p>
+              <p>Source du prix: {costSourceBadge || mapCostSourceLabel(recommendation.costSource)}</p>
+              <p>Hypotheses: on-demand, sans RI/Savings Plans. Conversion USD vers EUR selon taux configure.</p>
+              <p>Cout DR additionnel: {money(card.monthlyCost, currency)}/mois ({money(card.annualCost, currency)}/an)</p>
+              {isFinancialProfileConfigured && recommendation.calculation ? (
+                <>
+                  <p>ALE actuel: {money(recommendation.calculation.aleCurrent, currency)}</p>
+                  <p>ALE apres DR: {money(recommendation.calculation.aleAfter, currency)}</p>
+                  <p>
+                    Risque annuel evite:{' '}
+                    {recommendation.calculation.riskAvoidedAnnual < 0
+                      ? 'Aucun gain - service deja protege'
+                      : money(recommendation.calculation.riskAvoidedAnnual, currency)}
+                  </p>
+                  <p>ROI: {individualRoiDisplay.label}</p>
+                </>
+              ) : (
+                <p>Activez le profil financier pour afficher le calcul ROI detaille.</p>
+              )}
+            </div>
+          </details>
         </CardContent>
       </Card>
     );
@@ -765,11 +797,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
             <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
               <p>
                 {filteredRecommendationCards.length} recommandations affichées sur {recommendationCards.length} total
-                (dont {quickWinCards.length} Quick Wins)
+                {isFinancialProfileConfigured ? ` (dont ${quickWinCards.length} Quick Wins)` : ''}
               </p>
-              {filteredSecondaryCount > 0 && (
+              {filteredOutOfBudgetCount > 0 && (
                 <p className="text-muted-foreground">
-                  Les cartes "Hors cap DR" restent hors ROI principal.
+                  Les cartes hors budget sont estompees, sans modification du cout unitaire.
                 </p>
               )}
             </div>
@@ -790,45 +822,29 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-primary" />
-              ROI de vos recommandations
+              {isFinancialProfileConfigured ? 'ROI de vos recommandations' : 'Budget DR'}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 text-sm">
-            <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-              <Metric
-                label="Risque annuel évité"
-                value={summaryRiskAvoidedDisplay}
-                color={summaryRiskAvoided < 0 ? 'text-amber-700' : 'text-green-600'}
-              />
-              <Metric
-                label="Coût annuel DR"
-                value={money(summaryAnnualCost, currency)}
-              />
-              <Metric
-                label="ROI global"
-                value={
-                  <span title={summaryRoiDisplay.tooltip}>
-                    {summaryRoiDisplay.label}
-                  </span>
-                }
-                color={roiToneClass(undefined, summaryRoiPercent)}
-              />
-              <Metric
-                label="Payback"
-                value={formatPaybackMonths(
-                  resolvedSummaryPayback.paybackMonths,
-                  resolvedSummaryPayback.paybackLabel,
-                )}
-              />
-            </div>
-
             <div className="rounded-lg border bg-muted/20 p-4 space-y-1">
-              <p>
-                Budget DR estimé :{' '}
-                <span className="font-semibold">
-                  {money(recommendationsSummaryQuery.data?.budgetAnnual, currency)}
-                </span>
-              </p>
+              {hasConfiguredBudgetCap && (
+                <div className="grid gap-2 sm:grid-cols-3">
+                  <div className="rounded-md border bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Budget DR</p>
+                    <p className="font-semibold">{money(summaryBudgetAnnual, currency)}/an</p>
+                  </div>
+                  <div className="rounded-md border bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Selectionne</p>
+                    <p className="font-semibold">{money(summarySelectedAnnualCost, currency)}/an</p>
+                  </div>
+                  <div className="rounded-md border bg-background px-3 py-2">
+                    <p className="text-xs text-muted-foreground">Restant</p>
+                    <p className="font-semibold">
+                      {summaryRemainingBudgetAnnual == null ? 'N/A' : `${money(summaryRemainingBudgetAnnual, currency)}/an`}
+                    </p>
+                  </div>
+                </div>
+              )}
               <p>
                 Recommandations retenues : <span className="font-semibold">{summaryTotalRecommendations}</span>
               </p>
@@ -840,7 +856,7 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   </span>
                 </p>
               )}
-              {summaryAnnualCostCap > 0 && (
+              {summaryAnnualCostCap > 0 && recommendationsSummaryQuery.data?.budgetAnnual == null && (
                 <p>
                   Cap DR appliqué :{' '}
                   <span className="font-semibold">{money(summaryAnnualCostCap, currency)}/an</span>
@@ -851,6 +867,11 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                   .map(([strategy, share]) => `${STRATEGY_LABELS[strategy] ?? strategy} : ${Number(share).toFixed(1).replace('.', ',')}%`)
                   .join(' | ') || 'N/A'}
               </p>
+              {!isFinancialProfileConfigured && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Configurez le profil financier pour afficher ROI, payback et economie annuelle.
+                </p>
+              )}
               {recommendationsSummaryQuery.data?.financialDisclaimers?.strategy && (
                 <p className="text-xs text-muted-foreground mt-2">
                   Source: {recommendationsSummaryQuery.data?.financialDisclaimers?.strategy}
@@ -860,6 +881,35 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
                 <p className="text-xs text-muted-foreground mt-2">Source: {roiQuery.data.disclaimer}</p>
               )}
             </div>
+            {isFinancialProfileConfigured && (
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <Metric
+                  label="Risque annuel évité"
+                  value={summaryRiskAvoidedDisplay}
+                  color={summaryRiskAvoided < 0 ? 'text-amber-700' : 'text-green-600'}
+                />
+                <Metric
+                  label="Coût annuel DR"
+                  value={money(summaryAnnualCost, currency)}
+                />
+                <Metric
+                  label="ROI global"
+                  value={
+                    <span title={summaryRoiDisplay.tooltip}>
+                      {summaryRoiDisplay.label}
+                    </span>
+                  }
+                  color={roiToneClass(undefined, summaryRoiPercent)}
+                />
+                <Metric
+                  label="Payback"
+                  value={formatPaybackMonths(
+                    resolvedSummaryPayback.paybackMonths,
+                    resolvedSummaryPayback.paybackLabel,
+                  )}
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -899,43 +949,52 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
 
       {!recommendationsQuery.isLoading && filteredRecommendationCards.length > 0 && (
         <div className="space-y-4">
-          <section className="space-y-3 rounded-xl border border-green-200 bg-green-50/60 p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div>
-                <p className="text-sm font-semibold text-green-900">
-                  Quick Wins & forte valeur ajoutée ({quickWinCards.length})
-                </p>
-                <p className="text-xs text-green-800/80">
-                  ROI &gt; 100% avec faible poids budgétaire, ou payback inférieur à 6 mois.
-                </p>
+          {isFinancialProfileConfigured && (
+            <section className="space-y-3 rounded-xl border border-green-200 bg-green-50/60 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold text-green-900">
+                    Quick Wins & forte valeur ajoutée ({quickWinCards.length})
+                  </p>
+                  <p className="text-xs text-green-800/80">
+                    ROI &gt; 100% avec faible poids budgétaire, ou payback inférieur à 6 mois.
+                  </p>
+                </div>
+                <Badge variant="outline" className="border-green-300 bg-white text-green-700">
+                  Trié par ROI {roiSortDirection === 'asc' ? 'croissant' : 'décroissant'}
+                </Badge>
               </div>
-              <Badge variant="outline" className="border-green-300 bg-white text-green-700">
-                Trié par ROI {roiSortDirection === 'asc' ? 'croissant' : 'décroissant'}
-              </Badge>
-            </div>
-            <div className="space-y-3">
-              {quickWinCards.length === 0 ? (
-                <p className="text-sm text-green-900/80">Aucun Quick Win pour les filtres actifs.</p>
-              ) : (
-                quickWinCards.map((card) => renderRecommendationCard(card, true))
-              )}
-            </div>
-          </section>
+              <div className="space-y-3">
+                {quickWinCards.length === 0 ? (
+                  <p className="text-sm text-green-900/80">Aucun Quick Win pour les filtres actifs.</p>
+                ) : (
+                  quickWinCards.map((card) => renderRecommendationCard(card, true))
+                )}
+              </div>
+            </section>
+          )}
 
           <section className="space-y-3 rounded-xl border p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
-                <p className="text-sm font-semibold">Autres recommandations ({otherRecommendationCards.length})</p>
+                <p className="text-sm font-semibold">
+                  {isFinancialProfileConfigured
+                    ? `Autres recommandations (${otherRecommendationCards.length})`
+                    : `Recommandations (${filteredRecommendationCards.length})`}
+                </p>
                 <p className="text-xs text-muted-foreground">
-                  Mesures utiles à prioriser après les gains rapides.
+                  {isFinancialProfileConfigured
+                    ? 'Mesures utiles à prioriser après les gains rapides.'
+                    : 'Mesures de resilience priorisees selon votre contexte technique.'}
                 </p>
               </div>
             </div>
             <div className="space-y-3">
-              {otherRecommendationCards.length === 0 ? (
+              {(isFinancialProfileConfigured ? otherRecommendationCards.length : filteredRecommendationCards.length) === 0 ? (
                 <p className="text-sm text-muted-foreground">Aucune autre recommandation pour les filtres actifs.</p>
               ) : (
-                otherRecommendationCards.map((card) => renderRecommendationCard(card, false))
+                (isFinancialProfileConfigured ? otherRecommendationCards : filteredRecommendationCards)
+                  .map((card) => renderRecommendationCard(card, false))
               )}
             </div>
           </section>
