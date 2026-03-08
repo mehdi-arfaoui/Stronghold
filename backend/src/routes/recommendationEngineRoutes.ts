@@ -4,9 +4,11 @@ import prisma from '../prismaClient.js';
 import type { TenantRequest } from '../middleware/tenantMiddleware.js';
 import * as GraphService from '../graph/graphService.js';
 import { generateHybridRecommendations } from '../recommendations/services/recommendation-engine.service.js';
-import { buildLandingZoneFinancialContext } from '../services/landing-zone-financial.service.js';
+import { requireRole } from '../middleware/authMiddleware.js';
+import { regenerateRecommendationsForTenant } from '../services/recommendation-regeneration.service.js';
 
 const router = Router();
+const regenerationInProgress = new Map<string, boolean>();
 
 router.get('/hybrid', async (req: TenantRequest, res) => {
   try {
@@ -26,25 +28,39 @@ router.get('/hybrid', async (req: TenantRequest, res) => {
   }
 });
 
-router.post('/regenerate', async (req: TenantRequest, res) => {
+router.post('/regenerate', requireRole('ADMIN'), async (req: TenantRequest, res) => {
+  const startTime = Date.now();
   try {
     const tenantId = req.tenantId;
     if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
 
-    const graph = await GraphService.getGraph(prisma, tenantId);
-    if (graph.order === 0) {
-      return res.status(400).json({ error: 'Graph is empty. Run a discovery scan first.' });
+    if (regenerationInProgress.get(tenantId)) {
+      return res.status(409).json({
+        error: 'Un recalcul est déjà en cours. Veuillez patienter.',
+      });
     }
 
-    const context = await buildLandingZoneFinancialContext(prisma, tenantId);
+    regenerationInProgress.set(tenantId, true);
+    const result = await regenerateRecommendationsForTenant(prisma, tenantId);
+
     return res.json({
-      regeneratedAt: new Date().toISOString(),
-      recommendations: context.recommendations.length,
-      summary: context.summary,
+      success: true,
+      summary: {
+        ...result,
+        durationMs: Date.now() - startTime,
+        financialProfileConfigured: result.financialProfileConfigured,
+      },
     });
   } catch (error) {
-    appLogger.error('Error regenerating recommendations:', error);
-    return res.status(500).json({ error: 'Internal server error' });
+    appLogger.error('recommendations.regeneration_failed', {
+      tenantId: req.tenantId,
+      error: error instanceof Error ? error.message : 'unknown_error',
+    });
+    return res.status(500).json({ error: 'Le recalcul des recommandations a échoué.' });
+  } finally {
+    if (req.tenantId) {
+      regenerationInProgress.set(req.tenantId, false);
+    }
   }
 });
 

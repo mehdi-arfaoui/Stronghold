@@ -13,6 +13,7 @@ import {
   BookOpen,
   Settings,
   Shield,
+  ShieldCheck,
   ChevronLeft,
   Activity,
   CircleDollarSign,
@@ -46,7 +47,6 @@ const NAV_SECTIONS: NavSection[] = [
   {
     labelKey: 'sidebar.configuration',
     items: [
-      { labelKey: 'nav.settings', icon: Settings, path: '/settings' },
       { labelKey: 'nav.dashboard', icon: LayoutDashboard, path: '/dashboard', exact: true },
     ],
   },
@@ -60,6 +60,8 @@ const NAV_SECTIONS: NavSection[] = [
       { labelKey: 'nav.analysis', icon: BarChart3, path: '/analysis' },
       { labelKey: 'nav.businessFlows', icon: GitBranch, path: '/business-flows' },
       { labelKey: 'nav.recommendations', icon: Lightbulb, path: '/recommendations', exact: true },
+      { labelKey: 'nav.compliance', label: 'Conformite', icon: ShieldCheck, path: '/compliance' },
+      { labelKey: 'nav.settings', icon: Settings, path: '/settings' },
       { labelKey: 'nav.roiFinance', icon: CircleDollarSign, path: '/finance', feature: 'executive-dashboard' },
     ],
   },

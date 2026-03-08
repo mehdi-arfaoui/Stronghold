@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   generateDemoInfrastructure,
   getLayersForCompanySize,
+  validateDemoMetadata,
 } from '../../src/demo/services/demoInfrastructureFactory.ts';
 
 const REQUIRED_CORE_IDS = [
@@ -103,4 +104,25 @@ test('Large manufacturing demo infra adds multi-region + extended legacy', () =>
 
   const mainApp = infrastructure.nodes.find((node) => node.id === 'svc-main-app');
   assert.equal(mainApp?.name, 'mes-console');
+});
+
+test('demo metadata validation passes for all non-intentional nodes', () => {
+  const infrastructure = generateDemoInfrastructure({
+    sector: 'it_saas',
+    companySize: 'large',
+  });
+
+  const issues = validateDemoMetadata(infrastructure.nodes);
+  assert.equal(issues.length, 0);
+});
+
+test('intentional metadata gaps stay limited to dedicated demo nodes', () => {
+  const infrastructure = generateDemoInfrastructure({
+    sector: 'it_saas',
+    companySize: 'large',
+  });
+
+  const issues = validateDemoMetadata(infrastructure.nodes, { includeIntentionalGaps: true });
+  const nodeIds = issues.map((issue) => issue.nodeId).sort();
+  assert.deepEqual(nodeIds, ['dr-bastion', 'gcp-storage-archive']);
 });

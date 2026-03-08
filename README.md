@@ -123,6 +123,10 @@ Permissions optionnelles pour l'enrichissement des metadata:
 Sans ces permissions, le scan continue mais certaines metadata restent a `null`.
 Dans ce cas, les recommandations marquent la protection comme "verification requise" au lieu de "desactivee".
 
+Configuration zoom Discovery (frontend):
+- `VITE_DISCOVERY_WHEEL_SENSITIVITY` (defaut `0.3`) ajuste la vitesse de zoom molette.
+- `VITE_DISCOVERY_MIN_ZOOM` et `VITE_DISCOVERY_MAX_ZOOM` permettent d'encadrer l'echelle du graphe.
+
 Payload JSON attendu pour `/discovery/scan` :
 ```json
 {

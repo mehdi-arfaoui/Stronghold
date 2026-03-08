@@ -53,14 +53,39 @@ export async function generateAndPersistBiaReport(
   prisma: PrismaClient,
   tenantId: string,
 ) {
-  const graph = await GraphService.getGraph(prisma, tenantId);
+  const [graph, previousReport] = await Promise.all([
+    GraphService.getGraph(prisma, tenantId),
+    prisma.bIAReport2.findFirst({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        processes: {
+          select: {
+            serviceNodeId: true,
+            recoveryTier: true,
+          },
+        },
+      },
+    }),
+  ]);
 
   if (graph.order === 0) {
     return null;
   }
 
+  const preservedTierByServiceNodeId = new Map<string, number>();
+  for (const process of previousReport?.processes || []) {
+    const tier = Number(process.recoveryTier);
+    if (!Number.isFinite(tier)) continue;
+    const roundedTier = Math.round(tier);
+    if (roundedTier < 1 || roundedTier > 4) continue;
+    preservedTierByServiceNodeId.set(process.serviceNodeId, roundedTier);
+  }
+
   const analysis = await analyzeFullGraph(graph);
-  const biaReport = generateBIA(graph, analysis);
+  const biaReport = generateBIA(graph, analysis, {
+    preservedTierByServiceNodeId,
+  });
   const consistentProcesses = biaReport.processes.map((process) => {
     const bounded = capRtoRpoByTier(process.recoveryTier, {
       rtoMinutes: process.suggestedRTO,

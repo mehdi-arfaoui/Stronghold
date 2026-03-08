@@ -1,7 +1,9 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Shield, AlertTriangle, Server, Clock, RefreshCw, FlaskConical, Lightbulb, FileDown } from 'lucide-react';
+import { Shield, AlertTriangle, Server, Clock, RefreshCw, FlaskConical, Lightbulb, FileDown, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { StatCard } from '@/components/dashboard/StatCard';
@@ -14,6 +16,7 @@ import { analysisApi } from '@/api/analysis.api';
 import { discoveryApi } from '@/api/discovery.api';
 import { risksApi } from '@/api/risks.api';
 import { financialApi } from '@/api/financial.api';
+import { reportsApi } from '@/api/reports.api';
 import { normalizeLanguage, resolveLocale } from '@/i18n/locales';
 import { formatRelativeTime } from '@/lib/formatters';
 
@@ -45,6 +48,8 @@ const COPY = {
     newSimulation: 'Nouvelle simulation',
     recommendations: 'Recommandations',
     generateReport: 'Générer le rapport',
+    exportPptx: 'Exporter PPTX',
+    exportingPptx: 'Export PPTX...',
   },
   en: {
     loading: 'Loading dashboard...',
@@ -73,6 +78,8 @@ const COPY = {
     newSimulation: 'New simulation',
     recommendations: 'Recommendations',
     generateReport: 'Generate report',
+    exportPptx: 'Export PPTX',
+    exportingPptx: 'Exporting PPTX...',
   },
   es: {
     loading: 'Cargando panel...',
@@ -101,6 +108,8 @@ const COPY = {
     newSimulation: 'Nueva simulación',
     recommendations: 'Recomendaciones',
     generateReport: 'Generar informe',
+    exportPptx: 'Exportar PPTX',
+    exportingPptx: 'Exportando PPTX...',
   },
   it: {
     loading: 'Caricamento dashboard...',
@@ -129,6 +138,8 @@ const COPY = {
     newSimulation: 'Nuova simulazione',
     recommendations: 'Raccomandazioni',
     generateReport: 'Genera report',
+    exportPptx: 'Esporta PPTX',
+    exportingPptx: 'Esportazione PPTX...',
   },
   zh: {
     loading: '正在加载仪表盘...',
@@ -157,6 +168,8 @@ const COPY = {
     newSimulation: '新建模拟',
     recommendations: '建议',
     generateReport: '生成报告',
+    exportPptx: 'Export PPTX',
+    exportingPptx: 'Exporting PPTX...',
   },
 } as const;
 
@@ -165,6 +178,7 @@ export function DashboardPage() {
   const navigate = useNavigate();
   const locale = resolveLocale(i18n.resolvedLanguage);
   const copy = COPY[normalizeLanguage(i18n.resolvedLanguage)];
+  const [isExportingPptx, setIsExportingPptx] = useState(false);
 
   const scoreQuery = useQuery({
     queryKey: ['resilience-score'],
@@ -230,6 +244,31 @@ export function DashboardPage() {
   }
 
   const criticalSpofs = spofs.filter((entry) => entry.severity === 'critical').length;
+
+  const handleExportPptx = async () => {
+    setIsExportingPptx(true);
+    try {
+      const response = await reportsApi.generatePptx();
+      const blob = response.data instanceof Blob
+        ? response.data
+        : new Blob([response.data as BlobPart], {
+            type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `stronghold-audit-${new Date().toISOString().slice(0, 10)}.pptx`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      document.body.removeChild(anchor);
+      URL.revokeObjectURL(url);
+      toast.success('Export PPTX termine');
+    } catch {
+      toast.error('Export PPTX echoue');
+    } finally {
+      setIsExportingPptx(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -338,6 +377,19 @@ export function DashboardPage() {
           <Button variant="outline" onClick={() => navigate('/report')}>
             <FileDown className="mr-2 h-4 w-4" />
             {copy.generateReport}
+          </Button>
+          <Button variant="outline" onClick={handleExportPptx} disabled={isExportingPptx}>
+            {isExportingPptx ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {copy.exportingPptx}
+              </>
+            ) : (
+              <>
+                <FileDown className="mr-2 h-4 w-4" />
+                {copy.exportPptx}
+              </>
+            )}
           </Button>
         </CardContent>
       </Card>

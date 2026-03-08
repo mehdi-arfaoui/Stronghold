@@ -149,3 +149,16 @@ export function ExampleGraph() {
 - Les couleurs principales se trouvent dans `src/App.css` (`--primary-color`, `--secondary-color`, `--accent-color`, etc.).
 - Les variantes sombre/clair sont définies via `prefers-color-scheme` dans `src/App.css`.
 - Le reset et les styles de base sont dans `src/index.css` si vous souhaitez ajuster la typographie globale.
+
+## Discovery Graph engine (Cytoscape)
+
+- Moteur actif: `Cytoscape.js` + `cytoscape-dagre`.
+- Sensibilite zoom molette configurable via `VITE_DISCOVERY_WHEEL_SENSITIVITY` (defaut `0.3`).
+- Bornes de zoom configurables via `VITE_DISCOVERY_MIN_ZOOM` et `VITE_DISCOVERY_MAX_ZOOM`.
+- Commande benchmark rapide:
+
+```bash
+npm run benchmark:discovery
+```
+
+- Documentation benchmark: `../docs/discovery-graph-benchmark.md`

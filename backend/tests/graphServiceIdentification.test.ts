@@ -187,3 +187,47 @@ test('Graph analysis detects explicit EC2/RDS/ElastiCache SPOFs while excluding 
   const storageIssue = report.redundancyIssues.find((issue) => issue.nodeName === 'assets-bucket');
   assert.equal(storageIssue?.failedChecks.some((check) => check.check === 'backup') ?? false, false);
 });
+
+test('BIA keeps tier=1 for regenerate flows when previous tiers exist', () => {
+  const graph = createGraph();
+
+  addNode(graph, {
+    id: 'svc-checkout',
+    name: 'checkout',
+    type: NodeType.APPLICATION,
+    sourceType: 'ECS_SERVICE',
+  });
+
+  const baseline = generateBIA(graph, emptyAnalysis(graph));
+  const baselineProcess = baseline.processes.find((process) => process.serviceNodeId === 'svc-checkout');
+  assert.ok(baselineProcess);
+  assert.equal(baselineProcess.recoveryTier, 2);
+
+  const preserved = generateBIA(graph, emptyAnalysis(graph), {
+    preservedTierByServiceNodeId: new Map([['svc-checkout', 1]]),
+  });
+  const preservedProcess = preserved.processes.find((process) => process.serviceNodeId === 'svc-checkout');
+  assert.ok(preservedProcess);
+  assert.equal(preservedProcess.recoveryTier, 1);
+  assert.equal(preservedProcess.impactCategory, 'critical');
+});
+
+test('BIA uses explicit tier metadata when provided on node', () => {
+  const graph = createGraph();
+
+  addNode(graph, {
+    id: 'svc-identity',
+    name: 'identity',
+    type: NodeType.APPLICATION,
+    sourceType: 'ECS_SERVICE',
+    metadata: {
+      tier: 1,
+    },
+  });
+
+  const report = generateBIA(graph, emptyAnalysis(graph));
+  const process = report.processes.find((entry) => entry.serviceNodeId === 'svc-identity');
+  assert.ok(process);
+  assert.equal(process.recoveryTier, 1);
+  assert.equal(process.impactCategory, 'critical');
+});

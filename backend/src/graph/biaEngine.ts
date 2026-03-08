@@ -22,7 +22,8 @@ import { isAnalyzableServiceNode } from './serviceClassification.js';
 
 export function generateBIA(
   graph: GraphInstance,
-  analysis: GraphAnalysisReport
+  analysis: GraphAnalysisReport,
+  options: GenerateBiaOptions = {},
 ): BIAReportResult {
   // 1. Identify business services (front-facing nodes)
   const businessServices = identifyBusinessServices(graph);
@@ -35,7 +36,7 @@ export function generateBIA(
 
     // 3. Calculate metrics
     const metrics = calculateMetrics(service, depChain, analysis);
-    const classifiedTier = extractClassifiedTier(service);
+    const classifiedTier = extractClassifiedTier(service, options);
 
     // 4. Financial impact
     const financialImpact = estimateFinancialImpact(service);
@@ -115,7 +116,42 @@ function readMetadataRecord(node: InfraNodeAttrs): Record<string, unknown> {
   return node.metadata as Record<string, unknown>;
 }
 
-function extractClassifiedTier(node: InfraNodeAttrs): number | null {
+export type GenerateBiaOptions = {
+  preservedTierByServiceNodeId?: ReadonlyMap<string, number>;
+};
+
+function normalizeTierValue(rawTier: unknown): number | null {
+  if (typeof rawTier === 'number' && Number.isFinite(rawTier)) {
+    const rounded = Math.round(rawTier);
+    return rounded >= 1 && rounded <= 4 ? rounded : null;
+  }
+
+  if (typeof rawTier !== 'string') return null;
+  const trimmed = rawTier.trim();
+  if (!trimmed) return null;
+
+  const direct = Number(trimmed);
+  if (Number.isFinite(direct)) {
+    const rounded = Math.round(direct);
+    return rounded >= 1 && rounded <= 4 ? rounded : null;
+  }
+
+  const tierMatch = trimmed.match(/(?:tier|t)\s*[-_ ]?([1-4])/i);
+  if (tierMatch) {
+    const parsed = Number(tierMatch[1]);
+    if (Number.isFinite(parsed) && parsed >= 1 && parsed <= 4) return parsed;
+  }
+
+  const normalized = trimmed.toLowerCase();
+  if (normalized === 'critical') return 1;
+  if (normalized === 'high') return 2;
+  if (normalized === 'medium') return 3;
+  if (normalized === 'low') return 4;
+
+  return null;
+}
+
+function extractClassifiedTier(node: InfraNodeAttrs, options: GenerateBiaOptions): number | null {
   const metadata = readMetadataRecord(node);
   const rawClassification =
     metadata.criticalityClassification &&
@@ -123,11 +159,16 @@ function extractClassifiedTier(node: InfraNodeAttrs): number | null {
     !Array.isArray(metadata.criticalityClassification)
       ? (metadata.criticalityClassification as Record<string, unknown>)
       : null;
-  const tier = Number(rawClassification?.tier);
-  if (!Number.isFinite(tier)) return null;
-  const rounded = Math.round(tier);
-  if (rounded < 1 || rounded > 4) return null;
-  return rounded;
+
+  const metadataTier = normalizeTierValue(
+    metadata.recoveryTier ?? metadata.criticalityTier ?? metadata.tier,
+  );
+  if (metadataTier != null) return metadataTier;
+
+  const preservedTier = normalizeTierValue(options.preservedTierByServiceNodeId?.get(node.id));
+  if (preservedTier != null) return preservedTier;
+
+  return normalizeTierValue(rawClassification?.tier);
 }
 
 function impactCategoryFromTier(tier: number): BIAMetrics['category'] {

@@ -1,0 +1,89 @@
+{
+  "id": "iso22301",
+  "name": "ISO 22301:2019",
+  "version": "2019",
+  "description": "Securite et resilience - Systemes de management de la continuite d activite",
+  "requirements": [
+    {
+      "id": "8.2.2",
+      "clause": "8.2.2",
+      "title": "Analyse d impact sur l activite (BIA)",
+      "description": "L organisme doit realiser une analyse d impact pour identifier les activites critiques et evaluer les impacts d une interruption.",
+      "dataSource": "bia",
+      "check": "biaCompleted",
+      "weight": 2
+    },
+    {
+      "id": "8.2.3",
+      "clause": "8.2.3",
+      "title": "Appreciation du risque",
+      "description": "L organisme doit identifier et evaluer les risques de perturbation.",
+      "dataSource": "analysis",
+      "check": "spofIdentified",
+      "weight": 2
+    },
+    {
+      "id": "8.3",
+      "clause": "8.3",
+      "title": "Strategie de continuite d activite",
+      "description": "L organisme doit determiner des strategies pour proteger et restaurer ses activites critiques.",
+      "dataSource": "recommendations",
+      "check": "recommendationsAccepted",
+      "weight": 2
+    },
+    {
+      "id": "8.4",
+      "clause": "8.4",
+      "title": "Plans de continuite d activite",
+      "description": "L organisme doit etablir et mettre en oeuvre des plans documentes.",
+      "dataSource": "businessFlows",
+      "check": "businessFlowsDefined",
+      "weight": 2
+    },
+    {
+      "id": "8.4.rto",
+      "clause": "8.4",
+      "title": "RTO/RPO definis",
+      "description": "Les objectifs de temps de reprise et de point de reprise doivent etre definis pour chaque activite critique.",
+      "dataSource": "bia",
+      "check": "rtoRpoDefined",
+      "weight": 1
+    },
+    {
+      "id": "8.5",
+      "clause": "8.5",
+      "title": "Exercices et tests",
+      "description": "L organisme doit realiser des exercices pour valider l efficacite de ses plans.",
+      "dataSource": "exercises",
+      "check": "exerciseCompleted",
+      "weight": 2
+    },
+    {
+      "id": "9.1",
+      "clause": "9.1",
+      "title": "Surveillance et mesure",
+      "description": "L organisme doit surveiller en permanence la pertinence de son SMCA.",
+      "dataSource": "scans",
+      "check": "scheduledScanActive",
+      "weight": 1
+    },
+    {
+      "id": "9.1.drift",
+      "clause": "9.1",
+      "title": "Detection des derives",
+      "description": "L organisme doit detecter les changements non planifies pouvant affecter la continuite.",
+      "dataSource": "drift",
+      "check": "driftDetectionActive",
+      "weight": 1
+    },
+    {
+      "id": "10.1",
+      "clause": "10.1",
+      "title": "Non-conformites et actions correctives",
+      "description": "L organisme doit traiter les non-conformites identifiees.",
+      "dataSource": "recommendations",
+      "check": "pendingRecommendationsReviewed",
+      "weight": 1
+    }
+  ]
+}

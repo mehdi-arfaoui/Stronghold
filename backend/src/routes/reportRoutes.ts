@@ -12,10 +12,12 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { buildFinancialSummaryPayload } from '../services/financial-dashboard.service.js';
 import DOMPurify from 'isomorphic-dompurify';
 import { requireFeature } from '../middleware/licenseMiddleware.js';
+import { PptxExportService } from '../services/pptxExportService.js';
 
 type DocxModule = typeof import('docx');
 
 const router = Router();
+const pptxExportService = new PptxExportService(prisma);
 
 function splitLines(text: string): string[] {
   return text.replace(/\r\n/g, '\n').split('\n');
@@ -852,6 +854,25 @@ async function handleReportPreview(req: TenantRequest, res: Response) {
 // HTML preview of the report (used by frontend ReportGenerator)
 router.get('/preview', async (req: TenantRequest, res) => {
   return await handleReportPreview(req, res);
+});
+
+// GET /reports/pptx - Export executive PPTX based on Stronghold template
+router.get('/pptx', reportRateLimit, async (req: TenantRequest, res) => {
+  try {
+    const tenantId = req.tenantId;
+    if (!tenantId) return res.status(500).json({ error: 'Tenant not resolved' });
+
+    const buffer = await pptxExportService.generateReport(tenantId);
+    const filename = PptxExportService.getDownloadFilename();
+
+    res.setHeader('Content-Type', PptxExportService.mimeType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    return res.send(buffer);
+  } catch (error) {
+    appLogger.error('Error exporting PPTX report:', error);
+    return res.status(500).json({ error: 'Export PPTX echoue' });
+  }
 });
 
 router.post('/preview', reportRateLimit, async (req: TenantRequest, res) => {

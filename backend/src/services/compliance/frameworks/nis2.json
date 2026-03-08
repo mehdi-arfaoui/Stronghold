@@ -1,0 +1,53 @@
+{
+  "id": "nis2",
+  "name": "Directive NIS 2 (UE 2022/2555)",
+  "version": "2022/2555",
+  "description": "Directive europeenne sur la cybersecurite des reseaux et systemes d information",
+  "requirements": [
+    {
+      "id": "art21-2c",
+      "clause": "Article 21(2)(c)",
+      "title": "Continuite des activites",
+      "description": "Les entites doivent assurer la continuite de leurs activites, y compris la gestion des sauvegardes, la reprise apres sinistre et la gestion de crise.",
+      "dataSource": "bia+recommendations",
+      "check": "biaAndDrPlansInPlace",
+      "weight": 3
+    },
+    {
+      "id": "art21-2d",
+      "clause": "Article 21(2)(d)",
+      "title": "Securite de la chaine d approvisionnement",
+      "description": "Les entites doivent tenir compte des vulnerabilites liees a leurs fournisseurs et prestataires.",
+      "dataSource": "graph",
+      "check": "dependenciesMapped",
+      "weight": 2
+    },
+    {
+      "id": "art21-2j",
+      "clause": "Article 21(2)(j)",
+      "title": "Plans de reprise d activite",
+      "description": "Les entites doivent disposer de plans de reprise valides.",
+      "dataSource": "recommendations+exercises",
+      "check": "drPlansValidated",
+      "weight": 3
+    },
+    {
+      "id": "art23",
+      "clause": "Article 23",
+      "title": "Notification des incidents",
+      "description": "Les entites doivent notifier les incidents significatifs dans les delais prescrits.",
+      "dataSource": "incidents",
+      "check": "incidentProcessDefined",
+      "weight": 2
+    },
+    {
+      "id": "art21-2e",
+      "clause": "Article 21(2)(e)",
+      "title": "Gestion des vulnerabilites",
+      "description": "Les entites doivent assurer la securite des systemes d information, incluant la gestion et la divulgation des vulnerabilites.",
+      "dataSource": "scans+drift",
+      "check": "vulnerabilityManagement",
+      "weight": 2
+    }
+  ]
+}

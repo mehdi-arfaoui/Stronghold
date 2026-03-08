@@ -17,6 +17,7 @@ import {
   getRefreshToken,
   setAuthTokens,
 } from '@/lib/authSession';
+import { isInternalDemoContext } from '@/lib/demoContext';
 
 type AuthContextValue = {
   user: AuthUser | null;
@@ -29,21 +30,43 @@ type AuthContextValue = {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+const DEMO_AUTH_USER: AuthUser = {
+  id: 'demo-user',
+  tenantId: 'demo-tenant',
+  email: 'demo@stronghold.local',
+  displayName: 'Demo User',
+  role: 'ANALYST',
+  isActive: true,
+  lastLoginAt: null,
+  createdAt: '1970-01-01T00:00:00.000Z',
+  updatedAt: '1970-01-01T00:00:00.000Z',
+};
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const demoAuthBypass = isInternalDemoContext();
   const queryClient = useQueryClient();
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState<AuthUser | null>(demoAuthBypass ? DEMO_AUTH_USER : null);
+  const [isLoading, setIsLoading] = useState(!demoAuthBypass);
+  const [isAuthenticated, setIsAuthenticated] = useState(demoAuthBypass);
 
   const clearSession = useEffectEvent(() => {
     clearAuthTokens();
     startTransition(() => {
-      setUser(null);
-      setIsAuthenticated(false);
+      if (demoAuthBypass) {
+        setUser(DEMO_AUTH_USER);
+        setIsAuthenticated(true);
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
+      }
     });
   });
 
   const refreshSession = useEffectEvent(async (loadUser: boolean) => {
+    if (demoAuthBypass) {
+      return null;
+    }
+
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
       return null;
@@ -73,6 +96,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
+    if (demoAuthBypass) {
+      configureAuthClientHandlers({
+        refreshSession: async () => null,
+        onAuthFailure: () => {},
+      });
+      startTransition(() => {
+        setUser(DEMO_AUTH_USER);
+        setIsAuthenticated(true);
+        setIsLoading(false);
+      });
+
+      return () => {
+        configureAuthClientHandlers({
+          refreshSession: async () => null,
+          onAuthFailure: () => {},
+        });
+      };
+    }
+
     configureAuthClientHandlers({
       refreshSession: () => refreshSession(false),
       onAuthFailure: () => {
@@ -122,9 +164,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         onAuthFailure: () => {},
       });
     };
-  }, [queryClient]);
+  }, [demoAuthBypass, queryClient]);
 
   const login = useEffectEvent(async (email: string, password: string) => {
+    if (demoAuthBypass) {
+      startTransition(() => {
+        setUser(DEMO_AUTH_USER);
+        setIsAuthenticated(true);
+      });
+      return;
+    }
+
     const { data } = await authApi.loginUser(email, password);
     setAuthTokens({
       accessToken: data.accessToken,
@@ -141,6 +191,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const logout = useEffectEvent(async () => {
+    if (demoAuthBypass) {
+      return;
+    }
+
     const refreshToken = getRefreshToken();
     try {
       if (refreshToken) {
@@ -155,6 +209,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const changePassword = useEffectEvent(async (currentPassword: string, newPassword: string) => {
+    if (demoAuthBypass) {
+      throw new Error('Changement de mot de passe indisponible en mode demo.');
+    }
+
     await authApi.changePassword(currentPassword, newPassword);
     await logout();
   });

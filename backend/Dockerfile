@@ -1,14 +1,18 @@
 # syntax=docker/dockerfile:1.6
 
 FROM node:20-alpine AS base
+COPY scripts/requirements.txt /tmp/pptx-requirements.txt
 RUN apk add --no-cache \
     ca-certificates \
     nmap \
     nmap-scripts \
     net-snmp-tools \
     openssl \
+    python3 \
+    py3-pip \
     tesseract-ocr \
-    wget
+    wget \
+    && pip3 install --no-cache-dir -r /tmp/pptx-requirements.txt
 WORKDIR /app
 
 FROM base AS deps
@@ -28,6 +32,7 @@ COPY tsconfig.json tsconfig.client.json ./
 COPY config ./config
 COPY src ./src
 COPY scripts ./scripts
+COPY templates ./templates
 RUN sed -i 's/\r$//' scripts/migrate-and-seed.sh \
     && chmod +x scripts/migrate-and-seed.sh
 
@@ -60,6 +65,8 @@ COPY --from=build-client /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build-client /app/dist ./dist
 COPY --from=build-client /app/prisma ./prisma
 COPY --from=build-client /app/config ./config
+COPY --from=build-client /app/scripts ./scripts
+COPY --from=build-client /app/templates ./templates
 COPY license-public.pem /app/license/license-public.pem
 EXPOSE 4000
 CMD ["node", "dist/index.js"]
@@ -75,6 +82,8 @@ COPY --from=build-internal /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build-internal /app/dist ./dist
 COPY --from=build-internal /app/prisma ./prisma
 COPY --from=build-internal /app/config ./config
+COPY --from=build-internal /app/scripts ./scripts
+COPY --from=build-internal /app/templates ./templates
 COPY --from=build-internal /app/src/demo ./src/demo
 COPY license-public.pem /app/license/license-public.pem
 EXPOSE 4000

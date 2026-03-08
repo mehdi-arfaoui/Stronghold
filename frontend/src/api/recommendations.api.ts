@@ -112,6 +112,23 @@ export interface RecommendationsSummary {
   };
 }
 
+export interface RecommendationsRegenerationSummary {
+  totalNodes: number;
+  recommendationsGenerated: number;
+  resilientByDesign: number;
+  noRuleApplicable: number;
+  requiresVerification: number;
+  totalDrCostMonthly: number;
+  totalDrCostAnnual: number;
+  financialProfileConfigured: boolean;
+  durationMs: number;
+}
+
+export interface RecommendationsRegenerationResponse {
+  success: boolean;
+  summary: RecommendationsRegenerationSummary;
+}
+
 export const recommendationsApi = {
   getAll: () =>
     api.get<Recommendation[]>('/recommendations/landing-zone'),
@@ -129,7 +146,7 @@ export const recommendationsApi = {
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, ...data }] }),
 
   regenerate: () =>
-    api.post('/recommendations/regenerate'),
+    api.post<RecommendationsRegenerationResponse>('/recommendations/regenerate'),
 
   resetStatus: (id: string) =>
     api.patch('/recommendations/landing-zone', { overrides: [{ serviceId: id, status: 'pending', notes: null }] }),

@@ -21,6 +21,7 @@ const DiscoveryPage = lazy(async () => ({ default: (await import('@/pages/Discov
 const AnalysisPage = lazy(async () => ({ default: (await import('@/pages/AnalysisPage')).AnalysisPage }));
 const SimulationPage = lazy(async () => ({ default: (await import('@/pages/SimulationPage')).SimulationPage }));
 const RecommendationsPage = lazy(async () => ({ default: (await import('@/pages/RecommendationsPage')).RecommendationsPage }));
+const CompliancePage = lazy(async () => ({ default: (await import('@/pages/CompliancePage')).CompliancePage }));
 const IncidentsPage = lazy(async () => ({ default: (await import('@/pages/IncidentsPage')).IncidentsPage }));
 const DocumentsPage = lazy(async () => ({ default: (await import('@/pages/DocumentsPage')).DocumentsPage }));
 const ReportPage = lazy(async () => ({ default: (await import('@/pages/ReportPage')).ReportPage }));
@@ -114,6 +115,7 @@ const router = createBrowserRouter([
       { path: '/analysis', element: routeElement(<AnalysisPage />) },
       { path: '/business-flows', element: routeElement(<BusinessFlowsPage />) },
       { path: '/recommendations', element: routeElement(<RecommendationsPage />) },
+      { path: '/compliance', element: routeElement(<CompliancePage />) },
       { path: '/finance', element: routeElement(<FinancialDashboardPage />) },
       { path: '/simulations', element: routeElement(<SimulationPage />) },
       { path: '/drift', element: routeElement(<DriftDetectionPage />) },

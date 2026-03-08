@@ -64,6 +64,53 @@ type GenericLabelKey =
   | 'user-db'
   | 'order-db';
 
+type DemoProtectionLevel = 'protected' | 'partial' | 'unprotected' | 'incomplete';
+
+const AWS_AZ_SUFFIXES = ['a', 'b', 'c'] as const;
+const GCP_ZONE_SUFFIXES = ['a', 'b', 'c'] as const;
+const AZURE_ZONE_IDS = ['1', '2', '3'] as const;
+
+// Intentionally incomplete nodes to demonstrate requiresVerification in demo data.
+const INTENTIONAL_METADATA_GAP_NODE_IDS = new Set<string>(['dr-bastion', 'gcp-storage-archive']);
+
+const EXPLICIT_PROTECTION_LEVELS: Readonly<Record<string, DemoProtectionLevel>> = {
+  // AWS compute
+  'svc-main-app': 'unprotected',
+  'svc-api-gateway': 'partial',
+  'svc-payment': 'protected',
+  'svc-user': 'partial',
+  'svc-order': 'protected',
+  'svc-admin': 'partial',
+  'svc-search': 'protected',
+  'svc-analytics': 'partial',
+  'api-rate-limiter': 'protected',
+  'support-portal': 'partial',
+  'partner-gateway': 'unprotected',
+  'dr-bastion': 'incomplete',
+  // AWS data
+  'db-main': 'unprotected',
+  'db-payment': 'partial',
+  'db-user': 'protected',
+  'db-order': 'partial',
+  'db-catalog': 'protected',
+  'db-admin': 'unprotected',
+  'redis-main': 'partial',
+  'admin-portal-cache': 'unprotected',
+  's3-images': 'partial',
+  's3-backups': 'protected',
+  's3-dr-backups': 'protected',
+  'ddb-sessions': 'protected',
+  // Azure
+  'azure-analytics-node': 'partial',
+  'azure-sql-replica': 'protected',
+  'azure-storage-archive': 'partial',
+  // GCP
+  'gcp-compute-batch': 'unprotected',
+  'gcp-cloudsql-orders': 'partial',
+  'gcp-memorystore-shared': 'protected',
+  'gcp-storage-archive': 'incomplete',
+};
+
 const SIZE_LAYERS: Readonly<Record<DemoCompanySizeKey, DemoInfrastructureLayerName[]>> = {
   pme: ['core'],
   pme_plus: ['core', 'microservices'],
@@ -279,6 +326,636 @@ function defineEdge(
   }
 
   return edge;
+}
+
+function toMetadataRecord(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  return value as Record<string, unknown>;
+}
+
+function readStringValue(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 50);
+}
+
+function resolveRegion(node: DemoInfraNodeDef, fallback: string): string {
+  return readStringValue(node.region) ?? readStringValue(node.metadata.region) ?? fallback;
+}
+
+function resolveDemoDomain(node: DemoInfraNodeDef): string {
+  const type = String(node.type || '').toUpperCase();
+  const tagDomain = readStringValue(node.tags.domain);
+  if (tagDomain) return tagDomain;
+
+  if (['API_GATEWAY', 'LOAD_BALANCER', 'DNS', 'CDN', 'FIREWALL', 'NETWORK_DEVICE'].includes(type)) {
+    return 'network';
+  }
+  if (['DATABASE', 'CACHE', 'OBJECT_STORAGE', 'MESSAGE_QUEUE'].includes(type)) {
+    return 'data';
+  }
+  if (['APPLICATION', 'MICROSERVICE', 'SERVERLESS', 'KUBERNETES_POD', 'KUBERNETES_SERVICE'].includes(type)) {
+    return 'application';
+  }
+  return 'platform';
+}
+
+function resolveDemoTier(node: DemoInfraNodeDef): string {
+  const type = String(node.type || '').toUpperCase();
+  const tagTier = readStringValue(node.tags.tier);
+  if (tagTier) return tagTier;
+
+  if (['API_GATEWAY', 'LOAD_BALANCER', 'DNS', 'CDN'].includes(type)) return 'edge';
+  if (['DATABASE', 'CACHE', 'OBJECT_STORAGE', 'MESSAGE_QUEUE'].includes(type)) return 'data';
+  if (['APPLICATION', 'MICROSERVICE', 'SERVERLESS'].includes(type)) return 'application';
+  return 'platform';
+}
+
+function buildAwsZones(region: string, count: number): string[] {
+  const safeCount = Math.max(1, Math.min(count, AWS_AZ_SUFFIXES.length));
+  return AWS_AZ_SUFFIXES.slice(0, safeCount).map((suffix) => `${region}${suffix}`);
+}
+
+function buildGcpZones(region: string, count: number): string[] {
+  const safeCount = Math.max(1, Math.min(count, GCP_ZONE_SUFFIXES.length));
+  return GCP_ZONE_SUFFIXES.slice(0, safeCount).map((suffix) => `${region}-${suffix}`);
+}
+
+function buildAzureZones(count: number): string[] {
+  const safeCount = Math.max(1, Math.min(count, AZURE_ZONE_IDS.length));
+  return AZURE_ZONE_IDS.slice(0, safeCount);
+}
+
+function resolveProtectionLevel(node: DemoInfraNodeDef, metadata: Record<string, unknown>): DemoProtectionLevel {
+  const explicit = EXPLICIT_PROTECTION_LEVELS[node.id];
+  if (explicit) return explicit;
+  if (INTENTIONAL_METADATA_GAP_NODE_IDS.has(node.id)) return 'incomplete';
+
+  if (metadata.intentionalSpof === true || String(node.tags.intentional_spof || '').toLowerCase() === 'true') {
+    return 'unprotected';
+  }
+
+  const nodeId = String(node.id || '').toLowerCase();
+  const role = String(node.tags.role || '').toLowerCase();
+  const env = String(node.tags.env || '').toLowerCase();
+  const critical = String(node.tags.critical || '').toLowerCase();
+
+  if (nodeId.includes('secondary') || nodeId.includes('replica') || role === 'secondary') return 'protected';
+  if (env === 'dr' || nodeId.includes('dr-')) return 'partial';
+  if (critical === 'true') return 'partial';
+
+  return 'unprotected';
+}
+
+type DemoTemplateType =
+  | 'aws_ec2'
+  | 'aws_rds'
+  | 'aws_elasticache'
+  | 'aws_s3'
+  | 'aws_dynamodb'
+  | 'azure_vm'
+  | 'azure_sql'
+  | 'azure_postgresql'
+  | 'azure_blob'
+  | 'gcp_compute'
+  | 'gcp_cloudsql'
+  | 'gcp_memorystore'
+  | 'gcp_storage';
+
+function resolveTemplateType(node: DemoInfraNodeDef, metadata: Record<string, unknown>): DemoTemplateType | null {
+  const provider = String(node.provider || '').toLowerCase();
+  const type = String(node.type || '').toUpperCase();
+  const sourceType = String(metadata.sourceType || '').toLowerCase();
+  const engine = String(metadata.engine || '').toLowerCase();
+
+  if (provider === 'aws') {
+    if (type === 'DATABASE' && (sourceType.includes('dynamodb') || node.id.includes('ddb'))) {
+      return 'aws_dynamodb';
+    }
+    if (type === 'DATABASE') return 'aws_rds';
+    if (type === 'CACHE') return 'aws_elasticache';
+    if (type === 'OBJECT_STORAGE') return 'aws_s3';
+    if (['APPLICATION', 'MICROSERVICE', 'VM', 'PHYSICAL_SERVER'].includes(type)) return 'aws_ec2';
+    return null;
+  }
+
+  if (provider === 'azure') {
+    if (type === 'OBJECT_STORAGE') return 'azure_blob';
+    if (type === 'DATABASE' && (sourceType.includes('postgres') || engine.includes('postgres'))) {
+      return 'azure_postgresql';
+    }
+    if (type === 'DATABASE') return 'azure_sql';
+    if (['APPLICATION', 'MICROSERVICE', 'VM'].includes(type)) return 'azure_vm';
+    return null;
+  }
+
+  if (provider === 'gcp') {
+    if (type === 'OBJECT_STORAGE') return 'gcp_storage';
+    if (type === 'DATABASE') return 'gcp_cloudsql';
+    if (type === 'CACHE') return 'gcp_memorystore';
+    if (['APPLICATION', 'MICROSERVICE', 'VM'].includes(type)) return 'gcp_compute';
+    return null;
+  }
+
+  return null;
+}
+
+export type DemoMetadataValidationIssue = {
+  nodeId: string;
+  nodeName: string;
+  templateType: DemoTemplateType | 'generic';
+  missingExpressions: string[];
+};
+
+type ValidateDemoMetadataOptions = {
+  includeIntentionalGaps?: boolean;
+};
+
+const COMMON_DEMO_METADATA_EXPRESSIONS = [
+  'businessName',
+  'tagName',
+  'domain',
+  'tier',
+] as const;
+
+const TEMPLATE_METADATA_EXPRESSIONS: Readonly<Record<DemoTemplateType, readonly string[]>> = {
+  aws_ec2: [
+    'instanceType',
+    'asgMinSize|asgDesiredCapacity|minSize|desiredCapacity',
+    'asgAZCount|asgAvailabilityZones|availabilityZones|availabilityZone',
+  ],
+  aws_rds: [
+    'dbInstanceClass|instanceType',
+    'engine',
+    'isMultiAZ|multiAZ|multiAz|multi_az',
+    'replicaCount|readReplicaCount|readReplicas',
+  ],
+  aws_elasticache: [
+    'engine',
+    'cacheNodeType|instanceType',
+    'replicaCount|readReplicaCount|memberClusters',
+    'automaticFailover|automaticFailoverStatus|multiAZEnabled',
+  ],
+  aws_s3: [
+    'bucketName|name',
+    'versioningStatus',
+    'hasCrossRegionReplication|crossRegionReplication|replicationRules|replicationConfiguration',
+  ],
+  aws_dynamodb: [
+    'tableName|name',
+    'billingMode',
+    'pointInTimeRecovery|pointInTimeRecoveryStatus',
+  ],
+  azure_vm: [
+    'vmSize|instanceType',
+    'vmssId|virtualMachineScaleSetId|virtualMachineScaleSet|vmssInstanceCount',
+    'availabilityZones|zones|zone',
+  ],
+  azure_sql: [
+    'engine',
+    'skuName|sku',
+    'geoReplicaLocation|hasGeoReplication|geoReplicationLinks|failoverGroupId',
+  ],
+  azure_postgresql: [
+    'engine',
+    'haMode|highAvailabilityMode|highAvailability',
+  ],
+  azure_blob: [
+    'replication|replicationType|skuName|sku',
+  ],
+  gcp_compute: [
+    'machineType|instanceType',
+    'instanceGroupManager|managedInstanceGroup|instanceGroupSize',
+    'availabilityZones|zones|zone|locations|nodePoolLocations',
+  ],
+  gcp_cloudsql: [
+    'engine',
+    'tier|instanceType',
+    'availabilityType|availability_type|settingsAvailabilityType',
+  ],
+  gcp_memorystore: [
+    'engine',
+    'tier|redisTier|redis_tier',
+    'memorySizeGb',
+  ],
+  gcp_storage: [
+    'locationType|location_type|location',
+    'storageClass',
+  ],
+};
+
+function splitMetadataExpression(expression: string): string[] {
+  return expression
+    .split('|')
+    .map((item) => item.trim())
+    .filter((item) => item.length > 0);
+}
+
+function hasUsableMetadataValue(metadata: Record<string, unknown>, key: string): boolean {
+  if (!(key in metadata)) return false;
+  const value = metadata[key];
+  if (value == null) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function resolveMissingMetadataExpressions(
+  metadata: Record<string, unknown>,
+  expressions: readonly string[],
+): string[] {
+  const missing: string[] = [];
+  for (const expression of expressions) {
+    const alternatives = splitMetadataExpression(expression);
+    const hasKnownValue = alternatives.some((key) => hasUsableMetadataValue(metadata, key));
+    if (!hasKnownValue) missing.push(expression);
+  }
+  return missing;
+}
+
+export function validateDemoMetadata(
+  nodes: DemoInfraNodeDef[],
+  options: ValidateDemoMetadataOptions = {},
+): DemoMetadataValidationIssue[] {
+  const includeIntentionalGaps = options.includeIntentionalGaps === true;
+  const issues: DemoMetadataValidationIssue[] = [];
+
+  for (const node of nodes) {
+    if (!includeIntentionalGaps && INTENTIONAL_METADATA_GAP_NODE_IDS.has(node.id)) {
+      continue;
+    }
+
+    const metadata = toMetadataRecord(node.metadata);
+    const templateType = resolveTemplateType(node, metadata);
+    const templateExpressions = templateType ? TEMPLATE_METADATA_EXPRESSIONS[templateType] : [];
+    const requiredExpressions = [...COMMON_DEMO_METADATA_EXPRESSIONS, ...templateExpressions];
+    const missingExpressions = resolveMissingMetadataExpressions(metadata, requiredExpressions);
+
+    if (missingExpressions.length > 0) {
+      issues.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        templateType: templateType ?? 'generic',
+        missingExpressions,
+      });
+    }
+  }
+
+  return issues;
+}
+
+function resolveNormalizedProtection(protection: DemoProtectionLevel): 'protected' | 'partial' | 'unprotected' {
+  if (protection === 'incomplete') return 'partial';
+  return protection;
+}
+
+function buildCommonDemoMetadata(node: DemoInfraNodeDef, metadata: Record<string, unknown>): Record<string, unknown> {
+  const existingTags = toMetadataRecord(metadata.tags);
+  const existingAwsTags = toMetadataRecord(metadata.awsTags);
+  const existingBusinessTags = toMetadataRecord(metadata.businessTags);
+
+  const businessName = readStringValue(metadata.businessName) ?? node.name;
+  const tagName = readStringValue(metadata.tagName) ?? slugify(node.name);
+  const domain = readStringValue(metadata.domain) ?? resolveDemoDomain(node);
+  const tier = readStringValue(metadata.tier) ?? resolveDemoTier(node);
+  const environment = readStringValue(node.tags.env) ?? 'production';
+
+  return {
+    businessName,
+    tagName,
+    domain,
+    tier,
+    displayName: readStringValue(metadata.displayName) ?? businessName,
+    technicalName: readStringValue(metadata.technicalName) ?? node.id,
+    tags: {
+      ...existingTags,
+      Name: readStringValue(existingTags.Name) ?? tagName,
+      name: readStringValue(existingTags.name) ?? tagName,
+      domain: readStringValue(existingTags.domain) ?? domain,
+      tier: readStringValue(existingTags.tier) ?? tier,
+      environment: readStringValue(existingTags.environment) ?? environment,
+    },
+    awsTags: {
+      ...existingAwsTags,
+      Name: readStringValue(existingAwsTags.Name) ?? tagName,
+      Service: readStringValue(existingAwsTags.Service) ?? businessName,
+      Environment: readStringValue(existingAwsTags.Environment) ?? environment,
+      Tier: readStringValue(existingAwsTags.Tier) ?? tier,
+      Domain: readStringValue(existingAwsTags.Domain) ?? domain,
+    },
+    businessTags: {
+      ...existingBusinessTags,
+      domain: readStringValue(existingBusinessTags.domain) ?? domain,
+      tier: readStringValue(existingBusinessTags.tier) ?? tier,
+      environment: readStringValue(existingBusinessTags.environment) ?? environment,
+    },
+  };
+}
+
+function buildAwsEc2Metadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const region = resolveRegion(node, 'eu-west-1');
+  const azCount = protection === 'protected' ? 3 : 1;
+  const zones = buildAwsZones(region, azCount);
+  const hasAsg = protection !== 'unprotected';
+  const nodeType = String(node.type || '').toUpperCase();
+  const instanceType = nodeType === 'VM' ? 't3.medium' : protection === 'protected' ? 'm5.large' : 't3.medium';
+
+  return {
+    sourceType: 'EC2_INSTANCE',
+    instanceType,
+    autoScalingGroupName: hasAsg ? `asg-${slugify(node.id)}` : null,
+    asgMinSize: protection === 'protected' ? 2 : 1,
+    asgMaxSize: protection === 'protected' ? 6 : 2,
+    asgDesiredCapacity: protection === 'protected' ? 3 : 1,
+    asgAZCount: azCount,
+    asgAvailabilityZones: zones,
+    availabilityZones: zones,
+    availabilityZone: zones[0],
+  };
+}
+
+function buildAwsRdsMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const isMultiAZ = protection !== 'unprotected';
+  const replicaCount = protection === 'protected' ? 1 : 0;
+
+  return {
+    sourceType: 'RDS',
+    dbInstanceClass: protection === 'protected' ? 'db.r6g.large' : 'db.t3.medium',
+    engine: readStringValue(node.metadata.engine) ?? 'PostgreSQL',
+    isMultiAZ,
+    multiAZ: isMultiAZ,
+    readReplicaCount: replicaCount,
+    readReplicas: replicaCount,
+    replicaCount,
+    crossRegionReplicaCount: protection === 'protected' ? 1 : 0,
+  };
+}
+
+function buildAwsElastiCacheMetadata(
+  node: DemoInfraNodeDef,
+  protectionLevel: DemoProtectionLevel,
+): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const replicaCount = protection === 'protected' ? 2 : protection === 'partial' ? 1 : 0;
+  const automaticFailover = protection === 'protected';
+
+  return {
+    sourceType: 'ELASTICACHE',
+    engine: 'Redis',
+    cacheNodeType: protection === 'protected' ? 'cache.r6g.large' : 'cache.t3.small',
+    replicaCount,
+    readReplicaCount: replicaCount,
+    memberClusters: replicaCount + 1,
+    automaticFailover,
+    automaticFailoverStatus: automaticFailover ? 'enabled' : 'disabled',
+    multiAZEnabled: automaticFailover,
+  };
+}
+
+function buildAwsS3Metadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const hasReplication = protection === 'protected';
+
+  return {
+    sourceType: 'S3_BUCKET',
+    bucketName: readStringValue(node.name) ?? node.id,
+    versioningStatus: protection === 'unprotected' ? 'Suspended' : 'Enabled',
+    hasCrossRegionReplication: hasReplication,
+    crossRegionReplication: hasReplication,
+    replicationRules: hasReplication ? 1 : 0,
+    replicationConfiguration: hasReplication ? { status: 'Enabled', destinationRegion: 'eu-central-1' } : null,
+  };
+}
+
+function buildAwsDynamoDbMetadata(
+  node: DemoInfraNodeDef,
+  protectionLevel: DemoProtectionLevel,
+): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const pitrEnabled = protection === 'protected';
+
+  return {
+    sourceType: 'DYNAMODB_TABLE',
+    engine: 'DynamoDB',
+    tableName: readStringValue(node.metadata.tableName) ?? readStringValue(node.name) ?? node.id,
+    billingMode: 'PAY_PER_REQUEST',
+    pointInTimeRecovery: pitrEnabled,
+    pointInTimeRecoveryStatus: pitrEnabled ? 'ENABLED' : 'DISABLED',
+  };
+}
+
+function buildAzureVmMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const zones =
+    protection === 'protected' ? buildAzureZones(3) : buildAzureZones(1);
+  const hasVmss = protection !== 'unprotected';
+
+  return {
+    sourceType: hasVmss ? 'virtualMachineScaleSet' : 'virtualMachine',
+    vmSize: protection === 'protected' ? 'Standard_D4s_v5' : 'Standard_D2s_v5',
+    vmssId: hasVmss ? `/subscriptions/demo/resourceGroups/rg-demo/providers/Microsoft.Compute/virtualMachineScaleSets/${slugify(node.id)}` : null,
+    vmssInstanceCount: protection === 'protected' ? 3 : 1,
+    availabilityZones: zones,
+    zones,
+    zone: zones[0],
+  };
+}
+
+function buildAzureSqlMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const hasGeoReplication = protection === 'protected';
+
+  return {
+    sourceType: 'sqlDatabase',
+    engine: 'Azure SQL Database',
+    skuName: protection === 'protected' ? 'BusinessCritical_Gen5_4' : 'GeneralPurpose_Gen5_2',
+    hasGeoReplication,
+    geoReplicaLocation: hasGeoReplication ? 'northeurope' : null,
+    geoReplicationLinks: hasGeoReplication ? 1 : 0,
+    failoverGroupId: hasGeoReplication ? `fg-${slugify(node.id)}` : null,
+  };
+}
+
+function buildAzurePostgresqlMetadata(
+  node: DemoInfraNodeDef,
+  protectionLevel: DemoProtectionLevel,
+): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const haMode = protection === 'protected' ? 'ZoneRedundant' : protection === 'partial' ? 'SameZone' : 'Disabled';
+
+  return {
+    sourceType: 'postgresqlFlexible',
+    engine: 'Azure Database for PostgreSQL Flexible Server',
+    skuName: protection === 'protected' ? 'Standard_D4s_v5' : 'Standard_B2s',
+    haMode,
+    highAvailabilityMode: haMode,
+    highAvailability: { mode: haMode },
+  };
+}
+
+function buildAzureBlobMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const replicationType =
+    protection === 'protected' ? 'GRS' : protection === 'partial' ? 'ZRS' : 'LRS';
+
+  return {
+    sourceType: 'storageAccount',
+    kind: 'StorageV2',
+    replicationType,
+    replication: replicationType,
+    skuName: `Standard_${replicationType}`,
+    sku: { name: `Standard_${replicationType}` },
+  };
+}
+
+function buildGcpComputeMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const region = resolveRegion(node, 'europe-west1');
+  const zoneCount = protection === 'protected' ? 2 : 1;
+  const zones = buildGcpZones(region, zoneCount);
+  const hasMig = protection !== 'unprotected';
+
+  return {
+    sourceType: 'computeEngine',
+    machineType: protection === 'protected' ? 'e2-standard-4' : 'e2-standard-2',
+    managedInstanceGroup: hasMig ? `mig-${slugify(node.id)}` : null,
+    instanceGroupManager: hasMig ? `mig-${slugify(node.id)}` : null,
+    instanceGroupSize: protection === 'protected' ? 3 : protection === 'partial' ? 2 : 1,
+    availabilityZones: zones,
+    zones,
+    zone: zones[0],
+  };
+}
+
+function buildGcpCloudSqlMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+
+  return {
+    sourceType: 'cloudSQL',
+    engine: readStringValue(node.metadata.engine) ?? 'PostgreSQL',
+    tier: protection === 'protected' ? 'db-custom-4-15360' : 'db-custom-2-7680',
+    availabilityType: protection === 'protected' ? 'REGIONAL' : 'ZONAL',
+  };
+}
+
+function buildGcpMemorystoreMetadata(
+  node: DemoInfraNodeDef,
+  protectionLevel: DemoProtectionLevel,
+): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+  const tier =
+    protection === 'protected' ? 'STANDARD_HA' : protection === 'partial' ? 'STANDARD' : 'BASIC';
+
+  return {
+    sourceType: 'memorystore',
+    engine: 'Redis',
+    tier,
+    redisTier: tier,
+    memorySizeGb: protection === 'protected' ? 8 : 2,
+  };
+}
+
+function buildGcpStorageMetadata(node: DemoInfraNodeDef, protectionLevel: DemoProtectionLevel): Record<string, unknown> {
+  const protection = resolveNormalizedProtection(protectionLevel);
+
+  if (protection === 'protected') {
+    return {
+      sourceType: 'cloudStorage',
+      locationType: 'dual-region',
+      location: 'europe-west1+europe-west4',
+      storageClass: 'STANDARD',
+    };
+  }
+
+  return {
+    sourceType: 'cloudStorage',
+    locationType: 'region',
+    location: 'europe-west1',
+    storageClass: protection === 'partial' ? 'NEARLINE' : 'STANDARD',
+  };
+}
+
+function buildTemplateMetadata(
+  node: DemoInfraNodeDef,
+  metadata: Record<string, unknown>,
+  protectionLevel: DemoProtectionLevel,
+): { templateType: DemoTemplateType | null; templateMetadata: Record<string, unknown> } {
+  const templateType = resolveTemplateType(node, metadata);
+  if (!templateType) {
+    return { templateType: null, templateMetadata: {} };
+  }
+
+  switch (templateType) {
+    case 'aws_ec2':
+      return { templateType, templateMetadata: buildAwsEc2Metadata(node, protectionLevel) };
+    case 'aws_rds':
+      return { templateType, templateMetadata: buildAwsRdsMetadata(node, protectionLevel) };
+    case 'aws_elasticache':
+      return { templateType, templateMetadata: buildAwsElastiCacheMetadata(node, protectionLevel) };
+    case 'aws_s3':
+      return { templateType, templateMetadata: buildAwsS3Metadata(node, protectionLevel) };
+    case 'aws_dynamodb':
+      return { templateType, templateMetadata: buildAwsDynamoDbMetadata(node, protectionLevel) };
+    case 'azure_vm':
+      return { templateType, templateMetadata: buildAzureVmMetadata(node, protectionLevel) };
+    case 'azure_sql':
+      return { templateType, templateMetadata: buildAzureSqlMetadata(node, protectionLevel) };
+    case 'azure_postgresql':
+      return { templateType, templateMetadata: buildAzurePostgresqlMetadata(node, protectionLevel) };
+    case 'azure_blob':
+      return { templateType, templateMetadata: buildAzureBlobMetadata(node, protectionLevel) };
+    case 'gcp_compute':
+      return { templateType, templateMetadata: buildGcpComputeMetadata(node, protectionLevel) };
+    case 'gcp_cloudsql':
+      return { templateType, templateMetadata: buildGcpCloudSqlMetadata(node, protectionLevel) };
+    case 'gcp_memorystore':
+      return { templateType, templateMetadata: buildGcpMemorystoreMetadata(node, protectionLevel) };
+    case 'gcp_storage':
+      return { templateType, templateMetadata: buildGcpStorageMetadata(node, protectionLevel) };
+    default:
+      return { templateType: null, templateMetadata: {} };
+  }
+}
+
+function applyIntentionalMetadataGaps(
+  node: DemoInfraNodeDef,
+  metadata: Record<string, unknown>,
+  templateType: DemoTemplateType | null,
+): void {
+  if (!INTENTIONAL_METADATA_GAP_NODE_IDS.has(node.id)) return;
+
+  metadata.demoIntentionalMetadataGap = true;
+  metadata.manualVerificationReason =
+    'Intentional demo gap to keep requiresVerification examples visible in Discovery.';
+
+  if (templateType === 'aws_ec2') {
+    delete metadata.autoScalingGroupName;
+    delete metadata.asgName;
+    delete metadata.asgDesiredCapacity;
+    delete metadata.desiredCapacity;
+    delete metadata.minSize;
+    delete metadata.asgMinSize;
+    delete metadata.asgAZCount;
+    delete metadata.asgAvailabilityZones;
+    delete metadata.availabilityZones;
+    delete metadata.availabilityZone;
+  }
+
+  if (templateType === 'gcp_storage') {
+    delete metadata.locationType;
+    delete metadata.location;
+  }
 }
 
 function buildCoreLayer(): DemoLayerContribution {
@@ -575,6 +1252,17 @@ function buildMicroservicesLayer(): DemoLayerContribution {
       tags: { service: 'notifications' },
       metadata: { retentionDays: 7 },
     }),
+    defineNode('ddb-sessions', 'sessions-table', 'DATABASE', 'aws', {
+      externalId: 'arn:aws:dynamodb:eu-west-1:123456:table/sessions-table',
+      region: 'eu-west-1',
+      tags: { service: 'sessions' },
+      metadata: {
+        sourceType: 'DYNAMODB_TABLE',
+        engine: 'DynamoDB',
+        tableName: 'sessions-table',
+        billingMode: 'PAY_PER_REQUEST',
+      },
+    }),
     defineNode('s3-backups', 'backup-bucket', 'OBJECT_STORAGE', 'aws', {
       externalId: 'arn:aws:s3:::shopmax-backups',
       region: 'eu-west-1',
@@ -659,12 +1347,14 @@ function buildMicroservicesLayer(): DemoLayerContribution {
     defineEdge('svc-notification', 'notification-provider', 'DEPENDS_ON'),
     defineEdge('svc-admin', 'db-admin', 'CONNECTS_TO'),
     defineEdge('svc-admin', 'admin-portal-cache', 'CONNECTS_TO'),
+    defineEdge('svc-user', 'ddb-sessions', 'CONNECTS_TO'),
     defineEdge('svc-analytics', 'db-main', 'CONNECTS_TO'),
     defineEdge('svc-analytics', 'db-order', 'CONNECTS_TO'),
     defineEdge('backup-orchestrator', 'db-main', 'BACKS_UP_TO'),
     defineEdge('backup-orchestrator', 'db-user', 'BACKS_UP_TO'),
     defineEdge('backup-orchestrator', 'db-order', 'BACKS_UP_TO'),
     defineEdge('backup-orchestrator', 'db-catalog', 'BACKS_UP_TO'),
+    defineEdge('backup-orchestrator', 'ddb-sessions', 'BACKS_UP_TO'),
     defineEdge('backup-orchestrator', 's3-backups', 'BACKS_UP_TO'),
     defineEdge('lambda-image', 's3-images', 'CONNECTS_TO'),
     defineEdge('lambda-image', 'sqs-orders', 'SUBSCRIBES_TO'),
@@ -1305,9 +1995,40 @@ function buildExtendedLegacyLayer(): DemoLayerContribution {
       tags: { provider: 'azure', service: 'database' },
       metadata: { engine: 'Azure SQL', replicaCount: 1, isMultiAZ: true },
     }),
+    defineNode('gcp-vpc-analytics', 'gcp-vpc-analytics', 'VPC', 'gcp', {
+      externalId: 'gcp:vpc:analytics',
+      region: 'europe-west1',
+      tags: { provider: 'gcp', env: 'production' },
+      metadata: { cidr: '10.4.0.0/16' },
+    }),
+    defineNode('gcp-compute-batch', 'gcp-batch-worker', 'APPLICATION', 'gcp', {
+      externalId: 'gcp:compute:batch-worker',
+      region: 'europe-west1',
+      availabilityZone: 'europe-west1-b',
+      tags: { provider: 'gcp', service: 'batch' },
+      metadata: { runtime: 'go1.24' },
+    }),
+    defineNode('gcp-cloudsql-orders', 'gcp-cloudsql-orders', 'DATABASE', 'gcp', {
+      externalId: 'gcp:cloudsql:orders',
+      region: 'europe-west1',
+      tags: { provider: 'gcp', service: 'orders' },
+      metadata: { engine: 'PostgreSQL' },
+    }),
+    defineNode('gcp-memorystore-shared', 'gcp-memorystore-shared', 'CACHE', 'gcp', {
+      externalId: 'gcp:memorystore:shared',
+      region: 'europe-west1',
+      tags: { provider: 'gcp', service: 'cache' },
+      metadata: { engine: 'Redis' },
+    }),
+    defineNode('gcp-storage-archive', 'gcp-storage-archive', 'OBJECT_STORAGE', 'gcp', {
+      externalId: 'gcp:storage:archive',
+      region: 'europe-west1',
+      tags: { provider: 'gcp', service: 'archive' },
+      metadata: { storageClass: 'NEARLINE' },
+    }),
     defineNode('multi-cloud-vpn', 'multi-cloud-vpn', 'NETWORK_DEVICE', 'manual', {
       tags: { service: 'network' },
-      metadata: { links: ['aws', 'azure'] },
+      metadata: { links: ['aws', 'azure', 'gcp'] },
     }),
     defineNode('integration-bus', 'integration-bus', 'MESSAGE_QUEUE', 'aws', {
       region: 'eu-west-1',
@@ -1419,13 +2140,23 @@ function buildExtendedLegacyLayer(): DemoLayerContribution {
     defineEdge('azure-app-gateway', 'azure-analytics-node', 'ROUTES_TO'),
     defineEdge('azure-analytics-node', 'azure-sql-replica', 'CONNECTS_TO'),
     defineEdge('azure-analytics-node', 'analytics-warehouse', 'DEPENDS_ON'),
+    defineEdge('gcp-vpc-analytics', 'gcp-compute-batch', 'CONTAINS'),
+    defineEdge('gcp-vpc-analytics', 'gcp-cloudsql-orders', 'CONTAINS'),
+    defineEdge('gcp-vpc-analytics', 'gcp-memorystore-shared', 'CONTAINS'),
+    defineEdge('gcp-vpc-analytics', 'gcp-storage-archive', 'CONTAINS'),
+    defineEdge('gcp-compute-batch', 'gcp-cloudsql-orders', 'CONNECTS_TO'),
+    defineEdge('gcp-compute-batch', 'gcp-memorystore-shared', 'CONNECTS_TO'),
+    defineEdge('gcp-compute-batch', 'gcp-storage-archive', 'CONNECTS_TO'),
+    defineEdge('svc-order', 'gcp-compute-batch', 'DEPENDS_ON'),
     defineEdge('db-main', 'azure-sql-replica', 'REPLICATES_TO'),
     defineEdge('multi-cloud-vpn', 'vpc-prod', 'CONNECTS_TO'),
     defineEdge('multi-cloud-vpn', 'azure-vnet', 'CONNECTS_TO'),
+    defineEdge('multi-cloud-vpn', 'gcp-vpc-analytics', 'CONNECTS_TO'),
     defineEdge('support-portal', 'svc-user', 'DEPENDS_ON'),
     defineEdge('support-portal', 'regional-file-cache-4', 'CONNECTS_TO'),
     defineEdge('endpoint-sec-manager', 'support-portal', 'MONITORS'),
     defineEdge('identity-federation', 'svc-api-gateway', 'AUTHENTICATES_VIA'),
+    defineEdge('backup-suite', 'gcp-storage-archive', 'BACKS_UP_TO'),
     defineEdge('dr-datacenter-link', 'data-center-primary', 'CONNECTS_TO'),
     defineEdge('dr-datacenter-link', 'data-center-secondary', 'CONNECTS_TO'),
   ];
@@ -1544,17 +2275,51 @@ function injectSPOFs(
 
 function inferSourceType(node: DemoInfraNodeDef): string | null {
   const type = String(node.type || '').toUpperCase();
-  if (type === 'DATABASE') return 'RDS';
-  if (type === 'CACHE') return 'ELASTICACHE';
-  if (type === 'SERVERLESS') return 'LAMBDA';
-  if (type === 'VM' || type === 'PHYSICAL_SERVER') return 'EC2';
-  if (type === 'APPLICATION' || type === 'MICROSERVICE' || type === 'CONTAINER') return 'ECS_SERVICE';
-  if (type === 'LOAD_BALANCER') return 'ALB';
-  if (type === 'OBJECT_STORAGE' || type === 'FILE_STORAGE') return 'S3_BUCKET';
-  if (type === 'API_GATEWAY') return 'API_GATEWAY';
+  const provider = String(node.provider || '').toLowerCase();
+  if (type === 'DATABASE') {
+    if (provider === 'azure') return 'sqlDatabase';
+    if (provider === 'gcp') return 'cloudSQL';
+    return 'RDS';
+  }
+  if (type === 'CACHE') {
+    if (provider === 'azure') return 'azureRedis';
+    if (provider === 'gcp') return 'memorystore';
+    return 'ELASTICACHE';
+  }
+  if (type === 'SERVERLESS') {
+    if (provider === 'azure') return 'functions';
+    if (provider === 'gcp') return 'cloudFunctions';
+    return 'LAMBDA';
+  }
+  if (type === 'VM' || type === 'PHYSICAL_SERVER') {
+    if (provider === 'azure') return 'virtualMachine';
+    if (provider === 'gcp') return 'computeEngine';
+    return 'EC2';
+  }
+  if (type === 'APPLICATION' || type === 'MICROSERVICE' || type === 'CONTAINER') {
+    if (provider === 'azure') return 'virtualMachine';
+    if (provider === 'gcp') return 'computeEngine';
+    return 'ECS_SERVICE';
+  }
+  if (type === 'LOAD_BALANCER') {
+    if (provider === 'azure') return 'applicationGateway';
+    if (provider === 'gcp') return 'httpLoadBalancer';
+    return 'ALB';
+  }
+  if (type === 'OBJECT_STORAGE' || type === 'FILE_STORAGE') {
+    if (provider === 'azure') return 'storageAccount';
+    if (provider === 'gcp') return 'cloudStorage';
+    return 'S3_BUCKET';
+  }
+  if (type === 'API_GATEWAY') {
+    if (provider === 'azure') return 'applicationGateway';
+    return 'API_GATEWAY';
+  }
   if (type === 'MESSAGE_QUEUE') {
     const external = String(node.externalId || '').toLowerCase();
     const name = String(node.name || '').toLowerCase();
+    if (provider === 'gcp') return 'pubsub';
+    if (provider === 'azure') return 'serviceBus';
     if (external.includes(':sns:') || name.includes('topic') || name.includes('sns')) return 'SNS_TOPIC';
     return 'SQS_QUEUE';
   }
@@ -1569,6 +2334,7 @@ function applyDemoPricingMetadata(nodes: DemoInfraNodeDef[]): DemoInfraNodeDef[]
       seededBy: 'demoInfrastructureFactory',
       ...(node.metadata || {}),
     };
+    Object.assign(metadata, buildCommonDemoMetadata(node, metadata));
     const tags = node.tags || {};
     const nodeId = String(node.id || '');
     const nodeName = String(node.name || '').toLowerCase();
@@ -1726,6 +2492,16 @@ function applyDemoPricingMetadata(nodes: DemoInfraNodeDef[]): DemoInfraNodeDef[]
     if (!metadata.drCostGroupKey && typeof metadata.ingressProgramKey === 'string' && node.type !== 'CDN') {
       metadata.drCostGroupKey = `ingress:${metadata.ingressProgramKey}`;
     }
+
+    const protectionLevel = resolveProtectionLevel(node, metadata);
+    const { templateType, templateMetadata } = buildTemplateMetadata(node, metadata, protectionLevel);
+    for (const [key, value] of Object.entries(templateMetadata)) {
+      if (hasUsableMetadataValue(metadata, key)) continue;
+      metadata[key] = value;
+    }
+    metadata.protectionLevel = protectionLevel;
+    metadata.protectionProfile = protectionLevel;
+    applyIntentionalMetadataGaps(node, metadata, templateType);
 
     return {
       ...node,
@@ -1929,6 +2705,19 @@ export function generateDemoInfrastructure(
   const finalNodes = applyDemoPricingMetadata(
     injectSPOFs(enrichedNodes, params.companySize),
   );
+  const metadataIssues = validateDemoMetadata(finalNodes);
+  if (metadataIssues.length > 0) {
+    const sample = metadataIssues
+      .slice(0, 5)
+      .map(
+        (issue) =>
+          `${issue.nodeId}[${issue.templateType}]: ${issue.missingExpressions.join(', ')}`,
+      )
+      .join(' | ');
+    throw new Error(
+      `Demo metadata validation failed: ${metadataIssues.length} node(s) have missing critical metadata. ${sample}`,
+    );
+  }
   const spofNodeIds = SIZE_SPOF_IDS[params.companySize].filter((id) => nodeMap.has(id));
 
   return {

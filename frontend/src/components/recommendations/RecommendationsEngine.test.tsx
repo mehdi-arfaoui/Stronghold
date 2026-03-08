@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
@@ -9,11 +9,13 @@ import { recommendationsApi } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
 import type { FinancialROIResult, OrganizationFinancialProfile } from '@/api/financial.api';
 import type { Recommendation, RecommendationsSummary } from '@/api/recommendations.api';
+import { useAuth } from '@/hooks/useAuth';
 
 vi.mock('sonner', () => ({
   toast: {
     success: vi.fn(),
     error: vi.fn(),
+    warning: vi.fn(),
   },
 }));
 
@@ -22,6 +24,7 @@ vi.mock('@/api/recommendations.api', () => ({
     getAll: vi.fn(),
     getSummary: vi.fn(),
     updateStatus: vi.fn(),
+    regenerate: vi.fn(),
   },
 }));
 
@@ -30,6 +33,10 @@ vi.mock('@/api/financial.api', () => ({
     getOrgProfile: vi.fn(),
     calculateROI: vi.fn(),
   },
+}));
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: vi.fn(),
 }));
 
 function asApiResult<T>(data: T): Promise<AxiosResponse<T>> {
@@ -64,6 +71,24 @@ function renderRecommendationsEngine() {
 describe('RecommendationsEngine', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: 'admin-user',
+        tenantId: 'tenant-1',
+        email: 'admin@stronghold.local',
+        displayName: 'Admin',
+        role: 'ADMIN',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginAt: null,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      changePassword: vi.fn(),
+    });
 
     vi.mocked(financialApi.getOrgProfile).mockImplementation(async () =>
       asApiResult({
@@ -225,6 +250,23 @@ describe('RecommendationsEngine', () => {
         calculatedAt: new Date().toISOString(),
       } as FinancialROIResult),
     );
+
+    vi.mocked(recommendationsApi.regenerate).mockImplementation(async () =>
+      asApiResult({
+        success: true,
+        summary: {
+          totalNodes: 12,
+          recommendationsGenerated: 3,
+          resilientByDesign: 7,
+          noRuleApplicable: 2,
+          requiresVerification: 1,
+          totalDrCostMonthly: 300,
+          totalDrCostAnnual: 3600,
+          financialProfileConfigured: true,
+          durationMs: 65_000,
+        },
+      }),
+    );
   });
 
   it('applique filtres/tri et affiche quick wins avec labels pricing nettoyes', async () => {
@@ -337,5 +379,46 @@ describe('RecommendationsEngine', () => {
 
     expect(screen.getByText(/Profil financier non configure - ROI non disponible/i)).toBeInTheDocument();
     expect(financialApi.calculateROI).not.toHaveBeenCalled();
+  });
+
+  it('affiche le flux de régénération pour un admin', async () => {
+    const user = userEvent.setup();
+    renderRecommendationsEngine();
+
+    const toolbarButton = await screen.findByRole('button', { name: 'Recalculer' });
+    await user.click(toolbarButton);
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText(/Supprimer toutes les recommandations existantes/i)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Recalculer' }));
+
+    await waitFor(() => {
+      expect(recommendationsApi.regenerate).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it('masque le bouton de régénération pour un utilisateur non admin', () => {
+    vi.mocked(useAuth).mockReturnValue({
+      user: {
+        id: 'analyst-user',
+        tenantId: 'tenant-1',
+        email: 'analyst@stronghold.local',
+        displayName: 'Analyst',
+        role: 'ANALYST',
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        lastLoginAt: null,
+      },
+      isAuthenticated: true,
+      isLoading: false,
+      login: vi.fn(),
+      logout: vi.fn(),
+      changePassword: vi.fn(),
+    });
+
+    renderRecommendationsEngine();
+    expect(screen.queryByRole('button', { name: 'Recalculer' })).not.toBeInTheDocument();
   });
 });

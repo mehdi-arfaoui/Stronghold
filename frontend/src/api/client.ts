@@ -1,10 +1,11 @@
 import axios from 'axios';
-import { clearStoredApiKey, getStoredApiKey } from '@/lib/credentialStorage';
+import { clearStoredApiKey, getStoredApiKey, setStoredApiKey } from '@/lib/credentialStorage';
 import {
   getAccessToken,
   getAuthClientHandlers,
   getRefreshToken,
 } from '@/lib/authSession';
+import { isInternalDemoContext } from '@/lib/demoContext';
 
 function resolveApiBaseUrl(): string {
   const configuredBaseUrl = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
@@ -33,7 +34,16 @@ export const api = axios.create({
 
 api.interceptors.request.use((config) => {
   const fallbackApiKey = (import.meta.env.VITE_API_KEY as string | undefined)?.trim();
-  const apiKey = getStoredApiKey() || fallbackApiKey;
+  const storedApiKey = getStoredApiKey();
+  const demoBypass = isInternalDemoContext();
+  const apiKey = demoBypass && fallbackApiKey
+    ? fallbackApiKey
+    : storedApiKey || fallbackApiKey;
+
+  if (demoBypass && fallbackApiKey && storedApiKey !== fallbackApiKey) {
+    setStoredApiKey(fallbackApiKey);
+  }
+
   if (apiKey) {
     config.headers['x-api-key'] = apiKey;
   }

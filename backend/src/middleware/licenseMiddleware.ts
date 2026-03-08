@@ -26,6 +26,24 @@ function getLicenseService(req: Request): LicenseService | null {
   return (req.app.locals.licenseService as LicenseService | undefined) ?? null;
 }
 
+export function isDemoLicenseBypassEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  const buildTarget = String(env.BUILD_TARGET || '').toLowerCase();
+  if (buildTarget !== 'internal') {
+    return false;
+  }
+
+  const nodeEnv = String(env.NODE_ENV || 'development').toLowerCase();
+  const allowDemoSeed = String(env.ALLOW_DEMO_SEED || '').toLowerCase() === 'true';
+  const appEnv = String(env.APP_ENV || env.DEPLOYMENT_STAGE || '').toLowerCase();
+  const explicitDemoContext = appEnv.includes('demo');
+
+  if (nodeEnv === 'production') {
+    return allowDemoSeed || explicitDemoContext;
+  }
+
+  return nodeEnv === 'development' || nodeEnv === 'test' || allowDemoSeed || explicitDemoContext;
+}
+
 function sendLicenseError(res: Response, status: LicenseStatus) {
   return res.status(403).json({
     error: 'LICENSE_INVALID',
@@ -39,6 +57,10 @@ export function getLicenseStatusMessage(status: LicenseStatus): string {
 }
 
 export function requireLicense(req: Request, res: Response, next: NextFunction) {
+  if (isDemoLicenseBypassEnabled()) {
+    return next();
+  }
+
   const license = getLicenseService(req);
   if (!license) {
     return res.status(500).json({
@@ -64,6 +86,10 @@ export function requireValidLicense() {
 
 export function requireFeature(feature: string) {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (isDemoLicenseBypassEnabled()) {
+      return next();
+    }
+
     const license = getLicenseService(req);
     if (!license) {
       return res.status(500).json({
@@ -91,6 +117,10 @@ export function requireFeature(feature: string) {
 
 export function requirePlan(minimumPlan: LicensePlan) {
   return (req: Request, res: Response, next: NextFunction) => {
+    if (isDemoLicenseBypassEnabled()) {
+      return next();
+    }
+
     const license = getLicenseService(req);
     if (!license) {
       return res.status(500).json({

@@ -38,6 +38,7 @@ const ROUTE_TITLES: Record<string, string> = {
   '/simulations/runbooks': 'routes.runbooks',
   '/simulations/pra-exercises': 'routes.praExercises',
   '/recommendations': 'routes.recommendations',
+  '/compliance': 'Conformite',
   '/recommendations/remediation': 'routes.remediation',
   '/exercises': 'routes.runbooks',
   '/incidents': 'routes.incidents',

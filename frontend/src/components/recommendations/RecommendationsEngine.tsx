@@ -9,6 +9,7 @@ import {
   DollarSign,
   Lightbulb,
   Loader2,
+  RefreshCw,
   RotateCcw,
   TrendingUp,
   X,
@@ -21,12 +22,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
 import { recommendationsApi, type Recommendation } from '@/api/recommendations.api';
 import { financialApi } from '@/api/financial.api';
 import { ServiceIdentityLabel } from '@/components/common/ServiceIdentityLabel';
 import { getCredentialScopeKey } from '@/lib/credentialStorage';
 import { formatCurrency } from '@/lib/formatters';
+import { useAuth } from '@/hooks/useAuth';
 import {
   buildCriticalMetadataSummary,
   buildRecommendationHeading,
@@ -101,6 +104,24 @@ function formatMonthlyCostLabel(monthlyCost: number, currency: string): string {
     return 'Inclus dans le service managé';
   }
   return `${money(monthlyCost, currency)}/mois`;
+}
+
+function formatRegenerationDuration(durationMs: number | null | undefined): string {
+  const seconds = Math.max(1, Math.round(Number(durationMs ?? 0) / 1000));
+  if (seconds < 60) return `${seconds} sec`;
+
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (remainingSeconds === 0) {
+    return `${minutes} min`;
+  }
+  return `${minutes} min ${remainingSeconds} sec`;
+}
+
+function resolveHttpStatusCode(error: unknown): number | null {
+  if (!error || typeof error !== 'object') return null;
+  const response = (error as { response?: { status?: unknown } }).response;
+  return typeof response?.status === 'number' ? response.status : null;
 }
 
 function resolveConsistentPayback(input: {
@@ -283,13 +304,16 @@ function recommendationStatusLabel(status: RecommendationStatus): string {
 }
 
 export function RecommendationsEngine({ className }: RecommendationsEngineProps) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const tenantScope = getCredentialScopeKey();
+  const [isRegenerationDialogOpen, setIsRegenerationDialogOpen] = useState(false);
   const [currencyOverride, setCurrencyOverride] = useState<string | null>(null);
   const [localStatuses, setLocalStatuses] = useState<Record<string, RecommendationStatus>>({});
   const [selectedStrategies, setSelectedStrategies] = useState<StrategyFilterValue[]>(DEFAULT_STRATEGY_FILTERS);
   const [maxAnnualCostInput, setMaxAnnualCostInput] = useState('');
   const [roiSortDirection, setRoiSortDirection] = useState<RoiSortDirection>('desc');
+  const isAdmin = user?.role === 'ADMIN';
 
   const orgProfileQuery = useQuery({
     queryKey: ['financial-org-profile', tenantScope],
@@ -356,6 +380,33 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
     },
     onError: () => {
       toast.error('Mise à jour de statut impossible');
+    },
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: async () => (await recommendationsApi.regenerate()).data,
+    onSuccess: async (result) => {
+      setIsRegenerationDialogOpen(false);
+      setLocalStatuses({});
+
+      toast.success('Recommandations recalculées', {
+        description: `${result.summary.recommendationsGenerated} recommandations générées\n${result.summary.resilientByDesign} services protégés\n${formatRegenerationDuration(result.summary.durationMs)}`,
+      });
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['recommendations', tenantScope] }),
+        queryClient.invalidateQueries({ queryKey: ['recommendations-summary', tenantScope] }),
+        queryClient.invalidateQueries({ queryKey: ['financial-recommendations-roi', tenantScope] }),
+        queryClient.invalidateQueries({ queryKey: ['financial-summary', tenantScope] }),
+      ]);
+    },
+    onError: (error: unknown) => {
+      const statusCode = resolveHttpStatusCode(error);
+      if (statusCode === 409) {
+        toast.warning('Un recalcul est déjà en cours, veuillez patienter.');
+        return;
+      }
+      toast.error('Le recalcul a échoué. Réessayez ou contactez le support.');
     },
   });
 
@@ -811,19 +862,87 @@ export function RecommendationsEngine({ className }: RecommendationsEngineProps)
           <Lightbulb className="h-5 w-5 text-primary" />
           <h2 className="text-lg font-semibold">Recommandations IA</h2>
         </div>
-        <Select value={currency} onValueChange={(next) => setCurrencyOverride(next)}>
-          <SelectTrigger className="w-[110px]" aria-label="Devise">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {CURRENCIES.map((item) => (
-              <SelectItem key={item} value={item}>
-                {item}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRegenerationDialogOpen(true)}
+              disabled={regenerateMutation.isPending}
+            >
+              {regenerateMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-2 h-4 w-4" />
+              )}
+              {regenerateMutation.isPending ? 'Recalcul en cours...' : 'Recalculer'}
+            </Button>
+          )}
+          <Select value={currency} onValueChange={(next) => setCurrencyOverride(next)}>
+            <SelectTrigger className="w-[110px]" aria-label="Devise">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CURRENCIES.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
+
+      {isAdmin && (
+        <Dialog
+          open={isRegenerationDialogOpen}
+          onOpenChange={(open) => {
+            if (!regenerateMutation.isPending) {
+              setIsRegenerationDialogOpen(open);
+            }
+          }}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Recalculer toutes les recommandations ?</DialogTitle>
+              <DialogDescription>
+                Cette opération va :
+              </DialogDescription>
+            </DialogHeader>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+              <li>Supprimer toutes les recommandations existantes (y compris celles en cours de revue).</li>
+              <li>Recalculer les recommandations avec le nouveau moteur.</li>
+              <li>L opération peut prendre quelques secondes.</li>
+            </ul>
+            <DialogFooter>
+              <Button
+                variant="ghost"
+                onClick={() => setIsRegenerationDialogOpen(false)}
+                disabled={regenerateMutation.isPending}
+              >
+                Annuler
+              </Button>
+              <Button
+                onClick={() => regenerateMutation.mutate()}
+                disabled={regenerateMutation.isPending}
+              >
+                {regenerateMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Recalcul en cours...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Recalculer
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {!recommendationsQuery.isLoading && recommendationCards.length > 0 && (
         <Card className="border-dashed">

@@ -64,7 +64,29 @@ vi.mock('@/api/recommendations.api', () => ({
     getAll: vi.fn(),
     getSummary: vi.fn(),
     updateStatus: vi.fn(),
+    regenerate: vi.fn(),
   },
+}));
+
+vi.mock('@/hooks/useAuth', () => ({
+  useAuth: () => ({
+    user: {
+      id: 'admin-user',
+      tenantId: 'tenant-1',
+      email: 'admin@stronghold.local',
+      displayName: 'Admin',
+      role: 'ADMIN',
+      isActive: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      lastLoginAt: null,
+    },
+    isAuthenticated: true,
+    isLoading: false,
+    login: vi.fn(),
+    logout: vi.fn(),
+    changePassword: vi.fn(),
+  }),
 }));
 
 vi.mock('@/api/pra-exercises.api', () => ({
@@ -93,6 +115,7 @@ vi.mock('@/api/reports.api', () => ({
     generate: vi.fn(),
     getPreview: vi.fn(),
     generateExecutiveFinancialSummary: vi.fn(),
+    generatePptx: vi.fn(),
   },
 }));
 
@@ -880,7 +903,7 @@ describe('Operational UX QA flows', () => {
     );
 
     await screen.findByRole('heading', { name: /ROI de vos recommandations|Budget DR/i });
-    await screen.findByText(/Deploy warm standby region/i);
+    await screen.findByText(/Action:\s*Warm Standby/i);
     recommendationsRender.unmount();
 
     render(
@@ -1173,7 +1196,7 @@ describe('Operational UX QA flows', () => {
       </MemoryRouter>,
     );
     await screen.findByRole('heading', { name: /ROI de vos recommandations|Budget DR/i });
-    await screen.findByText(/Deploy warm standby region/i);
+    await screen.findByText(/Action:\s*Warm Standby/i);
     recRender.unmount();
 
     const initialBiaRows = [

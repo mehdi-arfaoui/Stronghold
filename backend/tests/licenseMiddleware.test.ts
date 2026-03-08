@@ -53,6 +53,30 @@ function createReqRes(licenseService: ReturnType<typeof createMockLicenseService
   return { req, res };
 }
 
+function withEnv(overrides: Record<string, string | undefined>, run: () => void) {
+  const previous = new Map<string, string | undefined>();
+  for (const [key, value] of Object.entries(overrides)) {
+    previous.set(key, process.env[key]);
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+
+  try {
+    run();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 test('requireLicense passes when the license is operational', async () => {
   const { req, res } = createReqRes(createMockLicenseService());
   let nextCalled = false;
@@ -80,6 +104,61 @@ test('requireLicense blocks expired licenses with 403', async () => {
     error: 'LICENSE_INVALID',
     licenseStatus: 'expired',
     message: 'Votre licence Stronghold a expire. Contactez support@stronghold.io pour renouveler.',
+  });
+});
+
+test('requireLicense bypasses checks in internal demo context', async () => {
+  const { req, res } = createReqRes(
+    createMockLicenseService({
+      isOperational: () => false,
+      getStatus: () => 'not_found',
+    }),
+  );
+  let nextCalled = false;
+
+  withEnv(
+    {
+      BUILD_TARGET: 'internal',
+      NODE_ENV: 'development',
+      APP_ENV: 'demo',
+      ALLOW_DEMO_SEED: 'true',
+    },
+    () => {
+      requireLicense(req, res, () => {
+        nextCalled = true;
+      });
+    },
+  );
+
+  assert.equal(nextCalled, true);
+  assert.equal(res.statusCode, 200);
+});
+
+test('requireLicense still blocks when build target is client', async () => {
+  const { req, res } = createReqRes(
+    createMockLicenseService({
+      isOperational: () => false,
+      getStatus: () => 'not_found',
+    }),
+  );
+
+  withEnv(
+    {
+      BUILD_TARGET: 'client',
+      NODE_ENV: 'development',
+      APP_ENV: 'demo',
+      ALLOW_DEMO_SEED: 'true',
+    },
+    () => {
+      requireLicense(req, res, () => {});
+    },
+  );
+
+  assert.equal(res.statusCode, 403);
+  assert.deepEqual(res.body, {
+    error: 'LICENSE_INVALID',
+    licenseStatus: 'not_found',
+    message: 'Aucune licence trouvee. Veuillez activer Stronghold.',
   });
 });
 

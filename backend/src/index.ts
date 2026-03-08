@@ -56,6 +56,7 @@ import exerciseResilienceRoutes from "./routes/exerciseResilienceRoutes.js";
 import integrationsRoutes from "./routes/integrationsRoutes.js";
 import currencyRoutes from "./routes/currencyRoutes.js";
 import recommendationEngineRoutes from "./routes/recommendationEngineRoutes.js";
+import complianceRoutes from "./routes/complianceRoutes.js";
 import knowledgeBaseRoutes from "./routes/knowledgeBaseRoutes.js";
 import driftRoutes from "./routes/driftRoutes.js";
 import roiRoutes from "./routes/roiRoutes.js";
@@ -631,10 +632,13 @@ const routes = [
   { path: "/discovery-resilience", handler: discoveryResilienceRoutes, name: "discoveryResilienceRoutes" },
   { path: "/api/discovery-resilience", handler: discoveryResilienceRoutes, name: "discoveryResilienceRoutesApi" },
   { path: "/reports", handler: reportRoutes, name: "reportRoutes" },
+  { path: "/api/reports", handler: reportRoutes, name: "reportRoutesApi" },
   { path: "/exercises-resilience", handler: exerciseResilienceRoutes, name: "exerciseResilienceRoutes" },
   { path: "/integrations", handler: integrationsRoutes, name: "integrationsRoutes" },
   { path: "/currency", handler: currencyRoutes, name: "currencyRoutes" },
   { path: "/recommendations", handler: recommendationEngineRoutes, name: "recommendationEngineRoutes" },
+  { path: "/compliance", handler: complianceRoutes, name: "complianceRoutes" },
+  { path: "/api/compliance", handler: complianceRoutes, name: "complianceRoutesApi" },
   { path: "/knowledge-base", handler: knowledgeBaseRoutes, name: "knowledgeBaseRoutes" },
   { path: "/drift", handler: driftRoutes, name: "driftRoutes" },
   { path: "/roi", handler: roiRoutes, name: "roiRoutes" },

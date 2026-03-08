@@ -23,6 +23,9 @@ export const reportsApi = {
   generateExecutiveFinancialSummary: (payload?: { currency?: string }) =>
     api.post('/reports/executive-financial', payload ?? {}, { responseType: 'blob' }),
 
+  generatePptx: () =>
+    api.get('/reports/pptx', { responseType: 'blob' }),
+
   getPreview: () =>
     api.get<{ html: string }>('/reports/preview'),
 };
