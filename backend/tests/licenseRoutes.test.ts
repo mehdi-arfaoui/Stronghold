@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import express from 'express';
 import fs from 'node:fs';
+import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { SignJWT, importPKCS8 } from 'jose';
@@ -96,16 +97,67 @@ async function withServer(app: express.Express, handler: (baseUrl: string) => Pr
   try {
     await handler(baseUrl);
   } finally {
-    await new Promise((resolve) => server.close(resolve));
+    server.closeIdleConnections?.();
+    server.closeAllConnections?.();
+    await new Promise((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve(undefined))),
+    );
   }
+}
+
+async function requestJson(
+  baseUrl: string,
+  endpoint: string,
+  options: { method?: 'GET' | 'POST'; body?: Record<string, unknown> } = {},
+): Promise<{ status: number; body: unknown }> {
+  const target = new URL(endpoint, baseUrl);
+  const method = options.method ?? 'GET';
+  const payload = options.body ? JSON.stringify(options.body) : null;
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method,
+        headers: {
+          Connection: 'close',
+          ...(payload
+            ? {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(payload).toString(),
+              }
+            : {}),
+        },
+        agent: false,
+      },
+      (res) => {
+        const chunks: string[] = [];
+        res.setEncoding('utf-8');
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = chunks.join('');
+          const parsed = raw ? JSON.parse(raw) : null;
+          resolve({ status: res.statusCode ?? 0, body: parsed });
+        });
+      },
+    );
+
+    req.on('error', reject);
+    if (payload) {
+      req.write(payload);
+    }
+    req.end();
+  });
 }
 
 test('GET /api/license/status returns not_found without a license', async (t) => {
   const { app } = createServiceContext(t);
 
   await withServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/license/status`);
-    const payload = await response.json();
+    const response = await requestJson(baseUrl, '/api/license/status');
+    const payload = response.body as { status: string };
 
     assert.equal(response.status, 200);
     assert.equal(payload.status, 'not_found');
@@ -117,12 +169,11 @@ test('POST /api/license/activate accepts a valid token', async (t) => {
   const token = await signLicense(privateKey);
 
   await withServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/license/activate`, {
+    const response = await requestJson(baseUrl, '/api/license/activate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: { token },
     });
-    const payload = await response.json();
+    const payload = response.body as { success: boolean; status: string };
 
     assert.equal(response.status, 200);
     assert.equal(payload.success, true);
@@ -134,12 +185,11 @@ test('POST /api/license/activate rejects an invalid token', async (t) => {
   const { app } = createServiceContext(t);
 
   await withServer(app, async (baseUrl) => {
-    const response = await fetch(`${baseUrl}/api/license/activate`, {
+    const response = await requestJson(baseUrl, '/api/license/activate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: 'not-a-jwt' }),
+      body: { token: 'not-a-jwt' },
     });
-    const payload = await response.json();
+    const payload = response.body as { success: boolean; status: string };
 
     assert.equal(response.status, 400);
     assert.equal(payload.success, false);
@@ -152,14 +202,13 @@ test('GET /api/license/status returns valid after activation', async (t) => {
   const token = await signLicense(privateKey);
 
   await withServer(app, async (baseUrl) => {
-    await fetch(`${baseUrl}/api/license/activate`, {
+    await requestJson(baseUrl, '/api/license/activate', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token }),
+      body: { token },
     });
 
-    const response = await fetch(`${baseUrl}/api/license/status`);
-    const payload = await response.json();
+    const response = await requestJson(baseUrl, '/api/license/status');
+    const payload = response.body as { status: string; plan: string };
 
     assert.equal(response.status, 200);
     assert.equal(payload.status, 'valid');

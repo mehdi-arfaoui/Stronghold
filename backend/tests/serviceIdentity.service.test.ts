@@ -35,5 +35,5 @@ test('service identity generates business-friendly names from technical patterns
 
   assert.equal(db.displayName, 'Base de donnees principale');
   assert.equal(dlq.displayName, 'File DLQ alertes');
-  assert.equal(worker.displayName, 'Worker commandes');
+  assert.equal(worker.displayName, 'Service de traitement commandes');
 });

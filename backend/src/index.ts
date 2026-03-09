@@ -64,6 +64,7 @@ import financialRoutes from "./routes/financialRoutes.js";
 import businessFlowRoutes from "./routes/businessFlowRoutes.js";
 import remediationTaskRoutes from "./routes/remediationTaskRoutes.js";
 import praExerciseRoutes from "./routes/praExerciseRoutes.js";
+import dashboardRoutes from "./routes/dashboardRoutes.js";
 import devRoutes from "./routes/devRoutes.js";
 import { startDiscoveryWorker } from "./workers/discoveryWorker.js";
 import { startDocumentIngestionWorker } from "./workers/documentIngestionWorker.js";
@@ -74,6 +75,7 @@ import { startDriftScheduler } from "./workers/driftScheduler.js";
 import { initDiscoveryWebSocket } from "./websockets/discoveryWebsocket.js";
 import { deploymentConfig } from "./config/deployment.js";
 import { loadValidatedEnv } from "./config/env.validation.js";
+import { validateCriticalJsonConfig } from "./config/jsonConfigValidation.js";
 import { requireLicense } from "./middleware/licenseMiddleware.js";
 import { authMiddleware, requireRole as requireUserRole } from "./middleware/authMiddleware.js";
 import { AuthService } from "./services/authService.js";
@@ -93,6 +95,14 @@ for (const envPath of envCandidates) {
 }
 
 loadValidatedEnv();
+try {
+  const validatedJson = validateCriticalJsonConfig();
+  appLogger.info("boot.config_json.validated", validatedJson);
+} catch (error) {
+  const message = error instanceof Error ? error.message : "unknown_error";
+  appLogger.error("CRITICAL: JSON configuration invalid", { error: message });
+  process.exit(1);
+}
 initTelemetry();
 
 type DependencyStatus = "ok" | "failed" | "skipped";
@@ -646,6 +656,8 @@ const routes = [
   { path: "/business-flows", handler: businessFlowRoutes, name: "businessFlowRoutes" },
   { path: "/remediation-tasks", handler: remediationTaskRoutes, name: "remediationTaskRoutes" },
   { path: "/pra-exercises", handler: praExerciseRoutes, name: "praExerciseRoutes" },
+  { path: "/dashboard", handler: dashboardRoutes, name: "dashboardRoutes" },
+  { path: "/api/dashboard", handler: dashboardRoutes, name: "dashboardRoutesApi" },
   ...(isDevelopment
     ? [{ path: "/dev", handler: devRoutes, name: "devRoutes" }]
     : []),

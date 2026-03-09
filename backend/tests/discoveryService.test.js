@@ -69,14 +69,14 @@ test("applyDiscoveryImport crée services, infra et dépendances sans doublons e
   const linkDelegate = getOrCreateDelegate(prisma, "serviceInfraLink");
 
   const originalTransaction = prisma.$transaction;
-  const originalServiceFindFirst = serviceDelegate.findFirst;
-  const originalServiceCreate = serviceDelegate.create;
-  const originalInfraFindFirst = infraDelegate.findFirst;
-  const originalInfraCreate = infraDelegate.create;
-  const originalDependencyFindFirst = dependencyDelegate.findFirst;
-  const originalDependencyCreate = dependencyDelegate.create;
-  const originalLinkFindFirst = linkDelegate.findFirst;
-  const originalLinkCreate = linkDelegate.create;
+  const originalServiceFindMany = serviceDelegate.findMany;
+  const originalServiceCreateMany = serviceDelegate.createMany;
+  const originalInfraFindMany = infraDelegate.findMany;
+  const originalInfraCreateMany = infraDelegate.createMany;
+  const originalDependencyFindMany = dependencyDelegate.findMany;
+  const originalDependencyCreateMany = dependencyDelegate.createMany;
+  const originalLinkFindMany = linkDelegate.findMany;
+  const originalLinkCreateMany = linkDelegate.createMany;
 
   const serviceWhereCalls = [];
   const serviceCreateCalls = [];
@@ -88,61 +88,112 @@ test("applyDiscoveryImport crée services, infra et dépendances sans doublons e
   const linkCreateCalls = [];
   const dependencyKeys = new Set();
   const linkKeys = new Set();
+  const serviceByName = new Map([["Existing Service", "service-existing"]]);
+  const infraByKey = new Map();
 
   prisma.$transaction = async (callback) => callback(prisma);
 
-  serviceDelegate.findFirst = async ({ where }) => {
+  serviceDelegate.findMany = async ({ where }) => {
     serviceWhereCalls.push(where);
-    if (where.name === "Existing Service") {
-      return { id: "service-existing" };
+    const names = where?.name?.in || [];
+    return names
+      .filter((name) => serviceByName.has(name))
+      .map((name) => ({ id: serviceByName.get(name), name }));
+  };
+  serviceDelegate.createMany = async ({ data }) => {
+    serviceCreateCalls.push(...data);
+    let created = 0;
+    for (const item of data) {
+      if (serviceByName.has(item.name)) continue;
+      created += 1;
+      serviceByName.set(item.name, `service-${serviceByName.size + 1}`);
     }
-    return null;
+    return { count: created };
   };
-  serviceDelegate.create = async ({ data }) => {
-    serviceCreateCalls.push(data);
-    return { id: `service-${serviceCreateCalls.length}` };
-  };
-  infraDelegate.findFirst = async ({ where }) => {
+  infraDelegate.findMany = async ({ where }) => {
     infraWhereCalls.push(where);
-    return null;
+    const matchers = Array.isArray(where?.OR) ? where.OR : [];
+    return matchers
+      .map((matcher) => {
+        const key = `${matcher.name}::${matcher.type}`;
+        const id = infraByKey.get(key);
+        return id ? { id, name: matcher.name, type: matcher.type } : null;
+      })
+      .filter(Boolean);
   };
-  infraDelegate.create = async ({ data }) => {
-    infraCreateCalls.push(data);
-    return { id: `infra-${infraCreateCalls.length}` };
+  infraDelegate.createMany = async ({ data }) => {
+    infraCreateCalls.push(...data);
+    let created = 0;
+    for (const item of data) {
+      const key = `${item.name}::${item.type}`;
+      if (infraByKey.has(key)) continue;
+      created += 1;
+      infraByKey.set(key, `infra-${infraByKey.size + 1}`);
+    }
+    return { count: created };
   };
-  dependencyDelegate.findFirst = async ({ where }) => {
+  dependencyDelegate.findMany = async ({ where }) => {
     dependencyWhereCalls.push(where);
-    const key = `${where.fromServiceId}:${where.toServiceId}:${where.dependencyType}`;
-    return dependencyKeys.has(key) ? { id: "dependency-existing" } : null;
+    const fromIds = new Set(where?.fromServiceId?.in || []);
+    const toIds = new Set(where?.toServiceId?.in || []);
+    const dependencyTypes = new Set(where?.dependencyType?.in || []);
+    return [...dependencyKeys]
+      .map((key) => {
+        const [fromServiceId, toServiceId, dependencyType] = key.split("::");
+        if (!fromIds.has(fromServiceId) || !toIds.has(toServiceId) || !dependencyTypes.has(dependencyType)) {
+          return null;
+        }
+        return { fromServiceId, toServiceId, dependencyType };
+      })
+      .filter(Boolean);
   };
-  dependencyDelegate.create = async ({ data }) => {
-    dependencyCreateCalls.push(data);
-    const key = `${data.fromServiceId}:${data.toServiceId}:${data.dependencyType}`;
-    dependencyKeys.add(key);
-    return { id: `dependency-${dependencyCreateCalls.length}` };
+  dependencyDelegate.createMany = async ({ data }) => {
+    dependencyCreateCalls.push(...data);
+    let created = 0;
+    for (const item of data) {
+      const key = `${item.fromServiceId}::${item.toServiceId}::${item.dependencyType}`;
+      if (dependencyKeys.has(key)) continue;
+      dependencyKeys.add(key);
+      created += 1;
+    }
+    return { count: created };
   };
-  linkDelegate.findFirst = async ({ where }) => {
+  linkDelegate.findMany = async ({ where }) => {
     linkWhereCalls.push(where);
-    const key = `${where.serviceId}:${where.infraId}`;
-    return linkKeys.has(key) ? { id: "link-existing" } : null;
+    const serviceIds = new Set(where?.serviceId?.in || []);
+    const infraIds = new Set(where?.infraId?.in || []);
+    return [...linkKeys]
+      .map((key) => {
+        const [serviceId, infraId] = key.split("::");
+        if (!serviceIds.has(serviceId) || !infraIds.has(infraId)) {
+          return null;
+        }
+        return { serviceId, infraId };
+      })
+      .filter(Boolean);
   };
-  linkDelegate.create = async ({ data }) => {
-    linkCreateCalls.push(data);
-    const key = `${data.serviceId}:${data.infraId}`;
-    linkKeys.add(key);
-    return { id: `link-${linkCreateCalls.length}` };
+  linkDelegate.createMany = async ({ data }) => {
+    linkCreateCalls.push(...data);
+    let created = 0;
+    for (const item of data) {
+      const key = `${item.serviceId}::${item.infraId}`;
+      if (linkKeys.has(key)) continue;
+      linkKeys.add(key);
+      created += 1;
+    }
+    return { count: created };
   };
 
   t.after(() => {
     prisma.$transaction = originalTransaction;
-    serviceDelegate.findFirst = originalServiceFindFirst;
-    serviceDelegate.create = originalServiceCreate;
-    infraDelegate.findFirst = originalInfraFindFirst;
-    infraDelegate.create = originalInfraCreate;
-    dependencyDelegate.findFirst = originalDependencyFindFirst;
-    dependencyDelegate.create = originalDependencyCreate;
-    linkDelegate.findFirst = originalLinkFindFirst;
-    linkDelegate.create = originalLinkCreate;
+    serviceDelegate.findMany = originalServiceFindMany;
+    serviceDelegate.createMany = originalServiceCreateMany;
+    infraDelegate.findMany = originalInfraFindMany;
+    infraDelegate.createMany = originalInfraCreateMany;
+    dependencyDelegate.findMany = originalDependencyFindMany;
+    dependencyDelegate.createMany = originalDependencyCreateMany;
+    linkDelegate.findMany = originalLinkFindMany;
+    linkDelegate.createMany = originalLinkCreateMany;
   });
 
   const payload = {
@@ -199,7 +250,7 @@ test("applyDiscoveryImport crée services, infra et dépendances sans doublons e
     createdServices: 1,
     createdInfra: 1,
     createdDependencies: 1,
-    createdInfraLinks: 2,
+    createdInfraLinks: 1,
     ignoredEdges: 1,
   });
 

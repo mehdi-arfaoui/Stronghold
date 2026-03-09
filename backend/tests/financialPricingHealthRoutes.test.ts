@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import express from 'express';
+import http from 'node:http';
 import financialRoutes from '../src/routes/financialRoutes.js';
 import {
   cloudPricingService,
@@ -16,8 +17,45 @@ async function withServer(app: express.Express, handler: (baseUrl: string) => Pr
   try {
     await handler(baseUrl);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    server.closeIdleConnections?.();
+    server.closeAllConnections?.();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
   }
+}
+
+async function requestJson(
+  baseUrl: string,
+  endpoint: string,
+): Promise<{ status: number; body: unknown }> {
+  const target = new URL(endpoint, baseUrl);
+
+  return new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        hostname: target.hostname,
+        port: target.port,
+        path: `${target.pathname}${target.search}`,
+        method: 'GET',
+        headers: { Connection: 'close' },
+        agent: false,
+      },
+      (res) => {
+        const chunks: string[] = [];
+        res.setEncoding('utf-8');
+        res.on('data', (chunk) => chunks.push(chunk));
+        res.on('end', () => {
+          const raw = chunks.join('');
+          const parsed = raw ? JSON.parse(raw) : null;
+          resolve({ status: res.statusCode ?? 0, body: parsed });
+        });
+      },
+    );
+
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 function mockStatus(checkedAt: string): PricingConnectivityStatus {
@@ -80,9 +118,9 @@ test('GET /financial/pricing/health exposes connectivity snapshot and supports r
 
   try {
     await withServer(app, async (baseUrl) => {
-      const snapshotResponse = await fetch(`${baseUrl}/financial/pricing/health`);
+      const snapshotResponse = await requestJson(baseUrl, '/financial/pricing/health');
       assert.equal(snapshotResponse.status, 200);
-      const snapshotBody = (await snapshotResponse.json()) as {
+      const snapshotBody = snapshotResponse.body as {
         refreshed: boolean;
         checkedByTenantId: string;
         providers: PricingConnectivityStatus['providers'];
@@ -93,9 +131,9 @@ test('GET /financial/pricing/health exposes connectivity snapshot and supports r
       assert.equal(getCalls.length, 1);
       assert.equal(runCalls.length, 0);
 
-      const refreshResponse = await fetch(`${baseUrl}/financial/pricing/health?refresh=true`);
+      const refreshResponse = await requestJson(baseUrl, '/financial/pricing/health?refresh=true');
       assert.equal(refreshResponse.status, 200);
-      const refreshBody = (await refreshResponse.json()) as {
+      const refreshBody = refreshResponse.body as {
         refreshed: boolean;
         checkedByTenantId: string;
         providers: PricingConnectivityStatus['providers'];
@@ -110,4 +148,3 @@ test('GET /financial/pricing/health exposes connectivity snapshot and supports r
     (cloudPricingService as any).runConnectivitySelfTest = originalRun;
   }
 });
-
