@@ -78,6 +78,7 @@ model Tenant {
   license                  License?
   users                    User[]
   refreshTokens            RefreshToken[]
+  dashboardConfigs         DashboardConfig[]
 
   // Resilience platform
   infraNodes             InfraNode[]
@@ -1166,11 +1167,26 @@ model User {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  refreshTokens RefreshToken[]
+  refreshTokens    RefreshToken[]
+  dashboardConfigs DashboardConfig[]
 
   @@unique([tenantId, email])
   @@index([tenantId, role])
   @@index([tenantId, isActive])
+}
+
+model DashboardConfig {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Tenant   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  layout         Json
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([organizationId])
 }
 
 model RefreshToken {

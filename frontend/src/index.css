@@ -159,3 +159,15 @@
     transform: translateY(0);
   }
 }
+
+/* Dashboard grid */
+.react-grid-item.react-grid-placeholder {
+  border-radius: 0.5rem;
+  background: hsl(var(--primary) / 0.2);
+  border: 1px dashed hsl(var(--primary) / 0.5);
+}
+
+.react-grid-item > .react-resizable-handle::after {
+  border-right-color: hsl(var(--muted-foreground));
+  border-bottom-color: hsl(var(--muted-foreground));
+}
