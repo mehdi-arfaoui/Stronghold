@@ -1,0 +1,95 @@
+/**
+ * Centralizes creation of AWS SDK clients with credential resolution.
+ * Supports both static IAM keys and STS role assumption.
+ */
+import { EFSClient } from '@aws-sdk/client-efs';
+import { Route53Client } from '@aws-sdk/client-route-53';
+import { fromTemporaryCredentials } from '@aws-sdk/credential-providers';
+import type { DiscoveryCloudCredentials } from '../../types/discovery.js';
+
+/** Resolved AWS credentials suitable for SDK client construction. */
+export type ResolvedAwsCredentials = {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+  readonly sessionToken?: string;
+};
+
+type AwsCredentialProvider = ResolvedAwsCredentials | ReturnType<typeof fromTemporaryCredentials>;
+
+/**
+ * Resolves AWS credentials from discovery config.
+ * Returns a credential provider for role assumption, static credentials, or undefined.
+ */
+export function resolveAwsCredentials(
+  credentials: DiscoveryCloudCredentials,
+  region: string,
+  sessionName = 'stronghold-discovery',
+): AwsCredentialProvider | undefined {
+  if (credentials.roleArn) {
+    return fromTemporaryCredentials({
+      params: {
+        RoleArn: credentials.roleArn,
+        RoleSessionName: sessionName,
+        ...(credentials.externalId ? { ExternalId: credentials.externalId } : {}),
+      },
+      clientConfig: { region },
+    });
+  }
+
+  if (credentials.accessKeyId && credentials.secretAccessKey) {
+    return {
+      accessKeyId: credentials.accessKeyId,
+      secretAccessKey: credentials.secretAccessKey,
+      ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
+    };
+  }
+
+  return undefined;
+}
+
+/** Options for creating an AWS SDK client. */
+export interface AwsClientOptions {
+  readonly region: string;
+  readonly credentials: DiscoveryCloudCredentials;
+  readonly sessionName?: string;
+}
+
+/**
+ * Builds an AWS SDK client config object with resolved credentials.
+ * Consumers pass this to any AWS SDK client constructor.
+ */
+export function buildAwsClientConfig(
+  options: AwsClientOptions,
+): { region: string; credentials?: AwsCredentialProvider } {
+  const resolved = resolveAwsCredentials(options.credentials, options.region, options.sessionName);
+  return {
+    region: options.region,
+    ...(resolved ? { credentials: resolved } : {}),
+  };
+}
+
+/**
+ * Creates an AWS SDK client of the given constructor type.
+ * Uses `as never` cast because AWS SDK client constructors have overly
+ * strict config types that are structurally compatible but nominally different.
+ */
+export function createAwsClient<TClient>(
+  ClientConstructor: new (config: never) => TClient,
+  options: AwsClientOptions,
+): TClient {
+  const config = buildAwsClientConfig(options);
+  return new ClientConstructor(config as never);
+}
+
+/** Creates a Route53 client pinned to the global endpoint region. */
+export function createRoute53Client(options: AwsClientOptions): Route53Client {
+  return createAwsClient(Route53Client, {
+    ...options,
+    region: 'us-east-1',
+  });
+}
+
+/** Creates an EFS client for the current region. */
+export function createEfsClient(options: AwsClientOptions): EFSClient {
+  return createAwsClient(EFSClient, options);
+}

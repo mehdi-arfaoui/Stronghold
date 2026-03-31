@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 36% 96%;
+    --foreground: 218 39% 14%;
+    --card: 0 0% 100%;
+    --elevated: 214 40% 98%;
+    --overlay: 0 0% 100%;
+    --sidebar: 214 42% 98%;
+    --border: 215 21% 84%;
+    --border-strong: 215 20% 76%;
+    --muted: 214 30% 92%;
+    --input: 214 40% 98%;
+    --muted-foreground: 217 18% 34%;
+    --subtle-foreground: 215 15% 46%;
+    --accent: 191 92% 39%;
+    --accent-foreground: 0 0% 100%;
+    --accent-emphasis: 191 95% 33%;
+    --accent-disabled: 191 42% 76%;
+    --accent-soft: 190 78% 92%;
+    --accent-soft-foreground: 192 84% 24%;
+    --success: 152 76% 35%;
+    --success-soft: 152 52% 92%;
+    --success-foreground: 152 74% 24%;
+    --warning: 35 92% 45%;
+    --warning-soft: 44 100% 93%;
+    --warning-foreground: 28 84% 30%;
+    --danger: 0 84% 60%;
+    --danger-soft: 0 86% 96%;
+    --danger-foreground: 0 72% 38%;
+    --panel-shadow: 0 18px 48px rgba(15, 23, 42, 0.08);
+    --page-glow-primary: rgba(8, 145, 178, 0.12);
+    --page-glow-secondary: rgba(14, 165, 233, 0.08);
+    --page-sheen: rgba(255, 255, 255, 0.58);
+  }
+
+  .dark {
+    --background: 216 35% 9%;
+    --foreground: 210 30% 96%;
+    --card: 217 33% 13%;
+    --elevated: 218 28% 16%;
+    --overlay: 217 33% 13%;
+    --sidebar: 217 36% 11%;
+    --border: 217 24% 22%;
+    --border-strong: 216 22% 30%;
+    --muted: 218 26% 18%;
+    --input: 218 28% 16%;
+    --muted-foreground: 215 18% 72%;
+    --subtle-foreground: 215 16% 58%;
+    --accent: 191 100% 42%;
+    --accent-foreground: 0 0% 100%;
+    --accent-emphasis: 191 100% 47%;
+    --accent-disabled: 191 38% 28%;
+    --accent-soft: 191 70% 18%;
+    --accent-soft-foreground: 191 96% 78%;
+    --success: 152 63% 45%;
+    --success-soft: 152 46% 16%;
+    --success-foreground: 152 72% 70%;
+    --warning: 39 96% 57%;
+    --warning-soft: 35 70% 16%;
+    --warning-foreground: 39 92% 71%;
+    --danger: 0 84% 60%;
+    --danger-soft: 0 48% 16%;
+    --danger-foreground: 0 92% 79%;
+    --panel-shadow: 0 20px 50px rgba(2, 6, 23, 0.28);
+    --page-glow-primary: rgba(6, 182, 212, 0.12);
+    --page-glow-secondary: rgba(16, 185, 129, 0.1);
+    --page-sheen: rgba(15, 23, 42, 0.14);
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply bg-background antialiased;
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans;
+    background:
+      radial-gradient(circle at top left, var(--page-glow-primary), transparent 30%),
+      radial-gradient(circle at top right, var(--page-glow-secondary), transparent 28%),
+      linear-gradient(180deg, var(--page-sheen), transparent 28%),
+      hsl(var(--background));
+    min-height: 100vh;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    @apply outline-none;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-border bg-card shadow-panel backdrop-blur-sm;
+  }
+
+  .panel-elevated {
+    @apply rounded-2xl border border-border bg-elevated;
+  }
+
+  .btn-primary {
+    @apply rounded-xl bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-colors duration-150 hover:bg-accent-emphasis focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:bg-accent-disabled disabled:text-accent-foreground/80;
+  }
+
+  .btn-secondary {
+    @apply rounded-xl border border-border bg-elevated px-4 py-3 text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  .btn-secondary-tight {
+    @apply rounded-xl border border-border bg-elevated px-3 py-2 text-sm text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+
+  .input-field {
+    @apply rounded-xl border border-border bg-input px-4 py-3 text-sm text-foreground placeholder:text-subtle-foreground transition-colors duration-150 focus-visible:border-border-strong focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20 focus-visible:ring-offset-2 focus-visible:ring-offset-background;
+  }
+}
+
+@layer utilities {
+  .panel-grid {
+    @apply grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px];
+  }
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--border-strong) / 0.7);
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.55);
+}

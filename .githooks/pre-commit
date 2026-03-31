@@ -1,0 +1,7 @@
+#!/bin/sh
+echo "Running typecheck..."
+npm run typecheck --workspace=packages/core || exit 1
+npm run typecheck --workspace=packages/cli || exit 1
+echo "Running core tests..."
+npm run test --workspace=packages/core || exit 1
+echo "All checks passed"

@@ -1,0 +1,81 @@
+{
+  "name": "@stronghold-dr/core",
+  "version": "0.1.0",
+  "description": "Stronghold DR automation engine - pure business logic",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist",
+    "package.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mehdi-arfaoui/stronghold.git",
+    "directory": "packages/core"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "disaster-recovery",
+    "dr",
+    "aws",
+    "cloud",
+    "infrastructure",
+    "drp"
+  ],
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@aws-sdk/client-auto-scaling": "^3.1017.0",
+    "@aws-sdk/client-backup": "^3.1018.0",
+    "@aws-sdk/client-cloudwatch": "^3.1017.0",
+    "@aws-sdk/client-dynamodb": "^3.1017.0",
+    "@aws-sdk/client-ec2": "^3.1017.0",
+    "@aws-sdk/client-efs": "^3.1018.0",
+    "@aws-sdk/client-eks": "^3.1017.0",
+    "@aws-sdk/client-elastic-load-balancing-v2": "^3.1017.0",
+    "@aws-sdk/client-elasticache": "^3.1017.0",
+    "@aws-sdk/client-lambda": "^3.1017.0",
+    "@aws-sdk/client-rds": "^3.1017.0",
+    "@aws-sdk/client-route-53": "^3.1018.0",
+    "@aws-sdk/client-s3": "^3.1017.0",
+    "@aws-sdk/client-sns": "^3.1017.0",
+    "@aws-sdk/client-sqs": "^3.1017.0",
+    "@aws-sdk/credential-providers": "^3.1017.0",
+    "@azure/arm-compute": "^23.2.0",
+    "@azure/arm-containerservice": "^24.1.0",
+    "@azure/arm-resources": "^7.0.0",
+    "@azure/arm-sql": "^10.0.0",
+    "@azure/arm-storage": "^19.1.0",
+    "@azure/identity": "^4.13.0",
+    "graphology": "^0.26.0",
+    "graphology-types": "^0.24.8",
+    "yaml": "^2.8.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.12",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "@vitest/coverage-v8": "^3.2.4",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.1",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
+  }
+}

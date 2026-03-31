@@ -1,0 +1,95 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Scan {
+  id            String     @id @default(uuid())
+  provider      String
+  regions       String[]
+  status        ScanStatus @default(PENDING)
+  resourceCount Int        @default(0)
+  edgeCount     Int        @default(0)
+  score         Float?
+  grade         String?
+  errorMessage  String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  scanData    ScanData?
+  reports     Report[]
+  drpPlans    DRPlan[]
+  driftEvents DriftEvent[]
+}
+
+model ScanData {
+  id               String   @id @default(uuid())
+  scanId           String   @unique
+  scan             Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  nodes            Json
+  edges            Json
+  analysis         Json
+  validationReport Json
+}
+
+enum ScanStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+model Report {
+  id        String   @id @default(uuid())
+  scanId    String
+  scan      Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  type      String
+  format    String
+  content   Json
+  score     Float?
+  grade     String?
+  createdAt DateTime @default(now())
+}
+
+model DRPlan {
+  id                 String   @id @default(uuid())
+  scanId             String
+  scan               Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  version            String
+  infrastructureHash String
+  format             String
+  content            String
+  componentCount     Int
+  isValid            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  validations PlanValidation[]
+}
+
+model PlanValidation {
+  id         String   @id @default(uuid())
+  planId      String
+  plan        DRPlan   @relation(fields: [planId], references: [id], onDelete: Cascade)
+  isValid     Boolean
+  issueCount  Int      @default(0)
+  issues      Json?
+  createdAt   DateTime @default(now())
+}
+
+model DriftEvent {
+  id             String   @id @default(uuid())
+  scanId         String
+  scan           Scan     @relation(fields: [scanId], references: [id], onDelete: Cascade)
+  baselineScanId String?
+  changeCount    Int      @default(0)
+  criticalCount  Int      @default(0)
+  drpStale       Boolean  @default(false)
+  changes        Json
+  createdAt      DateTime @default(now())
+}

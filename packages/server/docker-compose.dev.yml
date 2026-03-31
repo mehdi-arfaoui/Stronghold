@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: stronghold
+      POSTGRES_USER: stronghold
+      POSTGRES_PASSWORD: stronghold
+    ports:
+      - "5432:5432"
+    volumes:
+      - stronghold-pgdata:/var/lib/postgresql/data
+
+volumes:
+  stronghold-pgdata:

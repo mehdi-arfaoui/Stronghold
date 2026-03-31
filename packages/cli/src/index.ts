@@ -1,0 +1,57 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { Command } from 'commander';
+
+import { CliError } from './errors/cli-error.js';
+import { writeError } from './output/io.js';
+import { registerDemoCommand } from './commands/demo.js';
+import { registerDriftCommand } from './commands/drift.js';
+import { registerIamPolicyCommand } from './commands/iam-policy.js';
+import { registerPlanCommand } from './commands/plan.js';
+import { registerReportCommand } from './commands/report.js';
+import { registerScanCommand } from './commands/scan.js';
+
+export function createProgram(): Command {
+  const program = new Command();
+  program
+    .name('stronghold')
+    .description('Open-source disaster recovery automation for cloud infrastructure')
+    .version('0.1.0');
+
+  registerScanCommand(program);
+  registerReportCommand(program);
+  registerPlanCommand(program);
+  registerDriftCommand(program);
+  registerDemoCommand(program);
+  registerIamPolicyCommand(program);
+
+  return program;
+}
+
+export async function runCli(argv = process.argv): Promise<void> {
+  const program = createProgram();
+  try {
+    await program.parseAsync(argv);
+  } catch (error) {
+    if (error instanceof CliError) {
+      writeError(error.message);
+      process.exitCode = error.exitCode;
+      return;
+    }
+    if (error instanceof Error) {
+      writeError(error.message);
+      process.exitCode = 1;
+      return;
+    }
+    writeError(String(error));
+    process.exitCode = 1;
+  }
+}
+
+const currentFile = fileURLToPath(import.meta.url);
+const entryFile = process.argv[1] ? path.resolve(process.argv[1]) : null;
+
+if (entryFile && currentFile === entryFile) {
+  void runCli();
+}

@@ -1,0 +1,127 @@
+export const SUPPORTED_SERVICES = [
+  'ec2',
+  'rds',
+  'aurora',
+  's3',
+  'lambda',
+  'dynamodb',
+  'elasticache',
+  'sqs',
+  'sns',
+  'elb',
+  'eks',
+  'efs',
+  'vpc',
+  'route53',
+  'backup',
+  'cloudwatch',
+] as const;
+
+export type SupportedService = (typeof SUPPORTED_SERVICES)[number];
+
+export const DEFAULT_PROVIDER = 'aws';
+export const DEFAULT_SCAN_OUTPUT = 'summary';
+export const DEFAULT_REPORT_FORMAT = 'terminal';
+export const DEFAULT_PLAN_FORMAT = 'yaml';
+export const DEFAULT_DEMO_SCENARIO = 'startup';
+export const DEFAULT_DEMO_OUTPUT = 'summary';
+
+export type ScanOutputFormat = 'summary' | 'json' | 'silent';
+export type ReportOutputFormat = 'terminal' | 'markdown' | 'json';
+export type PlanOutputFormat = 'yaml' | 'json';
+export type DemoScenario = 'startup' | 'enterprise' | 'minimal';
+
+export interface ScanCommandOptions {
+  readonly provider: string;
+  readonly region?: readonly string[];
+  readonly allRegions: boolean;
+  readonly profile?: string;
+  readonly services?: readonly SupportedService[];
+  readonly output: ScanOutputFormat;
+  readonly save: boolean;
+  readonly verbose: boolean;
+}
+
+export interface ReportCommandOptions {
+  readonly format: ReportOutputFormat;
+  readonly output?: string;
+  readonly scan?: string;
+  readonly category?: string;
+  readonly severity?: string;
+  readonly verbose: boolean;
+}
+
+export interface PlanGenerateCommandOptions {
+  readonly output?: string;
+  readonly format: PlanOutputFormat;
+  readonly scan?: string;
+  readonly verbose: boolean;
+}
+
+export interface PlanValidateCommandOptions {
+  readonly plan: string;
+  readonly scan?: string;
+  readonly verbose: boolean;
+}
+
+export interface PlanRunbookCommandOptions {
+  readonly output?: string;
+  readonly format: PlanOutputFormat;
+  readonly scan?: string;
+  readonly component?: string;
+  readonly verbose: boolean;
+}
+
+export interface DriftCheckCommandOptions {
+  readonly baseline?: string;
+  readonly current?: string;
+  readonly saveBaseline: boolean;
+  readonly verbose: boolean;
+}
+
+export interface DemoCommandOptions {
+  readonly scenario: DemoScenario;
+  readonly output: Exclude<ScanOutputFormat, 'silent'>;
+  readonly verbose: boolean;
+}
+
+export interface IamPolicyCommandOptions {
+  readonly format: 'json' | 'terraform';
+  readonly services?: readonly SupportedService[];
+  readonly verbose: boolean;
+}
+
+export function parseCommaSeparatedList(value: string): readonly string[] {
+  return value
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+}
+
+export function parseRegionOption(value: string): readonly string[] {
+  return parseCommaSeparatedList(value);
+}
+
+export function parseServiceOption(value: string): readonly SupportedService[] {
+  const services = parseCommaSeparatedList(value).map((entry) => entry.toLowerCase());
+  const invalid = services.filter((entry) => !isSupportedService(entry));
+  if (invalid.length > 0) {
+    throw new ConfigurationError(`Unsupported services: ${invalid.join(', ')}`);
+  }
+
+  return services as readonly SupportedService[];
+}
+
+export function isSupportedService(value: string): value is SupportedService {
+  return SUPPORTED_SERVICES.includes(value as SupportedService);
+}
+
+export function ensureVpcIncluded(
+  services?: readonly SupportedService[],
+): readonly SupportedService[] | undefined {
+  if (!services || services.length === 0) {
+    return services;
+  }
+  return services.includes('vpc') ? services : [...services, 'vpc'];
+}
+import { ConfigurationError } from '../errors/cli-error.js';

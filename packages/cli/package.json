@@ -1,0 +1,67 @@
+{
+  "name": "@stronghold-dr/cli",
+  "version": "0.1.0",
+  "description": "CLI for Stronghold - open-source disaster recovery automation",
+  "bin": {
+    "stronghold": "./bin/stronghold.js"
+  },
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist",
+    "bin",
+    "package.json",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mehdi-arfaoui/stronghold.git",
+    "directory": "packages/cli"
+  },
+  "scripts": {
+    "prebuild": "npm --prefix ../core run build",
+    "pretypecheck": "npm --prefix ../core run build",
+    "pretest": "npm --prefix ../core run build",
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "keywords": [
+    "disaster-recovery",
+    "dr",
+    "aws",
+    "cloud",
+    "cli",
+    "drp",
+    "infrastructure"
+  ],
+  "license": "AGPL-3.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@stronghold-dr/core": "file:../core",
+    "@aws-sdk/client-ec2": "^3.1017.0",
+    "@aws-sdk/client-sts": "^3.1017.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.0.0",
+    "graphology": "^0.26.0",
+    "ora": "^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.12",
+    "@typescript-eslint/eslint-plugin": "^8.57.2",
+    "@typescript-eslint/parser": "^8.57.2",
+    "eslint": "^10.1.0",
+    "eslint-config-prettier": "^10.1.8",
+    "tsx": "^4.19.2",
+    "typescript": "^5.9.3",
+    "vitest": "^3.0.0"
+  }
+}
