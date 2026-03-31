@@ -1,0 +1,57 @@
+name: 'Stronghold DR Check'
+description: 'Scan your AWS infrastructure and report DR posture impact on pull requests'
+author: 'mehdi-arfaoui'
+
+branding:
+  icon: 'shield'
+  color: 'blue'
+
+inputs:
+  aws-region:
+    description: 'AWS region(s) to scan, comma-separated'
+    required: true
+  aws-access-key-id:
+    description: 'AWS Access Key ID (use GitHub Secrets)'
+    required: true
+  aws-secret-access-key:
+    description: 'AWS Secret Access Key (use GitHub Secrets)'
+    required: true
+  aws-session-token:
+    description: 'AWS Session Token (optional, for temporary credentials)'
+    required: false
+  services:
+    description: 'Services to scan, comma-separated (default: all)'
+    required: false
+    default: ''
+  fail-on-score-drop:
+    description: 'Fail the check if DR score drops by more than this amount'
+    required: false
+    default: '0'
+  fail-under-score:
+    description: 'Fail the check if DR score is below this threshold'
+    required: false
+    default: '0'
+  comment-on-pr:
+    description: 'Post a comment on the PR with the results'
+    required: false
+    default: 'true'
+  baseline-branch:
+    description: 'Branch to compare against for score delta (default: main)'
+    required: false
+    default: 'main'
+
+outputs:
+  score:
+    description: 'Current DR posture score (0-100)'
+  grade:
+    description: 'Current DR grade (A-F)'
+  score-delta:
+    description: 'Score change from baseline (negative = regression)'
+  critical-count:
+    description: 'Number of critical failures'
+  status:
+    description: 'pass or fail'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

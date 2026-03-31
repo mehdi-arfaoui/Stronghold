@@ -2,15 +2,16 @@
   "name": "stronghold",
   "private": true,
   "workspaces": [
-    "packages/*"
+    "packages/*",
+    "github-action"
   ],
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "typecheck": "npm run typecheck --workspace=packages/core && npm run typecheck --workspace=packages/cli && npm run typecheck --workspace=packages/server && npm run typecheck --workspace=packages/web",
+    "typecheck": "npm run typecheck --workspace=packages/core && npm run typecheck --workspace=packages/cli && npm run typecheck --workspace=packages/server && npm run typecheck --workspace=packages/web && npm run typecheck --workspace=github-action",
     "lint": "npm run lint --workspace=packages/core && npm run lint --workspace=packages/cli && npm run lint --workspace=packages/server && npm run lint --workspace=packages/web",
-    "test": "npm run test --workspace=packages/core && npm run test --workspace=packages/cli && npm run test --workspace=packages/server",
-    "build": "npm run build --workspace=packages/core && npm run build --workspace=packages/cli && npm run build --workspace=packages/server && npm run build --workspace=packages/web"
+    "test": "npm run test --workspace=packages/core && npm run test --workspace=packages/cli && npm run test --workspace=packages/server && npm run test --workspace=github-action",
+    "build": "npm run build --workspace=packages/core && npm run build --workspace=packages/cli && npm run build --workspace=packages/server && npm run build --workspace=packages/web && npm run build --workspace=github-action"
   }
 }
