@@ -9,6 +9,8 @@ import { PrismaScanRepository, type SaveScanParams } from '../../adapters/prisma
 import { createApp, type AppDependencies } from '../../app.js';
 import type { ServerConfig } from '../../config/env.js';
 import { DriftService } from '../../services/drift-service.js';
+import { createScanDataEncryptionService } from '../../services/encryption.service.js';
+import { PrismaAuditLogger } from '../../services/prisma-audit-logger.js';
 import { ScanService } from '../../services/scan-service.js';
 import { buildDemoArtifacts, createDemoScenario, type DemoScenario } from './fixtures.js';
 import { createMockPrisma, resetStore, type MockPrismaHarness } from './mock-prisma.js';
@@ -19,9 +21,15 @@ export interface E2eContext {
   readonly scanRepository: PrismaScanRepository;
   readonly infrastructureRepository: PrismaInfrastructureRepository;
   readonly scanService: ScanService;
+  readonly auditLogger: PrismaAuditLogger;
 }
 
-export function createE2eContext(options: { readonly autoCompleteScan?: boolean } = {}): E2eContext {
+export function createE2eContext(
+  options: {
+    readonly autoCompleteScan?: boolean;
+    readonly encryptionKey?: string;
+  } = {},
+): E2eContext {
   const prisma = createMockPrisma();
   resetStore(prisma.store);
   const config: ServerConfig = {
@@ -31,10 +39,16 @@ export function createE2eContext(options: { readonly autoCompleteScan?: boolean 
     corsOrigin: 'http://localhost:5173',
     corsOrigins: ['http://localhost:5173'],
     logLevel: 'error',
+    ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
   };
   const logger = new ServerLogger(config);
-  const scanRepository = new PrismaScanRepository(prisma.prisma);
-  const infrastructureRepository = new PrismaInfrastructureRepository(prisma.prisma);
+  const encryptionService = createScanDataEncryptionService(options.encryptionKey);
+  const auditLogger = new PrismaAuditLogger(prisma.prisma);
+  const scanRepository = new PrismaScanRepository(prisma.prisma, encryptionService);
+  const infrastructureRepository = new PrismaInfrastructureRepository(
+    prisma.prisma,
+    encryptionService,
+  );
   const scanService = new ScanService(scanRepository, infrastructureRepository, logger);
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 
@@ -55,6 +69,7 @@ export function createE2eContext(options: { readonly autoCompleteScan?: boolean 
     logger,
     scanService,
     driftService,
+    auditLogger,
   };
 
   return {
@@ -63,6 +78,7 @@ export function createE2eContext(options: { readonly autoCompleteScan?: boolean 
     scanRepository,
     infrastructureRepository,
     scanService,
+    auditLogger,
   };
 }
 

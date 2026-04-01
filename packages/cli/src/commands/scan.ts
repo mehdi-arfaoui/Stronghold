@@ -1,11 +1,13 @@
 import { Command } from 'commander';
 
+import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import type { ScanCommandOptions } from '../config/options.js';
 import { resolveAwsExecutionContext } from '../config/credentials.js';
 import {
   DEFAULT_PROVIDER,
   DEFAULT_SCAN_OUTPUT,
   ensureVpcIncluded,
+  getCommandOptions,
   parseRegionOption,
   parseServiceOption,
 } from '../config/options.js';
@@ -15,7 +17,7 @@ import { writeOutput } from '../output/io.js';
 import { renderScanSummary, determineSilentExitCode } from '../output/scan-summary.js';
 import { formatReadOnlyMessage } from '../output/theme.js';
 import { runAwsScan } from '../pipeline/aws-scan.js';
-import { saveScanResults } from '../storage/file-store.js';
+import { saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerScanCommand(program: Command): void {
@@ -30,7 +32,31 @@ export function registerScanCommand(program: Command): void {
     .option('--output <format>', 'summary|json|silent', DEFAULT_SCAN_OUTPUT)
     .option('--no-save', "Don't save scan results")
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: ScanCommandOptions) => {
+    .action(async (_: ScanCommandOptions, command: Command) => {
+      const options = getCommandOptions<ScanCommandOptions>(command);
+      const audit = new CommandAuditSession('scan', {
+        ...(options.region ? { regions: options.region } : {}),
+        ...(options.services ? { services: options.services } : {}),
+        outputFormat: options.output,
+        ...(collectAuditFlags({
+          '--all-regions': options.allRegions,
+          '--no-save': !options.save,
+          '--encrypt': options.encrypt,
+          '--verbose': options.verbose,
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--all-regions': options.allRegions,
+                '--no-save': !options.save,
+                '--encrypt': options.encrypt,
+                '--verbose': options.verbose,
+              }),
+            }
+          : {}),
+      });
+      await audit.start();
+
+      try {
       if (options.provider !== 'aws') {
         throw new ConfigurationError(`Unsupported provider: ${options.provider}. Only aws is available in v0.1.`);
       }
@@ -54,6 +80,7 @@ export function registerScanCommand(program: Command): void {
         explicitRegions: options.region,
         allRegions: options.allRegions,
       });
+      audit.setIdentityPromise(resolveAuditIdentity(context.credentials.aws));
 
       const execution = await runAwsScan({
         credentials: context.credentials,
@@ -89,9 +116,13 @@ export function registerScanCommand(program: Command): void {
         await writeOutput('');
       }
 
+      const savedPath = options.encrypt
+        ? '.stronghold/latest-scan.stronghold-enc'
+        : '.stronghold/latest-scan.json';
+
       if (options.save) {
         const paths = resolveStrongholdPaths();
-        saveScanResults(execution.results, paths.latestScanPath);
+        await saveScanResultsWithEncryption(execution.results, paths.latestScanPath, options);
       }
 
       if (options.verbose && execution.warnings.length > 0) {
@@ -102,12 +133,20 @@ export function registerScanCommand(program: Command): void {
         await writeOutput(JSON.stringify(execution.results, null, 2));
       } else if (options.output === 'summary') {
         const summary = renderScanSummary(execution.results, {
-          ...(options.save ? { savedPath: '.stronghold/latest-scan.json' } : {}),
+          ...(options.save ? { savedPath } : {}),
           warnings: execution.warnings,
         });
         await writeOutput(summary);
       } else {
         process.exitCode = determineSilentExitCode(execution.results.validationReport);
+      }
+        await audit.finish({
+          status: 'success',
+          resourceCount: execution.results.nodes.length,
+        });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
       }
     });
 }

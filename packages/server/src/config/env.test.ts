@@ -10,6 +10,8 @@ describe('envSchema', () => {
       NODE_ENV: 'production',
       CORS_ORIGIN: 'https://stronghold.example',
       LOG_LEVEL: 'warn',
+      STRONGHOLD_ENCRYPTION_KEY:
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     });
 
     expect(config).toEqual({
@@ -19,6 +21,8 @@ describe('envSchema', () => {
       corsOrigin: 'https://stronghold.example',
       corsOrigins: ['https://stronghold.example'],
       logLevel: 'warn',
+      encryptionKey:
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     });
   });
 
@@ -35,5 +39,14 @@ describe('envSchema', () => {
 
   it('fails when DATABASE_URL is missing', () => {
     expect(() => envSchema.parse({})).toThrow();
+  });
+
+  it('fails when STRONGHOLD_ENCRYPTION_KEY is not a 32-byte hex string', () => {
+    expect(() =>
+      parseEnvironment({
+        DATABASE_URL: 'postgresql://stronghold:stronghold@localhost:5432/stronghold',
+        STRONGHOLD_ENCRYPTION_KEY: 'not-valid',
+      }),
+    ).toThrow(/STRONGHOLD_ENCRYPTION_KEY/);
   });
 });

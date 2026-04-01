@@ -93,3 +93,13 @@ model DriftEvent {
   changes        Json
   createdAt      DateTime @default(now())
 }
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  timestamp  DateTime @default(now())
+  action     String
+  identity   Json?
+  parameters Json
+  result     Json
+  createdAt  DateTime @default(now())
+}

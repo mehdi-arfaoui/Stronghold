@@ -47,11 +47,48 @@ See [.env.example](../.env.example) and [docker-compose.yml](../docker-compose.y
 | `WEB_PORT` | `8080` | Host port mapped to the web container |
 | `DB_PASSWORD` | `change-me-local-only` | PostgreSQL password for the bundled stack |
 | `LOG_LEVEL` | `info` | Server log level |
+| `STRONGHOLD_ENCRYPTION_KEY` | empty | Optional 32-byte hex key for application-level scan data encryption |
 | `AWS_ACCESS_KEY_ID` | empty | Optional AWS credential env var |
 | `AWS_SECRET_ACCESS_KEY` | empty | Optional AWS credential env var |
 | `AWS_DEFAULT_REGION` | `us-east-1` | Default region for server-side scans |
 | `AWS_PROFILE` | `default` | Optional named profile if you mount `~/.aws` |
 | `CORS_ORIGIN` | `http://localhost:8080` | Allowed web origin for the API, defaulted in `docker-compose.yml` |
+
+## Security Configuration
+
+### Application Encryption
+
+If you want the server to encrypt persisted scan payloads before they are written to PostgreSQL, set `STRONGHOLD_ENCRYPTION_KEY` to a 32-byte hex value:
+
+```bash
+openssl rand -hex 32
+```
+
+Example:
+
+```dotenv
+STRONGHOLD_ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+```
+
+If this variable is unset, scan data remains readable in the database.
+
+### Audit Trail
+
+The server persists execution metadata in the `AuditLog` table and exposes it through:
+
+```text
+GET /api/audit
+```
+
+This endpoint is cursor-paginated with the same `limit` and `cursor` pattern used by `GET /api/scans`.
+
+### Deployment Recommendations
+
+- enable PostgreSQL TLS in production
+- put the API behind an HTTPS reverse proxy
+- keep PostgreSQL on a private network segment
+- keep the containers non-root; the default Docker setup already does this
+- treat the database as sensitive because it stores infrastructure metadata
 
 ## AWS Credentials
 
@@ -160,4 +197,5 @@ The server reapplies Prisma migrations on startup, then launches the API.
 
 - [Getting Started](./getting-started.md)
 - [Architecture](./architecture.md)
+- [Security Model](./security.md)
 - [AWS provider details](./providers/aws.md)

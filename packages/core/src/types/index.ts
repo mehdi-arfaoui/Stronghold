@@ -79,3 +79,5 @@ export {
   type ApiDriftEvent,
   type ApiDriftEventsResponse,
 } from './api.js';
+
+export { type EncryptedPayload } from './encryption.js';

@@ -33,6 +33,7 @@ services:
       PORT: 3000
       CORS_ORIGIN: http://localhost:${WEB_PORT:-8080}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # STRONGHOLD_ENCRYPTION_KEY: "generate with: openssl rand -hex 32"
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
       AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}

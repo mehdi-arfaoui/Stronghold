@@ -1,11 +1,17 @@
 import { Command } from 'commander';
-import { analyzeDriftImpact, detectDrift } from '@stronghold-dr/core';
+import { analyzeDriftImpact, detectDrift, redact } from '@stronghold-dr/core';
 
+import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import type { DriftCheckCommandOptions } from '../config/options.js';
+import { getCommandOptions } from '../config/options.js';
+import { FileStoreError } from '../errors/cli-error.js';
 import { writeOutput } from '../output/io.js';
 import { buildGraph } from '../pipeline/graph-builder.js';
-import { loadScanResults, saveScanResults } from '../storage/file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import {
+  loadScanResultsWithEncryption,
+  saveScanResultsWithEncryption,
+} from '../storage/secure-file-store.js';
+import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerDriftCommand(program: Command): void {
   const drift = program.command('drift').description('Detect DR drift between two scans');
@@ -17,72 +23,130 @@ export function registerDriftCommand(program: Command): void {
     .option('--current <path>', 'Path to current scan')
     .option('--save-baseline', 'Promote current scan as the new baseline', false)
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: DriftCheckCommandOptions) => {
-      const paths = resolveStrongholdPaths();
-      const baselinePath = options.baseline ?? paths.baselineScanPath;
-      const currentPath = options.current ?? paths.latestScanPath;
-      const current = loadScanResults(currentPath);
+    .action(async (_: DriftCheckCommandOptions, command: Command) => {
+      const options = getCommandOptions<DriftCheckCommandOptions>(command);
+      const audit = new CommandAuditSession('drift_check', {
+        outputFormat: 'terminal',
+        ...(collectAuditFlags({
+          '--save-baseline': options.saveBaseline,
+          '--encrypt': options.encrypt,
+          '--redact': options.redact,
+          '--verbose': options.verbose,
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--save-baseline': options.saveBaseline,
+                '--encrypt': options.encrypt,
+                '--redact': options.redact,
+                '--verbose': options.verbose,
+              }),
+            }
+          : {}),
+      });
+      audit.setIdentityPromise(resolveAuditIdentity());
+      await audit.start();
 
       try {
-        const baseline = loadScanResults(baselinePath);
-        const rawDrift = detectDrift(baseline.nodes, current.nodes, {
-          scanIdBefore: baseline.timestamp,
-          scanIdAfter: current.timestamp,
-          timestamp: new Date(current.timestamp),
-        });
-        const driftReport = analyzeDriftImpact(rawDrift, buildGraph(current.nodes, current.edges), {
-          drpComponentIds: current.drpPlan.services.flatMap((service) =>
-            service.components.map((component) => component.resourceId),
-          ),
+        const paths = resolveStrongholdPaths();
+        const baselinePath =
+          options.baseline ??
+          resolvePreferredScanPath(paths.baselineEncryptedScanPath, paths.baselineScanPath);
+        const currentPath =
+          options.current ??
+          resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
+        const current = await loadScanResultsWithEncryption(currentPath, {
+          passphrase: options.passphrase,
         });
 
-        const lines = [
-          `Drift detected — ${driftReport.summary.total} change${driftReport.summary.total === 1 ? '' : 's'} since baseline (${baseline.timestamp})`,
-          '',
-        ];
-        driftReport.changes.forEach((change) => {
-          lines.push(`   ${severityIcon(change.severity)} ${change.severity.toUpperCase()}: ${change.id} — ${change.resourceId}`);
-          lines.push(`      ${change.description}`);
-          if (change.affectedServices.length > 0) {
-            lines.push(`      Impact: ${change.affectedServices.join(', ')}`);
+        try {
+          const baseline = await loadScanResultsWithEncryption(baselinePath, {
+            passphrase: options.passphrase,
+          });
+          const rawDrift = detectDrift(baseline.nodes, current.nodes, {
+            scanIdBefore: baseline.timestamp,
+            scanIdAfter: current.timestamp,
+            timestamp: new Date(current.timestamp),
+          });
+          const driftReport = analyzeDriftImpact(rawDrift, buildGraph(current.nodes, current.edges), {
+            drpComponentIds: current.drpPlan.services.flatMap((service) =>
+              service.components.map((component) => component.resourceId),
+            ),
+          });
+
+          const lines = [
+            `Drift detected â€” ${driftReport.summary.total} change${driftReport.summary.total === 1 ? '' : 's'} since baseline (${baseline.timestamp})`,
+            '',
+          ];
+          driftReport.changes.forEach((change) => {
+            lines.push(
+              `   ${severityIcon(change.severity)} ${change.severity.toUpperCase()}: ${change.id} â€” ${change.resourceId}`,
+            );
+            lines.push(`      ${change.description}`);
+            if (change.affectedServices.length > 0) {
+              lines.push(`      Impact: ${change.affectedServices.join(', ')}`);
+            }
+            lines.push(`      DR impact: ${change.drImpact}`);
+            lines.push('');
+          });
+          lines.push(
+            `   DRP status: ${driftReport.summary.drpStale ? 'âš ï¸ STALE' : 'âœ… CURRENT'} â€” ${driftReport.summary.drpStale ? "regenerate with 'stronghold plan generate'" : 'baseline still matches recovery assumptions'}`,
+          );
+
+          if (options.saveBaseline) {
+            const savedPath = await saveScanResultsWithEncryption(current, baselinePath, options);
+            lines.push(`   Baseline updated: ${savedPath}`);
           }
-          lines.push(`      DR impact: ${change.drImpact}`);
-          lines.push('');
-        });
-        lines.push(
-          `   DRP status: ${driftReport.summary.drpStale ? '⚠️ STALE' : '✅ CURRENT'} — ${driftReport.summary.drpStale ? "regenerate with 'stronghold plan generate'" : 'baseline still matches recovery assumptions'}`,
-        );
 
-        if (options.saveBaseline) {
-          saveScanResults(current, baselinePath);
-          lines.push(`   Baseline updated: ${baselinePath}`);
-        }
+          await writeOutput(options.redact ? redact(lines.join('\n')) : lines.join('\n'));
+          if (driftReport.changes.some((change) => change.severity === 'critical')) {
+            process.exitCode = 1;
+          }
+          await audit.finish({
+            status: 'success',
+            resourceCount: current.nodes.length,
+          });
+        } catch (error) {
+          if (!isMissingBaselineError(error)) {
+            throw error;
+          }
 
-        await writeOutput(lines.join('\n'));
-        if (driftReport.changes.some((change) => change.severity === 'critical')) {
-          process.exitCode = 1;
-        }
-      } catch {
-        if (options.saveBaseline) {
-          saveScanResults(current, baselinePath);
-          await writeOutput(`No baseline found. Saved current scan as baseline to ${baselinePath}.`);
-          return;
-        }
+          if (options.saveBaseline) {
+            const savedPath = await saveScanResultsWithEncryption(current, baselinePath, options);
+            await writeOutput(`No baseline found. Saved current scan as baseline to ${savedPath}.`);
+            await audit.finish({
+              status: 'success',
+              resourceCount: current.nodes.length,
+            });
+            return;
+          }
 
-        await writeOutput(
-          "No baseline found. Run 'stronghold scan' then 'stronghold drift check --save-baseline' to establish one.",
-        );
-        process.exitCode = 2;
+          await writeOutput(
+            "No baseline found. Run 'stronghold scan' then 'stronghold drift check --save-baseline' to establish one.",
+          );
+          process.exitCode = 2;
+          await audit.finish({
+            status: 'failure',
+            resourceCount: current.nodes.length,
+            errorMessage: 'No baseline found.',
+          });
+        }
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
       }
     });
 }
 
 function severityIcon(severity: string): string {
   if (severity === 'critical') {
-    return '🔴';
+    return 'ðŸ”´';
   }
   if (severity === 'high') {
-    return '🟡';
+    return 'ðŸŸ¡';
   }
-  return '🟢';
+  return 'ðŸŸ¢';
+}
+
+function isMissingBaselineError(error: unknown): boolean {
+  return error instanceof FileStoreError && /No file found at /.test(error.message);
 }

@@ -6,6 +6,7 @@ import {
   createScanRecord,
   createStore,
   deleteManyScans,
+  findManyRecords,
   findFirstScan,
   findLatestByScanId,
   findManyScans,
@@ -68,8 +69,15 @@ export function createMockPrisma(): MockPrismaHarness {
     create: vi.fn(async (args: { readonly data: UnknownRecord }) => createRelatedRecord(store.driftEvents, args.data)),
     findMany: vi.fn(async (args: { readonly where?: { readonly scanId?: string } }) => listLatestByScanId(store.driftEvents, args.where?.scanId)),
   });
+  const auditLog = withFallback('auditLog', {
+    create: vi.fn(async (args: { readonly data: UnknownRecord }) => createRelatedRecord(store.auditLogs, args.data)),
+    findMany: vi.fn(
+      async (args: { readonly take?: number; readonly cursor?: { readonly id: string }; readonly skip?: number }) =>
+        findManyRecords(store.auditLogs, args),
+    ),
+  });
 
-  const transactionClient = { scan, scanData, report, dRPlan, planValidation, driftEvent };
+  const transactionClient = { scan, scanData, report, dRPlan, planValidation, driftEvent, auditLog };
   const prisma = {
     ...transactionClient,
     $connect: vi.fn(async () => undefined),

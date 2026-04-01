@@ -17,7 +17,11 @@ export function createProgram(): Command {
   program
     .name('stronghold')
     .description('Open-source disaster recovery automation for cloud infrastructure')
-    .version('0.1.0');
+    .version('0.1.0')
+    .option('--encrypt', 'Encrypt sensitive files written by Stronghold', false)
+    .option('--passphrase <string>', 'Passphrase used to encrypt or decrypt files')
+    .option('--redact', 'Redact sensitive identifiers from generated output', false)
+    .option('--no-redact', 'Disable output redaction');
 
   registerScanCommand(program);
   registerReportCommand(program);

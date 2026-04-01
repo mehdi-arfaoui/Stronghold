@@ -57,6 +57,7 @@ export {
   type ApiGeneratePlanResult,
   type ApiDriftEvent,
   type ApiDriftEventsResponse,
+  type EncryptedPayload,
 } from './types/index.js';
 
 export { type InfrastructureRepository } from './ports/infrastructure-repository.js';
@@ -80,6 +81,8 @@ export {
   createAzureClients,
   type AzureClientFactoryOptions,
   type AzureClientSet,
+  getCallerIdentity,
+  type CallerIdentity,
   createEfsClient,
   transformToScanResult,
   dynamoDbPitrEnricher,
@@ -224,3 +227,25 @@ export {
   validateDrPlan,
   validateDRPlan,
 } from './drp/index.js';
+
+export {
+  type EncryptedPayload as StrongholdEncryptedPayload,
+  EncryptionError,
+  decrypt,
+  encrypt,
+  isEncryptedPayload,
+} from './encryption/index.js';
+
+export {
+  redact,
+  redactObject,
+  type RedactionOptions,
+} from './redaction/index.js';
+
+export {
+  FileAuditLogger,
+  type AuditAction,
+  type AuditEntry,
+  type AuditIdentity,
+  type AuditLogger,
+} from './audit/index.js';

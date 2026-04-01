@@ -1,3 +1,5 @@
+import type { Command } from 'commander';
+
 export const SUPPORTED_SERVICES = [
   'ec2',
   'rds',
@@ -40,6 +42,12 @@ export interface ScanCommandOptions {
   readonly output: ScanOutputFormat;
   readonly save: boolean;
   readonly verbose: boolean;
+}
+
+export interface GlobalEncryptionOptions {
+  readonly encrypt: boolean;
+  readonly passphrase?: string;
+  readonly redact?: boolean;
 }
 
 export interface ReportCommandOptions {
@@ -123,5 +131,11 @@ export function ensureVpcIncluded(
     return services;
   }
   return services.includes('vpc') ? services : [...services, 'vpc'];
+}
+
+export function getCommandOptions<TOptions extends object>(
+  command: Command,
+): TOptions & GlobalEncryptionOptions {
+  return command.optsWithGlobals() as TOptions & GlobalEncryptionOptions;
 }
 import { ConfigurationError } from '../errors/cli-error.js';

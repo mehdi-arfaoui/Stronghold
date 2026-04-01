@@ -49,6 +49,24 @@ Stronghold’s AWS access is read-only:
 - It does not mutate infrastructure.
 - It does not read S3 object bodies, DynamoDB items, RDS table contents, SQS messages, SNS payloads, or application secrets.
 
+IAM actions used by the generated policy:
+
+- Shared audit identity: `sts:GetCallerIdentity` - called at scan start for audit trail identity. Fails silently if not permitted.
+- EC2 and VPC: `ec2:DescribeInstances`, `ec2:DescribeVpcs`, `ec2:DescribeSubnets`, `ec2:DescribeSecurityGroups`, `ec2:DescribeNatGateways`, `ec2:DescribeRegions`, `autoscaling:DescribeAutoScalingGroups`
+- RDS and Aurora: `rds:DescribeDBInstances`, `rds:DescribeDBClusters`, `rds:DescribeGlobalClusters`
+- S3: `s3:ListAllMyBuckets`, `s3:GetBucketVersioning`, `s3:GetBucketReplication`, `s3:GetEncryptionConfiguration`
+- Lambda: `lambda:ListFunctions`, `lambda:GetFunctionConfiguration`
+- DynamoDB: `dynamodb:ListTables`, `dynamodb:DescribeTable`, `dynamodb:DescribeContinuousBackups`, `dynamodb:DescribeGlobalTable`
+- ElastiCache: `elasticache:DescribeCacheClusters`, `elasticache:DescribeReplicationGroups`
+- SQS: `sqs:ListQueues`, `sqs:GetQueueAttributes`
+- SNS: `sns:ListTopics`, `sns:GetTopicAttributes`, `sns:ListSubscriptionsByTopic`
+- ELB: `elasticloadbalancing:DescribeLoadBalancers`, `elasticloadbalancing:DescribeTargetGroups`, `elasticloadbalancing:DescribeTargetHealth`, `elasticloadbalancing:DescribeLoadBalancerAttributes`
+- EKS: `eks:ListClusters`, `eks:DescribeCluster`
+- EFS: `elasticfilesystem:DescribeFileSystems`, `elasticfilesystem:DescribeMountTargets`, `elasticfilesystem:DescribeReplicationConfigurations`, `elasticfilesystem:DescribeBackupPolicy`
+- Route53: `route53:ListHostedZones`, `route53:ListResourceRecordSets`
+- Backup: `backup:ListBackupPlans`, `backup:ListBackupSelections`, `backup:ListProtectedResources`, `backup:ListRecoveryPointsByBackupVault`, `backup:GetBackupPlan`
+- CloudWatch: `cloudwatch:DescribeAlarms`
+
 What it can read is infrastructure metadata that matters for DR:
 
 - ARNs and names

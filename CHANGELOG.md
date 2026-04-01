@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Encryption support for scan results with the CLI `--encrypt` flag and the server-side `STRONGHOLD_ENCRYPTION_KEY` setting.
+- A redaction engine for sensitive infrastructure data with the CLI `--redact` flag and the server `?redact=true` report query parameter.
+- An audit trail for CLI and server workflows with `.stronghold/audit.jsonl`, the `AuditLog` table, and `GET /api/audit`.
+- Security documentation in [docs/security.md](docs/security.md).
+- An AGPL licensing FAQ in [docs/licensing-faq.md](docs/licensing-faq.md).
+
 ## [0.1.0] - Unreleased
 
 ### Added

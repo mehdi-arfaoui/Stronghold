@@ -1,26 +1,31 @@
-import { readFile } from 'node:fs/promises';
-
 import { Command } from 'commander';
 import {
   analyzeFullGraph,
   deserializeDRPlan,
   generateDRPlan,
   generateRunbook,
+  redactObject,
   serializeRunbook,
   validateDRPlan,
 } from '@stronghold-dr/core';
 
+import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import type {
   PlanGenerateCommandOptions,
   PlanRunbookCommandOptions,
   PlanValidateCommandOptions,
 } from '../config/options.js';
+import { getCommandOptions } from '../config/options.js';
 import { ConfigurationError } from '../errors/cli-error.js';
 import { writeOutput } from '../output/io.js';
 import { renderPlanDocument } from '../output/plan-renderer.js';
 import { buildGraph } from '../pipeline/graph-builder.js';
-import { loadScanResults } from '../storage/file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import {
+  loadScanResultsWithEncryption,
+  readTextFile,
+  writeTextFile,
+} from '../storage/secure-file-store.js';
+import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerPlanCommand(program: Command): void {
   const plan = program.command('plan').description('Generate and validate DRP-as-Code documents');
@@ -32,20 +37,61 @@ export function registerPlanCommand(program: Command): void {
     .option('--format <format>', 'yaml|json', 'yaml')
     .option('--scan <path>', 'Path to scan results')
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: PlanGenerateCommandOptions) => {
-      const paths = resolveStrongholdPaths();
-      const scanPath = options.scan ?? paths.latestScanPath;
-      const scan = loadScanResults(scanPath);
-      const graph = buildGraph(scan.nodes, scan.edges);
-      const analysis = await analyzeFullGraph(graph);
-      const planDocument = generateDRPlan({
-        graph,
-        analysis,
-        provider: scan.provider,
-        generatedAt: new Date(scan.timestamp),
+    .action(async (_: PlanGenerateCommandOptions, command: Command) => {
+      const options = getCommandOptions<PlanGenerateCommandOptions>(command);
+      const audit = new CommandAuditSession('plan_generate', {
+        outputFormat: options.format,
+        ...(collectAuditFlags({
+          '--redact': options.redact,
+          '--encrypt': options.encrypt,
+          '--verbose': options.verbose,
+          '--output': Boolean(options.output),
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--redact': options.redact,
+                '--encrypt': options.encrypt,
+                '--verbose': options.verbose,
+                '--output': Boolean(options.output),
+              }),
+            }
+          : {}),
       });
+      audit.setIdentityPromise(resolveAuditIdentity());
+      await audit.start();
 
-      await writeOutput(renderPlanDocument(planDocument, options.format, scan), options.output);
+      try {
+        const scan = await loadLatestScan(options.scan, options.passphrase);
+        const graph = buildGraph(scan.nodes, scan.edges);
+        const analysis = await analyzeFullGraph(graph);
+        const planDocument = generateDRPlan({
+          graph,
+          analysis,
+          provider: scan.provider,
+          generatedAt: new Date(scan.timestamp),
+        });
+        const outputPlan = options.redact ? redactObject(planDocument) : planDocument;
+        const rendered = renderPlanDocument(outputPlan, options.format, scan);
+
+        if (!options.output) {
+          await writeOutput(rendered);
+        } else {
+          await writeTextFile(
+            rendered,
+            options.output,
+            options,
+            'Enter passphrase to encrypt the DR plan',
+          );
+        }
+
+        await audit.finish({
+          status: 'success',
+          resourceCount: scan.nodes.length,
+        });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
+      }
     });
 
   plan
@@ -56,28 +102,61 @@ export function registerPlanCommand(program: Command): void {
     .option('--scan <path>', 'Path to scan results')
     .option('--component <id>', 'Generate a runbook for a specific component only')
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: PlanRunbookCommandOptions) => {
-      const paths = resolveStrongholdPaths();
-      const scan = loadScanResults(options.scan ?? paths.latestScanPath);
-      const runbook = generateRunbook(scan.drpPlan, scan.nodes);
-      const componentRunbooks = options.component
-        ? runbook.componentRunbooks.filter((component) => component.componentId === options.component)
-        : runbook.componentRunbooks;
+    .action(async (_: PlanRunbookCommandOptions, command: Command) => {
+      const options = getCommandOptions<PlanRunbookCommandOptions>(command);
+      const audit = new CommandAuditSession('plan_runbook', {
+        outputFormat: options.format,
+        ...(collectAuditFlags({
+          '--redact': options.redact,
+          '--verbose': options.verbose,
+          '--output': Boolean(options.output),
+          '--component': Boolean(options.component),
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--redact': options.redact,
+                '--verbose': options.verbose,
+                '--output': Boolean(options.output),
+                '--component': Boolean(options.component),
+              }),
+            }
+          : {}),
+      });
+      audit.setIdentityPromise(resolveAuditIdentity());
+      await audit.start();
 
-      if (options.component && componentRunbooks.length === 0) {
-        throw new ConfigurationError(`No runbook component found for '${options.component}'.`);
+      try {
+        const scan = await loadLatestScan(options.scan, options.passphrase);
+        const runbook = generateRunbook(scan.drpPlan, scan.nodes);
+        const componentRunbooks = options.component
+          ? runbook.componentRunbooks.filter(
+              (component) => component.componentId === options.component,
+            )
+          : runbook.componentRunbooks;
+
+        if (options.component && componentRunbooks.length === 0) {
+          throw new ConfigurationError(`No runbook component found for '${options.component}'.`);
+        }
+
+        const outputRunbook = options.redact
+          ? redactObject({
+              ...runbook,
+              componentRunbooks,
+            })
+          : {
+              ...runbook,
+              componentRunbooks,
+            };
+
+        await writeOutput(serializeRunbook(outputRunbook, options.format), options.output);
+        await audit.finish({
+          status: 'success',
+          resourceCount: scan.nodes.length,
+        });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
       }
-
-      await writeOutput(
-        serializeRunbook(
-          {
-            ...runbook,
-            componentRunbooks,
-          },
-          options.format,
-        ),
-        options.output,
-      );
     });
 
   plan
@@ -86,28 +165,69 @@ export function registerPlanCommand(program: Command): void {
     .requiredOption('--plan <file>', 'Path to DRP YAML')
     .option('--scan <path>', 'Path to scan results')
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: PlanValidateCommandOptions) => {
-      const planContents = await readFile(options.plan, 'utf8');
-      const parsed = deserializeDRPlan(planContents);
-      if (!parsed.ok) {
-        throw new ConfigurationError(`❌ Invalid DR plan:\n\n${parsed.errors.join('\n')}`);
-      }
-
-      const paths = resolveStrongholdPaths();
-      const scan = loadScanResults(options.scan ?? paths.latestScanPath);
-      const graph = buildGraph(scan.nodes, scan.edges);
-      const report = validateDRPlan(parsed.value, graph);
-
-      if (report.isValid) {
-        await writeOutput('✅ DR plan is consistent with current infrastructure.');
-        return;
-      }
-
-      const lines = ['❌ DR plan is inconsistent with current infrastructure.', ''];
-      report.issues.forEach((issue) => {
-        lines.push(`- [${issue.severity}] ${issue.code}: ${issue.description}`);
+    .action(async (_: PlanValidateCommandOptions, command: Command) => {
+      const options = getCommandOptions<PlanValidateCommandOptions>(command);
+      const audit = new CommandAuditSession('plan_validate', {
+        ...(collectAuditFlags({
+          '--verbose': options.verbose,
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--verbose': options.verbose,
+              }),
+            }
+          : {}),
       });
-      await writeOutput(lines.join('\n'));
-      process.exitCode = 1;
+      audit.setIdentityPromise(resolveAuditIdentity());
+      await audit.start();
+
+      try {
+        const planContents = await readTextFile(
+          options.plan,
+          { passphrase: options.passphrase },
+          'Enter passphrase to decrypt the DR plan',
+        );
+        const parsed = deserializeDRPlan(planContents);
+        if (!parsed.ok) {
+          throw new ConfigurationError(`❌ Invalid DR plan:\n\n${parsed.errors.join('\n')}`);
+        }
+
+        const scan = await loadLatestScan(options.scan, options.passphrase);
+        const graph = buildGraph(scan.nodes, scan.edges);
+        const report = validateDRPlan(parsed.value, graph);
+
+        if (report.isValid) {
+          await writeOutput('✅ DR plan is consistent with current infrastructure.');
+          await audit.finish({
+            status: 'success',
+            resourceCount: scan.nodes.length,
+          });
+          return;
+        }
+
+        const lines = ['❌ DR plan is inconsistent with current infrastructure.', ''];
+        report.issues.forEach((issue) => {
+          lines.push(`- [${issue.severity}] ${issue.code}: ${issue.description}`);
+        });
+        await writeOutput(lines.join('\n'));
+        process.exitCode = 1;
+        await audit.finish({
+          status: 'failure',
+          resourceCount: scan.nodes.length,
+          errorMessage: 'DR plan is inconsistent with current infrastructure.',
+        });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
+      }
     });
+}
+
+async function loadLatestScan(scanPath: string | undefined, passphrase?: string) {
+  const paths = resolveStrongholdPaths();
+  const resolvedPath =
+    scanPath ??
+    resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
+
+  return loadScanResultsWithEncryption(resolvedPath, { passphrase });
 }

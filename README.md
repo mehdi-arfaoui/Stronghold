@@ -142,6 +142,12 @@ Monorepo structure:
 
 All commands support `--verbose` and `--help`.
 
+Security-related CLI options:
+
+- `--encrypt` encrypts sensitive local artifacts such as saved scans, DR plans, and drift baselines.
+- `--redact` masks ARNs, IPs, and common AWS identifiers in generated output.
+- audit logging is always enabled and written to `.stronghold/audit.jsonl`.
+
 ## Self-Hosted (Docker)
 
 Run the full platform (API + Web UI + PostgreSQL):
@@ -160,10 +166,22 @@ See [.env.example](.env.example) for all configuration options including AWS cre
 
 > 🔒 Generate the minimal read-only IAM policy: `stronghold iam-policy`
 
+## Security
+
+Stronghold includes three built-in security layers for scan artifacts and report sharing:
+
+- Encryption: local CLI outputs can be written with `--encrypt`, and the server can encrypt scan data when `STRONGHOLD_ENCRYPTION_KEY` is set.
+- Redaction: `--redact` masks ARNs, IPs, and common AWS identifiers in generated output and server reports.
+- Audit trail: the CLI writes `.stronghold/audit.jsonl`, and the server persists audit events in `AuditLog` with `GET /api/audit`.
+
+See [docs/security.md](docs/security.md) for the threat model, storage model, and deployment guidance.
+
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
+- [Security Model](docs/security.md)
+- [Licensing FAQ](docs/licensing-faq.md)
 - [DRP Specification](docs/drp-spec.md)
 - [AWS Provider](docs/providers/aws.md)
 - [Validation Rules](docs/validation-rules.md)
@@ -211,7 +229,7 @@ This score measures the percentage of recommended DR mechanisms in place, weight
 
 ## What's in a Scan Result
 
-Scan results are stored locally in `.stronghold/latest-scan.json`. They contain:
+Scan results are stored locally in `.stronghold/latest-scan.json` by default, or in `.stronghold/latest-scan.stronghold-enc` when `--encrypt` is used. They contain:
 
 - **Included:** Resource ARNs, configuration metadata (backup settings, AZ placement, replication status), dependency maps, DR validation results
 - **Never included:** AWS credentials, secrets, application data, database contents, customer data

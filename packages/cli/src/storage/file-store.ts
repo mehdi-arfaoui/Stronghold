@@ -61,7 +61,7 @@ export function saveScanResults(results: ScanResults, filePath: string): void {
   ensureGitignore(path.dirname(targetPath));
 
   try {
-    fs.writeFileSync(targetPath, `${JSON.stringify(results, null, 2)}\n`, 'utf8');
+    fs.writeFileSync(targetPath, `${serializeScanResults(results)}\n`, 'utf8');
   } catch (error) {
     throw new FileStoreError(`Unable to save scan results to ${targetPath}.`, error);
   }
@@ -75,8 +75,7 @@ export function loadScanResults(filePath: string): ScanResults {
 
   try {
     const contents = fs.readFileSync(targetPath, 'utf8');
-    const parsed = JSON.parse(contents) as unknown;
-    return validateScanResults(parsed, targetPath);
+    return parseScanResults(contents, targetPath);
   } catch (error) {
     if (error instanceof FileStoreError) {
       throw error;
@@ -96,6 +95,15 @@ function ensureGitignore(directoryPath: string): void {
   }
 
   fs.writeFileSync(gitignorePath, GITIGNORE_CONTENT, 'utf8');
+}
+
+export function serializeScanResults(results: ScanResults): string {
+  return JSON.stringify(results, null, 2);
+}
+
+export function parseScanResults(contents: string, filePath: string): ScanResults {
+  const parsed = JSON.parse(contents) as unknown;
+  return validateScanResults(parsed, filePath);
 }
 
 function validateScanResults(value: unknown, filePath: string): ScanResults {

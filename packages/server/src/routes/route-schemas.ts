@@ -1,5 +1,10 @@
 import { z } from 'zod';
 
+const redactQueryParamSchema = z
+  .union([z.literal('true'), z.literal('false')])
+  .optional()
+  .transform((value) => value === 'true');
+
 export const scanInputSchema = z
   .object({
     provider: z.enum(['aws']),
@@ -33,6 +38,11 @@ export const reportQuerySchema = z.object({
     .enum(['backup', 'redundancy', 'failover', 'detection', 'recovery', 'replication'])
     .optional(),
   severity: z.enum(['critical', 'high', 'medium', 'low']).optional(),
+  redact: redactQueryParamSchema,
+});
+
+export const reportSummaryQuerySchema = z.object({
+  redact: redactQueryParamSchema,
 });
 
 export const planFormatQuerySchema = z.object({

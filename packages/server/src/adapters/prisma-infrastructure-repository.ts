@@ -2,6 +2,11 @@ import { PrismaClient } from '@prisma/client';
 import type { InfraNode, ScanEdge, ValidationReport } from '@stronghold-dr/core';
 
 import type { SerializedGraphAnalysis } from '../services/analysis-serialization.js';
+import {
+  deserializeStoredScanData,
+  serializeStoredScanData,
+  type ScanDataEncryptionService,
+} from '../services/encryption.service.js';
 import { toPrismaJson } from '../utils/prisma-json.js';
 
 export interface StoredScanData {
@@ -16,7 +21,10 @@ export interface SaveScanDataParams extends StoredScanData {
 }
 
 export class PrismaInfrastructureRepository {
-  public constructor(private readonly prisma: PrismaClient) {}
+  public constructor(
+    private readonly prisma: PrismaClient,
+    private readonly encryptionService: ScanDataEncryptionService | null = null,
+  ) {}
 
   public async getScanData(scanId: string): Promise<StoredScanData | null> {
     const record = await this.prisma.scanData.findUnique({
@@ -27,11 +35,21 @@ export class PrismaInfrastructureRepository {
       return null;
     }
 
+    const decoded = deserializeStoredScanData(
+      {
+        nodes: record.nodes,
+        edges: record.edges,
+        analysis: record.analysis,
+        validationReport: record.validationReport,
+      },
+      this.encryptionService,
+    );
+
     return {
-      nodes: record.nodes as unknown as readonly InfraNode[],
-      edges: record.edges as unknown as ReadonlyArray<ScanEdge>,
-      analysis: record.analysis as unknown as SerializedGraphAnalysis,
-      validationReport: record.validationReport as unknown as ValidationReport,
+      nodes: decoded.nodes as unknown as readonly InfraNode[],
+      edges: decoded.edges as unknown as ReadonlyArray<ScanEdge>,
+      analysis: decoded.analysis as unknown as SerializedGraphAnalysis,
+      validationReport: decoded.validationReport as unknown as ValidationReport,
     };
   }
 
@@ -56,20 +74,30 @@ export class PrismaInfrastructureRepository {
   }
 
   public async saveScanData(params: SaveScanDataParams): Promise<void> {
+    const encoded = serializeStoredScanData(
+      {
+        nodes: params.nodes,
+        edges: params.edges,
+        analysis: params.analysis,
+        validationReport: params.validationReport,
+      },
+      this.encryptionService,
+    );
+
     await this.prisma.scanData.upsert({
       where: { scanId: params.scanId },
       create: {
         scanId: params.scanId,
-        nodes: toPrismaJson(params.nodes),
-        edges: toPrismaJson(params.edges),
-        analysis: toPrismaJson(params.analysis),
-        validationReport: toPrismaJson(params.validationReport),
+        nodes: toPrismaJson(encoded.nodes),
+        edges: toPrismaJson(encoded.edges),
+        analysis: toPrismaJson(encoded.analysis),
+        validationReport: toPrismaJson(encoded.validationReport),
       },
       update: {
-        nodes: toPrismaJson(params.nodes),
-        edges: toPrismaJson(params.edges),
-        analysis: toPrismaJson(params.analysis),
-        validationReport: toPrismaJson(params.validationReport),
+        nodes: toPrismaJson(encoded.nodes),
+        edges: toPrismaJson(encoded.edges),
+        analysis: toPrismaJson(encoded.analysis),
+        validationReport: toPrismaJson(encoded.validationReport),
       },
     });
   }

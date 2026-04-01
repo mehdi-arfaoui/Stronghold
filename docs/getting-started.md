@@ -102,6 +102,17 @@ Notes:
 - `vpc` is added automatically when you filter services because AZ and subnet context is needed by several rules.
 - If a service cannot be queried because of missing permissions or an unavailable API, Stronghold skips that service and continues the rest of the scan.
 
+### Security Options
+
+If you are scanning a real production environment, use the built-in security controls from the start:
+
+```bash
+npx @stronghold-dr/cli scan --region eu-west-1 --encrypt --passphrase "change-me"
+npx @stronghold-dr/cli report --redact
+```
+
+The CLI audit trail is always enabled and written to `.stronghold/audit.jsonl`.
+
 ### 4. Review the Report
 
 ```bash
@@ -136,7 +147,7 @@ The generated YAML contains:
 - Honest RTO and RPO estimates, including uncertainty
 - An infrastructure hash for drift validation
 
-Commit `drp.yaml` to your repository. The scan snapshot in `.stronghold/latest-scan.json` is local working state and is gitignored by default because it contains detailed infrastructure metadata.
+Commit `drp.yaml` to your repository. The scan snapshot in `.stronghold/latest-scan.json` is local working state and is gitignored by default because it contains detailed infrastructure metadata. If you use `--encrypt`, the saved snapshot becomes `.stronghold/latest-scan.stronghold-enc`.
 
 Validate the plan after infrastructure changes:
 
@@ -157,11 +168,12 @@ npx @stronghold-dr/cli scan --region eu-west-1
 npx @stronghold-dr/cli drift check
 ```
 
-The baseline is stored in `.stronghold/baseline-scan.json`.
+The baseline is stored in `.stronghold/baseline-scan.json`, or `.stronghold/baseline-scan.stronghold-enc` when `--encrypt` is enabled.
 
 ## Next Steps
 
 - [Architecture overview](./architecture.md)
+- [Security model](./security.md)
 - [DRP YAML specification](./drp-spec.md)
 - [AWS provider details](./providers/aws.md)
 - [Validation rules reference](./validation-rules.md)

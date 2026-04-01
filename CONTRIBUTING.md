@@ -68,6 +68,21 @@ See `packages/core/src/validation/validation-rules.ts`. Each rule:
 6. Must NOT be a security or maintenance rule - only DR
 7. Has pass + fail tests in the test suite
 
+## Security
+
+See [docs/security.md](docs/security.md) for the current storage model, threat model, and deployment guidance.
+
+Vulnerability reporting:
+
+- email `security@stronghold.software`
+- no public bug bounty at this stage
+
+Contributor reminders:
+
+- never log infrastructure payloads in the audit trail
+- never log AWS credentials, encryption passphrases, or secrets
+- keep external network calls limited to the AWS APIs needed for scanning
+
 ## Submitting Changes
 
 1. Fork the repository

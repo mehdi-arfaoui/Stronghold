@@ -1,14 +1,17 @@
 import { Command } from 'commander';
+import { redactObject } from '@stronghold-dr/core';
 
+import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import type { ReportCommandOptions } from '../config/options.js';
-import { loadScanResults } from '../storage/file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import { getCommandOptions } from '../config/options.js';
 import {
   filterValidationResults,
   renderMarkdownReport,
   renderTerminalReport,
 } from '../output/report-renderer.js';
 import { writeOutput } from '../output/io.js';
+import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
+import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerReportCommand(program: Command): void {
   program
@@ -27,28 +30,69 @@ export function registerReportCommand(program: Command): void {
       'low',
     )
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: ReportCommandOptions) => {
-      const paths = resolveStrongholdPaths();
-      const scan = loadScanResults(options.scan ?? paths.latestScanPath);
-      const filters = {
-        ...(options.category ? { category: options.category } : {}),
-        ...(options.severity ? { severity: options.severity } : {}),
-      };
+    .action(async (_: ReportCommandOptions, command: Command) => {
+      const options = getCommandOptions<ReportCommandOptions>(command);
+      const audit = new CommandAuditSession('report', {
+        outputFormat: options.format,
+        ...(collectAuditFlags({
+          '--redact': options.redact,
+          '--verbose': options.verbose,
+          '--output': Boolean(options.output),
+          '--category': Boolean(options.category),
+          '--severity': Boolean(options.severity),
+        })
+          ? {
+              flags: collectAuditFlags({
+                '--redact': options.redact,
+                '--verbose': options.verbose,
+                '--output': Boolean(options.output),
+                '--category': Boolean(options.category),
+                '--severity': Boolean(options.severity),
+              }),
+            }
+          : {}),
+      });
+      audit.setIdentityPromise(resolveAuditIdentity());
+      await audit.start();
 
-      const contents =
-        options.format === 'markdown'
-          ? renderMarkdownReport(scan.validationReport, filters)
-          : options.format === 'json'
-            ? JSON.stringify(
-                {
-                  ...scan.validationReport,
-                  results: filterValidationResults(scan.validationReport, filters),
-                },
-                null,
-                2,
-              )
-            : renderTerminalReport(scan.validationReport, filters);
+      try {
+        const paths = resolveStrongholdPaths();
+        const scanPath =
+          options.scan ??
+          resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
+        const scan = await loadScanResultsWithEncryption(scanPath, {
+          passphrase: options.passphrase,
+        });
+        const report = options.redact
+          ? redactObject(scan.validationReport)
+          : scan.validationReport;
+        const filters = {
+          ...(options.category ? { category: options.category } : {}),
+          ...(options.severity ? { severity: options.severity } : {}),
+        };
 
-      await writeOutput(contents, options.output);
+        const contents =
+          options.format === 'markdown'
+            ? renderMarkdownReport(report, filters)
+            : options.format === 'json'
+              ? JSON.stringify(
+                  {
+                    ...report,
+                    results: filterValidationResults(report, filters),
+                  },
+                  null,
+                  2,
+                )
+              : renderTerminalReport(report, filters);
+
+        await writeOutput(contents, options.output);
+        await audit.finish({
+          status: 'success',
+          resourceCount: scan.nodes.length,
+        });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
+      }
     });
 }

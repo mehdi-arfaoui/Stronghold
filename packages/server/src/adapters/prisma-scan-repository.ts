@@ -11,6 +11,11 @@ import type {
 import { serializeDRPlan } from '@stronghold-dr/core';
 
 import type { SerializedGraphAnalysis } from '../services/analysis-serialization.js';
+import {
+  deserializeStoredScanData,
+  serializeStoredScanData,
+  type ScanDataEncryptionService,
+} from '../services/encryption.service.js';
 import { toPrismaJson } from '../utils/prisma-json.js';
 
 export interface ScanSummary {
@@ -113,7 +118,10 @@ export interface StoredDriftEvent {
 }
 
 export class PrismaScanRepository {
-  public constructor(private readonly prisma: PrismaClient) {}
+  public constructor(
+    private readonly prisma: PrismaClient,
+    private readonly encryptionService: ScanDataEncryptionService | null = null,
+  ) {}
 
   public async createPendingScan(params: {
     readonly provider: string;
@@ -164,6 +172,15 @@ export class PrismaScanRepository {
     const validationReport =
       params.validationReport ?? buildEmptyValidationReport(params.nodes.length);
     const regions = params.regions ?? [params.region];
+    const encoded = serializeStoredScanData(
+      {
+        nodes: params.nodes,
+        edges: params.edges,
+        analysis,
+        validationReport,
+      },
+      this.encryptionService,
+    );
 
     await this.prisma.$transaction(async (transaction) => {
       await transaction.scan.upsert({
@@ -196,22 +213,32 @@ export class PrismaScanRepository {
         where: { scanId: params.scanId },
         create: {
           scanId: params.scanId,
-          nodes: toPrismaJson(params.nodes),
-          edges: toPrismaJson(params.edges),
-          analysis: toPrismaJson(analysis),
-          validationReport: toPrismaJson(validationReport),
+          nodes: toPrismaJson(encoded.nodes),
+          edges: toPrismaJson(encoded.edges),
+          analysis: toPrismaJson(encoded.analysis),
+          validationReport: toPrismaJson(encoded.validationReport),
         },
         update: {
-          nodes: toPrismaJson(params.nodes),
-          edges: toPrismaJson(params.edges),
-          analysis: toPrismaJson(analysis),
-          validationReport: toPrismaJson(validationReport),
+          nodes: toPrismaJson(encoded.nodes),
+          edges: toPrismaJson(encoded.edges),
+          analysis: toPrismaJson(encoded.analysis),
+          validationReport: toPrismaJson(encoded.validationReport),
         },
       });
     });
   }
 
   public async saveCompletedScan(params: CompleteScanParams): Promise<void> {
+    const encoded = serializeStoredScanData(
+      {
+        nodes: params.nodes,
+        edges: params.edges,
+        analysis: params.analysis,
+        validationReport: params.validationReport,
+      },
+      this.encryptionService,
+    );
+
     await this.prisma.$transaction(async (transaction) => {
       await transaction.scan.update({
         where: { id: params.scanId },
@@ -231,16 +258,16 @@ export class PrismaScanRepository {
         where: { scanId: params.scanId },
         create: {
           scanId: params.scanId,
-          nodes: toPrismaJson(params.nodes),
-          edges: toPrismaJson(params.edges),
-          analysis: toPrismaJson(params.analysis),
-          validationReport: toPrismaJson(params.validationReport),
+          nodes: toPrismaJson(encoded.nodes),
+          edges: toPrismaJson(encoded.edges),
+          analysis: toPrismaJson(encoded.analysis),
+          validationReport: toPrismaJson(encoded.validationReport),
         },
         update: {
-          nodes: toPrismaJson(params.nodes),
-          edges: toPrismaJson(params.edges),
-          analysis: toPrismaJson(params.analysis),
-          validationReport: toPrismaJson(params.validationReport),
+          nodes: toPrismaJson(encoded.nodes),
+          edges: toPrismaJson(encoded.edges),
+          analysis: toPrismaJson(encoded.analysis),
+          validationReport: toPrismaJson(encoded.validationReport),
         },
       });
 
@@ -288,13 +315,23 @@ export class PrismaScanRepository {
       return null;
     }
 
+    const decoded = deserializeStoredScanData(
+      {
+        nodes: scan.scanData.nodes,
+        edges: scan.scanData.edges,
+        analysis: scan.scanData.analysis,
+        validationReport: scan.scanData.validationReport,
+      },
+      this.encryptionService,
+    );
+
     return {
       scanId: scan.id,
       provider: scan.provider,
       region: scan.regions[0] ?? 'global',
       timestamp: scan.createdAt,
-      nodes: scan.scanData.nodes as unknown as readonly InfraNodeAttrs[],
-      edges: scan.scanData.edges as unknown as readonly ScanEdge[],
+      nodes: decoded.nodes as unknown as readonly InfraNodeAttrs[],
+      edges: decoded.edges as unknown as readonly ScanEdge[],
       metadata: {
         regions: scan.regions,
         status: scan.status,
@@ -329,13 +366,23 @@ export class PrismaScanRepository {
       return null;
     }
 
+    const decoded = deserializeStoredScanData(
+      {
+        nodes: scan.scanData.nodes,
+        edges: scan.scanData.edges,
+        analysis: scan.scanData.analysis,
+        validationReport: scan.scanData.validationReport,
+      },
+      this.encryptionService,
+    );
+
     return {
       scanId: scan.id,
       provider: scan.provider,
       region: scan.regions[0] ?? 'global',
       timestamp: scan.createdAt,
-      nodes: scan.scanData.nodes as unknown as readonly InfraNodeAttrs[],
-      edges: scan.scanData.edges as unknown as readonly ScanEdge[],
+      nodes: decoded.nodes as unknown as readonly InfraNodeAttrs[],
+      edges: decoded.edges as unknown as readonly ScanEdge[],
       metadata: {
         regions: scan.regions,
       },

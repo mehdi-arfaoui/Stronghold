@@ -7,7 +7,9 @@ import { createApp } from './app.js';
 import { createPrismaClient } from './config/database.js';
 import { hasProductionLocalhostCors, loadConfig } from './config/env.js';
 import { toError } from './errors/server-error.js';
+import { PrismaAuditLogger } from './services/prisma-audit-logger.js';
 import { DriftService } from './services/drift-service.js';
+import { createScanDataEncryptionService } from './services/encryption.service.js';
 import { ScanService } from './services/scan-service.js';
 
 async function bootstrap(): Promise<void> {
@@ -20,9 +22,15 @@ async function bootstrap(): Promise<void> {
     });
   }
 
+  if (!config.encryptionKey) {
+    logger.warn('STRONGHOLD_ENCRYPTION_KEY not set — scan data stored unencrypted');
+  }
+
   const prisma = createPrismaClient(config);
-  const scanRepository = new PrismaScanRepository(prisma);
-  const infrastructureRepository = new PrismaInfrastructureRepository(prisma);
+  const encryptionService = createScanDataEncryptionService(config.encryptionKey);
+  const auditLogger = new PrismaAuditLogger(prisma);
+  const scanRepository = new PrismaScanRepository(prisma, encryptionService);
+  const infrastructureRepository = new PrismaInfrastructureRepository(prisma, encryptionService);
   const scanService = new ScanService(scanRepository, infrastructureRepository, logger);
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 
@@ -41,6 +49,7 @@ async function bootstrap(): Promise<void> {
     logger,
     scanService,
     driftService,
+    auditLogger,
   });
   const server = app.listen(config.port, () => {
     logger.info('server.started', { port: config.port });

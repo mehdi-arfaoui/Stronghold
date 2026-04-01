@@ -5,18 +5,21 @@
 Stronghold follows a ports-and-adapters architecture. The domain logic lives in `@stronghold-dr/core`; the CLI, server, and web app orchestrate or present that logic without owning recovery rules themselves.
 
 ```text
-┌────────────────────────────────────────────────────────┐
-│                    Entry Points                        │
-│        CLI            Server            Web UI         │
-├────────────────────────────────────────────────────────┤
-│                  @stronghold-dr/core                  │
-│                                                        │
-│  Discovery -> Enrichment -> Graph -> Analysis         │
-│                           -> Validation -> DRP -> Drift│
-├────────────────────────────────────────────────────────┤
-│                   Ports & Adapters                     │
-│   File store      Prisma/PostgreSQL      Logger        │
-└────────────────────────────────────────────────────────┘
++--------------------------------------------------------+
+|                    Entry Points                        |
+|         CLI              Server             Web UI     |
++--------------------------------------------------------+
+|                  @stronghold-dr/core                   |
+|                                                        |
+|  Discovery -> Enrichment -> Graph -> Analysis          |
+|                           -> Validation -> DRP -> Drift|
++--------------------------------------------------------+
+|               Cross-cutting Concerns                   |
+|        Encryption      Redaction      Audit Trail      |
++--------------------------------------------------------+
+|                   Ports & Adapters                     |
+|    File store     Prisma/PostgreSQL      Logger        |
++--------------------------------------------------------+
 ```
 
 ## Monorepo Structure
@@ -25,7 +28,7 @@ Stronghold follows a ports-and-adapters architecture. The domain logic lives in 
 | --- | --- | --- |
 | `packages/core` | Pure business logic | Graph analysis, validation, DRP generation, drift detection, provider adapters |
 | `packages/cli` | Community CLI | Stores scans under `.stronghold/` in the current working directory |
-| `packages/server` | Express API | Persists scans, reports, plans, and drift events with Prisma/PostgreSQL |
+| `packages/server` | Express API | Persists scans, reports, plans, drift events, and audit logs with Prisma/PostgreSQL |
 | `packages/web` | React UI | Consumes the server API and visualizes graph, posture, plans, and drift |
 
 ## Scan Pipeline
@@ -51,11 +54,11 @@ The AWS adapter queries cloud APIs and emits normalized `DiscoveredResource` rec
 - `backup`
 - `cloudwatch`
 
-Internally, some of these expand into more detailed discovery. For example:
+Internally, some of these expand into more detailed discovery:
 
 - `ec2` also pulls Auto Scaling context
 - `vpc` includes subnets, security groups, and NAT gateways
-- enrichers add extra metadata for S3 replication, DynamoDB PITR, EC2 ASG membership, and ElastiCache failover
+- enrichers add metadata for S3 replication, DynamoDB PITR, EC2 ASG membership, and ElastiCache failover
 
 ### 2. Graph Construction
 
@@ -76,7 +79,7 @@ If those signals are thin, best-effort heuristics kick in:
 
 ### 3. Dependency Inference Limits
 
-Inference is intentionally additive, not authoritative. A few important limits:
+Inference is intentionally additive, not authoritative.
 
 - Stronghold only knows what the cloud APIs expose. Hidden runtime dependencies inside application code are out of scope.
 - Environment-variable and naming heuristics can miss relationships or occasionally suggest a dependency that needs human review.
@@ -87,16 +90,14 @@ In practice, inferred edges are useful for prioritization and review, but they a
 
 ### 4. Graph Analysis
 
-`analyzeFullGraph()` runs several deterministic passes over the graph:
+`analyzeFullGraph()` runs deterministic passes over the graph:
 
 - SPOF detection
-- Criticality scoring
-- Redundancy analysis
-- Regional concentration analysis
-- Circular dependency detection
-- Cascade chain analysis
-
-SPOF detection relies on Tarjan-style articulation-point logic plus service-aware handling for cases like databases, DNS, and single-instance compute.
+- criticality scoring
+- redundancy analysis
+- regional concentration analysis
+- circular dependency detection
+- cascade chain analysis
 
 ### 5. Validation and Scoring
 
@@ -105,7 +106,7 @@ Validation rules are pure functions over nodes, edges, and optional DRP context.
 The overall DR posture score is calculated from:
 
 ```text
-weight = severityWeight × criticalityWeight × blastRadiusWeight
+weight = severityWeight x criticalityWeight x blastRadiusWeight
 ```
 
 See [Scoring](./scoring.md) for the exact formula and weighting details.
@@ -114,12 +115,12 @@ See [Scoring](./scoring.md) for the exact formula and weighting details.
 
 The DRP generator groups components into logical services and derives:
 
-- Recovery strategy per component
-- Human-readable recovery steps
-- Validation probes after recovery
-- Recovery order within each service
+- recovery strategy per component
+- human-readable recovery steps
+- validation probes after recovery
+- recovery order within each service
 - RTO and RPO estimates, including evidence and limitations
-- Effective chain-aware RTO after dependency propagation
+- effective chain-aware RTO after dependency propagation
 
 The output is declarative YAML or JSON. It documents what should be restored and in what order; it does not execute the restore.
 
@@ -127,10 +128,18 @@ The output is declarative YAML or JSON. It documents what should be restored and
 
 Drift compares two scan snapshots using deterministic resource matching by ID. It flags:
 
-- Added or removed resources
-- Configuration changes that affect DR posture
-- Dependency changes
+- added or removed resources
+- configuration changes that affect DR posture
+- dependency changes
 - DRP staleness when a previously generated plan no longer matches the live graph
+
+## Security Layers
+
+The security controls are cross-cutting concerns rather than extra pipeline stages:
+
+- Encryption protects sensitive scan artifacts at rest in the CLI and, when configured, in the server persistence layer.
+- Redaction masks infrastructure identifiers before reports, markdown, JSON exports, or API responses are shared.
+- Audit Trail records execution metadata for scan, report, plan, and drift workflows without storing scan payloads.
 
 ## Ports and Adapters
 
@@ -141,6 +150,7 @@ The core package defines domain interfaces. Adapters differ by entry point:
 | Scan storage | Local JSON files | Prisma/PostgreSQL |
 | Infrastructure storage | Local JSON files | Prisma/PostgreSQL |
 | Logging | Console output | Structured server logs |
+| Audit trail | JSONL file | Prisma `AuditLog` table |
 
 This separation is why the same validation, scoring, DRP, and drift code can run in both CLI and server contexts.
 
@@ -156,15 +166,15 @@ The graph layer targets a graphology-compatible interface so algorithms stay por
 
 ### Prefer Honest Estimates Over Fake Precision
 
-When AWS publishes reliable timings, Stronghold can surface them. When it does not, Stronghold uses `unverified` estimates or `null` bounds rather than inventing numbers that look precise but are not trustworthy.
+When AWS publishes reliable timings, Stronghold can surface them. When it does not, Stronghold uses `unverified` estimates or `null` bounds rather than inventing precise-looking numbers.
 
-### Store the Community CLI State Locally
+### Store Community CLI State Locally
 
-The CLI writes scan results to `.stronghold/` so users can inspect, diff, and validate locally without any telemetry requirement.
+The CLI writes scan results to `.stronghold/` so users can inspect, diff, validate, encrypt, redact, and audit locally without any telemetry requirement.
 
 ## Testing
 
-Stronghold’s day-to-day quality gates are the repository-level scripts:
+Stronghold's day-to-day quality gates are the repository-level scripts:
 
 - `npm run typecheck`
 - `npm run build`
@@ -172,8 +182,6 @@ Stronghold’s day-to-day quality gates are the repository-level scripts:
 
 Package-level coverage focuses on the core logic that most often regresses:
 
-- Core Vitest suites cover validation, scoring, DRP generation, RTO estimation, graph behavior, and drift logic
-- Server tests cover route behavior and Prisma-backed adapters
+- core Vitest suites cover validation, scoring, DRP generation, RTO estimation, graph behavior, redaction, encryption, and drift logic
+- server tests cover route behavior, Prisma-backed adapters, and audit pagination
 - CLI workflows are exercised through command and pipeline tests, plus demo scenarios
-
-For documentation changes, the expected gate is still that `npm run typecheck` and `npm run build` pass at the repository root.

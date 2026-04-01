@@ -1,15 +1,22 @@
+import fs from 'node:fs';
 import path from 'node:path';
+
+import { ENCRYPTED_FILE_EXTENSION } from './secure-file-store.js';
 
 export interface StrongholdPaths {
   readonly rootDir: string;
   readonly latestScanPath: string;
+  readonly latestEncryptedScanPath: string;
   readonly baselineScanPath: string;
+  readonly baselineEncryptedScanPath: string;
+  readonly auditLogPath: string;
   readonly gitignorePath: string;
 }
 
 const STORAGE_DIRNAME = '.stronghold';
 const LATEST_SCAN_FILENAME = 'latest-scan.json';
 const BASELINE_SCAN_FILENAME = 'baseline-scan.json';
+const AUDIT_LOG_FILENAME = 'audit.jsonl';
 const GITIGNORE_FILENAME = '.gitignore';
 
 export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
@@ -17,7 +24,14 @@ export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
   return {
     rootDir,
     latestScanPath: path.join(rootDir, LATEST_SCAN_FILENAME),
+    latestEncryptedScanPath: path.join(rootDir, `latest-scan${ENCRYPTED_FILE_EXTENSION}`),
     baselineScanPath: path.join(rootDir, BASELINE_SCAN_FILENAME),
+    baselineEncryptedScanPath: path.join(rootDir, `baseline-scan${ENCRYPTED_FILE_EXTENSION}`),
+    auditLogPath: path.join(rootDir, AUDIT_LOG_FILENAME),
     gitignorePath: path.join(rootDir, GITIGNORE_FILENAME),
   };
+}
+
+export function resolvePreferredScanPath(encryptedPath: string, plainPath: string): string {
+  return fs.existsSync(encryptedPath) ? encryptedPath : plainPath;
 }

@@ -8,6 +8,7 @@ export {
 } from './aws-client-factory.js';
 export { transformToScanResult } from './graph-bridge.js';
 export { paginateAws, buildResource, processInBatches, toBusinessTagMap } from './scan-utils.js';
+export { getCallerIdentity, type CallerIdentity } from './get-caller-identity.js';
 
 export {
   dynamoDbPitrEnricher,

@@ -1,20 +1,44 @@
 import { Router } from 'express';
+import type { Logger } from '@stronghold-dr/core';
 
 import { ServerError } from '../errors/server-error.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 import { scanLimiter } from '../middleware/rate-limiter.js';
 import { validateBody, validateQuery, validateUUIDParam } from '../middleware/validate.js';
+import { PrismaAuditLogger } from '../services/prisma-audit-logger.js';
+import { RequestAuditSession } from '../services/request-audit.js';
 import { ScanService } from '../services/scan-service.js';
 import { getSingleValue } from '../utils/request-values.js';
 import { listScansQuerySchema, scanInputSchema } from './route-schemas.js';
 
-export function createScanRoutes(scanService: ScanService): Router {
+export function createScanRoutes(
+  scanService: ScanService,
+  auditLogger: PrismaAuditLogger,
+  logger: Logger,
+): Router {
   const router = Router();
 
-  router.post('/', scanLimiter, validateBody(scanInputSchema), asyncHandler(async (request, response) => {
-    const scanId = await scanService.createScan(request.body);
-    response.status(202).json({ scanId, status: 'PENDING' });
-  }));
+  router.post(
+    '/',
+    scanLimiter,
+    validateBody(scanInputSchema),
+    asyncHandler(async (request, response) => {
+      const audit = new RequestAuditSession(auditLogger, logger, 'scan', {
+        regions: request.body.regions,
+        ...(request.body.services ? { services: request.body.services } : {}),
+      });
+      await audit.start();
+
+      try {
+        const scanId = await scanService.createScan(request.body);
+        response.status(202).json({ scanId, status: 'PENDING' });
+        await audit.finish({ status: 'success' });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
+      }
+    }),
+  );
 
   router.get('/', validateQuery(listScansQuerySchema), asyncHandler(async (request, response) => {
     const result = await scanService.listScans(

@@ -1,13 +1,17 @@
 import { Command } from 'commander';
 
 import type { DemoCommandOptions } from '../config/options.js';
-import { DEFAULT_DEMO_OUTPUT, DEFAULT_DEMO_SCENARIO } from '../config/options.js';
+import {
+  DEFAULT_DEMO_OUTPUT,
+  DEFAULT_DEMO_SCENARIO,
+  getCommandOptions,
+} from '../config/options.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
 import { writeOutput } from '../output/io.js';
 import { renderScanSummary } from '../output/scan-summary.js';
 import { formatDemoMessage } from '../output/theme.js';
 import { runScanPipeline } from '../pipeline/scan-pipeline.js';
-import { saveScanResults } from '../storage/file-store.js';
+import { saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerDemoCommand(program: Command): void {
@@ -17,7 +21,8 @@ export function registerDemoCommand(program: Command): void {
     .option('--scenario <name>', 'startup|enterprise|minimal', DEFAULT_DEMO_SCENARIO)
     .option('--output <format>', 'summary|json', DEFAULT_DEMO_OUTPUT)
     .option('--verbose', 'Show detailed logs', false)
-    .action(async (options: DemoCommandOptions) => {
+    .action(async (_: DemoCommandOptions, command: Command) => {
+      const options = getCommandOptions<DemoCommandOptions>(command);
       let pendingStage: string | null = null;
       const demo = getDemoInfrastructure(options.scenario);
 
@@ -55,7 +60,10 @@ export function registerDemoCommand(program: Command): void {
       }
 
       const paths = resolveStrongholdPaths();
-      saveScanResults(results, paths.latestScanPath);
+      await saveScanResultsWithEncryption(results, paths.latestScanPath, options);
+      const savedPath = options.encrypt
+        ? '.stronghold/latest-scan.stronghold-enc'
+        : '.stronghold/latest-scan.json';
 
       if (options.output === 'json') {
         await writeOutput(JSON.stringify(results, null, 2));
@@ -64,7 +72,7 @@ export function registerDemoCommand(program: Command): void {
 
       await writeOutput(
         renderScanSummary(results, {
-          savedPath: '.stronghold/latest-scan.json',
+          savedPath,
         }),
       );
       await writeOutput('');

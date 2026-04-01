@@ -7,6 +7,7 @@ import { createApp } from '../app.js';
 import type { ServerConfig } from '../config/env.js';
 import { ServerError } from '../errors/server-error.js';
 import type { DriftService } from '../services/drift-service.js';
+import { PrismaAuditLogger } from '../services/prisma-audit-logger.js';
 import type { ScanService } from '../services/scan-service.js';
 
 const VALID_UUID = '550e8400-e29b-41d4-a716-446655440000';
@@ -80,6 +81,12 @@ function createTestApp(options?: {
     listDriftEvents: vi.fn().mockResolvedValue([]),
     ...options?.driftService,
   } as unknown as DriftService;
+  const auditLogger = {
+    log: vi.fn().mockResolvedValue(undefined),
+    list: vi.fn().mockResolvedValue({
+      entries: [],
+    }),
+  } as unknown as PrismaAuditLogger;
 
   return createApp({
     config,
@@ -87,6 +94,7 @@ function createTestApp(options?: {
     logger,
     scanService,
     driftService,
+    auditLogger,
   });
 }
 
@@ -202,5 +210,58 @@ describe('server routes', () => {
     const response = await request(app).delete(`/api/scans/${VALID_UUID}`);
 
     expect(response.status).toBe(204);
+  });
+
+  it('GET /api/audit returns paginated audit entries', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/audit?limit=20');
+
+    expect(response.status).toBe(200);
+    expect(response.body.entries).toEqual([]);
+  });
+
+  it('GET /api/scans/:id/report redacts JSON output when requested', async () => {
+    const app = createTestApp({
+      scanService: {
+        renderValidationReport: vi.fn().mockResolvedValue({
+          message: 'sg-0abc1234def56789 on 10.20.30.40',
+        }),
+      },
+    });
+
+    const response = await request(app).get(`/api/scans/${VALID_UUID}/report?format=json&redact=true`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.message).toBe('sg-****6789 on 10.***.***.**');
+  });
+
+  it('GET /api/scans/:id/report/summary redacts summary output when requested', async () => {
+    const app = createTestApp({
+      scanService: {
+        getValidationSummary: vi.fn().mockResolvedValue({
+          score: 82,
+          grade: 'B',
+          categories: {},
+          topFailures: [
+            {
+              ruleId: 'sg-open',
+              nodeId: 'sg-0abc1234def56789',
+              nodeName: 'sg-0abc1234def56789',
+              severity: 'high',
+              message: '10.20.30.40 is reachable',
+            },
+          ],
+        }),
+      },
+    });
+
+    const response = await request(app).get(
+      `/api/scans/${VALID_UUID}/report/summary?redact=true`,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.body.topFailures[0]?.nodeId).toBe('sg-****6789');
+    expect(response.body.topFailures[0]?.message).toBe('10.***.***.** is reachable');
   });
 });

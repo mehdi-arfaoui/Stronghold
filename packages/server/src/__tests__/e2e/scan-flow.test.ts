@@ -111,6 +111,31 @@ describe('Scan Flow E2E', () => {
     expect(context.prisma.store.scanData.has(scanId)).toBe(false);
   });
 
+  it('encrypts persisted scan data when an encryption key is configured', async () => {
+    const encryptedContext = createE2eContext({
+      encryptionKey:
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    });
+    const scanId = createTestUuid(13);
+    await seedCompletedScan(encryptedContext, { scanId });
+
+    const rawRecord = encryptedContext.prisma.store.scanData.get(scanId) as
+      | Record<string, unknown>
+      | undefined;
+
+    expect(typeof rawRecord?.nodes).toBe('string');
+    expect(String(rawRecord?.nodes)).not.toContain('orders-db');
+
+    const stored = await encryptedContext.infrastructureRepository.getScanData(scanId);
+    expect(stored?.nodes.length).toBeGreaterThan(0);
+    expect(stored?.analysis.totalNodes).toBeGreaterThan(0);
+
+    const response = await request(encryptedContext.app).get(`/api/scans/${scanId}/data`);
+
+    expect(response.status).toBe(200);
+    expect(Array.isArray(response.body.nodes)).toBe(true);
+  });
+
   it('GET /api/health returns status ok', async () => {
     const response = await request(context.app).get('/api/health');
 

@@ -31,6 +31,7 @@ export interface MockPrismaStore {
   readonly drPlans: Map<string, MockRelatedRecord>;
   readonly planValidations: Map<string, MockRelatedRecord>;
   readonly driftEvents: Map<string, MockRelatedRecord>;
+  readonly auditLogs: Map<string, MockRelatedRecord>;
   tick: number;
 }
 
@@ -42,6 +43,7 @@ export function createStore(): MockPrismaStore {
     drPlans: new Map(),
     planValidations: new Map(),
     driftEvents: new Map(),
+    auditLogs: new Map(),
     tick: 0,
   };
 }
@@ -53,6 +55,7 @@ export function resetStore(store: MockPrismaStore): void {
   store.drPlans.clear();
   store.planValidations.clear();
   store.driftEvents.clear();
+  store.auditLogs.clear();
   store.tick = 0;
 }
 
@@ -174,6 +177,25 @@ export function listLatestByScanId(collection: Map<string, MockRelatedRecord>, s
   return [...collection.values()]
     .filter((record) => (scanId ? record.scanId === scanId : true))
     .sort(compareByCreatedAtDesc);
+}
+
+export function findManyRecords(
+  collection: Map<string, MockRelatedRecord>,
+  args: {
+    readonly take?: number;
+    readonly cursor?: { readonly id: string };
+    readonly skip?: number;
+  },
+): readonly MockRelatedRecord[] {
+  const ordered = [...collection.values()].sort(compareByCreatedAtDesc);
+  const startIndex = args.cursor
+    ? ordered.findIndex((record) => record.id === args.cursor?.id) + (args.skip ?? 0)
+    : 0;
+  const sliceStart = Math.max(startIndex, 0);
+  return ordered.slice(
+    sliceStart,
+    args.take === undefined ? undefined : sliceStart + args.take,
+  );
 }
 
 export async function runTransaction(input: unknown, client: UnknownRecord): Promise<unknown> {
