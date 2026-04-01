@@ -4,7 +4,7 @@
 
 import { S3Client, ListBucketsCommand, GetBucketLocationCommand } from '@aws-sdk/client-s3';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource } from '../scan-utils.js';
 
 function normalizeS3Region(locationConstraint: string | null | undefined): string {
@@ -23,7 +23,7 @@ export async function scanS3Buckets(
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
 
-  const buckets = await s3.send(new ListBucketsCommand({}));
+  const buckets = await s3.send(new ListBucketsCommand({}), getAwsCommandOptions(options));
 
   for (const bucket of buckets.Buckets ?? []) {
     if (!bucket.Name) continue;
@@ -31,7 +31,10 @@ export async function scanS3Buckets(
 
     let bucketRegion = 'us-east-1';
     try {
-      const location = await s3.send(new GetBucketLocationCommand({ Bucket: bucketName }));
+      const location = await s3.send(
+        new GetBucketLocationCommand({ Bucket: bucketName }),
+        getAwsCommandOptions(options),
+      );
       bucketRegion = normalizeS3Region(location.LocationConstraint as string | undefined);
     } catch {
       // Keep default us-east-1 when bucket location is unavailable.

@@ -1,6 +1,6 @@
 import type { ValidationReport, WeightedValidationResult } from '@stronghold-dr/core';
 
-import type { ScanResults } from '../storage/file-store.js';
+import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
 import { formatGrade, theme } from './theme.js';
 
 export function renderScanSummary(
@@ -11,12 +11,11 @@ export function renderScanSummary(
   } = {},
 ): string {
   const lines: string[] = [];
-  lines.push(`✅ Scan complete — ${results.regions.length} region${results.regions.length === 1 ? '' : 's'} scanned`);
+  lines.push(
+    `Scan complete - ${results.regions.length} region${results.regions.length === 1 ? '' : 's'} scanned`,
+  );
   lines.push('');
-  lines.push(`   Resources discovered:  ${String(results.nodes.length).padStart(3)}`);
-  lines.push(`   Dependencies mapped:   ${String(results.edges.length).padStart(3)}`);
-  lines.push(`   Services identified:   ${String(results.drpPlan.services.length).padStart(3)}`);
-  lines.push('');
+  lines.push(...renderExecutionMetadata(results.scanMetadata, results));
   lines.push(`   DR Posture Score:      ${formatGrade(results.validationReport)}`);
   lines.push('');
   lines.push(...renderTopIssues(results.validationReport));
@@ -28,15 +27,26 @@ export function renderScanSummary(
     lines.push(`   Results saved to ${options.savedPath}`);
     lines.push(`   Run '${theme.command('stronghold report')}' for full DR posture report`);
     lines.push(`   Run '${theme.command('stronghold plan generate')}' to export DRP as YAML`);
-    lines.push(`   Run '${theme.command('stronghold plan runbook')}' to export an executable recovery runbook`);
+    lines.push(
+      `   Run '${theme.command('stronghold plan runbook')}' to export an executable recovery runbook`,
+    );
   }
 
   if (options.warnings && options.warnings.length > 0) {
     lines.push('');
-    lines.push(`   ${theme.warn(`Partial scan — ${options.warnings.length} warning(s). Results may be incomplete.`)}`);
+    lines.push(
+      `   ${theme.warn(`Warnings: ${options.warnings.length} issue(s). Results may be incomplete or adjusted.`)}`,
+    );
   }
 
   return lines.join('\n');
+}
+
+export function determineScanExitCode(results: ScanResults): 0 | 1 {
+  if (!results.scanMetadata) {
+    return results.validationReport.score >= 60 ? 0 : 1;
+  }
+  return results.scanMetadata.successfulScanners > 0 ? 0 : 1;
 }
 
 export function determineSilentExitCode(report: ValidationReport): 0 | 1 {
@@ -70,9 +80,63 @@ function renderTopIssues(report: ValidationReport): readonly string[] {
 
   const lines = ['   Top critical issues:'];
   issues.forEach((issue, index) => {
-    lines.push(`      ${index + 1}. ${issue.ruleId} — ${issue.nodeName}`);
+    lines.push(`      ${index + 1}. ${issue.ruleId} - ${issue.nodeName}`);
     lines.push(`         ${issue.message}`);
   });
+  return lines;
+}
+
+function renderExecutionMetadata(
+  metadata: ScanExecutionMetadata | undefined,
+  results: ScanResults,
+): readonly string[] {
+  const lines: string[] = [];
+  const discoveredResources = metadata?.discoveredResourceCount ?? results.nodes.length;
+  lines.push(`   Resources discovered:  ${String(discoveredResources).padStart(3)}`);
+  lines.push(`   Dependencies mapped:   ${String(results.edges.length).padStart(3)}`);
+  lines.push(`   Services identified:   ${String(results.drpPlan.services.length).padStart(3)}`);
+
+  if (!metadata) {
+    lines.push('');
+    return lines;
+  }
+
+  lines.push(`   Total duration:        ${formatDuration(metadata.totalDurationMs)}`);
+  lines.push(`   Scanner concurrency:   ${String(metadata.scannerConcurrency).padStart(3)}`);
+  lines.push(`   Scanner timeout:       ${formatTimeout(metadata.scannerTimeoutMs)}`);
+  lines.push(`   Scanners succeeded:    ${String(metadata.successfulScanners).padStart(3)}`);
+  lines.push(`   Scanners failed:       ${String(metadata.failedScanners).padStart(3)}`);
+  lines.push(`   Regions scanned:       ${String(metadata.scannedRegions.length).padStart(3)}`);
+  if (metadata.authMode) {
+    lines.push(`   Auth mode:             ${metadata.authMode}`);
+  }
+  if (metadata.profile) {
+    lines.push(`   AWS profile:           ${metadata.profile}`);
+  }
+  if (metadata.accountName) {
+    lines.push(`   Account config:        ${metadata.accountName}`);
+  }
+  if (metadata.roleArn) {
+    lines.push(`   Role ARN:              ${metadata.roleArn}`);
+  }
+  if (metadata.maskedAccountId) {
+    lines.push(`   Account:               ${metadata.maskedAccountId}`);
+  }
+
+  const failedScanners = metadata.scannerResults.filter(
+    (scanner) => scanner.finalStatus === 'failed',
+  );
+  if (failedScanners.length > 0) {
+    lines.push('');
+    lines.push('   Failed scanners:');
+    failedScanners.forEach((scanner) => {
+      lines.push(
+        `      - ${scanner.scannerName} (${scanner.region}) - ${scanner.failureType ?? 'UnknownError'}`,
+      );
+    });
+  }
+
+  lines.push('');
   return lines;
 }
 
@@ -86,7 +150,7 @@ function formatSeverityCounts(report: ValidationReport): string {
       result.severity === 'high' && (result.status === 'fail' || result.status === 'error'),
   ).length;
   const warning = report.results.filter((result) => result.status === 'warn').length;
-  return `${critical} critical · ${high} high · ${warning} warning${warning === 1 ? '' : 's'}`;
+  return `${critical} critical | ${high} high | ${warning} warning${warning === 1 ? '' : 's'}`;
 }
 
 function sortFailures(
@@ -98,4 +162,18 @@ function sortFailures(
       left.ruleId.localeCompare(right.ruleId) ||
       left.nodeId.localeCompare(right.nodeId),
   );
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) {
+    return `${durationMs}ms`;
+  }
+  if (durationMs < 60_000) {
+    return `${(durationMs / 1000).toFixed(1)}s`;
+  }
+  return `${(durationMs / 60_000).toFixed(1)}m`;
+}
+
+function formatTimeout(timeoutMs: number): string {
+  return `${Math.round(timeoutMs / 1000)}s`;
 }

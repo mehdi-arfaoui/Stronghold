@@ -1,0 +1,575 @@
+{
+  "provider": "aws",
+  "regions": [
+    "eu-west-1"
+  ],
+  "nodes": [
+    {
+      "id": "vpc-startup",
+      "name": "vpc-startup",
+      "type": "VPC",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "VPC",
+        "vpcId": "vpc-startup",
+        "cidrBlock": "10.0.0.0/16"
+      }
+    },
+    {
+      "id": "subnet-public-a",
+      "name": "subnet-public-a",
+      "type": "SUBNET",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "SUBNET",
+        "subnetId": "subnet-public-a",
+        "vpcId": "vpc-startup",
+        "availabilityZone": "eu-west-1a"
+      }
+    },
+    {
+      "id": "subnet-public-b",
+      "name": "subnet-public-b",
+      "type": "SUBNET",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1b",
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "SUBNET",
+        "subnetId": "subnet-public-b",
+        "vpcId": "vpc-startup",
+        "availabilityZone": "eu-west-1b"
+      }
+    },
+    {
+      "id": "subnet-private-a",
+      "name": "subnet-private-a",
+      "type": "SUBNET",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "SUBNET",
+        "subnetId": "subnet-private-a",
+        "vpcId": "vpc-startup",
+        "availabilityZone": "eu-west-1a"
+      }
+    },
+    {
+      "id": "subnet-private-b",
+      "name": "subnet-private-b",
+      "type": "SUBNET",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1b",
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "SUBNET",
+        "subnetId": "subnet-private-b",
+        "vpcId": "vpc-startup",
+        "availabilityZone": "eu-west-1b"
+      }
+    },
+    {
+      "id": "startup-asg",
+      "name": "startup-asg",
+      "type": "VM",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "compute"
+      },
+      "metadata": {
+        "sourceType": "ASG",
+        "autoScalingGroupName": "startup-asg",
+        "minSize": 2,
+        "maxSize": 6,
+        "desiredCapacity": 3
+      }
+    },
+    {
+      "id": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+      "name": "prod-api-alb",
+      "type": "LOAD_BALANCER",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "frontend"
+      },
+      "metadata": {
+        "sourceType": "ELB",
+        "loadBalancerArn": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+        "loadBalancerName": "prod-api-alb",
+        "crossZoneLoadBalancing": true,
+        "healthCheck": {
+          "healthyThreshold": 3,
+          "interval": 30
+        },
+        "availabilityZones": [
+          "eu-west-1a",
+          "eu-west-1b"
+        ]
+      }
+    },
+    {
+      "id": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "name": "prod-api-1",
+      "type": "VM",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "startup-api"
+      },
+      "metadata": {
+        "sourceType": "EC2",
+        "autoScalingGroupName": "startup-asg",
+        "availabilityZone": "eu-west-1a",
+        "instanceType": "t3.medium"
+      }
+    },
+    {
+      "id": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "name": "prod-api-2",
+      "type": "VM",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1b",
+      "tags": {
+        "Service": "startup-api"
+      },
+      "metadata": {
+        "sourceType": "EC2",
+        "autoScalingGroupName": "startup-asg",
+        "availabilityZone": "eu-west-1b",
+        "instanceType": "t3.medium"
+      }
+    },
+    {
+      "id": "prod-db-primary",
+      "name": "prod-db-primary",
+      "type": "DATABASE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "database"
+      },
+      "metadata": {
+        "sourceType": "RDS",
+        "dbIdentifier": "prod-db-primary",
+        "dbArn": "arn:aws:rds:eu-west-1:123456789012:db:prod-db-primary",
+        "engine": "postgres",
+        "multiAz": false,
+        "backupRetentionPeriod": 7,
+        "readReplicaDBInstanceIdentifiers": []
+      }
+    },
+    {
+      "id": "arn:aws:rds:eu-west-1:123456789012:cluster:analytics-cluster",
+      "name": "analytics-cluster",
+      "type": "DATABASE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "analytics"
+      },
+      "metadata": {
+        "sourceType": "aurora_cluster",
+        "dbClusterIdentifier": "analytics-cluster",
+        "dbClusterArn": "arn:aws:rds:eu-west-1:123456789012:cluster:analytics-cluster",
+        "availabilityZones": [
+          "eu-west-1a",
+          "eu-west-1b"
+        ],
+        "backupRetentionPeriod": 7,
+        "deletionProtection": true
+      }
+    },
+    {
+      "id": "arn:aws:rds:eu-west-1:123456789012:db:analytics-writer",
+      "name": "analytics-writer",
+      "type": "DATABASE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "analytics"
+      },
+      "metadata": {
+        "sourceType": "aurora_instance",
+        "dbInstanceIdentifier": "analytics-writer",
+        "isClusterWriter": true,
+        "promotionTier": 0,
+        "availabilityZone": "eu-west-1a"
+      }
+    },
+    {
+      "id": "arn:aws:rds:eu-west-1:123456789012:db:analytics-reader",
+      "name": "analytics-reader",
+      "type": "DATABASE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1b",
+      "tags": {
+        "Service": "analytics"
+      },
+      "metadata": {
+        "sourceType": "aurora_instance",
+        "dbInstanceIdentifier": "analytics-reader",
+        "isClusterWriter": false,
+        "promotionTier": 1,
+        "availabilityZone": "eu-west-1b"
+      }
+    },
+    {
+      "id": "arn:aws:s3:::user-uploads-bucket",
+      "name": "user-uploads-bucket",
+      "type": "OBJECT_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "storage"
+      },
+      "metadata": {
+        "sourceType": "S3_BUCKET",
+        "bucketArn": "arn:aws:s3:::user-uploads-bucket",
+        "bucketName": "user-uploads-bucket",
+        "versioningStatus": "Enabled",
+        "hasCrossRegionReplication": false,
+        "replicationRules": []
+      }
+    },
+    {
+      "id": "arn:aws:s3:::artifacts-bucket",
+      "name": "artifacts-bucket",
+      "type": "OBJECT_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "storage"
+      },
+      "metadata": {
+        "sourceType": "S3_BUCKET",
+        "bucketArn": "arn:aws:s3:::artifacts-bucket",
+        "bucketName": "artifacts-bucket",
+        "versioningStatus": "Enabled",
+        "hasCrossRegionReplication": false,
+        "replicationRules": []
+      }
+    },
+    {
+      "id": "arn:aws:lambda:eu-west-1:123456789012:function:thumbnail-generator",
+      "name": "thumbnail-generator",
+      "type": "SERVERLESS",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "thumbnail-generator"
+      },
+      "metadata": {
+        "sourceType": "LAMBDA",
+        "functionArn": "arn:aws:lambda:eu-west-1:123456789012:function:thumbnail-generator",
+        "functionName": "thumbnail-generator",
+        "deadLetterTargetArn": "arn:aws:sqs:eu-west-1:123456789012:thumbnail-generator-dlq"
+      }
+    },
+    {
+      "id": "arn:aws:sqs:eu-west-1:123456789012:image-jobs",
+      "name": "image-jobs",
+      "type": "MESSAGE_QUEUE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "messaging"
+      },
+      "metadata": {
+        "sourceType": "SQS_QUEUE",
+        "queueArn": "arn:aws:sqs:eu-west-1:123456789012:image-jobs",
+        "queueName": "image-jobs",
+        "redrivePolicy": {
+          "deadLetterTargetArn": "arn:aws:sqs:eu-west-1:123456789012:image-jobs-dlq"
+        }
+      }
+    },
+    {
+      "id": "arn:aws:elasticache:eu-west-1:123456789012:replicationgroup:session-cache",
+      "name": "session-cache",
+      "type": "CACHE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "cache"
+      },
+      "metadata": {
+        "sourceType": "ELASTICACHE",
+        "replicationGroupId": "session-cache",
+        "automaticFailoverStatus": "enabled",
+        "multiAZEnabled": true,
+        "replicaCount": 2
+      }
+    },
+    {
+      "id": "arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-shared-documents",
+      "name": "shared-documents",
+      "type": "FILE_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "shared-files"
+      },
+      "metadata": {
+        "sourceType": "efs_filesystem",
+        "fileSystemId": "fs-shared-documents",
+        "automaticBackups": false,
+        "backupPolicy": {
+          "status": "DISABLED"
+        },
+        "replicationConfigurations": [],
+        "availabilityZones": [
+          "eu-west-1a"
+        ]
+      }
+    },
+    {
+      "id": "shared-documents-mt-a",
+      "name": "shared-documents-mt-a",
+      "type": "FILE_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "shared-files"
+      },
+      "metadata": {
+        "sourceType": "efs_mount_target",
+        "fileSystemId": "fs-shared-documents",
+        "mountTargetId": "shared-documents-mt-a",
+        "availabilityZone": "eu-west-1a",
+        "automaticBackups": true,
+        "backupPolicy": {
+          "status": "ENABLED"
+        }
+      }
+    },
+    {
+      "id": "ZSTARTUP123",
+      "name": "example-startup.com",
+      "type": "DNS",
+      "provider": "aws",
+      "region": "global",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "dns"
+      },
+      "metadata": {
+        "sourceType": "route53_hosted_zone",
+        "hostedZoneId": "ZSTARTUP123",
+        "name": "example-startup.com"
+      }
+    },
+    {
+      "id": "route53-record:ZSTARTUP123:api.example-startup.com:A:simple",
+      "name": "api.example-startup.com",
+      "type": "DNS",
+      "provider": "aws",
+      "region": "global",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "dns"
+      },
+      "metadata": {
+        "sourceType": "route53_record",
+        "hostedZoneId": "ZSTARTUP123",
+        "name": "api.example-startup.com",
+        "type": "A",
+        "routingPolicy": "simple",
+        "aliasTargetDnsName": "prod-api-alb.eu-west-1.elb.amazonaws.com"
+      }
+    },
+    {
+      "id": "arn:aws:backup:eu-west-1:123456789012:backup-plan:startup-backup-plan",
+      "name": "startup-backup-plan",
+      "type": "FILE_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "backup"
+      },
+      "metadata": {
+        "sourceType": "backup_plan",
+        "backupPlanName": "startup-backup-plan",
+        "protectedResources": [
+          {
+            "resourceArn": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+            "lastBackupTime": "2026-03-26T08:00:00.000Z"
+          },
+          {
+            "resourceArn": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+            "lastBackupTime": "2026-03-26T08:00:00.000Z"
+          }
+        ],
+        "recoveryPoints": [
+          {
+            "lifecycle": {
+              "DeleteAfterDays": 35
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "arn:aws:cloudwatch:eu-west-1:123456789012:alarm:prod-api-alb-health",
+      "name": "prod-api-alb-health",
+      "type": "APPLICATION",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "monitoring"
+      },
+      "metadata": {
+        "sourceType": "cloudwatch_alarm",
+        "alarmName": "prod-api-alb-health",
+        "monitoredReferences": [
+          "prod-api-alb"
+        ],
+        "actionsEnabled": true,
+        "alarmActions": [
+          "arn:aws:sns:eu-west-1:123456789012:ops-alerts"
+        ]
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "vpc-startup",
+      "target": "subnet-public-a",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "vpc-startup",
+      "target": "subnet-public-b",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "vpc-startup",
+      "target": "subnet-private-a",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "vpc-startup",
+      "target": "subnet-private-b",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "startup-asg",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "startup-asg",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "target": "prod-db-primary",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "target": "prod-db-primary",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "target": "arn:aws:elasticache:eu-west-1:123456789012:replicationgroup:session-cache",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "target": "arn:aws:elasticache:eu-west-1:123456789012:replicationgroup:session-cache",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "arn:aws:rds:eu-west-1:123456789012:cluster:analytics-cluster",
+      "target": "arn:aws:rds:eu-west-1:123456789012:db:analytics-writer",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "arn:aws:rds:eu-west-1:123456789012:cluster:analytics-cluster",
+      "target": "arn:aws:rds:eu-west-1:123456789012:db:analytics-reader",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "arn:aws:backup:eu-west-1:123456789012:backup-plan:startup-backup-plan",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-1",
+      "type": "BACKS_UP_TO"
+    },
+    {
+      "source": "arn:aws:backup:eu-west-1:123456789012:backup-plan:startup-backup-plan",
+      "target": "arn:aws:ec2:eu-west-1:123456789012:instance/prod-api-2",
+      "type": "BACKS_UP_TO"
+    },
+    {
+      "source": "arn:aws:cloudwatch:eu-west-1:123456789012:alarm:prod-api-alb-health",
+      "target": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+      "type": "MONITORS"
+    },
+    {
+      "source": "ZSTARTUP123",
+      "target": "route53-record:ZSTARTUP123:api.example-startup.com:A:simple",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "route53-record:ZSTARTUP123:api.example-startup.com:A:simple",
+      "target": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/prod-api-alb/123456",
+      "type": "ROUTES_TO"
+    },
+    {
+      "source": "arn:aws:elasticfilesystem:eu-west-1:123456789012:file-system/fs-shared-documents",
+      "target": "shared-documents-mt-a",
+      "type": "CONTAINS"
+    }
+  ],
+  "isDemo": true
+}

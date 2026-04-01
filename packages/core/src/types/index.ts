@@ -2,6 +2,8 @@ export {
   NodeType,
   EdgeType,
   type Severity,
+  type EdgeProvenance,
+  type CriticalitySource,
   type InfraNodeAttrs,
   type InfraEdgeAttrs,
   type ScanResult,

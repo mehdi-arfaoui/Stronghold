@@ -41,6 +41,7 @@ export interface DiscoveryConnectorResult {
 }
 
 export interface DiscoveryCloudCredentials {
+  readonly profile?: string;
   readonly accessKeyId?: string;
   readonly secretAccessKey?: string;
   readonly sessionToken?: string;

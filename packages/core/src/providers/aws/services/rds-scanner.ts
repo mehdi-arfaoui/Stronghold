@@ -4,7 +4,7 @@
 
 import { RDSClient, DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 function isAuroraEngine(engine: string | undefined): boolean {
@@ -15,7 +15,8 @@ export async function scanRdsInstances(options: AwsClientOptions): Promise<Disco
   const rds = createAwsClient(RDSClient, options);
 
   const dbInstances = await paginateAws(
-    (marker) => rds.send(new DescribeDBInstancesCommand({ Marker: marker })),
+    (marker) =>
+      rds.send(new DescribeDBInstancesCommand({ Marker: marker }), getAwsCommandOptions(options)),
     (response) => response.DBInstances,
     (response) => response.Marker,
   );

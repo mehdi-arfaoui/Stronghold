@@ -11,6 +11,7 @@ import { registerIamPolicyCommand } from './commands/iam-policy.js';
 import { registerPlanCommand } from './commands/plan.js';
 import { registerReportCommand } from './commands/report.js';
 import { registerScanCommand } from './commands/scan.js';
+import { registerOverridesCommand } from './commands/overrides.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -27,6 +28,7 @@ export function createProgram(): Command {
   registerReportCommand(program);
   registerPlanCommand(program);
   registerDriftCommand(program);
+  registerOverridesCommand(program);
   registerDemoCommand(program);
   registerIamPolicyCommand(program);
 

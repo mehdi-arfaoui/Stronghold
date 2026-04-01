@@ -4,8 +4,9 @@
  */
 import { EFSClient } from '@aws-sdk/client-efs';
 import { Route53Client } from '@aws-sdk/client-route-53';
-import { fromTemporaryCredentials } from '@aws-sdk/credential-providers';
+import { fromIni, fromTemporaryCredentials } from '@aws-sdk/credential-providers';
 import type { DiscoveryCloudCredentials } from '../../types/discovery.js';
+import { resolveAwsSourceCredentials } from './assume-role.js';
 
 /** Resolved AWS credentials suitable for SDK client construction. */
 export type ResolvedAwsCredentials = {
@@ -14,7 +15,10 @@ export type ResolvedAwsCredentials = {
   readonly sessionToken?: string;
 };
 
-type AwsCredentialProvider = ResolvedAwsCredentials | ReturnType<typeof fromTemporaryCredentials>;
+type AwsCredentialProvider =
+  | ResolvedAwsCredentials
+  | ReturnType<typeof fromIni>
+  | ReturnType<typeof fromTemporaryCredentials>;
 
 /**
  * Resolves AWS credentials from discovery config.
@@ -25,6 +29,8 @@ export function resolveAwsCredentials(
   region: string,
   sessionName = 'stronghold-discovery',
 ): AwsCredentialProvider | undefined {
+  const sourceCredentials = resolveAwsSourceCredentials(credentials);
+
   if (credentials.roleArn) {
     return fromTemporaryCredentials({
       params: {
@@ -32,19 +38,12 @@ export function resolveAwsCredentials(
         RoleSessionName: sessionName,
         ...(credentials.externalId ? { ExternalId: credentials.externalId } : {}),
       },
+      ...(sourceCredentials ? { masterCredentials: sourceCredentials } : {}),
       clientConfig: { region },
     });
   }
 
-  if (credentials.accessKeyId && credentials.secretAccessKey) {
-    return {
-      accessKeyId: credentials.accessKeyId,
-      secretAccessKey: credentials.secretAccessKey,
-      ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
-    };
-  }
-
-  return undefined;
+  return sourceCredentials;
 }
 
 /** Options for creating an AWS SDK client. */
@@ -52,6 +51,8 @@ export interface AwsClientOptions {
   readonly region: string;
   readonly credentials: DiscoveryCloudCredentials;
   readonly sessionName?: string;
+  readonly maxAttempts?: number;
+  readonly abortSignal?: AbortSignal;
 }
 
 /**
@@ -60,11 +61,12 @@ export interface AwsClientOptions {
  */
 export function buildAwsClientConfig(
   options: AwsClientOptions,
-): { region: string; credentials?: AwsCredentialProvider } {
+): { region: string; credentials?: AwsCredentialProvider; maxAttempts?: number } {
   const resolved = resolveAwsCredentials(options.credentials, options.region, options.sessionName);
   return {
     region: options.region,
     ...(resolved ? { credentials: resolved } : {}),
+    ...(typeof options.maxAttempts === 'number' ? { maxAttempts: options.maxAttempts } : {}),
   };
 }
 
@@ -79,6 +81,12 @@ export function createAwsClient<TClient>(
 ): TClient {
   const config = buildAwsClientConfig(options);
   return new ClientConstructor(config as never);
+}
+
+export function getAwsCommandOptions(
+  options: Pick<AwsClientOptions, 'abortSignal'>,
+): { abortSignal?: AbortSignal } | undefined {
+  return options.abortSignal ? { abortSignal: options.abortSignal } : undefined;
 }
 
 /** Creates a Route53 client pinned to the global endpoint region. */

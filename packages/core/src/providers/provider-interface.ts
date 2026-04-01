@@ -4,9 +4,16 @@ import type { DiscoveryCredentials } from '../types/discovery.js';
 /** Progress update emitted during a scan. */
 export interface DiscoveryProgress {
   readonly service: string;
-  readonly status: 'scanning' | 'completed' | 'failed';
+  readonly status: 'scanning' | 'retrying' | 'completed' | 'failed';
   readonly resourceCount: number;
   readonly error?: string;
+  readonly region?: string;
+  readonly durationMs?: number;
+  readonly retryCount?: number;
+  readonly attempt?: number;
+  readonly maxAttempts?: number;
+  readonly waitMs?: number;
+  readonly failureType?: string;
 }
 
 export type ProgressCallback = (progress: DiscoveryProgress) => void;
@@ -17,6 +24,8 @@ export interface ScanOptions {
   readonly services?: readonly string[];
   readonly onProgress?: ProgressCallback;
   readonly collectMetrics?: boolean;
+  readonly scannerConcurrency?: number;
+  readonly scannerTimeoutMs?: number;
 }
 
 /** Output of a cloud provider scan. */

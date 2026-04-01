@@ -14,7 +14,7 @@ import {
 } from '@aws-sdk/client-backup';
 import type { BackupRule, ProtectedResource, RecoveryPointByBackupVault } from '@aws-sdk/client-backup';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
 
 interface ProtectedResourceSummary {
@@ -77,11 +77,18 @@ function summarizeRules(rules: readonly BackupRule[] | undefined): readonly Reco
   }));
 }
 
-async function listBackupPlans(backup: BackupClient): Promise<
+async function listBackupPlans(
+  backup: BackupClient,
+  options: AwsClientOptions,
+): Promise<
   readonly { BackupPlanId?: string; BackupPlanArn?: string; BackupPlanName?: string }[]
 > {
   return paginateAws(
-    (nextToken) => backup.send(new ListBackupPlansCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      backup.send(
+        new ListBackupPlansCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.BackupPlansList,
     (response) => response.NextToken,
   );
@@ -89,9 +96,14 @@ async function listBackupPlans(backup: BackupClient): Promise<
 
 async function listProtectedResources(
   backup: BackupClient,
+  options: AwsClientOptions,
 ): Promise<readonly ProtectedResourceSummary[]> {
   const resources = await paginateAws(
-    (nextToken) => backup.send(new ListProtectedResourcesCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      backup.send(
+        new ListProtectedResourcesCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.Results,
     (response) => response.NextToken,
   );
@@ -102,9 +114,14 @@ async function listProtectedResources(
 
 async function listBackupVaults(
   backup: BackupClient,
+  options: AwsClientOptions,
 ): Promise<readonly { BackupVaultName?: string; BackupVaultArn?: string; CreationDate?: Date }[]> {
   return paginateAws(
-    (nextToken) => backup.send(new ListBackupVaultsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      backup.send(
+        new ListBackupVaultsCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.BackupVaultList,
     (response) => response.NextToken,
   );
@@ -112,6 +129,7 @@ async function listBackupVaults(
 
 async function listRecoveryPointsByVault(
   backup: BackupClient,
+  options: AwsClientOptions,
   backupVaultName: string,
 ): Promise<readonly RecoveryPointSummary[]> {
   const recoveryPoints = await paginateAws(
@@ -121,6 +139,7 @@ async function listRecoveryPointsByVault(
           BackupVaultName: backupVaultName,
           NextToken: nextToken,
         }),
+        getAwsCommandOptions(options),
       ),
     (response) => response.RecoveryPoints,
     (response) => response.NextToken,
@@ -130,6 +149,7 @@ async function listRecoveryPointsByVault(
 
 async function listSelectedResourceArns(
   backup: BackupClient,
+  options: AwsClientOptions,
   backupPlanId: string,
 ): Promise<readonly string[]> {
   const selections = await paginateAws(
@@ -139,6 +159,7 @@ async function listSelectedResourceArns(
           BackupPlanId: backupPlanId,
           NextToken: nextToken,
         }),
+        getAwsCommandOptions(options),
       ),
     (response) => response.BackupSelectionsList,
     (response) => response.NextToken,
@@ -152,6 +173,7 @@ async function listSelectedResourceArns(
         BackupPlanId: backupPlanId,
         SelectionId: selection.SelectionId,
       }),
+      getAwsCommandOptions(options),
     );
     resourceArns.push(
       ...(details.BackupSelection?.Resources ?? []).filter((value): value is string => Boolean(value)),
@@ -193,9 +215,9 @@ export async function scanBackupResources(
   const resources: DiscoveredResource[] = [];
 
   const [backupPlans, protectedResourcesList, backupVaults] = await Promise.all([
-    listBackupPlans(backup),
-    listProtectedResources(backup),
-    listBackupVaults(backup),
+    listBackupPlans(backup, options),
+    listProtectedResources(backup, options),
+    listBackupVaults(backup, options),
   ]);
   const protectedResources = new Map(
     protectedResourcesList.map((resource) => [resource.resourceArn, resource] as const),
@@ -207,7 +229,7 @@ export async function scanBackupResources(
     try {
       recoveryPointsByVault.set(
         backupVault.BackupVaultName,
-        await listRecoveryPointsByVault(backup, backupVault.BackupVaultName),
+        await listRecoveryPointsByVault(backup, options, backupVault.BackupVaultName),
       );
     } catch {
       warnings.push(
@@ -244,8 +266,15 @@ export async function scanBackupResources(
     if (!backupPlanId) continue;
 
     try {
-      const planDetails = await backup.send(new GetBackupPlanCommand({ BackupPlanId: backupPlanId }));
-      const selectedResourceArns = await listSelectedResourceArns(backup, backupPlanId).catch(() => {
+      const planDetails = await backup.send(
+        new GetBackupPlanCommand({ BackupPlanId: backupPlanId }),
+        getAwsCommandOptions(options),
+      );
+      const selectedResourceArns = await listSelectedResourceArns(
+        backup,
+        options,
+        backupPlanId,
+      ).catch(() => {
         warnings.push(`AWS Backup selections unavailable for plan ${backupPlanId}.`);
         return [] as readonly string[];
       });

@@ -13,6 +13,7 @@ describe('CLI help output', () => {
     expect(help).toContain('report');
     expect(help).toContain('plan');
     expect(help).toContain('drift');
+    expect(help).toContain('overrides');
     expect(help).toContain('demo');
     expect(help).toContain('iam-policy');
   });
@@ -24,6 +25,16 @@ describe('CLI help output', () => {
     expect(help).toContain('generate');
     expect(help).toContain('validate');
     expect(help).toContain('runbook');
+  });
+
+  it('stronghold scan --help lists account and auth options', () => {
+    const scanCommand = createProgram().commands.find((command) => command.name() === 'scan');
+    const help = scanCommand?.helpInformation() ?? '';
+
+    expect(help).toContain('--account');
+    expect(help).toContain('--profile');
+    expect(help).toContain('--role-arn');
+    expect(help).toContain('--external-id');
   });
 });
 

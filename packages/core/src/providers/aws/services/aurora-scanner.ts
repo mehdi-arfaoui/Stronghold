@@ -13,7 +13,7 @@ import {
   type GlobalCluster,
 } from '@aws-sdk/client-rds';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
 
 interface AuroraScannerConfig {
@@ -165,6 +165,7 @@ function buildAuroraGlobal(globalCluster: GlobalCluster): DiscoveredResource {
 
 async function describeAuroraInstances(
   rds: RDSClient,
+  options: AwsClientOptions,
   cluster: DBCluster,
 ): Promise<readonly DBInstance[]> {
   const filterValue = cluster.DBClusterArn ?? cluster.DBClusterIdentifier;
@@ -177,6 +178,7 @@ async function describeAuroraInstances(
           Marker: marker,
           Filters: [{ Name: 'db-cluster-id', Values: [filterValue] }],
         }),
+        getAwsCommandOptions(options),
       ),
     (response) => response.DBInstances,
     (response) => response.Marker,
@@ -192,7 +194,8 @@ export async function scanAuroraClusters(
   const resources: DiscoveredResource[] = [];
   const clusters = (
     await paginateAws(
-      (marker) => rds.send(new DescribeDBClustersCommand({ Marker: marker })),
+      (marker) =>
+        rds.send(new DescribeDBClustersCommand({ Marker: marker }), getAwsCommandOptions(options)),
       (response) => response.DBClusters,
       (response) => response.Marker,
     )
@@ -207,7 +210,7 @@ export async function scanAuroraClusters(
           .map((member) => [member.DBInstanceIdentifier, member] as const)
           .filter((entry): entry is readonly [string, DBClusterMember] => Boolean(entry[0])),
       );
-      const instances = await describeAuroraInstances(rds, cluster);
+      const instances = await describeAuroraInstances(rds, options, cluster);
       for (const instance of instances) {
         resources.push(
           buildAuroraInstance(
@@ -228,7 +231,11 @@ export async function scanAuroraClusters(
   if (config.includeGlobalClusters !== false) {
     try {
       const globalClusters = await paginateAws(
-        (marker) => rds.send(new DescribeGlobalClustersCommand({ Marker: marker })),
+        (marker) =>
+          rds.send(
+            new DescribeGlobalClustersCommand({ Marker: marker }),
+            getAwsCommandOptions(options),
+          ),
         (response) => response.GlobalClusters,
         (response) => response.Marker,
       );

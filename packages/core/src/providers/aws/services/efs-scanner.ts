@@ -14,7 +14,7 @@ import {
   type MountTargetDescription,
 } from '@aws-sdk/client-efs';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createEfsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createEfsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
 
 interface ReplicationSummary {
@@ -110,6 +110,7 @@ function buildMountTargetResource(
 
 async function describeMountTargets(
   efs: EFSClient,
+  options: AwsClientOptions,
   fileSystemId: string,
 ): Promise<readonly MountTargetDescription[]> {
   return paginateAws(
@@ -119,6 +120,7 @@ async function describeMountTargets(
           FileSystemId: fileSystemId,
           Marker: marker,
         }),
+        getAwsCommandOptions(options),
       ),
     (response) => response.MountTargets,
     (response) => response.NextMarker,
@@ -132,14 +134,18 @@ export async function scanEfsFileSystems(
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
   const fileSystems = await paginateAws(
-    (marker) => efs.send(new DescribeFileSystemsCommand({ Marker: marker })),
+    (marker) =>
+      efs.send(new DescribeFileSystemsCommand({ Marker: marker }), getAwsCommandOptions(options)),
     (response) => response.FileSystems,
     (response) => response.NextMarker,
   );
 
   const replicationConfigurations = await paginateAws(
     (nextToken) =>
-      efs.send(new DescribeReplicationConfigurationsCommand({ NextToken: nextToken })),
+      efs.send(
+        new DescribeReplicationConfigurationsCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.Replications,
     (response) => response.NextToken,
   ).catch(() => {
@@ -164,13 +170,15 @@ export async function scanEfsFileSystems(
     const fileSystemId = fileSystem.FileSystemId;
     if (!fileSystemId) continue;
 
-    const mountTargets = await describeMountTargets(efs, fileSystemId).catch(() => {
+    const mountTargets = await describeMountTargets(efs, options, fileSystemId).catch(() => {
       warnings.push(`EFS mount targets unavailable for filesystem ${fileSystemId}.`);
       return [] as readonly MountTargetDescription[];
     });
 
-    const backupPolicy = await efs
-      .send(new DescribeBackupPolicyCommand({ FileSystemId: fileSystemId }))
+    const backupPolicy = await efs.send(
+      new DescribeBackupPolicyCommand({ FileSystemId: fileSystemId }),
+      getAwsCommandOptions(options),
+    )
       .then((response) => response.BackupPolicy ?? null)
       .catch(() => {
         warnings.push(`EFS backup policy unavailable for filesystem ${fileSystemId}.`);

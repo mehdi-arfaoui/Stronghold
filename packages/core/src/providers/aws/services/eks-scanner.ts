@@ -10,7 +10,7 @@ import {
   DescribeNodegroupCommand,
 } from '@aws-sdk/client-eks';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 export async function scanEksClusters(options: AwsClientOptions): Promise<DiscoveredResource[]> {
@@ -18,13 +18,16 @@ export async function scanEksClusters(options: AwsClientOptions): Promise<Discov
   const resources: DiscoveredResource[] = [];
 
   const clusterNames = await paginateAws(
-    (nextToken) => eks.send(new ListClustersCommand({ nextToken })),
+    (nextToken) => eks.send(new ListClustersCommand({ nextToken }), getAwsCommandOptions(options)),
     (response) => response.clusters,
     (response) => response.nextToken,
   );
 
   for (const clusterName of clusterNames) {
-    const clusterDetails = await eks.send(new DescribeClusterCommand({ name: clusterName }));
+    const clusterDetails = await eks.send(
+      new DescribeClusterCommand({ name: clusterName }),
+      getAwsCommandOptions(options),
+    );
     const cluster = clusterDetails.cluster;
     if (!cluster) continue;
 
@@ -49,10 +52,14 @@ export async function scanEksClusters(options: AwsClientOptions): Promise<Discov
       }),
     );
 
-    const nodeGroupList = await eks.send(new ListNodegroupsCommand({ clusterName }));
+    const nodeGroupList = await eks.send(
+      new ListNodegroupsCommand({ clusterName }),
+      getAwsCommandOptions(options),
+    );
     for (const nodeGroupName of nodeGroupList.nodegroups ?? []) {
       const ngDetails = await eks.send(
         new DescribeNodegroupCommand({ clusterName, nodegroupName: nodeGroupName }),
+        getAwsCommandOptions(options),
       );
       const nodeGroup = ngDetails.nodegroup;
       if (!nodeGroup) continue;

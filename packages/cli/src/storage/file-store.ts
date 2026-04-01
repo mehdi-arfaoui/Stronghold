@@ -2,8 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import type {
+  AwsScanSummary,
   CircularDependency,
   DRPlan,
+  EdgeProvenance,
   GraphAnalysisReport,
   InfraNode,
   RegionalRisk,
@@ -33,6 +35,19 @@ export interface StoredScanEdge {
   readonly source: string;
   readonly target: string;
   readonly type: string;
+  readonly confidence?: number;
+  readonly inferenceMethod?: string;
+  readonly metadata?: Record<string, unknown>;
+  readonly provenance?: EdgeProvenance;
+  readonly reason?: string;
+}
+
+export interface ScanExecutionMetadata extends AwsScanSummary {
+  readonly authMode?: string;
+  readonly profile?: string;
+  readonly maskedAccountId?: string;
+  readonly roleArn?: string;
+  readonly accountName?: string;
 }
 
 export interface ScanResults {
@@ -44,6 +59,7 @@ export interface ScanResults {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly drpPlan: DRPlan;
+  readonly scanMetadata?: ScanExecutionMetadata;
   readonly warnings?: readonly string[];
   readonly isDemo?: boolean;
 }
@@ -137,6 +153,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     analysis,
     validationReport,
     drpPlan,
+    ...(isRecord(value.scanMetadata)
+      ? { scanMetadata: value.scanMetadata as unknown as ScanExecutionMetadata }
+      : {}),
     ...(Array.isArray(value.warnings) ? { warnings: readStringArray(value.warnings) } : {}),
     ...(typeof value.isDemo === 'boolean' ? { isDemo: value.isDemo } : {}),
   };

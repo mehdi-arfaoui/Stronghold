@@ -9,7 +9,7 @@ import {
   ListEventSourceMappingsCommand,
 } from '@aws-sdk/client-lambda';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 const LAMBDA_ENV_ARN_PATTERN = /arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:[A-Za-z0-9\-_/.:]+/g;
@@ -76,7 +76,8 @@ export async function scanLambdaFunctions(
   const warnings: string[] = [];
 
   const lambdas = await paginateAws(
-    (marker) => lambda.send(new ListFunctionsCommand({ Marker: marker })),
+    (marker) =>
+      lambda.send(new ListFunctionsCommand({ Marker: marker }), getAwsCommandOptions(options)),
     (response) => response.Functions,
     (response) => response.NextMarker,
   );
@@ -98,6 +99,7 @@ export async function scanLambdaFunctions(
         new GetFunctionConfigurationCommand({
           FunctionName: fn.FunctionName ?? fn.FunctionArn,
         }),
+        getAwsCommandOptions(options),
       );
       const variables = (configuration.Environment?.Variables ?? {}) as Record<string, string>;
       environmentVariableNames = Object.keys(variables);
@@ -126,6 +128,7 @@ export async function scanLambdaFunctions(
               FunctionName: fn.FunctionName ?? fn.FunctionArn,
               Marker: marker,
             }),
+            getAwsCommandOptions(options),
           ),
         (response) => response.EventSourceMappings,
         (response) => response.NextMarker,

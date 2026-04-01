@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { STSClient } from '@aws-sdk/client-sts';
+import { AssumeRoleCommand, GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 
 import {
   buildDiscoveryCredentials,
+  resolveAwsExecutionContext,
   resolveAwsRegions,
   verifyAwsCredentials,
 } from '../config/credentials.js';
@@ -30,10 +31,36 @@ describe('credentials', () => {
     });
   });
 
+  it('builds profile-based discovery credentials without copying environment secrets', () => {
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_ENV';
+    process.env.AWS_SECRET_ACCESS_KEY = 'env-secret';
+
+    expect(
+      buildDiscoveryCredentials({
+        profile: 'production',
+        region: 'eu-west-1',
+        includeEnvironmentCredentials: false,
+      }).aws,
+    ).toEqual({
+      profile: 'production',
+      region: 'eu-west-1',
+    });
+  });
+
   it('returns a clear error when no credentials are available', async () => {
     vi.spyOn(STSClient.prototype, 'send').mockRejectedValueOnce(new Error('No providers'));
 
     await expect(verifyAwsCredentials()).rejects.toThrow(/No AWS credentials found/);
+  });
+
+  it('returns a clear error when a selected profile is unavailable', async () => {
+    vi.spyOn(STSClient.prototype, 'send').mockRejectedValueOnce(
+      new Error('Could not resolve credentials using profile: nonexistent'),
+    );
+
+    await expect(verifyAwsCredentials({ profile: 'nonexistent' }, { profile: 'nonexistent' })).rejects.toThrow(
+      /profile 'nonexistent'/i,
+    );
   });
 
   it('detects the region from environment variables', async () => {
@@ -53,5 +80,66 @@ describe('credentials', () => {
         allRegions: false,
       }),
     ).resolves.toEqual(['eu-west-1', 'us-east-1']);
+  });
+
+  it('resolves assume-role execution context with profile metadata', async () => {
+    const send = vi.spyOn(STSClient.prototype, 'send');
+    send
+      .mockImplementationOnce(async (command) => {
+        expect(command).toBeInstanceOf(AssumeRoleCommand);
+        return {
+          Credentials: {
+            AccessKeyId: 'ASIA_TEST',
+            SecretAccessKey: 'secret',
+            SessionToken: 'token',
+          },
+        };
+      })
+      .mockImplementationOnce(async (command) => {
+        expect(command).toBeInstanceOf(GetCallerIdentityCommand);
+        return {
+          Account: '123456789012',
+          Arn: 'arn:aws:sts::123456789012:assumed-role/StrongholdReadOnly/session',
+          UserId: 'AROATEST:session',
+        };
+      });
+
+    const context = await resolveAwsExecutionContext({
+      profile: 'production',
+      roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
+      externalId: 'ext-123',
+      explicitRegions: ['eu-west-1'],
+      allRegions: false,
+      accountName: 'production',
+    });
+
+    expect(context).toMatchObject({
+      regions: ['eu-west-1'],
+      authMode: 'profile+assume-role',
+      profile: 'production',
+      roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
+      accountName: 'production',
+    });
+    expect(context.credentials.aws).toMatchObject({
+      accessKeyId: 'ASIA_TEST',
+      secretAccessKey: 'secret',
+      sessionToken: 'token',
+    });
+  });
+
+  it('surfaces assume-role failures clearly', async () => {
+    vi.spyOn(STSClient.prototype, 'send').mockRejectedValueOnce(
+      Object.assign(new Error('Access denied'), {
+        name: 'AccessDeniedException',
+      }),
+    );
+
+    await expect(
+      resolveAwsExecutionContext({
+        roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
+        explicitRegions: ['eu-west-1'],
+        allRegions: false,
+      }),
+    ).rejects.toThrow(/Unable to assume role .* access denied/i);
   });
 });

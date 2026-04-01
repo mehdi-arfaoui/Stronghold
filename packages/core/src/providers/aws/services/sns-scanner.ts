@@ -9,7 +9,7 @@ import {
   ListSubscriptionsByTopicCommand,
 } from '@aws-sdk/client-sns';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 export async function scanSnsTopics(
@@ -20,14 +20,18 @@ export async function scanSnsTopics(
   const warnings: string[] = [];
 
   const topicList = await paginateAws(
-    (nextToken) => sns.send(new ListTopicsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      sns.send(new ListTopicsCommand({ NextToken: nextToken }), getAwsCommandOptions(options)),
     (response) => response.Topics,
     (response) => response.NextToken,
   );
 
   for (const topic of topicList) {
     if (!topic.TopicArn) continue;
-    const attributes = await sns.send(new GetTopicAttributesCommand({ TopicArn: topic.TopicArn }));
+    const attributes = await sns.send(
+      new GetTopicAttributesCommand({ TopicArn: topic.TopicArn }),
+      getAwsCommandOptions(options),
+    );
     const attrs = attributes.Attributes ?? {};
     const topicName = topic.TopicArn.split(':').pop() ?? 'topic';
     let subscriptions: Array<{ protocol: string; endpoint: string }> = [];
@@ -40,6 +44,7 @@ export async function scanSnsTopics(
               TopicArn: topic.TopicArn,
               NextToken: nextToken,
             }),
+            getAwsCommandOptions(options),
           ),
         (response) => response.Subscriptions,
         (response) => response.NextToken,

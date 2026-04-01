@@ -8,7 +8,7 @@ import {
   DescribeReplicationGroupsCommand,
 } from '@aws-sdk/client-elasticache';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 export async function scanElastiCacheClusters(
@@ -17,7 +17,11 @@ export async function scanElastiCacheClusters(
   const elasticache = createAwsClient(ElastiCacheClient, options);
 
   const replicationGroups = await paginateAws(
-    (marker) => elasticache.send(new DescribeReplicationGroupsCommand({ Marker: marker })),
+    (marker) =>
+      elasticache.send(
+        new DescribeReplicationGroupsCommand({ Marker: marker }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.ReplicationGroups,
     (response) => response.Marker,
   );
@@ -32,6 +36,7 @@ export async function scanElastiCacheClusters(
     (marker) =>
       elasticache.send(
         new DescribeCacheClustersCommand({ ShowCacheNodeInfo: true, Marker: marker }),
+        getAwsCommandOptions(options),
       ),
     (response) => response.CacheClusters,
     (response) => response.Marker,

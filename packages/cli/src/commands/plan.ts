@@ -10,6 +10,7 @@ import {
 } from '@stronghold-dr/core';
 
 import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
+import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
 import type {
   PlanGenerateCommandOptions,
   PlanRunbookCommandOptions,
@@ -17,9 +18,10 @@ import type {
 } from '../config/options.js';
 import { getCommandOptions } from '../config/options.js';
 import { ConfigurationError } from '../errors/cli-error.js';
-import { writeOutput } from '../output/io.js';
+import { writeError, writeOutput } from '../output/io.js';
 import { renderPlanDocument } from '../output/plan-renderer.js';
 import { buildGraph } from '../pipeline/graph-builder.js';
+import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
 import {
   loadScanResultsWithEncryption,
   readTextFile,
@@ -30,14 +32,15 @@ import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/pat
 export function registerPlanCommand(program: Command): void {
   const plan = program.command('plan').description('Generate and validate DRP-as-Code documents');
 
-  plan
+  addGraphOverrideOptions(
+    plan
     .command('generate')
     .description('Generate a DR plan from the latest scan')
     .option('--output <file>', 'Write to file instead of stdout')
     .option('--format <format>', 'yaml|json', 'yaml')
     .option('--scan <path>', 'Path to scan results')
-    .option('--verbose', 'Show detailed logs', false)
-    .action(async (_: PlanGenerateCommandOptions, command: Command) => {
+    .option('--verbose', 'Show detailed logs', false),
+  ).action(async (_: PlanGenerateCommandOptions, command: Command) => {
       const options = getCommandOptions<PlanGenerateCommandOptions>(command);
       const audit = new CommandAuditSession('plan_generate', {
         outputFormat: options.format,
@@ -46,6 +49,8 @@ export function registerPlanCommand(program: Command): void {
           '--encrypt': options.encrypt,
           '--verbose': options.verbose,
           '--output': Boolean(options.output),
+          '--no-overrides': options.useOverrides === false,
+          '--overrides': options.useOverrides !== false,
         })
           ? {
               flags: collectAuditFlags({
@@ -53,6 +58,8 @@ export function registerPlanCommand(program: Command): void {
                 '--encrypt': options.encrypt,
                 '--verbose': options.verbose,
                 '--output': Boolean(options.output),
+                '--no-overrides': options.useOverrides === false,
+                '--overrides': options.useOverrides !== false,
               }),
             }
           : {}),
@@ -62,16 +69,19 @@ export function registerPlanCommand(program: Command): void {
 
       try {
         const scan = await loadLatestScan(options.scan, options.passphrase);
-        const graph = buildGraph(scan.nodes, scan.edges);
+        const resolvedOverrides = resolveGraphOverrides(options);
+        resolvedOverrides.warnings.forEach((warning) => writeError(warning));
+        const effectiveScan = await rebuildScanResults(scan, resolvedOverrides.overrides);
+        const graph = buildGraph(effectiveScan.nodes, effectiveScan.edges);
         const analysis = await analyzeFullGraph(graph);
         const planDocument = generateDRPlan({
           graph,
           analysis,
-          provider: scan.provider,
-          generatedAt: new Date(scan.timestamp),
+          provider: effectiveScan.provider,
+          generatedAt: new Date(effectiveScan.timestamp),
         });
         const outputPlan = options.redact ? redactObject(planDocument) : planDocument;
-        const rendered = renderPlanDocument(outputPlan, options.format, scan);
+        const rendered = renderPlanDocument(outputPlan, options.format, effectiveScan);
 
         if (!options.output) {
           await writeOutput(rendered);
@@ -86,7 +96,7 @@ export function registerPlanCommand(program: Command): void {
 
         await audit.finish({
           status: 'success',
-          resourceCount: scan.nodes.length,
+          resourceCount: effectiveScan.nodes.length,
         });
       } catch (error) {
         await audit.fail(error);

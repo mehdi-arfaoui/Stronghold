@@ -20,6 +20,11 @@ export interface AuditEntry {
   readonly parameters: {
     readonly regions?: readonly string[];
     readonly services?: readonly string[];
+    readonly profile?: string;
+    readonly concurrency?: number;
+    readonly scannerTimeoutSeconds?: number;
+    readonly roleArn?: string;
+    readonly accountName?: string;
     readonly outputFormat?: string;
     readonly flags?: readonly string[];
   };

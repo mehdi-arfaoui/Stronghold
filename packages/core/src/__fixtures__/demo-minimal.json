@@ -1,0 +1,183 @@
+{
+  "provider": "aws",
+  "regions": [
+    "eu-west-1"
+  ],
+  "nodes": [
+    {
+      "id": "vpc-minimal",
+      "name": "vpc-minimal",
+      "type": "VPC",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "VPC",
+        "vpcId": "vpc-minimal",
+        "cidrBlock": "10.0.0.0/16"
+      }
+    },
+    {
+      "id": "subnet-minimal-a",
+      "name": "subnet-minimal-a",
+      "type": "SUBNET",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "network"
+      },
+      "metadata": {
+        "sourceType": "SUBNET",
+        "subnetId": "subnet-minimal-a",
+        "vpcId": "vpc-minimal",
+        "availabilityZone": "eu-west-1a"
+      }
+    },
+    {
+      "id": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/minimal-api-alb/123456",
+      "name": "minimal-api-alb",
+      "type": "LOAD_BALANCER",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "frontend"
+      },
+      "metadata": {
+        "sourceType": "ELB",
+        "loadBalancerArn": "arn:aws:elasticloadbalancing:eu-west-1:123456789012:loadbalancer/app/minimal-api-alb/123456",
+        "loadBalancerName": "minimal-api-alb",
+        "crossZoneLoadBalancing": false,
+        "healthCheck": {
+          "healthyThreshold": 3,
+          "interval": 30
+        },
+        "availabilityZones": [
+          "eu-west-1a"
+        ]
+      }
+    },
+    {
+      "id": "arn:aws:ec2:eu-west-1:123456789012:instance/minimal-api-1",
+      "name": "minimal-api-1",
+      "type": "VM",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": "eu-west-1a",
+      "tags": {
+        "Service": "minimal-app"
+      },
+      "metadata": {
+        "sourceType": "EC2",
+        "availabilityZone": "eu-west-1a",
+        "instanceType": "t3.medium"
+      }
+    },
+    {
+      "id": "minimal-db",
+      "name": "minimal-db",
+      "type": "DATABASE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "database"
+      },
+      "metadata": {
+        "sourceType": "RDS",
+        "dbIdentifier": "minimal-db",
+        "dbArn": "arn:aws:rds:eu-west-1:123456789012:db:minimal-db",
+        "engine": "postgres",
+        "multiAz": false,
+        "backupRetentionPeriod": 0,
+        "readReplicaDBInstanceIdentifiers": []
+      }
+    },
+    {
+      "id": "arn:aws:s3:::minimal-uploads",
+      "name": "minimal-uploads",
+      "type": "OBJECT_STORAGE",
+      "provider": "aws",
+      "region": "eu-west-1",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "storage"
+      },
+      "metadata": {
+        "sourceType": "S3_BUCKET",
+        "bucketArn": "arn:aws:s3:::minimal-uploads",
+        "bucketName": "minimal-uploads",
+        "versioningStatus": "Disabled",
+        "hasCrossRegionReplication": false,
+        "replicationRules": []
+      }
+    },
+    {
+      "id": "ZMINIMAL123",
+      "name": "example-minimal.com",
+      "type": "DNS",
+      "provider": "aws",
+      "region": "global",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "dns"
+      },
+      "metadata": {
+        "sourceType": "route53_hosted_zone",
+        "hostedZoneId": "ZMINIMAL123",
+        "name": "example-minimal.com"
+      }
+    },
+    {
+      "id": "route53-record:ZMINIMAL123:api.example-minimal.com:A:simple",
+      "name": "api.example-minimal.com",
+      "type": "DNS",
+      "provider": "aws",
+      "region": "global",
+      "availabilityZone": null,
+      "tags": {
+        "Service": "dns"
+      },
+      "metadata": {
+        "sourceType": "route53_record",
+        "hostedZoneId": "ZMINIMAL123",
+        "name": "api.example-minimal.com",
+        "type": "A",
+        "routingPolicy": "simple",
+        "aliasTargetDnsName": "minimal-api-alb.eu-west-1.elb.amazonaws.com"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "source": "vpc-minimal",
+      "target": "subnet-minimal-a",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "minimal-api-alb",
+      "target": "minimal-api-1",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "minimal-api-1",
+      "target": "minimal-db",
+      "type": "DEPENDS_ON"
+    },
+    {
+      "source": "ZMINIMAL123",
+      "target": "route53-record:ZMINIMAL123:api.example-minimal.com:A:simple",
+      "type": "CONTAINS"
+    },
+    {
+      "source": "route53-record:ZMINIMAL123:api.example-minimal.com:A:simple",
+      "target": "minimal-api-alb",
+      "type": "ROUTES_TO"
+    }
+  ],
+  "isDemo": true
+}

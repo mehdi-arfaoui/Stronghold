@@ -66,6 +66,11 @@ export function computeCriticality(
 
   graph.forEachNode((nodeId, rawAttrs) => {
     const a = rawAttrs as unknown as InfraNodeAttrs;
+    if (a.criticalitySource === 'manual' && typeof a.criticalityScore === 'number') {
+      scores.set(nodeId, Math.max(0, Math.min(100, Math.round(a.criticalityScore))));
+      return;
+    }
+
     const bc = ((betweenness.get(nodeId) ?? 0) / maxBetweenness) * 40;
     const fanIn = graph.inDegree(nodeId);
     const fanInScore = (fanIn / maxFanIn) * 25;

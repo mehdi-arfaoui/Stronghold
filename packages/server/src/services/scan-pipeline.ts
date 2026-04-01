@@ -1,5 +1,5 @@
+import * as core from '@stronghold-dr/core';
 import {
-  allValidationRules,
   analyzeFullGraph,
   generateDRPlan,
   type DRPlan,
@@ -38,11 +38,16 @@ export interface ScanPipelineArtifacts {
 export async function runScanPipeline(
   input: ScanPipelineInput,
 ): Promise<ScanPipelineArtifacts> {
+  const validationRules = core.allValidationRules;
+  if (!Array.isArray(validationRules)) {
+    throw new Error('Validation rules are unavailable.');
+  }
+
   const graph = buildGraph(input.nodes, input.edges);
   const analysis = await analyzeFullGraph(graph);
   const analyzedNodes = snapshotNodes(graph);
   const analyzedEdges = snapshotEdges(graph);
-  const validationReport = runValidation(analyzedNodes, analyzedEdges, allValidationRules);
+  const validationReport = runValidation(analyzedNodes, analyzedEdges, validationRules);
   const drPlan = generateDRPlan({
     graph,
     analysis,

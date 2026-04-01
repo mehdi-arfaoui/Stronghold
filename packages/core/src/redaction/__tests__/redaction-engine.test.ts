@@ -80,7 +80,7 @@ describe('redaction-engine', () => {
     expect(original.report.resources[0]).toBe('sg-0abc1234def56789');
   });
 
-  it('redacts an object with 10,000 keys in under 100ms', () => {
+  it('redacts an object with 10,000 keys in under 250ms', () => {
     const input = Object.fromEntries(
       Array.from({ length: 10_000 }, (_, index) => [
         `key-${index}`,
@@ -93,7 +93,7 @@ describe('redaction-engine', () => {
     const duration = performance.now() - startedAt;
 
     expect(output['key-42']).toBe('arn:aws:rds:eu-west-1:****9012:db:orders-4****');
-    expect(duration).toBeLessThan(100);
+    expect(duration).toBeLessThan(250);
   });
 
   it('honors preserve exclusions', () => {

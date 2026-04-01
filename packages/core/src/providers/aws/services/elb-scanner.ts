@@ -9,7 +9,7 @@ import {
   ElasticLoadBalancingV2Client,
 } from '@aws-sdk/client-elastic-load-balancing-v2';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
 
 function parseBooleanAttribute(value: string | undefined): boolean | undefined {
@@ -33,7 +33,8 @@ export async function scanLoadBalancers(
   const resources: DiscoveredResource[] = [];
 
   const loadBalancers = await paginateAws(
-    (marker) => elb.send(new DescribeLoadBalancersCommand({ Marker: marker })),
+    (marker) =>
+      elb.send(new DescribeLoadBalancersCommand({ Marker: marker }), getAwsCommandOptions(options)),
     (response) => response.LoadBalancers,
     (response) => response.NextMarker,
   );
@@ -56,6 +57,7 @@ export async function scanLoadBalancers(
           new DescribeLoadBalancerAttributesCommand({
             LoadBalancerArn: loadBalancer.LoadBalancerArn,
           }),
+          getAwsCommandOptions(options),
         );
         const attributeMap = new Map(
           (attributes.Attributes ?? [])
@@ -79,6 +81,7 @@ export async function scanLoadBalancers(
                 LoadBalancerArn: loadBalancer.LoadBalancerArn,
                 Marker: marker,
               }),
+              getAwsCommandOptions(options),
             ),
           (response) => response.TargetGroups,
           (response) => response.NextMarker,

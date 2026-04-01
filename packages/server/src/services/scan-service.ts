@@ -1,5 +1,5 @@
+import * as core from '@stronghold-dr/core';
 import {
-  allValidationRules,
   deserializeDRPlan,
   dynamoDbPitrEnricher,
   ec2AsgEnricher,
@@ -99,7 +99,15 @@ export class ScanService {
     filters: ValidationReportFilters = {},
   ): Promise<ValidationReport> {
     const data = await this.getScanData(scanId);
-    const rules = allValidationRules.filter((rule) => {
+    const availableRules = core.allValidationRules;
+    if (!Array.isArray(availableRules)) {
+      throw new ServerError('Validation rules are unavailable', {
+        code: 'INTERNAL_ERROR',
+        status: 500,
+      });
+    }
+
+    const rules = availableRules.filter((rule) => {
       if (filters.category && rule.category !== filters.category) {
         return false;
       }
