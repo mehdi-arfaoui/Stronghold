@@ -59,6 +59,8 @@ export enum EdgeType {
 }
 
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
+export type EdgeProvenance = 'manual' | 'inferred' | 'aws-api';
+export type CriticalitySource = 'computed' | 'manual';
 
 /** Attributes stored on each graphology node. */
 export interface InfraNodeAttrs {
@@ -97,6 +99,8 @@ export interface InfraNodeAttrs {
   readonly estimatedMonthlyCostCurrency?: string | null;
   readonly estimatedMonthlyCostSource?: string | null;
   readonly estimatedMonthlyCostConfidence?: number | null;
+  readonly criticalitySource?: CriticalitySource;
+  readonly criticalityOverrideReason?: string | null;
 }
 
 /** Attributes stored on each graphology edge. */
@@ -106,6 +110,8 @@ export interface InfraEdgeAttrs {
   readonly inferenceMethod?: string | null;
   readonly confirmed: boolean;
   readonly metadata?: Record<string, unknown>;
+  readonly provenance?: EdgeProvenance;
+  readonly reason?: string;
 }
 
 /** Result of a cloud provider scan. */
@@ -123,6 +129,8 @@ export interface ScanEdge {
   readonly confidence?: number;
   readonly inferenceMethod?: string;
   readonly metadata?: Record<string, unknown>;
+  readonly provenance?: EdgeProvenance;
+  readonly reason?: string;
 }
 
 /** Reconciliation metrics after ingesting scan results into the graph. */

@@ -52,6 +52,44 @@ export async function processInBatches<TItem, TResult>(
   return results;
 }
 
+/** Process items with a bounded concurrency limit while preserving item order. */
+export async function processWithConcurrencyLimit<TItem, TResult>(
+  items: readonly TItem[],
+  concurrency: number,
+  processor: (item: TItem, index: number) => Promise<TResult>,
+): Promise<PromiseSettledResult<TResult>[]> {
+  const results = new Array<PromiseSettledResult<TResult>>(items.length);
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = {
+          status: 'fulfilled',
+          value: await processor(items[index] as TItem, index),
+        };
+      } catch (error) {
+        results[index] = {
+          status: 'rejected',
+          reason: error,
+        };
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+export async function sleep(delayMs: number): Promise<void> {
+  await new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
 const BUSINESS_TAG_KEYS = new Set(
   [
     'Business',

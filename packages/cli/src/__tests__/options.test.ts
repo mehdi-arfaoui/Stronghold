@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_SCAN_CONCURRENCY,
+  DEFAULT_SCANNER_TIMEOUT_SECONDS,
   DEFAULT_PROVIDER,
   DEFAULT_SCAN_OUTPUT,
   ensureVpcIncluded,
+  parseConcurrencyOption,
   parseRegionOption,
+  parseScannerTimeoutOption,
   parseServiceOption,
 } from '../config/options.js';
 
@@ -33,6 +37,20 @@ describe('options', () => {
   it('keeps the documented defaults and auto-includes VPC when needed', () => {
     expect(DEFAULT_PROVIDER).toBe('aws');
     expect(DEFAULT_SCAN_OUTPUT).toBe('summary');
+    expect(DEFAULT_SCAN_CONCURRENCY).toBe(5);
+    expect(DEFAULT_SCANNER_TIMEOUT_SECONDS).toBe(60);
     expect(ensureVpcIncluded(['rds', 'aurora'])).toEqual(['rds', 'aurora', 'vpc']);
+  });
+
+  it('parses bounded concurrency values', () => {
+    expect(parseConcurrencyOption('1')).toBe(1);
+    expect(parseConcurrencyOption('16')).toBe(16);
+    expect(() => parseConcurrencyOption('0')).toThrow(/--concurrency/);
+  });
+
+  it('parses bounded scanner timeout values', () => {
+    expect(parseScannerTimeoutOption('10')).toBe(10);
+    expect(parseScannerTimeoutOption('300')).toBe(300);
+    expect(() => parseScannerTimeoutOption('301')).toThrow(/--scanner-timeout/);
   });
 });

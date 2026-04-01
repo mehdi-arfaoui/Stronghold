@@ -2,11 +2,13 @@ import { Command } from 'commander';
 import { analyzeDriftImpact, detectDrift, redact } from '@stronghold-dr/core';
 
 import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
+import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
 import type { DriftCheckCommandOptions } from '../config/options.js';
 import { getCommandOptions } from '../config/options.js';
 import { FileStoreError } from '../errors/cli-error.js';
-import { writeOutput } from '../output/io.js';
+import { writeError, writeOutput } from '../output/io.js';
 import { buildGraph } from '../pipeline/graph-builder.js';
+import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
 import {
   loadScanResultsWithEncryption,
   saveScanResultsWithEncryption,
@@ -16,14 +18,15 @@ import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/pat
 export function registerDriftCommand(program: Command): void {
   const drift = program.command('drift').description('Detect DR drift between two scans');
 
-  drift
+  addGraphOverrideOptions(
+    drift
     .command('check')
     .description('Compare a baseline and current scan')
     .option('--baseline <path>', 'Path to baseline scan')
     .option('--current <path>', 'Path to current scan')
     .option('--save-baseline', 'Promote current scan as the new baseline', false)
-    .option('--verbose', 'Show detailed logs', false)
-    .action(async (_: DriftCheckCommandOptions, command: Command) => {
+    .option('--verbose', 'Show detailed logs', false),
+  ).action(async (_: DriftCheckCommandOptions, command: Command) => {
       const options = getCommandOptions<DriftCheckCommandOptions>(command);
       const audit = new CommandAuditSession('drift_check', {
         outputFormat: 'terminal',
@@ -32,6 +35,8 @@ export function registerDriftCommand(program: Command): void {
           '--encrypt': options.encrypt,
           '--redact': options.redact,
           '--verbose': options.verbose,
+          '--no-overrides': options.useOverrides === false,
+          '--overrides': options.useOverrides !== false,
         })
           ? {
               flags: collectAuditFlags({
@@ -39,6 +44,8 @@ export function registerDriftCommand(program: Command): void {
                 '--encrypt': options.encrypt,
                 '--redact': options.redact,
                 '--verbose': options.verbose,
+                '--no-overrides': options.useOverrides === false,
+                '--overrides': options.useOverrides !== false,
               }),
             }
           : {}),
@@ -57,6 +64,9 @@ export function registerDriftCommand(program: Command): void {
         const current = await loadScanResultsWithEncryption(currentPath, {
           passphrase: options.passphrase,
         });
+        const resolvedOverrides = resolveGraphOverrides(options);
+        resolvedOverrides.warnings.forEach((warning) => writeError(warning));
+        const effectiveCurrent = await rebuildScanResults(current, resolvedOverrides.overrides);
 
         try {
           const baseline = await loadScanResultsWithEncryption(baselinePath, {
@@ -67,8 +77,8 @@ export function registerDriftCommand(program: Command): void {
             scanIdAfter: current.timestamp,
             timestamp: new Date(current.timestamp),
           });
-          const driftReport = analyzeDriftImpact(rawDrift, buildGraph(current.nodes, current.edges), {
-            drpComponentIds: current.drpPlan.services.flatMap((service) =>
+          const driftReport = analyzeDriftImpact(rawDrift, buildGraph(effectiveCurrent.nodes, effectiveCurrent.edges), {
+            drpComponentIds: effectiveCurrent.drpPlan.services.flatMap((service) =>
               service.components.map((component) => component.resourceId),
             ),
           });
@@ -103,7 +113,7 @@ export function registerDriftCommand(program: Command): void {
           }
           await audit.finish({
             status: 'success',
-            resourceCount: current.nodes.length,
+            resourceCount: effectiveCurrent.nodes.length,
           });
         } catch (error) {
           if (!isMissingBaselineError(error)) {
@@ -115,7 +125,7 @@ export function registerDriftCommand(program: Command): void {
             await writeOutput(`No baseline found. Saved current scan as baseline to ${savedPath}.`);
             await audit.finish({
               status: 'success',
-              resourceCount: current.nodes.length,
+              resourceCount: effectiveCurrent.nodes.length,
             });
             return;
           }
@@ -126,7 +136,7 @@ export function registerDriftCommand(program: Command): void {
           process.exitCode = 2;
           await audit.finish({
             status: 'failure',
-            resourceCount: current.nodes.length,
+            resourceCount: effectiveCurrent.nodes.length,
             errorMessage: 'No baseline found.',
           });
         }

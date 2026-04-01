@@ -4,7 +4,7 @@
 
 import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from '@aws-sdk/client-auto-scaling';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 export async function scanAutoScalingGroups(
@@ -13,7 +13,11 @@ export async function scanAutoScalingGroups(
   const asg = createAwsClient(AutoScalingClient, options);
 
   const groups = await paginateAws(
-    (nextToken) => asg.send(new DescribeAutoScalingGroupsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      asg.send(
+        new DescribeAutoScalingGroupsCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.AutoScalingGroups,
     (response) => response.NextToken,
   );

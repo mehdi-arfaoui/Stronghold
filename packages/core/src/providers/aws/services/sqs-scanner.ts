@@ -4,7 +4,7 @@
 
 import { SQSClient, ListQueuesCommand, GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 function parseRedrivePolicy(rawPolicy: string | undefined): Record<string, unknown> | undefined {
@@ -33,7 +33,8 @@ export async function scanSqsQueues(options: AwsClientOptions): Promise<Discover
   const sqs = createAwsClient(SQSClient, options);
 
   const queueUrls = await paginateAws(
-    (nextToken) => sqs.send(new ListQueuesCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      sqs.send(new ListQueuesCommand({ NextToken: nextToken }), getAwsCommandOptions(options)),
     (response) => response.QueueUrls,
     (response) => response.NextToken,
   );
@@ -43,6 +44,7 @@ export async function scanSqsQueues(options: AwsClientOptions): Promise<Discover
   for (const queueUrl of queueUrls) {
     const queueAttributes = await sqs.send(
       new GetQueueAttributesCommand({ QueueUrl: queueUrl, AttributeNames: ['All'] }),
+      getAwsCommandOptions(options),
     );
     const attrs = queueAttributes.Attributes ?? {};
     const queueArn = attrs.QueueArn ?? queueUrl;

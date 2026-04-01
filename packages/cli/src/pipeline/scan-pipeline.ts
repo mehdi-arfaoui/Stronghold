@@ -2,11 +2,13 @@ import {
   allValidationRules,
   analyzeFullGraph,
   generateDRPlan,
+  type GraphOverrides,
   runValidation,
   type GraphAnalysisReport,
   type InfraNode,
 } from '@stronghold-dr/core';
 
+import { preparePipelineGraph } from './graph-adjustments.js';
 import { buildGraph, snapshotEdges, snapshotNodes } from './graph-builder.js';
 import type { ScanResults, SerializedGraphAnalysis, StoredScanEdge } from '../storage/file-store.js';
 
@@ -16,6 +18,8 @@ export interface ScanPipelineInput {
   readonly nodes: readonly InfraNode[];
   readonly edges: ReadonlyArray<StoredScanEdge>;
   readonly timestamp: string;
+  readonly graphOverrides?: GraphOverrides | null;
+  readonly scanMetadata?: ScanResults['scanMetadata'];
   readonly warnings?: readonly string[];
   readonly isDemo?: boolean;
   readonly onStage?: (stage: 'graph' | 'validation' | 'plan') => void | Promise<void>;
@@ -23,7 +27,13 @@ export interface ScanPipelineInput {
 
 export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanResults> {
   await input.onStage?.('graph');
-  const graph = buildGraph(input.nodes, input.edges);
+  const prepared = preparePipelineGraph({
+    nodes: input.nodes,
+    edges: input.edges,
+    graphOverrides: input.graphOverrides,
+  });
+  const allWarnings = [...(input.warnings ?? []), ...prepared.warnings];
+  const graph = buildGraph(prepared.nodes, prepared.edges);
   const analysis = await analyzeFullGraph(graph);
   const analyzedNodes = snapshotNodes(graph);
   const analyzedEdges = snapshotEdges(graph);
@@ -46,7 +56,8 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     analysis: serializeAnalysis(analysis),
     validationReport,
     drpPlan,
-    ...(input.warnings && input.warnings.length > 0 ? { warnings: [...input.warnings] } : {}),
+    ...(input.scanMetadata ? { scanMetadata: input.scanMetadata } : {}),
+    ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
     ...(input.isDemo ? { isDemo: true } : {}),
   };
 }

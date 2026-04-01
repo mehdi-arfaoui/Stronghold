@@ -16,7 +16,7 @@ import { ErrorState } from '@/components/common/ErrorState';
 import { InfraDisclaimer } from '@/components/common/InfraDisclaimer';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import { GraphControls } from '@/components/graph/GraphControls';
-import { InfraGraph } from '@/components/graph/InfraGraph';
+import { InfraGraph, type GraphEdgeVisualData } from '@/components/graph/InfraGraph';
 import { GraphSearch } from '@/components/graph/GraphSearch';
 import { type GraphVisualData } from '@/components/graph/GraphNode';
 import { NodeDetails } from '@/components/graph/NodeDetails';
@@ -29,6 +29,12 @@ const STATUS_PRIORITY: Record<ValidationStatus, number> = {
   warn: 2,
   pass: 3,
   skip: 4,
+};
+
+const EDGE_PROVENANCE_PRIORITY: Record<'manual' | 'inferred' | 'aws-api', number> = {
+  manual: 0,
+  inferred: 1,
+  'aws-api': 2,
 };
 
 function readText(value: unknown): string | null {
@@ -113,6 +119,10 @@ function buildIndividualNode(
       emphasis: component ? `RTO ${component.estimatedRTO}` : undefined,
     },
   };
+}
+
+function normalizeEdgeProvenance(value: unknown): 'manual' | 'inferred' | 'aws-api' {
+  return value === 'manual' || value === 'inferred' || value === 'aws-api' ? value : 'aws-api';
 }
 
 export default function GraphPage(): JSX.Element {
@@ -255,7 +265,16 @@ export default function GraphPage(): JSX.Element {
     });
 
     const visibleNodeIds = new Set(filteredNodes.map((node) => node.id));
-    const edgeWeights = new Map<string, { readonly source: string; readonly target: string; readonly type: string; count: number }>();
+    const edgeWeights = new Map<
+      string,
+      {
+        readonly source: string;
+        readonly target: string;
+        readonly type: string;
+        provenance: 'manual' | 'inferred' | 'aws-api';
+        count: number;
+      }
+    >();
 
     rawEdges.forEach((edge) => {
       if (!visibleNodeIds.has(edge.source) || !visibleNodeIds.has(edge.target)) {
@@ -272,6 +291,10 @@ export default function GraphPage(): JSX.Element {
       const current = edgeWeights.get(key);
       if (current) {
         current.count += 1;
+        const provenance = normalizeEdgeProvenance(edge.provenance);
+        if (EDGE_PROVENANCE_PRIORITY[provenance] < EDGE_PROVENANCE_PRIORITY[current.provenance]) {
+          current.provenance = provenance;
+        }
         return;
       }
 
@@ -279,16 +302,22 @@ export default function GraphPage(): JSX.Element {
         source,
         target,
         type: edge.type,
+        provenance: normalizeEdgeProvenance(edge.provenance),
         count: 1,
       });
     });
 
-    const displayEdges: Array<Edge> = Array.from(edgeWeights.entries()).map(([key, value]) => ({
-      id: key,
-      source: value.source,
-      target: value.target,
-      label: value.count > 1 ? `${value.type} ×${value.count}` : value.type,
-    }));
+    const displayEdges: Array<Edge<GraphEdgeVisualData>> = Array.from(edgeWeights.entries()).map(
+      ([key, value]) => ({
+        id: key,
+        source: value.source,
+        target: value.target,
+        label: value.count > 1 ? `${value.type} x${value.count}` : value.type,
+        data: {
+          provenance: value.provenance,
+        },
+      }),
+    );
 
     return {
       nodes: displayNodes,
@@ -444,6 +473,26 @@ export default function GraphPage(): JSX.Element {
             onZoomOut={() => issueCommand('zoom-out')}
             onFitView={() => issueCommand('fit')}
           />
+          <section className="panel p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Edge legend</p>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-foreground">
+              <div className="flex items-center gap-2">
+                <span className="w-9 border-t-2 border-foreground/70" />
+                <span>AWS API</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-9 border-t-2 border-dashed border-muted-foreground" />
+                <span>Inferred</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-9 border-t-2 border-dashed"
+                  style={{ borderColor: '#c26d1f' }}
+                />
+                <span>Manual override</span>
+              </div>
+            </div>
+          </section>
           <InfraGraph
             nodes={graphData.nodes}
             edges={graphData.edges}

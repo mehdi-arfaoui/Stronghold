@@ -5,7 +5,7 @@
 import { CloudWatchClient, DescribeAlarmsCommand } from '@aws-sdk/client-cloudwatch';
 import type { Dimension, MetricAlarm } from '@aws-sdk/client-cloudwatch';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource } from '../scan-utils.js';
 
 const MONITORED_DIMENSION_NAMES = new Set([
@@ -53,6 +53,7 @@ async function listMetricAlarms(options: AwsClientOptions): Promise<readonly Met
         AlarmTypes: ['MetricAlarm'],
         NextToken: nextToken,
       }),
+      getAwsCommandOptions(options),
     );
     alarms.push(...(response.MetricAlarms ?? []));
     nextToken = response.NextToken;

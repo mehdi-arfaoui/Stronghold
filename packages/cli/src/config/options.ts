@@ -1,4 +1,6 @@
+import { ConfigurationError } from '../errors/cli-error.js';
 import type { Command } from 'commander';
+import type { GraphOverrideCommandOptions } from './graph-overrides.js';
 
 export const SUPPORTED_SERVICES = [
   'ec2',
@@ -23,6 +25,8 @@ export type SupportedService = (typeof SUPPORTED_SERVICES)[number];
 
 export const DEFAULT_PROVIDER = 'aws';
 export const DEFAULT_SCAN_OUTPUT = 'summary';
+export const DEFAULT_SCAN_CONCURRENCY = 5;
+export const DEFAULT_SCANNER_TIMEOUT_SECONDS = 60;
 export const DEFAULT_REPORT_FORMAT = 'terminal';
 export const DEFAULT_PLAN_FORMAT = 'yaml';
 export const DEFAULT_DEMO_SCENARIO = 'startup';
@@ -33,12 +37,17 @@ export type ReportOutputFormat = 'terminal' | 'markdown' | 'json';
 export type PlanOutputFormat = 'yaml' | 'json';
 export type DemoScenario = 'startup' | 'enterprise' | 'minimal';
 
-export interface ScanCommandOptions {
+export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly provider: string;
   readonly region?: readonly string[];
   readonly allRegions: boolean;
+  readonly account?: string;
   readonly profile?: string;
+  readonly roleArn?: string;
+  readonly externalId?: string;
   readonly services?: readonly SupportedService[];
+  readonly concurrency?: number;
+  readonly scannerTimeout?: number;
   readonly output: ScanOutputFormat;
   readonly save: boolean;
   readonly verbose: boolean;
@@ -50,7 +59,7 @@ export interface GlobalEncryptionOptions {
   readonly redact?: boolean;
 }
 
-export interface ReportCommandOptions {
+export interface ReportCommandOptions extends GraphOverrideCommandOptions {
   readonly format: ReportOutputFormat;
   readonly output?: string;
   readonly scan?: string;
@@ -59,7 +68,7 @@ export interface ReportCommandOptions {
   readonly verbose: boolean;
 }
 
-export interface PlanGenerateCommandOptions {
+export interface PlanGenerateCommandOptions extends GraphOverrideCommandOptions {
   readonly output?: string;
   readonly format: PlanOutputFormat;
   readonly scan?: string;
@@ -80,7 +89,7 @@ export interface PlanRunbookCommandOptions {
   readonly verbose: boolean;
 }
 
-export interface DriftCheckCommandOptions {
+export interface DriftCheckCommandOptions extends GraphOverrideCommandOptions {
   readonly baseline?: string;
   readonly current?: string;
   readonly saveBaseline: boolean;
@@ -120,6 +129,14 @@ export function parseServiceOption(value: string): readonly SupportedService[] {
   return services as readonly SupportedService[];
 }
 
+export function parseConcurrencyOption(value: string): number {
+  return parseBoundedInteger(value, 1, 16, '--concurrency');
+}
+
+export function parseScannerTimeoutOption(value: string): number {
+  return parseBoundedInteger(value, 10, 300, '--scanner-timeout');
+}
+
 export function isSupportedService(value: string): value is SupportedService {
   return SUPPORTED_SERVICES.includes(value as SupportedService);
 }
@@ -138,4 +155,16 @@ export function getCommandOptions<TOptions extends object>(
 ): TOptions & GlobalEncryptionOptions {
   return command.optsWithGlobals() as TOptions & GlobalEncryptionOptions;
 }
-import { ConfigurationError } from '../errors/cli-error.js';
+
+function parseBoundedInteger(
+  value: string,
+  min: number,
+  max: number,
+  optionName: string,
+): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
+    throw new ConfigurationError(`${optionName} must be an integer between ${min} and ${max}.`);
+  }
+  return parsed;
+}

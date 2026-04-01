@@ -1,17 +1,19 @@
-import { DirectedGraph } from 'graphology';
+import { MultiDirectedGraph } from 'graphology';
 
 import type { GraphInstance, InfraNode, ScanEdge } from '@stronghold-dr/core';
 
 import type { StoredScanEdge } from '../storage/file-store.js';
 
+const AWS_API_INFERENCE_METHODS = new Set(['metadata', 'network_flow']);
+
 type GraphRecord = Record<string, unknown>;
-type CliGraph = DirectedGraph<GraphRecord, GraphRecord>;
+type CliGraph = MultiDirectedGraph<GraphRecord, GraphRecord>;
 
 export function buildGraph(
   nodes: readonly InfraNode[],
   edges: ReadonlyArray<StoredScanEdge | ScanEdge>,
 ): GraphInstance {
-  const graph: CliGraph = new DirectedGraph<GraphRecord, GraphRecord>();
+  const graph: CliGraph = new MultiDirectedGraph<GraphRecord, GraphRecord>();
 
   for (const node of nodes) {
     if (graph.hasNode(node.id)) {
@@ -34,6 +36,8 @@ export function buildGraph(
       type: edge.type,
       confidence: 'confidence' in edge && typeof edge.confidence === 'number' ? edge.confidence : 1,
       confirmed: true,
+      provenance: resolveEdgeProvenance(edge),
+      ...('reason' in edge && edge.reason ? { reason: edge.reason } : {}),
       ...('metadata' in edge && edge.metadata ? { metadata: edge.metadata } : {}),
       ...('inferenceMethod' in edge && edge.inferenceMethod
         ? { inferenceMethod: edge.inferenceMethod }
@@ -60,6 +64,11 @@ export function snapshotEdges(graph: GraphInstance): ReadonlyArray<StoredScanEdg
       source,
       target,
       type: String(attrs.type ?? 'DEPENDS_ON'),
+      ...(typeof attrs.confidence === 'number' ? { confidence: attrs.confidence } : {}),
+      ...(typeof attrs.inferenceMethod === 'string' ? { inferenceMethod: attrs.inferenceMethod } : {}),
+      ...(attrs.metadata && typeof attrs.metadata === 'object' ? { metadata: attrs.metadata as Record<string, unknown> } : {}),
+      ...(typeof attrs.provenance === 'string' ? { provenance: attrs.provenance as StoredScanEdge['provenance'] } : {}),
+      ...(typeof attrs.reason === 'string' ? { reason: attrs.reason } : {}),
     });
   });
   return edges.sort(
@@ -72,4 +81,21 @@ export function snapshotEdges(graph: GraphInstance): ReadonlyArray<StoredScanEdg
 
 function buildEdgeKey(edge: StoredScanEdge | ScanEdge): string {
   return `${edge.source}->${edge.target}:${edge.type}`;
+}
+
+function resolveEdgeProvenance(edge: StoredScanEdge | ScanEdge): StoredScanEdge['provenance'] {
+  if ('provenance' in edge && edge.provenance) {
+    return edge.provenance;
+  }
+  if ('reason' in edge && edge.reason) {
+    return 'manual';
+  }
+  if (
+    'inferenceMethod' in edge &&
+    typeof edge.inferenceMethod === 'string' &&
+    !AWS_API_INFERENCE_METHODS.has(edge.inferenceMethod)
+  ) {
+    return 'inferred';
+  }
+  return 'aws-api';
 }

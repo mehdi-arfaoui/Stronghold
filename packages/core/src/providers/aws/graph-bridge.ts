@@ -551,6 +551,7 @@ function inferFlowEdges(nodes: InfraNodeAttrs[], flows: DiscoveredFlow[], edges:
         type: EdgeType.CONNECTS_TO,
         confidence: 0.6,
         inferenceMethod: 'network_flow',
+        provenance: 'aws-api',
       });
     }
   }
@@ -579,6 +580,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.CONTAINS,
           confidence: 1.0,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -592,6 +594,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.CONTAINS,
           confidence: 1.0,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -615,6 +618,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.REPLICATES_TO,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -628,6 +632,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.REPLICATES_TO,
           confidence: 1.0,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -647,6 +652,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.CONTAINS,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -660,6 +666,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.REPLICATES_TO,
           confidence: 1.0,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -679,6 +686,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.CONTAINS,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -699,6 +707,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.CONTAINS,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -719,6 +728,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.REPLICATES_TO,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -735,6 +745,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.RUNS_ON,
           confidence: 0.9,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
         addInferredEdge(edges, dedupe, {
           source: node.id,
@@ -742,6 +753,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.PLACED_IN,
           confidence: 0.9,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -762,6 +774,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
         type: EdgeType.SECURED_BY,
         confidence: 1.0,
         inferenceMethod: 'metadata',
+        provenance: 'aws-api',
         metadata: { securityGroupId },
       });
     }
@@ -782,6 +795,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.CONTAINS,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -795,6 +809,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.ROUTES_TO,
           confidence: 0.8,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -814,6 +829,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.BACKS_UP_TO,
             confidence: 1.0,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
             metadata: resourceArn ? { resourceArn } : undefined,
           });
         }
@@ -837,6 +853,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
           type: EdgeType.BACKS_UP_TO,
           confidence: 0.9,
           inferenceMethod: 'metadata',
+          provenance: 'aws-api',
         });
       }
     }
@@ -856,6 +873,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.MONITORS,
             confidence: 0.9,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }
@@ -874,6 +892,7 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             type: EdgeType.PUBLISHES_TO,
             confidence: 0.9,
             inferenceMethod: 'metadata',
+            provenance: 'aws-api',
           });
         }
       }

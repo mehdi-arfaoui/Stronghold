@@ -12,7 +12,7 @@ import {
   DescribeSecurityGroupsCommand,
 } from '@aws-sdk/client-ec2';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { createAwsClient, type AwsClientOptions } from '../aws-client-factory.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource, toBusinessTagMap } from '../scan-utils.js';
 
 /** Scans EC2 instances in a region. */
@@ -24,7 +24,11 @@ export async function scanEc2Instances(
   const warnings: string[] = [];
 
   const reservations = await paginateAws(
-    (nextToken) => ec2.send(new DescribeInstancesCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      ec2.send(
+        new DescribeInstancesCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.Reservations,
     (response) => response.NextToken,
   );
@@ -71,7 +75,7 @@ export async function scanEc2Instances(
     }
   }
 
-  applyEc2Tags(ec2, resources, options.region).catch(() => {
+  applyEc2Tags(ec2, options, resources, options.region).catch(() => {
     warnings.push(`EC2 tag enrichment failed in ${options.region}.`);
   });
 
@@ -80,10 +84,11 @@ export async function scanEc2Instances(
 
 async function applyEc2Tags(
   ec2: EC2Client,
+  options: AwsClientOptions,
   resources: DiscoveredResource[],
   region: string,
 ): Promise<void> {
-  const tags = await ec2.send(new DescribeTagsCommand({}));
+  const tags = await ec2.send(new DescribeTagsCommand({}), getAwsCommandOptions(options));
   if (!tags.Tags) return;
 
   for (const tag of tags.Tags) {
@@ -144,7 +149,8 @@ function enrichBusinessTags(resources: DiscoveredResource[], _region: string): v
 export async function scanVpcs(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
   const vpcs = await paginateAws(
-    (nextToken) => ec2.send(new DescribeVpcsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      ec2.send(new DescribeVpcsCommand({ NextToken: nextToken }), getAwsCommandOptions(options)),
     (response) => response.Vpcs,
     (response) => response.NextToken,
   );
@@ -172,7 +178,11 @@ export async function scanVpcs(options: AwsClientOptions): Promise<DiscoveredRes
 export async function scanSubnets(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
   const subnets = await paginateAws(
-    (nextToken) => ec2.send(new DescribeSubnetsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      ec2.send(
+        new DescribeSubnetsCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.Subnets,
     (response) => response.NextToken,
   );
@@ -202,7 +212,11 @@ export async function scanSubnets(options: AwsClientOptions): Promise<Discovered
 export async function scanNatGateways(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
   const natGateways = await paginateAws(
-    (nextToken) => ec2.send(new DescribeNatGatewaysCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      ec2.send(
+        new DescribeNatGatewaysCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.NatGateways,
     (response) => response.NextToken,
   );
@@ -237,7 +251,11 @@ export async function scanNatGateways(options: AwsClientOptions): Promise<Discov
 export async function scanSecurityGroups(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
   const securityGroups = await paginateAws(
-    (nextToken) => ec2.send(new DescribeSecurityGroupsCommand({ NextToken: nextToken })),
+    (nextToken) =>
+      ec2.send(
+        new DescribeSecurityGroupsCommand({ NextToken: nextToken }),
+        getAwsCommandOptions(options),
+      ),
     (response) => response.SecurityGroups,
     (response) => response.NextToken,
   );

@@ -1,44 +1,49 @@
-/**
- * AWS cloud provider scanner — orchestrates per-service scanners
- * across one or multiple regions with concurrency control.
- */
+import { DescribeRegionsCommand, EC2Client } from '@aws-sdk/client-ec2';
 
-import { EC2Client, DescribeRegionsCommand } from '@aws-sdk/client-ec2';
-import type { DiscoveredResource } from '../../types/discovery.js';
+import type { DiscoveryCredentials, DiscoveredResource } from '../../types/discovery.js';
 import type {
   CloudProviderAdapter,
-  ScanOutput,
-  ScanOptions,
   DiscoveryProgress,
+  ScanOptions,
+  ScanOutput,
 } from '../provider-interface.js';
-import type { DiscoveryCredentials } from '../../types/discovery.js';
-import type { AwsClientOptions } from './aws-client-factory.js';
-import { createAwsClient } from './aws-client-factory.js';
-import { processInBatches } from './scan-utils.js';
-import {
-  scanEc2Instances,
-  scanVpcs,
-  scanSubnets,
-  scanSecurityGroups,
-  scanNatGateways,
-} from './services/ec2-scanner.js';
+import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from './aws-client-factory.js';
+import { processWithConcurrencyLimit, sleep } from './scan-utils.js';
 import { scanAuroraClusters } from './services/aurora-scanner.js';
-import { scanRdsInstances } from './services/rds-scanner.js';
-import { scanEfsFileSystems } from './services/efs-scanner.js';
-import { scanLambdaFunctions } from './services/lambda-scanner.js';
-import { scanElastiCacheClusters } from './services/elasticache-scanner.js';
-import { scanDynamoDbTables } from './services/dynamodb-scanner.js';
-import { scanS3Buckets } from './services/s3-scanner.js';
-import { scanSqsQueues } from './services/sqs-scanner.js';
-import { scanSnsTopics } from './services/sns-scanner.js';
-import { scanLoadBalancers } from './services/elb-scanner.js';
-import { scanEksClusters } from './services/eks-scanner.js';
 import { scanAutoScalingGroups } from './services/auto-scaling-scanner.js';
-import { scanRoute53HostedZones } from './services/route53-scanner.js';
 import { scanBackupResources } from './services/backup-scanner.js';
 import { scanCloudWatchAlarms } from './services/cloudwatch-scanner.js';
+import { scanDynamoDbTables } from './services/dynamodb-scanner.js';
+import {
+  scanEc2Instances,
+  scanNatGateways,
+  scanSecurityGroups,
+  scanSubnets,
+  scanVpcs,
+} from './services/ec2-scanner.js';
+import { scanEfsFileSystems } from './services/efs-scanner.js';
+import { scanEksClusters } from './services/eks-scanner.js';
+import { scanElastiCacheClusters } from './services/elasticache-scanner.js';
+import { scanLoadBalancers } from './services/elb-scanner.js';
+import { scanLambdaFunctions } from './services/lambda-scanner.js';
+import { scanRdsInstances } from './services/rds-scanner.js';
+import { scanRoute53HostedZones } from './services/route53-scanner.js';
+import { scanS3Buckets } from './services/s3-scanner.js';
+import { scanSnsTopics } from './services/sns-scanner.js';
+import { scanSqsQueues } from './services/sqs-scanner.js';
 
-const MAX_CONCURRENT_REGIONS = 5;
+export const DEFAULT_SCANNER_CONCURRENCY = 5;
+export const MIN_SCANNER_CONCURRENCY = 1;
+export const MAX_SCANNER_CONCURRENCY = 16;
+export const DEFAULT_SCANNER_TIMEOUT_MS = 60_000;
+export const MIN_SCANNER_TIMEOUT_MS = 10_000;
+export const MAX_SCANNER_TIMEOUT_MS = 300_000;
+export const DEFAULT_AWS_RETRY_POLICY = {
+  maxAttempts: 3,
+  initialBackoffMs: 1_000,
+  backoffMultiplier: 2,
+  maxJitterMs: 250,
+} as const;
 
 const SERVICE_SCANNERS = [
   'EC2',
@@ -61,6 +66,107 @@ const SERVICE_SCANNERS = [
   'S3',
 ] as const;
 
+export type AwsServiceScannerOutput =
+  | DiscoveredResource[]
+  | { resources: DiscoveredResource[]; warnings: string[] };
+
+export type AwsServiceScanner = (
+  options: AwsClientOptions,
+) => Promise<AwsServiceScannerOutput>;
+
+export interface AwsServiceScannerDefinition {
+  readonly name: string;
+  readonly global?: boolean;
+  readonly scan: AwsServiceScanner;
+}
+
+export interface AwsRetryPolicy {
+  readonly maxAttempts: number;
+  readonly initialBackoffMs: number;
+  readonly backoffMultiplier: number;
+  readonly maxJitterMs: number;
+}
+
+export interface AwsServiceScanResult {
+  readonly scannerName: string;
+  readonly region: string;
+  readonly durationMs: number;
+  readonly retryCount: number;
+  readonly finalStatus: 'success' | 'failed';
+  readonly failureType?: string;
+  readonly resourceCount: number;
+}
+
+export interface AwsServiceScannerCapture {
+  readonly scannerResult: AwsServiceScanResult;
+  readonly resources: readonly DiscoveredResource[];
+  readonly warnings: readonly string[];
+}
+
+export interface AwsRegionScanResult {
+  readonly region: string;
+  readonly durationMs: number;
+  readonly resources: readonly DiscoveredResource[];
+  readonly warnings: readonly string[];
+  readonly scannerResults: readonly AwsServiceScanResult[];
+  readonly scannerOutputs?: readonly AwsServiceScannerCapture[];
+}
+
+export interface AwsScanSummary {
+  readonly totalDurationMs: number;
+  readonly scannerConcurrency: number;
+  readonly scannerTimeoutMs: number;
+  readonly scannedRegions: readonly string[];
+  readonly discoveredResourceCount: number;
+  readonly successfulScanners: number;
+  readonly failedScanners: number;
+  readonly scannerResults: readonly AwsServiceScanResult[];
+}
+
+export interface ScanAwsRegionOptions {
+  readonly includeGlobalServices: boolean;
+  readonly services?: readonly string[];
+  readonly onProgress?: ScanOptions['onProgress'];
+  readonly scannerConcurrency?: number;
+  readonly scannerTimeoutMs?: number;
+  readonly retryPolicy?: AwsRetryPolicy;
+  readonly random?: () => number;
+  readonly scanners?: readonly AwsServiceScannerDefinition[];
+}
+
+function buildAwsServiceScanners(
+  includeGlobalServices: boolean,
+): readonly AwsServiceScannerDefinition[] {
+  return [
+    { name: 'EC2', scan: scanEc2Instances },
+    { name: 'RDS', scan: scanRdsInstances },
+    {
+      name: 'Aurora',
+      scan: (options) =>
+        scanAuroraClusters(options, {
+          includeGlobalClusters: includeGlobalServices,
+        }),
+    },
+    { name: 'EFS', scan: scanEfsFileSystems },
+    { name: 'Lambda', scan: scanLambdaFunctions },
+    { name: 'ElastiCache', scan: scanElastiCacheClusters },
+    { name: 'DynamoDB', scan: scanDynamoDbTables },
+    { name: 'SQS', scan: scanSqsQueues },
+    { name: 'SNS', scan: scanSnsTopics },
+    { name: 'ELB', scan: scanLoadBalancers },
+    { name: 'EKS', scan: scanEksClusters },
+    { name: 'AutoScaling', scan: scanAutoScalingGroups },
+    { name: 'VPC', scan: scanVpcs },
+    { name: 'NATGateway', scan: scanNatGateways },
+    { name: 'Backup', scan: scanBackupResources },
+    { name: 'CloudWatch', scan: scanCloudWatchAlarms },
+    { name: 'Subnets', scan: scanSubnets },
+    { name: 'SecurityGroups', scan: scanSecurityGroups },
+    { name: 'S3', global: true, scan: scanS3Buckets },
+    { name: 'Route53', global: true, scan: scanRoute53HostedZones },
+  ];
+}
+
 async function getAllAwsRegions(credentials: DiscoveryCredentials): Promise<string[]> {
   if (!credentials.aws) {
     return [];
@@ -69,19 +175,17 @@ async function getAllAwsRegions(credentials: DiscoveryCredentials): Promise<stri
   const ec2 = createAwsClient(EC2Client, {
     region: 'us-east-1',
     credentials: credentials.aws,
+    maxAttempts: 1,
   });
-  const { Regions } = await ec2.send(new DescribeRegionsCommand({}));
-  return Regions?.map((r) => r.RegionName).filter((name): name is string => Boolean(name)) ?? [];
+  const { Regions } = await ec2.send(new DescribeRegionsCommand({}), getAwsCommandOptions({}));
+  return Regions?.map((entry) => entry.RegionName).filter((name): name is string => Boolean(name)) ?? [];
 }
 
 function emitProgress(
   onProgress: ScanOptions['onProgress'],
-  service: string,
-  status: DiscoveryProgress['status'],
-  resourceCount: number,
-  error?: string,
+  progress: DiscoveryProgress,
 ): void {
-  onProgress?.({ service, status, resourceCount, error });
+  onProgress?.(progress);
 }
 
 function normalizeRequestedServices(
@@ -188,34 +292,124 @@ function getAwsErrorCode(error: unknown): string {
   return String(candidate.name ?? candidate.Code ?? candidate.code ?? '');
 }
 
-function isRetryableAwsError(error: unknown): boolean {
-  const code = getAwsErrorCode(error).toLowerCase();
-  return code.includes('throttl') || code.includes('timeout') || code.includes('toomanyrequests');
+function getAwsErrorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+  return String(error);
 }
 
-async function executeWithRetry<TValue>(
-  action: () => Promise<TValue>,
-  attempts = 3,
-): Promise<TValue> {
-  let lastError: unknown;
+function getAwsFailureType(error: unknown): string {
+  const code = getAwsErrorCode(error);
+  if (code) {
+    return code;
+  }
+  if (error instanceof Error && error.name.trim().length > 0) {
+    return error.name;
+  }
+  return 'UnknownError';
+}
 
-  for (let attempt = 0; attempt < attempts; attempt += 1) {
-    try {
-      return await action();
-    } catch (error) {
-      lastError = error;
-      if (!isRetryableAwsError(error) || attempt === attempts - 1) {
-        throw error;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
-    }
+export function isAwsThrottlingError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
   }
 
-  throw lastError;
+  const candidate = error as Record<string, unknown>;
+  const code = getAwsErrorCode(error);
+  if (code === 'ThrottlingException' || code === 'TooManyRequestsException') {
+    return true;
+  }
+
+  if (candidate.$retryable && typeof candidate.$retryable === 'object') {
+    return (candidate.$retryable as Record<string, unknown>).throttling === true;
+  }
+
+  return false;
+}
+
+export function computeRetryDelayMs(
+  retryAttempt: number,
+  policy: AwsRetryPolicy = DEFAULT_AWS_RETRY_POLICY,
+  random = Math.random,
+): number {
+  const baseDelay =
+    policy.initialBackoffMs * policy.backoffMultiplier ** Math.max(retryAttempt - 1, 0);
+  const jitterCap = Math.min(policy.maxJitterMs, Math.round(baseDelay * 0.25));
+  return baseDelay + Math.round(random() * jitterCap);
+}
+
+function normalizeScannerConcurrency(value: number | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return DEFAULT_SCANNER_CONCURRENCY;
+  }
+  return Math.min(MAX_SCANNER_CONCURRENCY, Math.max(MIN_SCANNER_CONCURRENCY, Math.trunc(value)));
+}
+
+function normalizeScannerTimeoutMs(value: number | undefined): number {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return DEFAULT_SCANNER_TIMEOUT_MS;
+  }
+  return Math.min(MAX_SCANNER_TIMEOUT_MS, Math.max(MIN_SCANNER_TIMEOUT_MS, Math.trunc(value)));
+}
+
+function normalizeScannerOutput(result: AwsServiceScannerOutput): {
+  readonly resources: readonly DiscoveredResource[];
+  readonly warnings: readonly string[];
+} {
+  if (Array.isArray(result)) {
+    return {
+      resources: result,
+      warnings: [],
+    };
+  }
+
+  return {
+    resources: result.resources,
+    warnings: result.warnings,
+  };
+}
+
+function createTimeoutError(timeoutMs: number): Error {
+  const error = new Error(`Scanner exceeded ${timeoutMs}ms timeout`);
+  error.name = 'TimeoutError';
+  return error;
+}
+
+async function executeWithScannerTimeout<TValue>(
+  action: Promise<TValue>,
+  abortSignal: AbortSignal,
+  timeoutMs: number,
+): Promise<TValue> {
+  if (abortSignal.aborted) {
+    throw createTimeoutError(timeoutMs);
+  }
+
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<TValue>((_, reject) => {
+    timeoutHandle = setTimeout(() => {
+      reject(createTimeoutError(timeoutMs));
+    }, timeoutMs);
+    abortSignal.addEventListener(
+      'abort',
+      () => {
+        reject(createTimeoutError(timeoutMs));
+      },
+      { once: true },
+    );
+  });
+
+  try {
+    return await Promise.race([action, timeoutPromise]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 function formatServiceWarning(name: string, region: string, error: unknown): string {
-  const code = getAwsErrorCode(error);
+  const code = getAwsFailureType(error);
   if (code === 'AccessDeniedException' || code === 'AccessDenied') {
     return `${name} scan skipped in ${region} (AccessDenied).`;
   }
@@ -225,87 +419,225 @@ function formatServiceWarning(name: string, region: string, error: unknown): str
   if (code === 'UnrecognizedClientException' || code === 'InvalidClientTokenId') {
     return `${name} scan skipped in ${region} (InvalidCredentials).`;
   }
-  if (code.toLowerCase().includes('timeout')) {
+  if (code.toLowerCase().includes('timeout') || code === 'AbortError') {
     return `${name} scan skipped in ${region} (Timeout).`;
   }
   return `${name} scan skipped in ${region} (insufficient permissions or unavailable API).`;
 }
 
-/** Scan all supported AWS services in a single region. */
-async function scanAwsRegion(
+async function executeScanner(
+  definition: AwsServiceScannerDefinition,
   clientOptions: AwsClientOptions,
   options: {
-    includeGlobalServices: boolean;
-    services?: readonly string[];
-    onProgress?: ScanOptions['onProgress'];
+    readonly onProgress?: ScanOptions['onProgress'];
+    readonly retryPolicy: AwsRetryPolicy;
+    readonly scannerTimeoutMs: number;
+    readonly random: () => number;
   },
-): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
-  const resources: DiscoveredResource[] = [];
-  const warnings: string[] = [];
-  const requestedServices = normalizeRequestedServices(options.services);
+): Promise<{
+  readonly resources: readonly DiscoveredResource[];
+  readonly warnings: readonly string[];
+  readonly scannerResult: AwsServiceScanResult;
+}> {
+  const startedAt = Date.now();
+  let retryCount = 0;
 
-  const scanService = async (
-    name: string,
-    fn: () => Promise<
-      DiscoveredResource[] | { resources: DiscoveredResource[]; warnings: string[] }
-    >,
-  ): Promise<void> => {
-    if (!shouldScanService(requestedServices, name)) {
-      return;
-    }
-    emitProgress(options.onProgress, name, 'scanning', 0);
+  emitProgress(options.onProgress, {
+    service: definition.name,
+    status: 'scanning',
+    resourceCount: 0,
+    region: clientOptions.region,
+  });
+
+  for (let attempt = 1; attempt <= options.retryPolicy.maxAttempts; attempt += 1) {
+    const abortSignal = AbortSignal.timeout(options.scannerTimeoutMs);
+
     try {
-      const result = await executeWithRetry(fn);
-      if (Array.isArray(result)) {
-        resources.push(...result);
-        emitProgress(options.onProgress, name, 'completed', result.length);
-      } else {
-        resources.push(...result.resources);
-        warnings.push(...result.warnings);
-        emitProgress(options.onProgress, name, 'completed', result.resources.length);
-      }
+      const result = await executeWithScannerTimeout(
+        definition.scan({
+          ...clientOptions,
+          abortSignal,
+          maxAttempts: 1,
+        }),
+        abortSignal,
+        options.scannerTimeoutMs,
+      );
+      const normalized = normalizeScannerOutput(result);
+      const durationMs = Date.now() - startedAt;
+      const scannerResult: AwsServiceScanResult = {
+        scannerName: definition.name,
+        region: clientOptions.region,
+        durationMs,
+        retryCount,
+        finalStatus: 'success',
+        resourceCount: normalized.resources.length,
+      };
+
+      emitProgress(options.onProgress, {
+        service: definition.name,
+        status: 'completed',
+        resourceCount: normalized.resources.length,
+        region: clientOptions.region,
+        durationMs,
+        retryCount,
+      });
+
+      return {
+        resources: normalized.resources,
+        warnings: normalized.warnings,
+        scannerResult,
+      };
     } catch (error) {
-      const msg = formatServiceWarning(name, clientOptions.region, error);
-      warnings.push(msg);
-      emitProgress(options.onProgress, name, 'failed', 0, msg);
+      const failureType = getAwsFailureType(error);
+      if (isAwsThrottlingError(error) && attempt < options.retryPolicy.maxAttempts) {
+        retryCount += 1;
+        const waitMs = computeRetryDelayMs(retryCount, options.retryPolicy, options.random);
+        emitProgress(options.onProgress, {
+          service: definition.name,
+          status: 'retrying',
+          resourceCount: 0,
+          region: clientOptions.region,
+          error: getAwsErrorMessage(error),
+          retryCount,
+          attempt: attempt + 1,
+          maxAttempts: options.retryPolicy.maxAttempts,
+          waitMs,
+          failureType,
+        });
+        await sleep(waitMs);
+        continue;
+      }
+
+      const durationMs = Date.now() - startedAt;
+      const warning = formatServiceWarning(definition.name, clientOptions.region, error);
+      const scannerResult: AwsServiceScanResult = {
+        scannerName: definition.name,
+        region: clientOptions.region,
+        durationMs,
+        retryCount,
+        finalStatus: 'failed',
+        failureType,
+        resourceCount: 0,
+      };
+
+      emitProgress(options.onProgress, {
+        service: definition.name,
+        status: 'failed',
+        resourceCount: 0,
+        region: clientOptions.region,
+        durationMs,
+        retryCount,
+        error: warning,
+        failureType,
+      });
+
+      return {
+        resources: [],
+        warnings: [warning],
+        scannerResult,
+      };
     }
-  };
-
-  await scanService('EC2', () => scanEc2Instances(clientOptions));
-  await scanService('RDS', () => scanRdsInstances(clientOptions));
-  await scanService('Aurora', () =>
-    scanAuroraClusters(clientOptions, {
-      includeGlobalClusters: options.includeGlobalServices,
-    }),
-  );
-  await scanService('EFS', () => scanEfsFileSystems(clientOptions));
-  await scanService('Lambda', () => scanLambdaFunctions(clientOptions));
-  await scanService('ElastiCache', () => scanElastiCacheClusters(clientOptions));
-  await scanService('DynamoDB', () => scanDynamoDbTables(clientOptions));
-  await scanService('SQS', () => scanSqsQueues(clientOptions));
-  await scanService('SNS', () => scanSnsTopics(clientOptions));
-  await scanService('ELB', () => scanLoadBalancers(clientOptions));
-  await scanService('EKS', () => scanEksClusters(clientOptions));
-  await scanService('AutoScaling', () => scanAutoScalingGroups(clientOptions));
-  await scanService('VPC', () => scanVpcs(clientOptions));
-  await scanService('NATGateway', () => scanNatGateways(clientOptions));
-  await scanService('Backup', () => scanBackupResources(clientOptions));
-  await scanService('CloudWatch', () => scanCloudWatchAlarms(clientOptions));
-
-  // Subnet and Security Groups are part of VPC scanning
-  await scanService('Subnets', () => scanSubnets(clientOptions));
-  await scanService('SecurityGroups', () => scanSecurityGroups(clientOptions));
-
-  // S3 and Route53 are global services, only scan once
-  if (options.includeGlobalServices) {
-    await scanService('S3', () => scanS3Buckets(clientOptions));
-    await scanService('Route53', () => scanRoute53HostedZones(clientOptions));
   }
 
-  return { resources, warnings };
+  const durationMs = Date.now() - startedAt;
+  return {
+    resources: [],
+    warnings: [
+      formatServiceWarning(definition.name, clientOptions.region, new Error('UnknownError')),
+    ],
+    scannerResult: {
+      scannerName: definition.name,
+      region: clientOptions.region,
+      durationMs,
+      retryCount,
+      finalStatus: 'failed',
+      failureType: 'UnknownError',
+      resourceCount: 0,
+    },
+  };
 }
 
-/** Resolves the list of regions to scan based on options and credentials. */
+async function scanAwsRegion(
+  clientOptions: AwsClientOptions,
+  options: ScanAwsRegionOptions,
+): Promise<AwsRegionScanResult> {
+  const startedAt = Date.now();
+  const requestedServices = normalizeRequestedServices(options.services);
+  const scanners = (options.scanners ?? buildAwsServiceScanners(options.includeGlobalServices))
+    .filter((scanner) => {
+      if (!shouldScanService(requestedServices, scanner.name)) {
+        return false;
+      }
+      return !scanner.global || options.includeGlobalServices;
+    });
+  const concurrency = normalizeScannerConcurrency(options.scannerConcurrency);
+  const timeoutMs = normalizeScannerTimeoutMs(options.scannerTimeoutMs);
+  const retryPolicy = options.retryPolicy ?? DEFAULT_AWS_RETRY_POLICY;
+  const random = options.random ?? Math.random;
+
+  const settled = await processWithConcurrencyLimit(scanners, concurrency, async (scanner) =>
+    executeScanner(scanner, clientOptions, {
+      onProgress: options.onProgress,
+      retryPolicy,
+      scannerTimeoutMs: timeoutMs,
+      random,
+    }),
+  );
+
+  const resources: DiscoveredResource[] = [];
+  const warnings: string[] = [];
+  const scannerResults: AwsServiceScanResult[] = [];
+  const scannerOutputs: AwsServiceScannerCapture[] = [];
+
+  settled.forEach((result, index) => {
+    if (result.status === 'fulfilled') {
+      resources.push(...result.value.resources);
+      warnings.push(...result.value.warnings);
+      scannerResults.push(result.value.scannerResult);
+      scannerOutputs.push({
+        scannerResult: result.value.scannerResult,
+        resources: result.value.resources,
+        warnings: result.value.warnings,
+      });
+      return;
+    }
+
+    const scanner = scanners[index];
+    const warning = formatServiceWarning(
+      scanner?.name ?? 'UnknownScanner',
+      clientOptions.region,
+      result.reason,
+    );
+    const scannerResult: AwsServiceScanResult = {
+      scannerName: scanner?.name ?? 'UnknownScanner',
+      region: clientOptions.region,
+      durationMs: 0,
+      retryCount: 0,
+      finalStatus: 'failed',
+      failureType: getAwsFailureType(result.reason),
+      resourceCount: 0,
+    };
+    warnings.push(
+      warning,
+    );
+    scannerResults.push(scannerResult);
+    scannerOutputs.push({
+      scannerResult,
+      resources: [],
+      warnings: [warning],
+    });
+  });
+
+  return {
+    region: clientOptions.region,
+    durationMs: Date.now() - startedAt,
+    resources,
+    warnings,
+    scannerResults,
+    scannerOutputs,
+  };
+}
+
 async function resolveRegions(
   credentials: DiscoveryCredentials,
   options?: ScanOptions,
@@ -324,7 +656,29 @@ async function resolveRegions(
   return [];
 }
 
-/** AWS CloudProvider implementation. */
+export function buildAwsScanSummary(input: {
+  readonly scannedRegions: readonly string[];
+  readonly regionResults: readonly AwsRegionScanResult[];
+  readonly totalDurationMs: number;
+  readonly scannerConcurrency: number;
+  readonly scannerTimeoutMs: number;
+}): AwsScanSummary {
+  const scannerResults = input.regionResults.flatMap((region) => region.scannerResults);
+  return {
+    totalDurationMs: input.totalDurationMs,
+    scannerConcurrency: input.scannerConcurrency,
+    scannerTimeoutMs: input.scannerTimeoutMs,
+    scannedRegions: input.scannedRegions,
+    discoveredResourceCount: input.regionResults.reduce(
+      (count, region) => count + region.resources.length,
+      0,
+    ),
+    successfulScanners: scannerResults.filter((result) => result.finalStatus === 'success').length,
+    failedScanners: scannerResults.filter((result) => result.finalStatus === 'failed').length,
+    scannerResults,
+  };
+}
+
 export const awsScanner: CloudProviderAdapter = {
   name: 'aws',
 
@@ -360,43 +714,37 @@ export const awsScanner: CloudProviderAdapter = {
       };
     }
 
+    const regionResults: AwsRegionScanResult[] = [];
     const allResources: DiscoveredResource[] = [];
     const allWarnings: string[] = [];
 
-    const regionInputs = regionsToScan.map((region, index) => ({
-      region,
-      index,
-    }));
-
-    const results = await processInBatches(
-      regionInputs,
-      MAX_CONCURRENT_REGIONS,
-      async ({ region, index }) => {
-        const clientOptions: AwsClientOptions = {
+    for (const [index, region] of regionsToScan.entries()) {
+      const result = await scanAwsRegion(
+        {
           region,
-          credentials: credentials.aws!,
-        };
-        return scanAwsRegion(clientOptions, {
+          credentials: credentials.aws,
+        },
+        {
           includeGlobalServices: index === 0,
           services: options?.services,
           onProgress: options?.onProgress,
-        });
-      },
-    );
-
-    for (const result of results) {
-      if (result.status === 'fulfilled') {
-        allResources.push(...result.value.resources);
-        allWarnings.push(...result.value.warnings);
-      } else {
-        const errorMsg =
-          result.reason instanceof Error ? result.reason.message : String(result.reason);
-        allWarnings.push(`AWS scan failed for a region: ${errorMsg}`);
-      }
+          scannerConcurrency: options?.scannerConcurrency,
+          scannerTimeoutMs: options?.scannerTimeoutMs,
+        },
+      );
+      regionResults.push(result);
+      allResources.push(...result.resources);
+      allWarnings.push(...result.warnings);
     }
 
-    // Use the graph bridge (imported by consumer) to convert resources → nodes/edges
-    // The scanner returns raw DiscoveredResources; transformation happens at orchestration layer
+    const summary = buildAwsScanSummary({
+      scannedRegions: regionsToScan,
+      regionResults,
+      totalDurationMs: Date.now() - startTime,
+      scannerConcurrency: normalizeScannerConcurrency(options?.scannerConcurrency),
+      scannerTimeoutMs: normalizeScannerTimeoutMs(options?.scannerTimeoutMs),
+    });
+
     return {
       nodes: [],
       edges: [],
@@ -409,7 +757,8 @@ export const awsScanner: CloudProviderAdapter = {
             ? Array.from(normalizeRequestedServices(options.services) ?? []).sort()
             : [...SERVICE_SCANNERS],
         timestamp: new Date(),
-        // Attach raw resources for the orchestration layer to transform
+        scannerResults: summary.scannerResults,
+        awsScanSummary: summary,
         ...(allResources.length > 0 ? { rawResources: allResources } : {}),
         ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
       } as ScanOutput['metadata'],
@@ -417,5 +766,4 @@ export const awsScanner: CloudProviderAdapter = {
   },
 };
 
-/** Re-export for direct usage of the raw scanning function. */
-export { scanAwsRegion, getAllAwsRegions, resolveRegions };
+export { getAllAwsRegions, resolveRegions, scanAwsRegion };

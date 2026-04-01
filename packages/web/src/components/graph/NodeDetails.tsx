@@ -12,6 +12,10 @@ function primitiveMetadataEntries(node: InfraNode): Array<[string, string]> {
     .map(([key, value]) => [key, String(value)]);
 }
 
+function isManualCriticality(node: InfraNode): boolean {
+  return node.criticalitySource === 'manual';
+}
+
 function DependencyList({
   label,
   nodes,
@@ -75,6 +79,16 @@ export function NodeDetails({
         <p className={`mt-1 text-sm text-muted-foreground ${DETAIL_VALUE_CLASS}`}>
           {node.type} - {node.region ?? 'global'} - {node.availabilityZone ?? 'n/a'}
         </p>
+        {isManualCriticality(node) ? (
+          <div className="mt-3 space-y-2">
+            <span className="inline-flex rounded-full border border-border bg-elevated px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-foreground">
+              Manual criticality override
+            </span>
+            <p className="text-sm text-muted-foreground">
+              {node.criticalityOverrideReason ?? 'Override reason not available.'}
+            </p>
+          </div>
+        ) : null}
       </div>
 
       <div className="grid min-w-0 gap-6">
@@ -91,6 +105,16 @@ export function NodeDetails({
             <span className="text-subtle-foreground">AZ</span>
             <span className={DETAIL_VALUE_CLASS}>{node.availabilityZone ?? 'n/a'}</span>
           </div>
+          {isManualCriticality(node) ? (
+            <div className="grid grid-cols-[minmax(0,96px)_minmax(0,1fr)] items-start gap-3">
+              <span className="text-subtle-foreground">Criticality</span>
+              <span className={DETAIL_VALUE_CLASS}>
+                {typeof node.criticalityScore === 'number'
+                  ? `${Math.round(node.criticalityScore)} (manual)`
+                  : 'manual override'}
+              </span>
+            </div>
+          ) : null}
         </section>
 
         <section className="min-w-0">

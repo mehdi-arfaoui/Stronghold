@@ -33,6 +33,23 @@ export { inferBestEffortEdges } from './fallback-inference-engine.js';
 
 export { inferDependencies } from './dependency-inference-engine.js';
 
+export {
+  DEFAULT_GRAPH_OVERRIDES_PATH,
+  GRAPH_OVERRIDES_VERSION,
+  type GraphOverrides,
+  type GraphEdgeOverride,
+  type GraphCriticalityOverride,
+  type ApplyGraphOverridesResult,
+  type ApplyGraphOverridesWarning,
+  GraphOverrideValidationError,
+  loadGraphOverrides,
+  parseGraphOverrides,
+  validateGraphOverrides,
+  renderGraphOverridesTemplate,
+  applyGraphOverrides,
+  buildEdgeKey,
+} from './overrides/index.js';
+
 export { DEFAULT_RESOLVER } from './analysis-helpers.js';
 
 export { analyzeFullGraph } from './graph-analysis-engine.js';

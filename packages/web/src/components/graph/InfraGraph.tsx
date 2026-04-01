@@ -15,10 +15,16 @@ import { themeColor } from '@/lib/utils';
 import { GraphNode, type GraphVisualData } from './GraphNode';
 import { GroupedNode } from './GroupedNode';
 
+export interface GraphEdgeVisualData extends Record<string, unknown> {
+  readonly provenance?: 'manual' | 'inferred' | 'aws-api';
+}
+
 interface GraphPalette {
   readonly canvas: string;
   readonly backgroundPattern: string;
-  readonly edgeBase: string;
+  readonly edgeAwsApi: string;
+  readonly edgeInferred: string;
+  readonly edgeManual: string;
   readonly edgeActive: string;
   readonly edgeLabel: string;
   readonly edgeLabelActive: string;
@@ -31,7 +37,9 @@ function getGraphPalette(theme: 'dark' | 'light'): GraphPalette {
     return {
       canvas: themeColor('elevated'),
       backgroundPattern: themeColor('border-strong', 0.55),
-      edgeBase: themeColor('subtle-foreground', 0.52),
+      edgeAwsApi: themeColor('subtle-foreground', 0.7),
+      edgeInferred: themeColor('muted-foreground', 0.55),
+      edgeManual: '#c26d1f',
       edgeActive: themeColor('accent'),
       edgeLabel: themeColor('muted-foreground'),
       edgeLabelActive: themeColor('foreground'),
@@ -43,7 +51,9 @@ function getGraphPalette(theme: 'dark' | 'light'): GraphPalette {
   return {
     canvas: themeColor('elevated'),
     backgroundPattern: themeColor('border-strong', 0.42),
-    edgeBase: themeColor('muted-foreground', 0.58),
+    edgeAwsApi: themeColor('foreground', 0.72),
+    edgeInferred: themeColor('muted-foreground', 0.58),
+    edgeManual: '#f4a340',
     edgeActive: themeColor('accent'),
     edgeLabel: themeColor('muted-foreground'),
     edgeLabelActive: themeColor('foreground'),
@@ -54,7 +64,7 @@ function getGraphPalette(theme: 'dark' | 'light'): GraphPalette {
 
 function layoutNodes(
   nodes: readonly Node<GraphVisualData>[],
-  edges: readonly Edge[],
+  edges: readonly Edge<GraphEdgeVisualData>[],
   selectedNodeId: string | null,
 ): Node<GraphVisualData>[] {
   const graph = new dagre.graphlib.Graph();
@@ -101,7 +111,7 @@ function GraphCanvas({
   onGroupToggle,
 }: {
   readonly nodes: readonly Node<GraphVisualData>[];
-  readonly edges: readonly Edge[];
+  readonly edges: readonly Edge<GraphEdgeVisualData>[];
   readonly selectedNodeId: string | null;
   readonly focusRequest: { readonly id: string; readonly nonce: number } | null;
   readonly command: { readonly type: 'zoom-in' | 'zoom-out' | 'fit'; readonly nonce: number } | null;
@@ -129,8 +139,17 @@ function GraphCanvas({
       edges.map((edge) => {
         const isRelated = activeNodeId != null && (edge.source === activeNodeId || edge.target === activeNodeId);
         const hasContext = activeNodeId != null;
-        const edgeColor = isRelated ? palette.edgeActive : palette.edgeBase;
+        const provenance = edge.data?.provenance ?? 'aws-api';
+        const edgeColor = isRelated
+          ? palette.edgeActive
+          : provenance === 'manual'
+            ? palette.edgeManual
+            : provenance === 'inferred'
+              ? palette.edgeInferred
+              : palette.edgeAwsApi;
         const labelBgPadding: [number, number] = isRelated ? [10, 6] : [8, 4];
+        const strokeDasharray =
+          provenance === 'manual' ? '10 6' : provenance === 'inferred' ? '6 6' : undefined;
 
         return {
           ...edge,
@@ -155,7 +174,8 @@ function GraphCanvas({
           },
           style: {
             stroke: edgeColor,
-            strokeWidth: isRelated ? 2.8 : 1.7,
+            strokeWidth: provenance === 'manual' ? (isRelated ? 3 : 2.1) : isRelated ? 2.8 : 1.7,
+            ...(strokeDasharray ? { strokeDasharray } : {}),
             opacity: hasContext && !isRelated ? 0.22 : 0.78,
             transition: 'stroke 150ms ease, opacity 150ms ease, stroke-width 150ms ease',
           },
@@ -242,7 +262,7 @@ function GraphCanvas({
 
 export function InfraGraph(props: {
   readonly nodes: readonly Node<GraphVisualData>[];
-  readonly edges: readonly Edge[];
+  readonly edges: readonly Edge<GraphEdgeVisualData>[];
   readonly selectedNodeId: string | null;
   readonly focusRequest: { readonly id: string; readonly nonce: number } | null;
   readonly command: { readonly type: 'zoom-in' | 'zoom-out' | 'fit'; readonly nonce: number } | null;

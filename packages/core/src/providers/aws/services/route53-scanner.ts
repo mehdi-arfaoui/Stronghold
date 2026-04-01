@@ -8,7 +8,7 @@ import {
 } from '@aws-sdk/client-route-53';
 import type { ResourceRecordSet } from '@aws-sdk/client-route-53';
 import type { DiscoveredResource } from '../../../types/discovery.js';
-import { type AwsClientOptions, createRoute53Client } from '../aws-client-factory.js';
+import { createRoute53Client, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource } from '../scan-utils.js';
 
 function normalizeDnsName(value: string | undefined): string | undefined {
@@ -57,6 +57,7 @@ async function listRoute53RecordSets(
         ...(startRecordType ? { StartRecordType: startRecordType } : {}),
         ...(startRecordIdentifier ? { StartRecordIdentifier: startRecordIdentifier } : {}),
       }),
+      getAwsCommandOptions(options),
     );
     recordSets.push(...(response.ResourceRecordSets ?? []));
     startRecordName = response.NextRecordName;
@@ -78,7 +79,10 @@ export async function scanRoute53HostedZones(
   let isTruncated = true;
 
   while (isTruncated) {
-    const response = await route53.send(new ListHostedZonesCommand({ Marker: marker }));
+    const response = await route53.send(
+      new ListHostedZonesCommand({ Marker: marker }),
+      getAwsCommandOptions(options),
+    );
     for (const zone of response.HostedZones ?? []) {
       const hostedZoneId = normalizeHostedZoneId(zone.Id);
       if (!hostedZoneId) continue;

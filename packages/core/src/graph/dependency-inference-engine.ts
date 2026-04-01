@@ -1117,6 +1117,7 @@ function normalizeInferredEdge(edge: ScanEdge): ScanEdge | null {
     target: edge.target,
     type: edge.type,
     confidence: Number.isFinite(edge.confidence) ? Number(edge.confidence) : 0.8,
+    provenance: 'inferred',
     ...(edge.inferenceMethod ? { inferenceMethod: edge.inferenceMethod } : {}),
     ...(Object.keys(normalizedMetadata).length > 0 ? { metadata: normalizedMetadata } : {}),
   };
