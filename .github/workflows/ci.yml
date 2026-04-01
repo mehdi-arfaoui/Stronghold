@@ -39,7 +39,15 @@ jobs:
           node-version: "20"
           cache: "npm"
       - run: npm ci
-      - name: Run tests with coverage
+      - name: Summarize integration fixture coverage
+        run: |
+          echo "Demo integration fixtures: enabled"
+          if [ -d packages/core/src/__fixtures__/aws-real ]; then
+            echo "AWS-real integration fixtures: enabled"
+          else
+            echo "AWS-real integration fixtures: skipped (directory not found)"
+          fi
+      - name: Run core tests with coverage
         run: npm run test:coverage --workspace=packages/core
 
   test:
