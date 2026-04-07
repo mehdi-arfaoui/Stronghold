@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import {
+  generateRecommendations,
+  selectTopRecommendations,
+} from '@stronghold-dr/core';
 
 import { createProgram } from '../index.js';
+import {
+  renderRecommendationHighlights,
+  renderRecommendationSection,
+} from '../output/recommendations.js';
 import { renderTerminalReport } from '../output/report-renderer.js';
 import { renderScanSummary } from '../output/scan-summary.js';
 import { createDemoResults } from './test-utils.js';
@@ -9,6 +17,7 @@ describe('CLI help output', () => {
   it('stronghold --help lists the top-level commands', () => {
     const help = createProgram().helpInformation();
 
+    expect(help).toContain('init');
     expect(help).toContain('scan');
     expect(help).toContain('report');
     expect(help).toContain('plan');
@@ -51,5 +60,42 @@ describe('CLI rendered output', () => {
     const report = renderTerminalReport(results.validationReport, {});
 
     expect(report).toContain(results.validationReport.scoreBreakdown.disclaimer);
+  });
+
+  it('demo results render a top recommendations block', async () => {
+    const results = await createDemoResults('startup');
+    const recommendations = generateRecommendations({
+      nodes: results.nodes,
+      validationReport: results.validationReport,
+      drpPlan: results.drpPlan,
+      isDemo: true,
+    });
+    const rendered = renderRecommendationHighlights(
+      selectTopRecommendations(recommendations),
+      results.validationReport.score,
+      'stronghold report',
+      recommendations.length,
+    );
+
+    expect(rendered).toContain('Top Recommendations');
+    expect(rendered).toContain('stronghold report');
+  });
+
+  it('markdown output includes a recommendations section', async () => {
+    const results = await createDemoResults('startup');
+    const recommendations = generateRecommendations({
+      nodes: results.nodes,
+      validationReport: results.validationReport,
+      drpPlan: results.drpPlan,
+      isDemo: true,
+    });
+    const rendered = renderRecommendationSection(
+      recommendations,
+      results.validationReport.score,
+      'markdown',
+    );
+
+    expect(rendered).toContain('## Recommendations');
+    expect(rendered).toContain('### Safe');
   });
 });

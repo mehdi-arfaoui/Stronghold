@@ -100,5 +100,13 @@ function buildRollbackStep(iacTool: string | null): string {
     : 'Delete the partially rebuilt resource with the same manual procedure used to create it.';
 }
 
-registerRunbookStrategy('*', 'full_rebuild', generateGenericRebuildRunbook);
-registerRunbookStrategy('*', '*', generateGenericRebuildRunbook);
+registerRunbookStrategy('*', 'full_rebuild', {
+  generate: generateGenericRebuildRunbook,
+  executionRisk: 'dangerous',
+  riskReason: 'Full rebuilds or foundational network changes can replace live infrastructure and need approval.',
+});
+registerRunbookStrategy('*', '*', {
+  generate: generateGenericRebuildRunbook,
+  executionRisk: 'dangerous',
+  riskReason: 'Full rebuilds or foundational network changes can replace live infrastructure and need approval.',
+});

@@ -167,4 +167,8 @@ function firstResourceValue(metadata: Record<string, unknown>): string | null {
   return typeof first === 'string' ? first : null;
 }
 
-registerRunbookStrategy('route53-record', '*', generateRoute53Runbook);
+registerRunbookStrategy('route53-record', '*', {
+  generate: generateRoute53Runbook,
+  executionRisk: 'safe',
+  riskReason: 'Route53 health-check and failover settings can usually be updated without service interruption.',
+});

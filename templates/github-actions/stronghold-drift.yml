@@ -1,0 +1,98 @@
+# Stronghold DR Drift Monitor
+# Copy this file to .github/workflows/stronghold-drift.yml in your repository.
+#
+# WARNING: Do not use this workflow on public repositories.
+# Stronghold scan baselines are redacted, but they still contain sensitive infrastructure metadata.
+#
+# Documentation:
+# https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/ci-integration.md
+
+name: DR Drift Monitor
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # Every Monday at 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift-check:
+    name: DR Posture Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CI: 'true'
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Stronghold CLI
+        run: npm install -g @stronghold-dr/cli@^0.2.0
+        # Pin to a stable version range and update intentionally.
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'eu-west-1' }}
+          # Recommended alternative:
+          # role-to-assume: arn:aws:iam::ACCOUNT_ID:role/StrongholdReadOnly
+          # role-session-name: stronghold-ci
+
+      - name: Restore Stronghold baseline cache
+        uses: actions/cache@v4
+        with:
+          path: .stronghold/
+          key: stronghold-baseline-${{ github.repository }}
+          # Keep this cache key stable until you intentionally accept a new baseline.
+
+      - name: Run DR scan
+        run: stronghold scan --region "${{ vars.AWS_REGION || 'eu-west-1' }}" --redact
+
+      - name: Check for drift
+        id: drift
+        shell: bash
+        run: |
+          set +e
+          stronghold drift check --ci --format json --redact > drift-report.json
+          status=$?
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Upload drift artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stronghold-drift-report
+          path: |
+            drift-report.json
+            .stronghold/latest-scan.json
+            .stronghold/latest-scan.stronghold-enc
+            .stronghold/baseline-scan.json
+            .stronghold/baseline-scan.stronghold-enc
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Fail workflow when drift is detected
+        if: steps.drift.outputs.exit_code != '0'
+        run: |
+          echo "Stronghold detected drift with DR score impact or DRP impact."
+          exit 1
+
+      # Optional notification example:
+      # - name: Notify Slack
+      #   if: failure()
+      #   uses: slackapi/slack-github-action@v2
+      #   with:
+      #     webhook: ${{ secrets.SLACK_WEBHOOK }}
+      #     payload: |
+      #       {"text": "Stronghold detected DR drift. Review the workflow annotations and artifacts."}

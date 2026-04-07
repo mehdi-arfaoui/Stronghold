@@ -1,4 +1,8 @@
 import { Command } from 'commander';
+import {
+  generateRecommendations,
+  selectTopRecommendations,
+} from '@stronghold-dr/core';
 
 import {
   CommandAuditSession,
@@ -22,6 +26,7 @@ import {
 import { ConfigurationError } from '../errors/cli-error.js';
 import { ConsoleLogger } from '../output/console-logger.js';
 import { writeError, writeOutput } from '../output/io.js';
+import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { determineScanExitCode, renderScanSummary } from '../output/scan-summary.js';
 import { formatReadOnlyMessage } from '../output/theme.js';
 import { runAwsScan } from '../pipeline/aws-scan.js';
@@ -185,14 +190,43 @@ export function registerScanCommand(program: Command): void {
           execution.warnings.forEach((warning) => logger.warn(`[WARN] ${warning}`));
         }
 
+        const recommendations = generateRecommendations({
+          nodes: execution.results.nodes,
+          validationReport: execution.results.validationReport,
+          drpPlan: execution.results.drpPlan,
+          isDemo: execution.results.isDemo,
+          redact: options.redact,
+        });
+        const topRecommendations = selectTopRecommendations(recommendations);
+
         if (options.output === 'json') {
-          await writeOutput(JSON.stringify(execution.results, null, 2));
+          await writeOutput(
+            JSON.stringify(
+              {
+                ...execution.results,
+                recommendations,
+              },
+              null,
+              2,
+            ),
+          );
         } else if (options.output === 'summary') {
           const summary = renderScanSummary(execution.results, {
             ...(options.save ? { savedPath } : {}),
             warnings: execution.warnings,
           });
           await writeOutput(summary);
+          if (topRecommendations.length > 0) {
+            await writeOutput('');
+            await writeOutput(
+              renderRecommendationHighlights(
+                topRecommendations,
+                execution.results.validationReport.score,
+                'stronghold report',
+                recommendations.length,
+              ),
+            );
+          }
         }
 
         process.exitCode = determineScanExitCode(execution.results);

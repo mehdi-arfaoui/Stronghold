@@ -1,5 +1,8 @@
 import { Command } from 'commander';
-import { redactObject } from '@stronghold-dr/core';
+import {
+  generateRecommendations,
+  redactObject,
+} from '@stronghold-dr/core';
 
 import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
@@ -11,6 +14,7 @@ import {
   renderTerminalReport,
 } from '../output/report-renderer.js';
 import { writeError, writeOutput } from '../output/io.js';
+import { renderRecommendationSection } from '../output/recommendations.js';
 import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
 import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
@@ -76,6 +80,13 @@ export function registerReportCommand(program: Command): void {
         const report = options.redact
           ? redactObject(effectiveScan.validationReport)
           : effectiveScan.validationReport;
+        const recommendations = generateRecommendations({
+          nodes: effectiveScan.nodes,
+          validationReport: effectiveScan.validationReport,
+          drpPlan: effectiveScan.drpPlan,
+          isDemo: effectiveScan.isDemo,
+          redact: options.redact,
+        });
         const filters = {
           ...(options.category ? { category: options.category } : {}),
           ...(options.severity ? { severity: options.severity } : {}),
@@ -83,17 +94,26 @@ export function registerReportCommand(program: Command): void {
 
         const contents =
           options.format === 'markdown'
-            ? renderMarkdownReport(report, filters)
+            ? `${renderMarkdownReport(report, filters)}\n\n${renderRecommendationSection(
+                recommendations,
+                effectiveScan.validationReport.score,
+                'markdown',
+              )}`
             : options.format === 'json'
               ? JSON.stringify(
                   {
                     ...report,
                     results: filterValidationResults(report, filters),
+                    recommendations,
                   },
                   null,
                   2,
                 )
-              : renderTerminalReport(report, filters);
+              : `${renderTerminalReport(report, filters)}\n\n${renderRecommendationSection(
+                  recommendations,
+                  effectiveScan.validationReport.score,
+                  'terminal',
+                )}`;
 
         await writeOutput(contents, options.output);
         await audit.finish({

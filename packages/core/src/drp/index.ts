@@ -60,20 +60,33 @@ export { validateDrPlan, validateDRPlan } from './drp-validator.js';
 export { formatDrPlanReport } from './drp-reporter.js';
 
 export type {
+  DriftImpactRtoChange,
+  DriftImpact,
+  AnalyzeDrpImpactOptions,
+  DriftImpactAnalysis,
+} from './drift-impact-types.js';
+
+export { analyzeDrpImpact } from './drift-impact.js';
+
+export type {
   RunbookStep,
   RunbookCommand,
   RunbookVerification,
   RunbookRollback,
   ComponentRunbook,
   DRPRunbook,
+  ExecutionRisk,
   RunbookStrategyFn,
+  RunbookStrategyDefinition,
   RunbookFormat,
 } from './runbook/index.js';
 
 export {
   registerRunbookStrategy,
   getRunbookStrategy,
+  getRunbookStrategyDefinition,
   listRegisteredStrategies,
+  listRegisteredStrategyDefinitions,
   generateRunbook,
   serializeRunbook,
   serializeRunbookToJson,

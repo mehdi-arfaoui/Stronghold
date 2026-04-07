@@ -52,6 +52,8 @@ export interface DRPRunbook {
   readonly confidentialityWarning: string;
 }
 
+export type ExecutionRisk = 'safe' | 'caution' | 'dangerous';
+
 /** Strategy function used by the runbook registry. */
 export type RunbookStrategyFn = (
   componentId: string,
@@ -60,3 +62,9 @@ export type RunbookStrategyFn = (
   strategy: string,
   metadata: Record<string, unknown>,
 ) => ComponentRunbook;
+
+export interface RunbookStrategyDefinition {
+  readonly generate: RunbookStrategyFn;
+  readonly executionRisk: ExecutionRisk;
+  readonly riskReason: string;
+}

@@ -82,5 +82,13 @@ function generateLambdaRunbook(
   });
 }
 
-registerRunbookStrategy('lambda', '*', generateLambdaRunbook);
-registerRunbookStrategy('lambda-function', '*', generateLambdaRunbook);
+registerRunbookStrategy('lambda', '*', {
+  generate: generateLambdaRunbook,
+  executionRisk: 'safe',
+  riskReason: 'Lambda resilience changes are usually additive and can be applied without downtime.',
+});
+registerRunbookStrategy('lambda-function', '*', {
+  generate: generateLambdaRunbook,
+  executionRisk: 'safe',
+  riskReason: 'Lambda resilience changes are usually additive and can be applied without downtime.',
+});

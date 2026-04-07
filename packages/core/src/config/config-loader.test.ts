@@ -26,6 +26,7 @@ defaults:
   regions:
     - eu-west-1
     - us-east-1
+  all_regions: false
   concurrency: 7
   scanner_timeout: 90
 accounts:
@@ -35,10 +36,12 @@ accounts:
     external_id: ext-123
     regions:
       - eu-west-1
+    all_regions: false
 `);
 
     expect(config.defaults).toEqual({
       regions: ['eu-west-1', 'us-east-1'],
+      allRegions: false,
       concurrency: 7,
       scannerTimeout: 90,
     });
@@ -47,6 +50,7 @@ accounts:
       roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
       externalId: 'ext-123',
       regions: ['eu-west-1'],
+      allRegions: false,
     });
   });
 
@@ -61,6 +65,21 @@ accounts:
     expect(config.accounts?.sandbox).toEqual({
       profile: 'sandbox',
     });
+  });
+
+  it('parses all-regions flags when present', () => {
+    const config = parseStrongholdConfig(`
+version: 1
+defaults:
+  all_regions: true
+accounts:
+  default:
+    profile: production
+    all_regions: true
+`);
+
+    expect(config.defaults?.allRegions).toBe(true);
+    expect(config.accounts?.default?.allRegions).toBe(true);
   });
 
   it('rejects an invalid version', () => {

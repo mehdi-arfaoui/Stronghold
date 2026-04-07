@@ -31,11 +31,13 @@ export const DEFAULT_REPORT_FORMAT = 'terminal';
 export const DEFAULT_PLAN_FORMAT = 'yaml';
 export const DEFAULT_DEMO_SCENARIO = 'startup';
 export const DEFAULT_DEMO_OUTPUT = 'summary';
+export const DEFAULT_DRIFT_OUTPUT = 'terminal';
 
 export type ScanOutputFormat = 'summary' | 'json' | 'silent';
 export type ReportOutputFormat = 'terminal' | 'markdown' | 'json';
 export type PlanOutputFormat = 'yaml' | 'json';
 export type DemoScenario = 'startup' | 'enterprise' | 'minimal';
+export type DriftOutputFormat = 'terminal' | 'json';
 
 export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly provider: string;
@@ -51,6 +53,12 @@ export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly output: ScanOutputFormat;
   readonly save: boolean;
   readonly verbose: boolean;
+}
+
+export interface InitCommandOptions {
+  readonly profile?: string;
+  readonly region?: readonly string[];
+  readonly yes: boolean;
 }
 
 export interface GlobalEncryptionOptions {
@@ -93,6 +101,9 @@ export interface DriftCheckCommandOptions extends GraphOverrideCommandOptions {
   readonly baseline?: string;
   readonly current?: string;
   readonly saveBaseline: boolean;
+  readonly format: DriftOutputFormat;
+  readonly ci: boolean;
+  readonly failThreshold?: number;
   readonly verbose: boolean;
 }
 
@@ -135,6 +146,10 @@ export function parseConcurrencyOption(value: string): number {
 
 export function parseScannerTimeoutOption(value: string): number {
   return parseBoundedInteger(value, 10, 300, '--scanner-timeout');
+}
+
+export function parseFailThresholdOption(value: string): number {
+  return parseBoundedInteger(value, 0, 100, '--fail-threshold');
 }
 
 export function isSupportedService(value: string): value is SupportedService {

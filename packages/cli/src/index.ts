@@ -8,6 +8,7 @@ import { writeError } from './output/io.js';
 import { registerDemoCommand } from './commands/demo.js';
 import { registerDriftCommand } from './commands/drift.js';
 import { registerIamPolicyCommand } from './commands/iam-policy.js';
+import { registerInitCommand } from './commands/init.js';
 import { registerPlanCommand } from './commands/plan.js';
 import { registerReportCommand } from './commands/report.js';
 import { registerScanCommand } from './commands/scan.js';
@@ -24,6 +25,7 @@ export function createProgram(): Command {
     .option('--redact', 'Redact sensitive identifiers from generated output', false)
     .option('--no-redact', 'Disable output redaction');
 
+  registerInitCommand(program);
   registerScanCommand(program);
   registerReportCommand(program);
   registerPlanCommand(program);

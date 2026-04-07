@@ -114,5 +114,9 @@ function generateAuroraGlobalFailoverRunbook(
 registerRunbookStrategy(
   'aurora-cluster',
   'aurora_global_failover',
-  generateAuroraGlobalFailoverRunbook,
+  {
+    generate: generateAuroraGlobalFailoverRunbook,
+    executionRisk: 'dangerous',
+    riskReason: 'Global Aurora changes affect cross-region database topology and require explicit review.',
+  },
 );

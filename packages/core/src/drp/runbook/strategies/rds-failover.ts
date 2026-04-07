@@ -95,5 +95,13 @@ function generateRdsFailoverRunbook(
   });
 }
 
-registerRunbookStrategy('rds', 'hot_standby', generateRdsFailoverRunbook);
-registerRunbookStrategy('rds-instance', 'hot_standby', generateRdsFailoverRunbook);
+registerRunbookStrategy('rds', 'hot_standby', {
+  generate: generateRdsFailoverRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Multi-AZ and replica changes can trigger a brief failover and should use a maintenance window.',
+});
+registerRunbookStrategy('rds-instance', 'hot_standby', {
+  generate: generateRdsFailoverRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Multi-AZ and replica changes can trigger a brief failover and should use a maintenance window.',
+});

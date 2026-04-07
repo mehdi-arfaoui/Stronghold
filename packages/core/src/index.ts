@@ -227,13 +227,19 @@ export {
   type DeserializeDrPlanSuccess,
   type DeserializeDrPlanFailure,
   type DeserializeDrPlanResult,
+  type DriftImpactRtoChange,
+  type DriftImpact,
+  type AnalyzeDrpImpactOptions,
+  type DriftImpactAnalysis,
   type RunbookStep,
   type RunbookCommand,
   type RunbookVerification,
   type RunbookRollback,
   type ComponentRunbook,
   type DRPRunbook,
+  type ExecutionRisk,
   type RunbookStrategyFn,
+  type RunbookStrategyDefinition,
   type DrPlanFormat,
   type RunbookFormat,
   type BuildRTOEstimateInputOptions,
@@ -260,9 +266,12 @@ export {
   deserializeDrPlan,
   deserializeDRPlan,
   validateDrPlanShape,
+  analyzeDrpImpact,
   registerRunbookStrategy,
   getRunbookStrategy,
+  getRunbookStrategyDefinition,
   listRegisteredStrategies,
+  listRegisteredStrategyDefinitions,
   generateRunbook,
   serializeRunbook,
   serializeRunbookToJson,
@@ -285,6 +294,15 @@ export {
   redactObject,
   type RedactionOptions,
 } from './redaction/index.js';
+
+export {
+  generateRecommendations,
+  selectTopRecommendations,
+  classifyRecommendationRisk,
+  type Recommendation,
+  type RecommendationGenerationInput,
+  type RecommendationRisk,
+} from './recommendations/index.js';
 
 export {
   FileAuditLogger,

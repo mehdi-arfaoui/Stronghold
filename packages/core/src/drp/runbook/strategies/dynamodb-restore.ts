@@ -169,5 +169,13 @@ function buildBackupRunbook(
   });
 }
 
-registerRunbookStrategy('dynamodb', '*', generateDynamoDbRunbook);
-registerRunbookStrategy('dynamodb-table', '*', generateDynamoDbRunbook);
+registerRunbookStrategy('dynamodb', '*', {
+  generate: generateDynamoDbRunbook,
+  executionRisk: 'safe',
+  riskReason: 'DynamoDB protection changes are typically additive and do not require downtime.',
+});
+registerRunbookStrategy('dynamodb-table', '*', {
+  generate: generateDynamoDbRunbook,
+  executionRisk: 'safe',
+  riskReason: 'DynamoDB protection changes are typically additive and do not require downtime.',
+});

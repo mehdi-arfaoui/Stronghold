@@ -5,13 +5,17 @@ export type {
   RunbookRollback,
   ComponentRunbook,
   DRPRunbook,
+  ExecutionRisk,
   RunbookStrategyFn,
+  RunbookStrategyDefinition,
 } from './runbook-types.js';
 
 export {
   registerRunbookStrategy,
   getRunbookStrategy,
+  getRunbookStrategyDefinition,
   listRegisteredStrategies,
+  listRegisteredStrategyDefinitions,
 } from './strategy-registry.js';
 
 export {
