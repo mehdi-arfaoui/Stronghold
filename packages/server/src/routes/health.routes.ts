@@ -9,7 +9,7 @@ export function createHealthRoutes(prisma: PrismaClient): Router {
   router.get('/health', (_request, response) => {
     response.json({
       status: 'ok',
-      version: '0.1.0',
+      version: '1.0.0',
       uptime: process.uptime(),
     });
   });

@@ -4,7 +4,7 @@ import type { ServicePosture } from '../services/service-posture-types.js';
 import type { GovernanceState, RiskAcceptance } from './risk-acceptance.js';
 import type { PolicyViolation } from './policy-types.js';
 
-const STRONGHOLD_AUDIT_VERSION = '0.1.0';
+const STRONGHOLD_AUDIT_VERSION = '1.0.0';
 
 export type GovernanceAuditAction = Extract<
   AuditAction,

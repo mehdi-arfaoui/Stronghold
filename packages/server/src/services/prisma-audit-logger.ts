@@ -46,7 +46,7 @@ export class PrismaAuditLogger implements AuditLogger {
     const entries = records.slice(0, options.limit).map((record) => ({
       id: record.id,
       timestamp: record.timestamp.toISOString(),
-      version: '0.1.0',
+      version: '1.0.0',
       action: record.action as AuditEntry['action'],
       ...(record.identity
         ? { identity: record.identity as unknown as AuditIdentity }

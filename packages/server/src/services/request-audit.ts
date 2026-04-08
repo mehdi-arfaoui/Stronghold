@@ -1,6 +1,6 @@
 import type { AuditAction, AuditEntry, AuditLogger, Logger } from '@stronghold-dr/core';
 
-const STRONGHOLD_VERSION = '0.1.0';
+const STRONGHOLD_VERSION = '1.0.0';
 
 export class RequestAuditSession {
   private readonly startedAt = Date.now();

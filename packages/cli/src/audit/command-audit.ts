@@ -11,7 +11,7 @@ import { buildDiscoveryCredentials } from '../config/credentials.js';
 import { writeError } from '../output/io.js';
 import { resolveStrongholdPaths } from '../storage/paths.js';
 
-const STRONGHOLD_VERSION = '0.1.0';
+const STRONGHOLD_VERSION = '1.0.0';
 
 export class CommandAuditSession {
   private readonly logger = new FileAuditLogger(resolveStrongholdPaths().auditLogPath);

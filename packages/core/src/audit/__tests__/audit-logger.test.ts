@@ -84,7 +84,7 @@ function createAuditEntry(
 ): AuditEntry {
   return {
     timestamp: '2026-03-27T15:00:00.000Z',
-    version: '0.1.0',
+    version: '1.0.0',
     action: 'scan',
     identity: {
       arn: 'arn:aws:sts::123456789012:assumed-role/Stronghold/test-user',
