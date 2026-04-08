@@ -7,10 +7,12 @@ import {
   ListFunctionsCommand,
   GetFunctionConfigurationCommand,
   ListEventSourceMappingsCommand,
+  ListTagsCommand,
 } from '@aws-sdk/client-lambda';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 const LAMBDA_ENV_ARN_PATTERN = /arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:[A-Za-z0-9\-_/.:]+/g;
 const LAMBDA_ENV_SQS_URL_PATTERN =
@@ -74,6 +76,7 @@ export async function scanLambdaFunctions(
   const lambda = createAwsClient(LambdaClient, options);
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
 
   const lambdas = await paginateAws(
     (marker) =>
@@ -93,6 +96,22 @@ export async function scanLambdaFunctions(
     let securityGroups: string[] = [];
     let deadLetterConfig: Record<string, unknown> | undefined;
     let deadLetterTargetArn: string | undefined;
+    const tags = fn.FunctionArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            lambda.send(
+              new ListTagsCommand({ Resource: fn.FunctionArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => normalizeTagMap(response.Tags),
+          {
+            description: `Lambda tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    const displayName = getNameTag(tags) ?? fn.FunctionName ?? 'lambda';
 
     try {
       const configuration = await lambda.send(
@@ -150,9 +169,10 @@ export async function scanLambdaFunctions(
       buildResource({
         source: 'aws',
         externalId,
-        name: fn.FunctionName ?? 'lambda',
+        name: displayName,
         kind: 'service',
         type: 'LAMBDA',
+        tags,
         metadata: {
           runtime: fn.Runtime,
           handler: fn.Handler,
@@ -169,6 +189,8 @@ export async function scanLambdaFunctions(
           environmentVariableNames,
           environmentReferences,
           eventSourceMappings,
+          displayName,
+          ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
         },
       }),
     );

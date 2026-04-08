@@ -1,4 +1,5 @@
 import type { ExecutionRisk } from '../drp/runbook/runbook-types.js';
+import type { Evidence, EvidenceType } from '../evidence/index.js';
 import type { DRCategory, ValidationSeverity } from '../validation/validation-types.js';
 import type { ResourceRole } from './service-types.js';
 
@@ -36,6 +37,11 @@ export interface ContextualFinding {
     readonly metadataKey: string;
     readonly metadataValue: unknown;
     readonly expectedValue: string;
+  };
+  readonly evidence?: readonly Evidence[];
+  readonly evidenceSummary?: {
+    readonly strongestType: EvidenceType;
+    readonly confidence: number;
   };
   readonly drImpact: {
     readonly summary: string;

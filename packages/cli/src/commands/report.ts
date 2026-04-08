@@ -38,30 +38,27 @@ export function registerReportCommand(program: Command): void {
       'Minimum severity to display: critical|high|medium|low',
       'low',
     )
+    .option('--show-passed', 'Include passing controls with their evidence', false)
+    .option('--explain-score', 'Show score decomposition and evidence maturity', false)
     .option('--verbose', 'Show detailed logs', false),
   ).action(async (_: ReportCommandOptions, command: Command) => {
       const options = getCommandOptions<ReportCommandOptions>(command);
+      const auditFlags = collectAuditFlags({
+        '--redact': options.redact,
+        '--verbose': options.verbose,
+        '--output': Boolean(options.output),
+        '--category': Boolean(options.category),
+        '--severity': Boolean(options.severity),
+        '--show-passed': options.showPassed,
+        '--explain-score': options.explainScore,
+        '--no-overrides': options.useOverrides === false,
+        '--overrides': options.useOverrides !== false,
+      });
       const audit = new CommandAuditSession('report', {
         outputFormat: options.format,
-        ...(collectAuditFlags({
-          '--redact': options.redact,
-          '--verbose': options.verbose,
-          '--output': Boolean(options.output),
-          '--category': Boolean(options.category),
-          '--severity': Boolean(options.severity),
-          '--no-overrides': options.useOverrides === false,
-          '--overrides': options.useOverrides !== false,
-        })
+        ...(auditFlags
           ? {
-              flags: collectAuditFlags({
-                '--redact': options.redact,
-                '--verbose': options.verbose,
-                '--output': Boolean(options.output),
-                '--category': Boolean(options.category),
-                '--severity': Boolean(options.severity),
-                '--no-overrides': options.useOverrides === false,
-                '--overrides': options.useOverrides !== false,
-              }),
+              flags: auditFlags,
             }
           : {}),
       });
@@ -88,6 +85,8 @@ export function registerReportCommand(program: Command): void {
         const filters = {
           ...(options.category ? { category: options.category } : {}),
           ...(options.severity ? { severity: options.severity } : {}),
+          ...(options.showPassed ? { showPassed: true } : {}),
+          ...(options.explainScore ? { explainScore: true } : {}),
         };
         const hasServices =
           outputScan.servicePosture !== undefined &&

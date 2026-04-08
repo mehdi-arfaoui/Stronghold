@@ -4,9 +4,11 @@ import {
   buildServicePosture,
   generateDRPlan,
   generateRecommendations,
+  mergeEvidenceIntoValidationReport,
   type GraphOverrides,
   runValidation,
   type GraphAnalysisReport,
+  type Evidence,
   type InfraNode,
   loadManualServices,
   type Service,
@@ -28,6 +30,7 @@ export interface ScanPipelineInput {
   readonly isDemo?: boolean;
   readonly servicesFilePath?: string;
   readonly previousAssignments?: readonly Service[];
+  readonly evidence?: readonly Evidence[];
   readonly onStage?: (stage: 'graph' | 'validation' | 'plan') => void | Promise<void>;
   readonly onServiceLog?: (message: string) => void;
 }
@@ -45,7 +48,17 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
   const analyzedNodes = snapshotNodes(graph);
   const analyzedEdges = snapshotEdges(graph);
   await input.onStage?.('validation');
-  const validationReport = runValidation(analyzedNodes, analyzedEdges, allValidationRules);
+  const baseValidationReport = runValidation(
+    analyzedNodes,
+    analyzedEdges,
+    allValidationRules,
+    undefined,
+    { timestamp: input.timestamp },
+  );
+  const validationReport =
+    input.evidence && input.evidence.length > 0
+      ? mergeEvidenceIntoValidationReport(baseValidationReport, input.evidence)
+      : baseValidationReport;
   await input.onStage?.('plan');
   const drpPlan = generateDRPlan({
     graph,

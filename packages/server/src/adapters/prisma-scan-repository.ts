@@ -489,6 +489,27 @@ export class PrismaScanRepository {
     };
   }
 
+  public async listReportsByType(
+    scanId: string,
+    type: string,
+  ): Promise<readonly StoredReport[]> {
+    const reports = await this.prisma.report.findMany({
+      where: { scanId, type },
+      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    });
+
+    return reports.map((report) => ({
+      id: report.id,
+      scanId: report.scanId,
+      type: report.type,
+      format: report.format,
+      content: report.content,
+      score: report.score,
+      grade: report.grade,
+      createdAt: report.createdAt,
+    }));
+  }
+
   public async saveDRPlan(params: SaveDrPlanParams): Promise<string> {
     const plan = await this.prisma.dRPlan.create({
       data: {

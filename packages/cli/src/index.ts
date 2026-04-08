@@ -7,6 +7,7 @@ import { CliError } from './errors/cli-error.js';
 import { writeError } from './output/io.js';
 import { registerDemoCommand } from './commands/demo.js';
 import { registerDriftCommand } from './commands/drift.js';
+import { registerEvidenceCommand } from './commands/evidence.js';
 import { registerIamPolicyCommand } from './commands/iam-policy.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerPlanCommand } from './commands/plan.js';
@@ -32,6 +33,7 @@ export function createProgram(): Command {
   registerReportCommand(program);
   registerPlanCommand(program);
   registerDriftCommand(program);
+  registerEvidenceCommand(program);
   registerOverridesCommand(program);
   registerDemoCommand(program);
   registerIamPolicyCommand(program);

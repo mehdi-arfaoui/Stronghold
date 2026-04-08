@@ -55,6 +55,8 @@ export {
   type ApiListScansResult,
   type ApiScanData,
   type ApiValidationSummary,
+  type ApiEvidenceListResponse,
+  type ApiAddEvidenceInput,
   type ApiServiceSummary,
   type ApiServicesResponse,
   type ApiServiceDetailResponse,
@@ -197,20 +199,26 @@ export {
   type Grade,
   type InfraNode,
   type ScoreBreakdown,
+  type EvidenceMaturitySummary,
   type ValidationSeverity,
   type ValidationStatus,
   type ValidationEdge,
   type ValidationContext,
   type ValidationResult,
+  type ValidationResultWithEvidence,
   type ValidationRule,
   type ValidationReport,
+  type ValidationReportWithEvidence,
   type WeightedValidationResult,
+  type WeightedValidationResultWithEvidence,
   allValidationRules,
   blastRadiusWeight,
+  calculatePotentialTestVerifiedScore,
   calculateWeightedScore,
   runValidation,
   gradeForScore,
   formatValidationReport,
+  summarizeEvidenceMaturity,
 } from './validation/index.js';
 
 export {
@@ -332,6 +340,25 @@ export {
   validateDrPlan,
   validateDRPlan,
 } from './drp/index.js';
+
+export {
+  DEFAULT_EVIDENCE_EXPIRATION_DAYS,
+  EVIDENCE_CONFIDENCE,
+  EVIDENCE_TYPES,
+  FileEvidenceStore,
+  applyEvidenceFreshness,
+  checkFreshness,
+  extractEvidence,
+  mergeEvidenceIntoValidationReport,
+  type Evidence,
+  type EvidenceObservation,
+  type EvidenceStore,
+  type EvidenceSource,
+  type EvidenceSubject,
+  type EvidenceTestResult,
+  type EvidenceType,
+  type FreshnessResult,
+} from './evidence/index.js';
 
 export {
   type EncryptedPayload as StrongholdEncryptedPayload,

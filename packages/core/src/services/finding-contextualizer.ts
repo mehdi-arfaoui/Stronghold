@@ -1,6 +1,11 @@
 import { getMetadata } from '../graph/analysis-helpers.js';
 import type { Recommendation } from '../recommendations/recommendation-types.js';
 import { allValidationRules, type InfraNode, type WeightedValidationResult } from '../validation/index.js';
+import {
+  resolveStrongestEvidenceConfidence,
+  resolveStrongestEvidenceType,
+  type Evidence,
+} from '../evidence/index.js';
 import { buildServiceIndex, classifyResourceRole } from './service-utils.js';
 import type { ContextualFinding, RemediationAction } from './finding-types.js';
 import { humanizeRuleId, resolveImpactTemplate } from './impact-templates.js';
@@ -106,6 +111,7 @@ export function contextualizeFindings(
       classifyResourceRole(node);
     const ruleName = RULE_NAME_BY_ID.get(finding.ruleId) ?? humanizeRuleId(finding.ruleId);
     const technicalImpact = buildTechnicalImpact(finding, node);
+    const evidence = extractFindingEvidence(finding);
     const impactTemplate = resolveImpactTemplate(
       finding.ruleId,
       resourceRole,
@@ -130,6 +136,15 @@ export function contextualizeFindings(
       serviceName: service?.name ?? null,
       resourceRole,
       technicalImpact,
+      ...(evidence.length > 0
+        ? {
+            evidence,
+            evidenceSummary: {
+              strongestType: resolveStrongestEvidenceType(evidence),
+              confidence: resolveStrongestEvidenceConfidence(evidence),
+            },
+          }
+        : {}),
       drImpact: impactTemplate,
       scenarioImpact: null,
       remediation: recommendation
@@ -141,6 +156,10 @@ export function contextualizeFindings(
         : null,
     };
   });
+}
+
+function extractFindingEvidence(finding: WeightedValidationResult): readonly Evidence[] {
+  return 'evidence' in finding && Array.isArray(finding.evidence) ? finding.evidence : [];
 }
 
 function buildTechnicalImpact(

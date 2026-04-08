@@ -1,6 +1,7 @@
 import type { DRPlan, DRPlanValidationReport } from '../drp/drp-types.js';
 import type { GraphAnalysisReport } from './analysis.js';
 import type { DriftReport } from '../drift/drift-types.js';
+import type { Evidence } from '../evidence/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
 import type {
@@ -130,4 +131,21 @@ export interface ApiDriftEvent {
 
 export interface ApiDriftEventsResponse {
   readonly events: readonly ApiDriftEvent[];
+}
+
+export interface ApiEvidenceListResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly evidence: readonly Evidence[];
+}
+
+export interface ApiAddEvidenceInput {
+  readonly nodeId: string;
+  readonly type: string;
+  readonly result: 'success' | 'failure' | 'partial';
+  readonly duration?: string;
+  readonly notes?: string;
+  readonly serviceId?: string;
+  readonly expiresDays?: number;
+  readonly author?: string;
 }

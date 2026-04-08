@@ -47,7 +47,13 @@ export async function runScanPipeline(
   const analysis = await analyzeFullGraph(graph);
   const analyzedNodes = snapshotNodes(graph);
   const analyzedEdges = snapshotEdges(graph);
-  const validationReport = runValidation(analyzedNodes, analyzedEdges, validationRules);
+  const validationReport = runValidation(
+    analyzedNodes,
+    analyzedEdges,
+    validationRules,
+    undefined,
+    { timestamp: input.timestamp.toISOString() },
+  );
   const drPlan = generateDRPlan({
     graph,
     analysis,

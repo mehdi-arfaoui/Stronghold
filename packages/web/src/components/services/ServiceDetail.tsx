@@ -1,6 +1,26 @@
-import type { ApiServiceDetailResponse } from '@stronghold-dr/core';
+import type { ApiServiceDetailResponse, ContextualFinding } from '@stronghold-dr/core';
 
 import { ServiceFindings } from './ServiceFindings';
+
+function buildEvidenceSummary(findings: readonly ContextualFinding[]): Array<{
+  readonly type: string;
+  readonly count: number;
+  readonly tone: string;
+}> {
+  const counts = findings.reduce<Record<string, number>>((accumulator, finding) => {
+    const type = finding.evidenceSummary?.strongestType ?? 'observed';
+    accumulator[type] = (accumulator[type] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
+  return [
+    { type: 'tested', count: counts.tested ?? 0, tone: 'bg-emerald-400' },
+    { type: 'observed', count: counts.observed ?? 0, tone: 'bg-sky-400' },
+    { type: 'inferred', count: counts.inferred ?? 0, tone: 'bg-amber-400' },
+    { type: 'declared', count: counts.declared ?? 0, tone: 'bg-indigo-400' },
+    { type: 'expired', count: counts.expired ?? 0, tone: 'bg-red-400' },
+  ].filter((entry) => entry.count > 0);
+}
 
 export function ServiceDetail({
   detail,
@@ -16,6 +36,9 @@ export function ServiceDetail({
       </div>
     );
   }
+
+  const evidenceSummary = buildEvidenceSummary(detail.contextualFindings);
+  const totalEvidenceFindings = evidenceSummary.reduce((sum, entry) => sum + entry.count, 0);
 
   return (
     <section className="space-y-6">
@@ -43,6 +66,44 @@ export function ServiceDetail({
           </button>
           <div className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-muted-foreground">
             {detail.service.resources.length} resources
+          </div>
+          <div className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-muted-foreground">
+            {detail.contextualFindings.length} active finding{detail.contextualFindings.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Evidence maturity</p>
+            <p className="text-sm text-muted-foreground">
+              {totalEvidenceFindings} finding{totalEvidenceFindings === 1 ? '' : 's'} with evidence context
+            </p>
+          </div>
+          <div className="mt-3 flex h-3 overflow-hidden rounded-full bg-card/70">
+            {evidenceSummary.length ? (
+              evidenceSummary.map((entry) => (
+                <div
+                  key={entry.type}
+                  className={entry.tone}
+                  style={{ width: `${(entry.count / totalEvidenceFindings) * 100}%` }}
+                />
+              ))
+            ) : (
+              <div className="h-full w-full bg-border" />
+            )}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {evidenceSummary.length ? (
+              evidenceSummary.map((entry) => (
+                <div
+                  key={entry.type}
+                  className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs uppercase tracking-[0.14em] text-muted-foreground"
+                >
+                  {entry.type}: {entry.count}
+                </div>
+              ))
+            ) : (
+              <div className="text-sm text-muted-foreground">No evidence summary available for this service yet.</div>
+            )}
           </div>
         </div>
       </div>

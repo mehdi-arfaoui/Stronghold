@@ -6,6 +6,7 @@ import {
   DescribeDBClustersCommand,
   DescribeDBInstancesCommand,
   DescribeGlobalClustersCommand,
+  ListTagsForResourceCommand,
   RDSClient,
   type DBCluster,
   type DBClusterMember,
@@ -15,6 +16,7 @@ import {
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 interface AuroraScannerConfig {
   readonly includeGlobalClusters?: boolean;
@@ -45,15 +47,21 @@ function resolveSubnetId(instance: DBInstance): string | undefined {
   );
 }
 
-function buildAuroraCluster(cluster: DBCluster, region: string): DiscoveredResource {
+function buildAuroraCluster(
+  cluster: DBCluster,
+  region: string,
+  tags: Record<string, string>,
+): DiscoveredResource {
   const clusterId = cluster.DBClusterIdentifier ?? 'aurora-cluster';
+  const displayName = getNameTag(tags) ?? clusterId;
   return buildResource({
     source: 'aws',
     externalId: clusterId,
-    name: clusterId,
+    name: displayName,
     kind: 'infra',
     type: 'AURORA_CLUSTER',
     ip: cluster.Endpoint ?? null,
+    tags,
     metadata: {
       region,
       dbClusterIdentifier: clusterId,
@@ -90,7 +98,8 @@ function buildAuroraCluster(cluster: DBCluster, region: string): DiscoveredResou
         .filter((instanceId): instanceId is string => Boolean(instanceId)),
       replicaCount: (cluster.DBClusterMembers ?? []).filter((member) => !member.IsClusterWriter)
         .length,
-      displayName: clusterId,
+      displayName,
+      ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
     },
   });
 }
@@ -100,15 +109,18 @@ function buildAuroraInstance(
   member: DBClusterMember | undefined,
   cluster: DBCluster,
   region: string,
+  tags: Record<string, string>,
 ): DiscoveredResource {
   const instanceId = instance.DBInstanceIdentifier ?? 'aurora-instance';
+  const displayName = getNameTag(tags) ?? instanceId;
   return buildResource({
     source: 'aws',
     externalId: instanceId,
-    name: instanceId,
+    name: displayName,
     kind: 'infra',
     type: 'AURORA_INSTANCE',
     ip: instance.Endpoint?.Address ?? null,
+    tags,
     metadata: {
       region,
       dbInstanceIdentifier: instanceId,
@@ -132,19 +144,25 @@ function buildAuroraInstance(
         .filter((groupId): groupId is string => Boolean(groupId)),
       endpointAddress: instance.Endpoint?.Address,
       endpointPort: instance.Endpoint?.Port,
-      displayName: instanceId,
+      displayName,
+      ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
     },
   });
 }
 
-function buildAuroraGlobal(globalCluster: GlobalCluster): DiscoveredResource {
+function buildAuroraGlobal(
+  globalCluster: GlobalCluster,
+  tags: Record<string, string>,
+): DiscoveredResource {
   const globalClusterIdentifier = globalCluster.GlobalClusterIdentifier ?? 'aurora-global';
+  const displayName = getNameTag(tags) ?? globalClusterIdentifier;
   return buildResource({
     source: 'aws',
     externalId: globalClusterIdentifier,
-    name: globalClusterIdentifier,
+    name: displayName,
     kind: 'infra',
     type: 'AURORA_GLOBAL',
+    tags,
     metadata: {
       region: 'global',
       globalClusterIdentifier,
@@ -158,7 +176,8 @@ function buildAuroraGlobal(globalCluster: GlobalCluster): DiscoveredResource {
       engine: globalCluster.Engine,
       engineVersion: globalCluster.EngineVersion,
       storageEncrypted: globalCluster.StorageEncrypted,
-      displayName: globalClusterIdentifier,
+      displayName,
+      ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
     },
   });
 }
@@ -192,6 +211,7 @@ export async function scanAuroraClusters(
   const rds = createAwsClient(RDSClient, options);
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
+  const tagWarnings = new Set<string>();
   const clusters = (
     await paginateAws(
       (marker) =>
@@ -202,7 +222,22 @@ export async function scanAuroraClusters(
   ).filter((cluster) => isAuroraEngine(cluster.Engine));
 
   for (const cluster of clusters) {
-    resources.push(buildAuroraCluster(cluster, options.region));
+    const clusterTags = cluster.DBClusterArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            rds.send(
+              new ListTagsForResourceCommand({ ResourceName: cluster.DBClusterArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => tagsArrayToMap(response.TagList),
+          {
+            description: `Aurora tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    resources.push(buildAuroraCluster(cluster, options.region, clusterTags));
 
     try {
       const membersById = new Map(
@@ -212,12 +247,28 @@ export async function scanAuroraClusters(
       );
       const instances = await describeAuroraInstances(rds, options, cluster);
       for (const instance of instances) {
+        const instanceTags = instance.DBInstanceArn
+          ? await fetchAwsTagsWithRetry(
+              () =>
+                rds.send(
+                  new ListTagsForResourceCommand({ ResourceName: instance.DBInstanceArn! }),
+                  getAwsCommandOptions(options),
+                ),
+              (response) => tagsArrayToMap(response.TagList),
+              {
+                description: `Aurora tag discovery unavailable in ${options.region}`,
+                warnings,
+                warningDeduper: tagWarnings,
+              },
+            )
+          : {};
         resources.push(
           buildAuroraInstance(
             instance,
             membersById.get(instance.DBInstanceIdentifier ?? ''),
             cluster,
             options.region,
+            instanceTags,
           ),
         );
       }
@@ -239,7 +290,24 @@ export async function scanAuroraClusters(
         (response) => response.GlobalClusters,
         (response) => response.Marker,
       );
-      resources.push(...globalClusters.map((globalCluster) => buildAuroraGlobal(globalCluster)));
+      for (const globalCluster of globalClusters) {
+        const globalTags = globalCluster.GlobalClusterArn
+          ? await fetchAwsTagsWithRetry(
+              () =>
+                rds.send(
+                  new ListTagsForResourceCommand({ ResourceName: globalCluster.GlobalClusterArn! }),
+                  getAwsCommandOptions(options),
+                ),
+              (response) => tagsArrayToMap(response.TagList),
+              {
+                description: `Aurora tag discovery unavailable in ${options.region}`,
+                warnings,
+                warningDeduper: tagWarnings,
+              },
+            )
+          : {};
+        resources.push(buildAuroraGlobal(globalCluster, globalTags));
+      }
     } catch {
       warnings.push(`Aurora global cluster discovery unavailable in ${options.region}.`);
     }

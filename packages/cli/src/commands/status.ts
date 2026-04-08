@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 
 import { Command } from 'commander';
+import { FileEvidenceStore, checkFreshness, type Evidence } from '@stronghold-dr/core';
 
 import { CommandAuditSession, resolveAuditIdentity } from '../audit/command-audit.js';
 import { writeOutput } from '../output/io.js';
@@ -43,7 +44,8 @@ export function registerStatusCommand(program: Command): void {
           passphrase: options.passphrase,
         });
         const effectiveScan = await rebuildScanResults(scan);
-        await writeOutput(renderStatusSnapshot(effectiveScan, paths.auditLogPath));
+        const evidence = await new FileEvidenceStore(paths.evidencePath).getAll();
+        await writeOutput(renderStatusSnapshot(effectiveScan, paths.auditLogPath, evidence));
         await audit.finish({
           status: 'success',
           resourceCount: effectiveScan.nodes.length,
@@ -58,6 +60,7 @@ export function registerStatusCommand(program: Command): void {
 export function renderStatusSnapshot(
   scan: Awaited<ReturnType<typeof loadScanResultsWithEncryption>>,
   auditLogPath: string,
+  evidence: readonly Evidence[] = [],
 ): string {
   const lines = [`DR Posture - ${scan.timestamp.slice(0, 10)}`, ''];
   if (!hasDetectedServices(scan.servicePosture)) {
@@ -78,6 +81,13 @@ export function renderStatusSnapshot(
     );
   }
 
+  const evidenceAlerts = renderEvidenceAlerts(evidence);
+  if (evidenceAlerts.length > 0) {
+    lines.push('');
+    lines.push('  Evidence alerts:');
+    lines.push(...evidenceAlerts);
+  }
+
   const nextAction = selectTopServiceRecommendations(scan.servicePosture.recommendations, 1)[0] ?? null;
   lines.push('');
   lines.push(
@@ -89,6 +99,19 @@ export function renderStatusSnapshot(
   lines.push('');
   lines.push(`  Run 'stronghold scan' to refresh.`);
   return lines.join('\n');
+}
+
+function renderEvidenceAlerts(evidence: readonly Evidence[]): readonly string[] {
+  const asOf = new Date();
+  return evidence
+    .map((entry) => ({ entry, freshness: checkFreshness(entry, asOf) }))
+    .filter(({ freshness }) => freshness.status === 'expiring_soon' || freshness.status === 'expired')
+    .sort((left, right) => left.entry.timestamp.localeCompare(right.entry.timestamp))
+    .map(({ entry, freshness }) =>
+      freshness.status === 'expired'
+        ? `    x ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} evidence EXPIRED - last test: ${entry.timestamp.slice(0, 10)}`
+        : `    ! ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} expires in ${freshness.daysUntilExpiry} days - re-test recommended`,
+    );
 }
 
 function calculateDebt(
@@ -144,4 +167,12 @@ function resolveDebtAgeDays(scanTimestamp: string, auditLogPath: string): number
   } catch {
     return null;
   }
+}
+
+function evidenceLabel(evidence: Evidence): string {
+  return evidence.source.origin === 'test' ? evidence.source.testType : evidence.observation.key;
+}
+
+function shortResourceLabel(nodeId: string): string {
+  return nodeId.split('/').at(-1) ?? nodeId.split(':').at(-1) ?? nodeId;
 }

@@ -7,6 +7,7 @@ import {
   DescribeFileSystemsCommand,
   DescribeMountTargetsCommand,
   DescribeReplicationConfigurationsCommand,
+  DescribeTagsCommand,
   EFSClient,
   type BackupPolicy,
   type Destination,
@@ -16,6 +17,7 @@ import {
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createEfsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 interface ReplicationSummary {
   readonly destinationFileSystemId: string;
@@ -23,13 +25,8 @@ interface ReplicationSummary {
   readonly status: string;
 }
 
-function readEfsTags(fileSystem: FileSystemDescription): string[] {
-  const tags: string[] = [];
-  for (const tag of fileSystem.Tags ?? []) {
-    if (!tag?.Key || tag.Value == null) continue;
-    tags.push(`${tag.Key}:${tag.Value}`);
-  }
-  return tags;
+function readEfsTags(fileSystem: FileSystemDescription): Record<string, string> {
+  return tagsArrayToMap(fileSystem.Tags);
 }
 
 function summarizeReplication(destination: Destination): ReplicationSummary | null {
@@ -47,16 +44,17 @@ function buildFileSystemResource(
   backupPolicy: BackupPolicy | null,
   replicationConfigurations: readonly ReplicationSummary[],
   mountTargets: readonly MountTargetDescription[],
+  tags: Record<string, string>,
 ): DiscoveredResource {
   const fileSystemId = fileSystem.FileSystemId ?? 'efs-filesystem';
-  const name = fileSystem.Name ?? fileSystemId;
+  const name = getNameTag(tags) ?? fileSystem.Name ?? fileSystemId;
   return buildResource({
     source: 'aws',
     externalId: fileSystemId,
     name,
     kind: 'infra',
     type: 'EFS_FILESYSTEM',
-    tags: readEfsTags(fileSystem),
+    tags,
     metadata: {
       region,
       fileSystemId,
@@ -76,6 +74,7 @@ function buildFileSystemResource(
       mountTargetIds: mountTargets.map((mountTarget) => mountTarget.MountTargetId),
       replicaRegions: replicationConfigurations.map((config) => config.destinationRegion),
       displayName: name,
+      ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
     },
   });
 }
@@ -133,6 +132,7 @@ export async function scanEfsFileSystems(
   const efs = createEfsClient(options);
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
+  const tagWarnings = new Set<string>();
   const fileSystems = await paginateAws(
     (marker) =>
       efs.send(new DescribeFileSystemsCommand({ Marker: marker }), getAwsCommandOptions(options)),
@@ -184,6 +184,20 @@ export async function scanEfsFileSystems(
         warnings.push(`EFS backup policy unavailable for filesystem ${fileSystemId}.`);
         return null;
       });
+    const fetchedTags = await fetchAwsTagsWithRetry(
+      () =>
+        efs.send(
+          new DescribeTagsCommand({ FileSystemId: fileSystemId }),
+          getAwsCommandOptions(options),
+        ),
+      (response) => tagsArrayToMap(response.Tags),
+      {
+        description: `EFS tag discovery unavailable in ${options.region}`,
+        warnings,
+        warningDeduper: tagWarnings,
+      },
+    );
+    const tags = Object.keys(fetchedTags).length > 0 ? fetchedTags : readEfsTags(fileSystem);
 
     resources.push(
       buildFileSystemResource(
@@ -192,6 +206,7 @@ export async function scanEfsFileSystems(
         backupPolicy,
         replicationsBySource.get(fileSystemId) ?? [],
         mountTargets,
+        tags,
       ),
     );
     resources.push(...mountTargets.map((mountTarget) => buildMountTargetResource(mountTarget, options.region)));

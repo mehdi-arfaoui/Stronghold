@@ -8,6 +8,7 @@ import {
   s3ReplicationEnricher,
   scanAwsRegion,
   transformToScanResult,
+  type Evidence,
   type AwsRegionScanResult,
   type DiscoveryCredentials,
   type DiscoveryProgress,
@@ -52,6 +53,7 @@ export interface AwsScanOptions {
   readonly hooks?: AwsScanHooks;
   readonly servicesFilePath?: string;
   readonly previousAssignments?: readonly import('@stronghold-dr/core').Service[];
+  readonly evidence?: readonly Evidence[];
 }
 
 export interface AwsScanExecution {
@@ -133,6 +135,7 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
     warnings,
     servicesFilePath: options.servicesFilePath,
     previousAssignments: options.previousAssignments,
+    evidence: options.evidence,
     onStage: (stage) => {
       if (stage === 'graph') {
         return options.hooks?.onStage?.('Building dependency graph...');

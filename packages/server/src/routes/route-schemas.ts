@@ -48,3 +48,21 @@ export const reportSummaryQuerySchema = z.object({
 export const planFormatQuerySchema = z.object({
   format: z.enum(['yaml', 'json']).default('yaml'),
 });
+
+export const evidenceQuerySchema = z.object({
+  nodeId: z.string().min(1).optional(),
+  serviceId: z.string().min(1).optional(),
+});
+
+export const addEvidenceBodySchema = z
+  .object({
+    nodeId: z.string().min(1),
+    type: z.string().min(1),
+    result: z.enum(['success', 'failure', 'partial']),
+    duration: z.string().min(1).optional(),
+    notes: z.string().min(1).optional(),
+    serviceId: z.string().min(1).optional(),
+    expiresDays: z.coerce.number().int().min(1).max(3650).optional(),
+    author: z.string().min(1).optional(),
+  })
+  .strict();

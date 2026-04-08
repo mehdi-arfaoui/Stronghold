@@ -9,6 +9,7 @@ import { createErrorHandler } from './middleware/error-handler.js';
 import { globalLimiter } from './middleware/rate-limiter.js';
 import { createRequestLogger } from './middleware/request-logger.js';
 import { createDriftRoutes } from './routes/drift.routes.js';
+import { createEvidenceRoutes } from './routes/evidence.routes.js';
 import { createHealthRoutes } from './routes/health.routes.js';
 import { createPlanRoutes } from './routes/plan.routes.js';
 import { createReportRoutes } from './routes/report.routes.js';
@@ -56,6 +57,10 @@ export function createApp(dependencies: AppDependencies): Express {
   app.use(
     '/api',
     createServicesRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
+  );
+  app.use(
+    '/api',
+    createEvidenceRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
   );
   app.use(
     '/api',

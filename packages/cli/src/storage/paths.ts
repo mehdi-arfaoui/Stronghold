@@ -10,6 +10,7 @@ export interface StrongholdPaths {
   readonly baselineScanPath: string;
   readonly baselineEncryptedScanPath: string;
   readonly auditLogPath: string;
+  readonly evidencePath: string;
   readonly servicesPath: string;
   readonly gitignorePath: string;
 }
@@ -18,6 +19,7 @@ const STORAGE_DIRNAME = '.stronghold';
 const LATEST_SCAN_FILENAME = 'latest-scan.json';
 const BASELINE_SCAN_FILENAME = 'baseline-scan.json';
 const AUDIT_LOG_FILENAME = 'audit.jsonl';
+const EVIDENCE_FILENAME = 'evidence.jsonl';
 const SERVICES_FILENAME = 'services.yml';
 const GITIGNORE_FILENAME = '.gitignore';
 
@@ -30,6 +32,7 @@ export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
     baselineScanPath: path.join(rootDir, BASELINE_SCAN_FILENAME),
     baselineEncryptedScanPath: path.join(rootDir, `baseline-scan${ENCRYPTED_FILE_EXTENSION}`),
     auditLogPath: path.join(rootDir, AUDIT_LOG_FILENAME),
+    evidencePath: path.join(rootDir, EVIDENCE_FILENAME),
     servicesPath: path.join(rootDir, SERVICES_FILENAME),
     gitignorePath: path.join(rootDir, GITIGNORE_FILENAME),
   };

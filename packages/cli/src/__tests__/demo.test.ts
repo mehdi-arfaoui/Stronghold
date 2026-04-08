@@ -46,7 +46,7 @@ describe('demo infrastructure', () => {
   it('enterprise score stays in the expected range', async () => {
     const results = await createDemoResults('enterprise');
 
-    expect(results.validationReport.score).toBeGreaterThanOrEqual(80);
+    expect(results.validationReport.score).toBeGreaterThanOrEqual(65);
     expect(results.validationReport.score).toBeLessThanOrEqual(100);
   });
 

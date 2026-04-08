@@ -2,17 +2,26 @@
  * Scans AWS RDS database instances.
  */
 
-import { RDSClient, DescribeDBInstancesCommand } from '@aws-sdk/client-rds';
+import {
+  RDSClient,
+  DescribeDBInstancesCommand,
+  ListTagsForResourceCommand,
+} from '@aws-sdk/client-rds';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 function isAuroraEngine(engine: string | undefined): boolean {
   return typeof engine === 'string' && engine.startsWith('aurora');
 }
 
-export async function scanRdsInstances(options: AwsClientOptions): Promise<DiscoveredResource[]> {
+export async function scanRdsInstances(
+  options: AwsClientOptions,
+): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
   const rds = createAwsClient(RDSClient, options);
+  const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
 
   const dbInstances = await paginateAws(
     (marker) =>
@@ -21,17 +30,36 @@ export async function scanRdsInstances(options: AwsClientOptions): Promise<Disco
     (response) => response.Marker,
   );
 
-  return dbInstances
-    .filter((db) => !isAuroraEngine(db.Engine))
-    .map((db) => {
+  const resources: DiscoveredResource[] = [];
+
+  for (const db of dbInstances.filter((item) => !isAuroraEngine(item.Engine))) {
     const dbIdentifier = db.DBInstanceIdentifier ?? 'rds';
-    return buildResource({
+    const tags = db.DBInstanceArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            rds.send(
+              new ListTagsForResourceCommand({ ResourceName: db.DBInstanceArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => tagsArrayToMap(response.TagList),
+          {
+            description: `RDS tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    const displayName = getNameTag(tags) ?? dbIdentifier;
+
+    resources.push(
+      buildResource({
       source: 'aws',
       externalId: dbIdentifier,
-      name: dbIdentifier,
+      name: displayName,
       kind: 'infra',
       type: 'RDS',
       ip: db.Endpoint?.Address ?? null,
+      tags,
       metadata: {
         dbIdentifier,
         dbArn: db.DBInstanceArn,
@@ -62,8 +90,12 @@ export async function scanRdsInstances(options: AwsClientOptions): Promise<Disco
         securityGroups: (db.VpcSecurityGroups ?? [])
           .map((group) => group.VpcSecurityGroupId)
           .filter((groupId): groupId is string => Boolean(groupId)),
-        displayName: dbIdentifier,
+        displayName,
+        ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
       },
-    });
-    });
+      }),
+    );
+  }
+
+  return { resources, warnings };
 }

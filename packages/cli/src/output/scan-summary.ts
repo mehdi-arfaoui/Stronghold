@@ -1,4 +1,8 @@
-import type { ValidationReport, WeightedValidationResult } from '@stronghold-dr/core';
+import {
+  summarizeEvidenceMaturity,
+  type ValidationReport,
+  type WeightedValidationResult,
+} from '@stronghold-dr/core';
 
 import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
 import {
@@ -42,6 +46,7 @@ function renderLegacyScanSummary(
   lines.push(...renderTopIssues(results.validationReport));
   lines.push('');
   lines.push(`   ${formatSeverityCounts(results.validationReport)}`);
+  lines.push(...renderEvidenceSummary(results.validationReport));
 
   if (options.savedPath) {
     lines.push('');
@@ -110,6 +115,7 @@ function renderServiceCentricSummary(
 
   lines.push('');
   lines.push(`Global DR score: ${formatGrade(results.validationReport)}`);
+  lines.push(...renderEvidenceSummary(results.validationReport));
 
   if (options.savedPath) {
     lines.push(`Results saved to ${options.savedPath}`);
@@ -251,6 +257,34 @@ function sortFailures(
       left.ruleId.localeCompare(right.ruleId) ||
       left.nodeId.localeCompare(right.nodeId),
   );
+}
+
+function renderEvidenceSummary(report: ValidationReport): readonly string[] {
+  const summary = hasEvidenceSummary(report)
+    ? report.evidenceSummary
+    : summarizeEvidenceMaturity(report.results);
+  if (summary.total === 0) {
+    return [];
+  }
+
+  const lines = [
+    '',
+    `Evidence: ${summary.counts.observed} observed, ${summary.counts.tested} tested, ${summary.counts.expired} expired`,
+  ];
+  if (summary.counts.expired > 0) {
+    lines.push(
+      `  ${theme.warn(`${summary.counts.expired} expired test result${summary.counts.expired === 1 ? '' : 's'} - run 'stronghold evidence list' for details`)}`,
+    );
+  }
+  return lines;
+}
+
+function hasEvidenceSummary(
+  report: ValidationReport,
+): report is ValidationReport & {
+  readonly evidenceSummary: ReturnType<typeof summarizeEvidenceMaturity>;
+} {
+  return 'evidenceSummary' in report;
 }
 
 function formatDuration(durationMs: number): string {

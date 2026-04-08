@@ -7,10 +7,12 @@ import {
   ListTopicsCommand,
   GetTopicAttributesCommand,
   ListSubscriptionsByTopicCommand,
+  ListTagsForResourceCommand,
 } from '@aws-sdk/client-sns';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 export async function scanSnsTopics(
   options: AwsClientOptions,
@@ -18,6 +20,7 @@ export async function scanSnsTopics(
   const sns = createAwsClient(SNSClient, options);
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
 
   const topicList = await paginateAws(
     (nextToken) =>
@@ -34,6 +37,20 @@ export async function scanSnsTopics(
     );
     const attrs = attributes.Attributes ?? {};
     const topicName = topic.TopicArn.split(':').pop() ?? 'topic';
+    const tags = await fetchAwsTagsWithRetry(
+      () =>
+        sns.send(
+          new ListTagsForResourceCommand({ ResourceArn: topic.TopicArn! }),
+          getAwsCommandOptions(options),
+        ),
+      (response) => tagsArrayToMap(response.Tags),
+      {
+        description: `SNS tag discovery unavailable in ${options.region}`,
+        warnings,
+        warningDeduper: tagWarnings,
+      },
+    );
+    const displayName = getNameTag(tags) ?? topicName;
     let subscriptions: Array<{ protocol: string; endpoint: string }> = [];
 
     try {
@@ -65,9 +82,10 @@ export async function scanSnsTopics(
       buildResource({
         source: 'aws',
         externalId: topic.TopicArn,
-        name: topicName,
+        name: displayName,
         kind: 'infra',
         type: 'SNS_TOPIC',
+        tags,
         metadata: {
           region: options.region,
           topicArn: topic.TopicArn,
@@ -84,7 +102,8 @@ export async function scanSnsTopics(
             ? Number(attrs.SubscriptionsDeleted)
             : undefined,
           subscriptions,
-          displayName: topicName,
+          displayName,
+          ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
         },
       }),
     );

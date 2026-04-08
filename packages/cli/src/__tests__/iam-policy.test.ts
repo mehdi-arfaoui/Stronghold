@@ -49,4 +49,22 @@ describe('iam-policy', () => {
     expect(actions.some((action) => /:(Put|Create|Delete|Update)/.test(action))).toBe(false);
     expect(terraform).toContain('resource "aws_iam_policy" "stronghold_read_only"');
   });
+
+  it('includes the tag read permissions required by the scanners', () => {
+    const actions = new Set(buildIamPolicy().Statement.flatMap((statement) => statement.Action));
+
+    expect(actions.has('rds:ListTagsForResource')).toBe(true);
+    expect(actions.has('s3:GetBucketTagging')).toBe(true);
+    expect(actions.has('lambda:ListTags')).toBe(true);
+    expect(actions.has('dynamodb:ListTagsOfResource')).toBe(true);
+    expect(actions.has('elasticache:ListTagsForResource')).toBe(true);
+    expect(actions.has('sqs:ListQueueTags')).toBe(true);
+    expect(actions.has('sns:ListTagsForResource')).toBe(true);
+    expect(actions.has('elasticloadbalancing:DescribeTags')).toBe(true);
+    expect(actions.has('eks:ListTagsForResource')).toBe(true);
+    expect(actions.has('elasticfilesystem:DescribeTags')).toBe(true);
+    expect(actions.has('route53:ListTagsForResource')).toBe(true);
+    expect(actions.has('backup:ListTags')).toBe(true);
+    expect(actions.has('cloudwatch:ListTagsForResource')).toBe(true);
+  });
 });

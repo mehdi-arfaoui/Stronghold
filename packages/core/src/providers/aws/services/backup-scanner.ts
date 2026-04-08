@@ -8,6 +8,7 @@ import {
   GetBackupSelectionCommand,
   ListBackupPlansCommand,
   ListBackupSelectionsCommand,
+  ListTagsCommand,
   ListBackupVaultsCommand,
   ListProtectedResourcesCommand,
   ListRecoveryPointsByBackupVaultCommand,
@@ -16,6 +17,7 @@ import type { BackupRule, ProtectedResource, RecoveryPointByBackupVault } from '
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 interface ProtectedResourceSummary {
   readonly resourceArn: string;
@@ -213,6 +215,7 @@ export async function scanBackupResources(
   const backup = createAwsClient(BackupClient, options);
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
+  const tagWarnings = new Set<string>();
 
   const [backupPlans, protectedResourcesList, backupVaults] = await Promise.all([
     listBackupPlans(backup, options),
@@ -242,20 +245,38 @@ export async function scanBackupResources(
 
   for (const backupVault of backupVaults) {
     if (!backupVault.BackupVaultName) continue;
+    const tags = backupVault.BackupVaultArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            backup.send(
+              new ListTagsCommand({ ResourceArn: backupVault.BackupVaultArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => normalizeTagMap(response.Tags),
+          {
+            description: `AWS Backup tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    const displayName = getNameTag(tags) ?? backupVault.BackupVaultName;
     resources.push(
       buildResource({
         source: 'aws',
         externalId: backupVault.BackupVaultArn ?? backupVault.BackupVaultName,
-        name: backupVault.BackupVaultName,
+        name: displayName,
         kind: 'infra',
         type: 'BACKUP_VAULT',
+        tags,
         metadata: {
           region: options.region,
           backupVaultName: backupVault.BackupVaultName,
           backupVaultArn: backupVault.BackupVaultArn,
           creationDate: toIsoString(backupVault.CreationDate),
           recoveryPoints: recoveryPointsByVault.get(backupVault.BackupVaultName) ?? [],
-          displayName: backupVault.BackupVaultName,
+          displayName,
+          ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
         },
       }),
     );
@@ -291,14 +312,35 @@ export async function scanBackupResources(
         protectedResourceArns,
         protectedResources,
       );
+      const tags = backupPlan.BackupPlanArn
+        ? await fetchAwsTagsWithRetry(
+            () =>
+              backup.send(
+                new ListTagsCommand({ ResourceArn: backupPlan.BackupPlanArn! }),
+                getAwsCommandOptions(options),
+              ),
+            (response) => normalizeTagMap(response.Tags),
+            {
+              description: `AWS Backup tag discovery unavailable in ${options.region}`,
+              warnings,
+              warningDeduper: tagWarnings,
+            },
+          )
+        : {};
+      const displayName =
+        getNameTag(tags) ??
+        planDetails.BackupPlan?.BackupPlanName ??
+        backupPlan.BackupPlanName ??
+        backupPlanId;
 
       resources.push(
         buildResource({
           source: 'aws',
           externalId: backupPlanId,
-          name: planDetails.BackupPlan?.BackupPlanName ?? backupPlan.BackupPlanName ?? backupPlanId,
+          name: displayName,
           kind: 'infra',
           type: 'BACKUP_PLAN',
+          tags,
           metadata: {
             region: options.region,
             backupPlanId,
@@ -311,8 +353,8 @@ export async function scanBackupResources(
             coveredResourceArns: protectedResourceArns,
             protectedResources: protectedResourcesForPlan,
             recoveryPoints,
-            displayName:
-              planDetails.BackupPlan?.BackupPlanName ?? backupPlan.BackupPlanName ?? backupPlanId,
+            displayName,
+            ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
           },
         }),
       );
