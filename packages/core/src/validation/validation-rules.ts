@@ -301,6 +301,7 @@ const rdsMultiAzActiveRule: ValidationRule = {
   category: 'failover',
   severity: 'high',
   appliesToTypes: ['rds', 'rds-instance'],
+  observedKeys: ['multiAZ', 'multiAz', 'multi_az', 'isMultiAZ'],
   validate: (node) => {
     const metadata = getMetadata(node);
     const enabled =
@@ -328,6 +329,7 @@ const rdsBackupConfiguredRule: ValidationRule = {
   category: 'backup',
   severity: 'high',
   appliesToTypes: ['rds', 'rds-instance'],
+  observedKeys: ['backupRetentionPeriod', 'backupRetentionDays'],
   validate: (node) => {
     const retentionDays =
       readNumber(getMetadata(node).backupRetentionPeriod) ??
@@ -388,19 +390,21 @@ const auroraReplicaExistsRule: ValidationRule = {
   appliesToTypes: ['aurora-cluster'],
   validate: (node, context) => {
     const replicas = findAuroraReplicaNodes(node, context);
+    const replicaIds = replicas.map((replica) => replica.id);
     return replicas.length > 0
       ? createResult(
           auroraReplicaExistsRule.id,
           node,
           'pass',
           `${replicas.length} Aurora replica(s) available for failover.`,
+          { replicaCount: replicas.length, replicaIds },
         )
       : createResult(
           auroraReplicaExistsRule.id,
           node,
           'fail',
           'No Aurora replicas were found for the cluster.',
-          undefined,
+          { replicaCount: 0, replicaIds },
           'Add at least one Aurora reader instance so failover does not depend on a single writer.',
         );
   },
@@ -689,6 +693,7 @@ const s3VersioningEnabledRule: ValidationRule = {
   category: 'backup',
   severity: 'high',
   appliesToTypes: ['s3', 's3-bucket'],
+  observedKeys: ['versioningStatus'],
   validate: (node) => {
     const status = readString(getMetadata(node).versioningStatus);
     return status?.toLowerCase() === 'enabled'
@@ -711,6 +716,7 @@ const s3ReplicationActiveRule: ValidationRule = {
   category: 'replication',
   severity: 'critical',
   appliesToTypes: ['s3', 's3-bucket'],
+  observedKeys: ['replicationRules'],
   validate: (node) => {
     const metadata = getMetadata(node);
     const rules = Array.isArray(metadata.replicationRules)
@@ -766,7 +772,10 @@ const ec2InAsgRule: ValidationRule = {
           node,
           'fail',
           'Instance is not attached to an Auto Scaling group.',
-          undefined,
+          {
+            asgId: null,
+            asgName: null,
+          },
           'Place the instance behind an Auto Scaling group or equivalent replacement mechanism.',
         );
   },
@@ -852,6 +861,7 @@ const dynamodbPitrEnabledRule: ValidationRule = {
   category: 'backup',
   severity: 'critical',
   appliesToTypes: ['dynamodb'],
+  observedKeys: ['pointInTimeRecoveryEnabled', 'pitrEnabled', 'pointInTimeRecovery'],
   validate: (node) => {
     const metadata = getMetadata(node);
     const enabled =
@@ -953,6 +963,7 @@ const route53HealthCheckRule: ValidationRule = {
   category: 'failover',
   severity: 'high',
   appliesToTypes: ['route53-record'],
+  observedKeys: ['routingPolicy', 'healthCheckId'],
   validate: (node) => {
     const routingPolicy = readString(getMetadata(node).routingPolicy)?.toLowerCase();
     if (!routingPolicy || !['failover', 'weighted', 'latency'].includes(routingPolicy)) {
@@ -1005,19 +1016,26 @@ const route53FailoverConfiguredRule: ValidationRule = {
     const hasPair = Array.from(failoverGroups.values()).some(
       (group) => group.has('PRIMARY') && group.has('SECONDARY'),
     );
+    const recordSets = Array.from(failoverGroups.entries()).map(
+      ([key, group]) => `${key}:${Array.from(group).sort().join('/')}`,
+    );
+    const failoverPairCount = Array.from(failoverGroups.values()).filter(
+      (group) => group.has('PRIMARY') && group.has('SECONDARY'),
+    ).length;
     return hasPair
       ? createResult(
           route53FailoverConfiguredRule.id,
           node,
           'pass',
           'Hosted zone contains a PRIMARY/SECONDARY Route53 failover pair.',
+          { failoverPairCount, recordSets },
         )
       : createResult(
           route53FailoverConfiguredRule.id,
           node,
           'fail',
           'Hosted zone has no complete Route53 failover pair.',
-          undefined,
+          { failoverPairCount, recordSets },
           'Create PRIMARY and SECONDARY failover records for the same DNS name.',
         );
   },
@@ -1091,7 +1109,7 @@ const backupPlanExistsRule: ValidationRule = {
           node,
           'fail',
           'No AWS Backup plan covers this resource.',
-          undefined,
+          { backupPlanId: null },
           'Attach the resource to an AWS Backup plan.',
         );
   },
@@ -1202,19 +1220,21 @@ const cloudwatchAlarmExistsRule: ValidationRule = {
     const alarms = findNodesByEdge(node.id, context, 'incoming', 'MONITORS').filter((candidate) =>
       hasNodeKind(candidate, ['cloudwatch-alarm']),
     );
+    const alarmIds = alarms.map((alarm) => alarm.id);
     return alarms.length > 0
       ? createResult(
           cloudwatchAlarmExistsRule.id,
           node,
           'pass',
           `${alarms.length} CloudWatch alarm(s) monitor this resource.`,
+          { alarmCount: alarms.length, alarmIds },
         )
       : createResult(
           cloudwatchAlarmExistsRule.id,
           node,
           'fail',
           'No CloudWatch alarm targets this resource.',
-          undefined,
+          { alarmCount: 0, alarmIds },
           'Create at least one CloudWatch alarm to reduce detection time during incidents.',
         );
   },
@@ -1227,6 +1247,7 @@ const cloudwatchAlarmActionsRule: ValidationRule = {
   category: 'detection',
   severity: 'high',
   appliesToTypes: ['cloudwatch-alarm'],
+  observedKeys: ['actionsEnabled', 'alarmActions'],
   validate: (node) => {
     const metadata = getMetadata(node);
     const actionsEnabled = readBoolean(metadata.actionsEnabled);
@@ -1256,6 +1277,7 @@ const lambdaDlqConfiguredRule: ValidationRule = {
   category: 'recovery',
   severity: 'medium',
   appliesToTypes: ['lambda'],
+  observedKeys: ['deadLetterConfig.targetArn', 'deadLetterTargetArn'],
   validate: (node) => {
     const metadata = getMetadata(node);
     const deadLetterConfig = readObject(metadata.deadLetterConfig);
@@ -1306,6 +1328,7 @@ const elbHealthCheckRule: ValidationRule = {
   category: 'detection',
   severity: 'high',
   appliesToTypes: ['elb'],
+  observedKeys: ['healthCheck.healthyThreshold', 'healthCheck.interval'],
   validate: (node) => {
     const healthCheck = readObject(getMetadata(node).healthCheck);
     const healthyThreshold = readNumber(healthCheck?.healthyThreshold);
@@ -1330,6 +1353,7 @@ const elbMultiAzRule: ValidationRule = {
   category: 'redundancy',
   severity: 'critical',
   appliesToTypes: ['elb'],
+  observedKeys: ['availabilityZones'],
   validate: (node) => {
     const availabilityZones = readStringArray(getMetadata(node).availabilityZones);
     return availabilityZones.length >= REQUIRED_MULTI_AZ_COUNT

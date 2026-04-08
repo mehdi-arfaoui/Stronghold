@@ -22,6 +22,7 @@ describe('CLI help output', () => {
     expect(help).toContain('report');
     expect(help).toContain('plan');
     expect(help).toContain('drift');
+    expect(help).toContain('evidence');
     expect(help).toContain('overrides');
     expect(help).toContain('demo');
     expect(help).toContain('iam-policy');
@@ -47,6 +48,14 @@ describe('CLI help output', () => {
     expect(help).toContain('--role-arn');
     expect(help).toContain('--external-id');
   });
+
+  it('stronghold report --help lists evidence-related flags', () => {
+    const reportCommand = createProgram().commands.find((command) => command.name() === 'report');
+    const help = reportCommand?.helpInformation() ?? '';
+
+    expect(help).toContain('--show-passed');
+    expect(help).toContain('--explain-score');
+  });
 });
 
 describe('CLI rendered output', () => {
@@ -63,6 +72,19 @@ describe('CLI rendered output', () => {
     const report = renderTerminalReport(results.validationReport, {});
 
     expect(report).toContain(results.validationReport.scoreBreakdown.disclaimer);
+  });
+
+  it('terminal report surfaces evidence lines and score explanation', async () => {
+    const results = await createDemoResults('startup');
+    const report = renderTerminalReport(results.validationReport, {
+      showPassed: true,
+      explainScore: true,
+    });
+
+    expect(report).toContain('Evidence Maturity');
+    expect(report).toContain('Evidence:');
+    expect(report).toContain('Verified Controls');
+    expect(report).toContain('Score Decomposition');
   });
 
   it('demo results render a top recommendations block', async () => {
@@ -100,5 +122,13 @@ describe('CLI rendered output', () => {
 
     expect(rendered).toContain('## Recommendations');
     expect(rendered).toContain('### Safe');
+  });
+
+  it('scan summary includes evidence distribution', async () => {
+    const results = await createDemoResults('startup');
+    const summary = renderScanSummary(results);
+
+    expect(summary).toContain('Evidence:');
+    expect(summary).toContain('observed');
   });
 });

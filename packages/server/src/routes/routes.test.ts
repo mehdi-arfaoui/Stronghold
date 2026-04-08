@@ -115,6 +115,34 @@ function createTestApp(options?: {
       },
       unassignedResourceCount: 0,
     }),
+    listEvidence: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      evidence: [],
+    }),
+    getExpiringEvidence: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      evidence: [],
+    }),
+    addEvidence: vi.fn().mockResolvedValue({
+      id: 'evidence-1',
+      type: 'tested',
+      source: { origin: 'test', testType: 'restore-test', testDate: '2026-03-27T15:00:00.000Z' },
+      subject: { nodeId: 'payment-db', serviceId: 'payment' },
+      observation: {
+        key: 'restore-test',
+        value: 'success',
+        expected: 'success',
+        description: 'Manual restore-test evidence recorded for payment-db.',
+      },
+      timestamp: '2026-03-27T15:00:00.000Z',
+      expiresAt: '2026-06-25T15:00:00.000Z',
+      testResult: {
+        status: 'success',
+        executor: 'unknown',
+      },
+    }),
     redetectLatestServices: vi.fn().mockResolvedValue({
       scanId: VALID_UUID,
       generatedAt: '2026-03-27T15:00:00.000Z',
@@ -290,6 +318,55 @@ describe('server routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.service.service.id).toBe('payment');
+  });
+
+  it('GET /api/evidence returns the latest evidence payload', async () => {
+    const app = createTestApp({
+      scanService: {
+        listEvidence: vi.fn().mockResolvedValue({
+          scanId: VALID_UUID,
+          generatedAt: '2026-03-27T15:00:00.000Z',
+          evidence: [{ id: 'evidence-1' }],
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/evidence?nodeId=payment-db');
+
+    expect(response.status).toBe(200);
+    expect(response.body.scanId).toBe(VALID_UUID);
+    expect(response.body.evidence[0]?.id).toBe('evidence-1');
+  });
+
+  it('GET /api/evidence/expiring returns expiring evidence entries', async () => {
+    const app = createTestApp({
+      scanService: {
+        getExpiringEvidence: vi.fn().mockResolvedValue({
+          scanId: VALID_UUID,
+          generatedAt: '2026-03-27T15:00:00.000Z',
+          evidence: [{ id: 'evidence-1' }],
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/evidence/expiring');
+
+    expect(response.status).toBe(200);
+    expect(response.body.evidence).toHaveLength(1);
+  });
+
+  it('POST /api/evidence creates tested evidence and returns 201', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).post('/api/evidence').send({
+      nodeId: 'payment-db',
+      type: 'restore-test',
+      result: 'success',
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.body.type).toBe('tested');
+    expect(response.body.subject.nodeId).toBe('payment-db');
   });
 
   it('POST /api/services/detect triggers re-detection on the latest scan', async () => {

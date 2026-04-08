@@ -73,6 +73,8 @@ export interface ReportCommandOptions extends GraphOverrideCommandOptions {
   readonly scan?: string;
   readonly category?: string;
   readonly severity?: string;
+  readonly showPassed: boolean;
+  readonly explainScore: boolean;
   readonly verbose: boolean;
 }
 

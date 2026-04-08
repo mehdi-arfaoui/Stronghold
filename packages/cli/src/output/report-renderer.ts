@@ -1,9 +1,15 @@
 import {
+  checkFreshness,
+  EVIDENCE_CONFIDENCE,
+  summarizeEvidenceMaturity,
   type ContextualFinding,
-  formatValidationReport,
-  type ServiceRecommendationProjection,
   type DRCategory,
+  type Evidence,
+  type EvidenceMaturitySummary,
+  type EvidenceType,
+  type ServiceRecommendationProjection,
   type ValidationReport,
+  type ValidationReportWithEvidence,
   type ValidationSeverity,
   type WeightedValidationResult,
 } from '@stronghold-dr/core';
@@ -21,9 +27,11 @@ import {
 } from './service-helpers.js';
 import { buildAsciiBar, formatGrade, formatSeverityLabel, theme } from './theme.js';
 
-export interface ValidationFilters {
+export interface ReportRenderOptions {
   readonly category?: string;
   readonly severity?: string;
+  readonly showPassed?: boolean;
+  readonly explainScore?: boolean;
 }
 
 const CATEGORY_LABELS: Readonly<Record<DRCategory, string>> = {
@@ -44,7 +52,7 @@ const SEVERITY_RANK: Readonly<Record<ValidationSeverity, number>> = {
 
 export function filterValidationResults(
   report: ValidationReport,
-  filters: ValidationFilters,
+  filters: ReportRenderOptions,
 ): readonly WeightedValidationResult[] {
   return report.results
     .filter((result) => {
@@ -61,13 +69,9 @@ export function filterValidationResults(
 
 export function renderTerminalReport(
   report: ValidationReport,
-  filters: ValidationFilters,
+  options: ReportRenderOptions,
 ): string {
-  if (!filters.category && !filters.severity && process.env.NO_COLOR) {
-    return formatValidationReport(report);
-  }
-
-  const filtered = filterValidationResults(report, filters);
+  const filtered = filterValidationResults(report, options);
   const lines: string[] = [];
 
   lines.push(theme.section('DR Posture Score'));
@@ -78,10 +82,18 @@ export function renderTerminalReport(
     const score = report.scoreBreakdown.byCategory[category];
     lines.push(`${CATEGORY_LABELS[category].padEnd(12)} ${String(score).padStart(3)}/100 ${buildAsciiBar(score)}`);
   });
+  appendEvidenceMaturitySection(lines, report);
 
   appendSeveritySection(lines, 'Critical Failures', filtered, ['critical']);
   appendSeveritySection(lines, 'High Failures', filtered, ['high']);
   appendWarningsSection(lines, filtered);
+
+  if (options.showPassed) {
+    appendVerifiedControlsSection(lines, filtered, new Map());
+  }
+  if (options.explainScore) {
+    appendScoreExplanationSection(lines, filtered, report, new Map());
+  }
 
   lines.push('');
   lines.push(theme.section('Methodology'));
@@ -93,9 +105,9 @@ export function renderTerminalReport(
 
 export function renderMarkdownReport(
   report: ValidationReport,
-  filters: ValidationFilters,
+  options: ReportRenderOptions,
 ): string {
-  const filtered = filterValidationResults(report, filters);
+  const filtered = filterValidationResults(report, options);
   const lines: string[] = [];
 
   lines.push('## DR Posture Score');
@@ -109,6 +121,8 @@ export function renderMarkdownReport(
     lines.push(`- ${CATEGORY_LABELS[category]}: ${report.scoreBreakdown.byCategory[category]}/100`);
   });
   lines.push('');
+  appendMarkdownEvidenceMaturity(lines, report);
+  lines.push('');
   lines.push('## Critical Failures');
   lines.push('');
   lines.push(...renderMarkdownFindings(filtered, ['critical']));
@@ -120,6 +134,18 @@ export function renderMarkdownReport(
   lines.push('## Warnings');
   lines.push('');
   lines.push(...renderMarkdownWarnings(filtered));
+
+  if (options.showPassed) {
+    lines.push('');
+    lines.push('## Verified Controls');
+    lines.push('');
+    lines.push(...renderMarkdownVerifiedControls(filtered));
+  }
+  if (options.explainScore) {
+    lines.push('');
+    appendMarkdownScoreExplanation(lines, filtered, report, new Map());
+  }
+
   lines.push('');
   lines.push('## Methodology');
   lines.push('');
@@ -132,19 +158,22 @@ export function renderMarkdownReport(
 
 export function renderTerminalServiceReport(
   scan: ScanResults,
-  filters: ValidationFilters,
+  options: ReportRenderOptions,
 ): string {
   if (!hasDetectedServices(scan.servicePosture)) {
-    return `${renderTerminalReport(scan.validationReport, filters)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
+    return `${renderTerminalReport(scan.validationReport, options)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
   }
 
   const lines: string[] = [];
+  const serviceLabels = buildServiceLookup(scan);
+
   lines.push(theme.section('Executive Summary'));
   lines.push(`Global score: ${formatGrade(scan.validationReport)}`);
   lines.push(`Services detected: ${scan.servicePosture.services.length}`);
   lines.push(
     `Critical services: ${scan.servicePosture.services.filter((service) => service.score.criticality === 'critical').length}`,
   );
+  appendEvidenceMaturitySection(lines, scan.validationReport);
 
   for (const service of sortServiceEntries(scan.servicePosture.services)) {
     lines.push('');
@@ -156,7 +185,7 @@ export function renderTerminalServiceReport(
     lines.push(`Findings: ${formatFindingsCount(service.score.findingsCount)}`);
     appendContextualFindings(
       lines,
-      filterContextualFindings(service.contextualFindings, filters),
+      filterContextualFindings(service.contextualFindings, options),
     );
     appendServiceRecommendations(lines, service.recommendations);
   }
@@ -172,7 +201,7 @@ export function renderTerminalServiceReport(
     }
     appendContextualFindings(
       lines,
-      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, filters),
+      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
     );
     appendServiceRecommendations(lines, scan.servicePosture.unassigned.recommendations);
   }
@@ -181,23 +210,43 @@ export function renderTerminalServiceReport(
   lines.push(theme.section('Recommendations Summary'));
   appendServiceRecommendations(lines, scan.servicePosture.recommendations);
 
+  if (options.showPassed) {
+    appendVerifiedControlsSection(
+      lines,
+      filterValidationResults(scan.validationReport, options),
+      serviceLabels,
+    );
+  }
+  if (options.explainScore) {
+    appendScoreExplanationSection(
+      lines,
+      filterValidationResults(scan.validationReport, options),
+      scan.validationReport,
+      serviceLabels,
+    );
+  }
+
   return lines.join('\n');
 }
 
 export function renderMarkdownServiceReport(
   scan: ScanResults,
-  filters: ValidationFilters,
+  options: ReportRenderOptions,
 ): string {
   if (!hasDetectedServices(scan.servicePosture)) {
-    return `${renderMarkdownReport(scan.validationReport, filters)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
+    return `${renderMarkdownReport(scan.validationReport, options)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
   }
 
   const lines: string[] = [];
+  const serviceLabels = buildServiceLookup(scan);
+
   lines.push('## Executive Summary');
   lines.push('');
   lines.push(`- Global score: ${scan.validationReport.scoreBreakdown.overall}/100`);
   lines.push(`- Grade: ${scan.validationReport.scoreBreakdown.grade}`);
   lines.push(`- Services detected: ${scan.servicePosture.services.length}`);
+  lines.push('');
+  appendMarkdownEvidenceMaturity(lines, scan.validationReport);
 
   for (const service of sortServiceEntries(scan.servicePosture.services)) {
     lines.push('');
@@ -214,7 +263,7 @@ export function renderMarkdownServiceReport(
     lines.push('');
     appendMarkdownContextualFindings(
       lines,
-      filterContextualFindings(service.contextualFindings, filters),
+      filterContextualFindings(service.contextualFindings, options),
     );
     lines.push('');
     lines.push('### Recommendations');
@@ -229,7 +278,7 @@ export function renderMarkdownServiceReport(
     lines.push(`- Resource count: ${scan.servicePosture.unassigned.resourceCount}`);
     appendMarkdownContextualFindings(
       lines,
-      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, filters),
+      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
     );
   }
 
@@ -238,14 +287,36 @@ export function renderMarkdownServiceReport(
   lines.push('');
   appendMarkdownRecommendations(lines, scan.servicePosture.recommendations);
 
+  if (options.showPassed) {
+    lines.push('');
+    lines.push('## Verified Controls');
+    lines.push('');
+    lines.push(
+      ...renderMarkdownVerifiedControls(
+        filterValidationResults(scan.validationReport, options),
+        serviceLabels,
+      ),
+    );
+  }
+  if (options.explainScore) {
+    lines.push('');
+    appendMarkdownScoreExplanation(
+      lines,
+      filterValidationResults(scan.validationReport, options),
+      scan.validationReport,
+      serviceLabels,
+    );
+  }
+
   return lines.join('\n');
 }
 
 export function buildServiceReportJson(
   scan: ScanResults,
-  filters: ValidationFilters,
+  filters: ReportRenderOptions,
 ): Record<string, unknown> {
   const posture = scan.servicePosture;
+
   return {
     ...scan.validationReport,
     results: filterValidationResults(scan.validationReport, filters),
@@ -294,8 +365,9 @@ function appendSeveritySection(
   }
 
   findings.forEach((result) => {
-    lines.push(`${formatSeverityLabel(result)} ${result.ruleId} — ${result.nodeName}`);
-    lines.push(result.message);
+    lines.push(`${formatSeverityLabel(result)} ${result.ruleId} - ${result.nodeName}`);
+    lines.push(`DR impact: ${result.message}`);
+    appendValidationEvidence(lines, result);
     if (result.weightBreakdown.directDependentCount > 0) {
       lines.push(
         `Impact: ${result.weightBreakdown.directDependentCount} service${result.weightBreakdown.directDependentCount === 1 ? '' : 's'} depend directly on this resource.`,
@@ -321,8 +393,9 @@ function appendWarningsSection(
   }
 
   warnings.forEach((result) => {
-    lines.push(`${theme.warn('warning')} ${result.ruleId} — ${result.nodeName}`);
-    lines.push(result.message);
+    lines.push(`${theme.warn('warning')} ${result.ruleId} - ${result.nodeName}`);
+    lines.push(`DR impact: ${result.message}`);
+    appendValidationEvidence(lines, result);
     lines.push('');
   });
 }
@@ -340,10 +413,16 @@ function renderMarkdownFindings(
     return ['No findings.'];
   }
 
-  return findings.flatMap((result) => [
-    `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
-    ...(result.remediation ? [`- Remediation: ${result.remediation}`] : []),
-  ]);
+  return findings.flatMap((result) => {
+    const lines = [
+      `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
+      ...renderMarkdownValidationEvidence(result),
+    ];
+    if (result.remediation) {
+      lines.push(`- Remediation: ${result.remediation}`);
+    }
+    return lines;
+  });
 }
 
 function renderMarkdownWarnings(
@@ -354,9 +433,10 @@ function renderMarkdownWarnings(
     return ['No warnings.'];
   }
 
-  return warnings.map(
-    (result) => `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
-  );
+  return warnings.flatMap((result) => [
+    `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
+    ...renderMarkdownValidationEvidence(result),
+  ]);
 }
 
 function compareResults(
@@ -385,6 +465,7 @@ function appendContextualFindings(
     lines.push(`${formatFindingSeverity(finding.severity)} ${finding.ruleId} - ${finding.nodeName}`);
     lines.push(`DR impact: ${finding.drImpact.summary}`);
     lines.push(`Recovery implication: ${finding.drImpact.recoveryImplication}`);
+    appendContextualFindingEvidence(lines, finding);
     lines.push(
       `Technical: ${finding.technicalImpact.metadataKey}=${formatMetadataValue(finding.technicalImpact.metadataValue)} (expected ${finding.technicalImpact.expectedValue})`,
     );
@@ -428,9 +509,8 @@ function appendMarkdownContextualFindings(
   }
 
   findings.forEach((finding) => {
-    lines.push(
-      `- **${finding.ruleId}** on \`${finding.nodeName}\`: ${finding.drImpact.summary}`,
-    );
+    lines.push(`- **${finding.ruleId}** on \`${finding.nodeName}\`: ${finding.drImpact.summary}`);
+    lines.push(...renderMarkdownContextualEvidence(finding));
     lines.push(
       `- Technical: ${finding.technicalImpact.metadataKey}=${formatMetadataValue(finding.technicalImpact.metadataValue)} (expected ${finding.technicalImpact.expectedValue})`,
     );
@@ -463,4 +543,325 @@ function appendMarkdownRecommendations(
     lines.push(`- Command: \`${recommendation.remediation.command}\``);
     lines.push('');
   });
+}
+
+function appendEvidenceMaturitySection(lines: string[], report: ValidationReport): void {
+  const summary = getEvidenceSummary(report);
+  lines.push('');
+  lines.push(theme.section('Evidence Maturity'));
+  lines.push(`Tested: ${summary.counts.tested}/${summary.total} rules`);
+  lines.push(`Observed: ${summary.counts.observed}/${summary.total} rules`);
+  lines.push(`Inferred: ${summary.counts.inferred}/${summary.total} rules`);
+  lines.push(`Declared: ${summary.counts.declared}/${summary.total} rules`);
+  lines.push(`Expired: ${summary.counts.expired}/${summary.total} rules`);
+  lines.push(
+    `Potential score if all rules were test-verified: ${summary.potentialScore}/100 (current: ${report.scoreBreakdown.overall}/100)`,
+  );
+}
+
+function appendMarkdownEvidenceMaturity(lines: string[], report: ValidationReport): void {
+  const summary = getEvidenceSummary(report);
+  lines.push('## Evidence Maturity');
+  lines.push('');
+  lines.push(`- Tested: ${summary.counts.tested}/${summary.total} rules`);
+  lines.push(`- Observed: ${summary.counts.observed}/${summary.total} rules`);
+  lines.push(`- Inferred: ${summary.counts.inferred}/${summary.total} rules`);
+  lines.push(`- Declared: ${summary.counts.declared}/${summary.total} rules`);
+  lines.push(`- Expired: ${summary.counts.expired}/${summary.total} rules`);
+  lines.push(
+    `- Potential score if all rules were test-verified: ${summary.potentialScore}/100 (current: ${report.scoreBreakdown.overall}/100)`,
+  );
+}
+
+function appendVerifiedControlsSection(
+  lines: string[],
+  results: readonly WeightedValidationResult[],
+  serviceLabels: ReadonlyMap<string, string>,
+): void {
+  const passed = results.filter((result) => result.status === 'pass');
+  lines.push('');
+  lines.push(theme.section('Verified Controls'));
+  if (passed.length === 0) {
+    lines.push('No verified controls in the current filter.');
+    return;
+  }
+
+  passed.forEach((result) => {
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const evidenceInfo = resolveResultEvidence(result);
+    lines.push(
+      `PASS ${result.ruleId} - ${result.nodeName}${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+    );
+    appendValidationEvidence(lines, result);
+    lines.push(`Score credit: ${evidenceInfo.type} (${evidenceInfo.confidence.toFixed(2)})`);
+    lines.push('');
+  });
+}
+
+function renderMarkdownVerifiedControls(
+  results: readonly WeightedValidationResult[],
+  serviceLabels: ReadonlyMap<string, string> = new Map(),
+): readonly string[] {
+  const passed = results.filter((result) => result.status === 'pass');
+  if (passed.length === 0) {
+    return ['No verified controls in the current filter.'];
+  }
+
+  return passed.flatMap((result) => {
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const evidenceInfo = resolveResultEvidence(result);
+    return [
+      `- **${result.ruleId}** on \`${result.nodeName}\`${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+      ...renderMarkdownValidationEvidence(result),
+      `- Score credit: ${evidenceInfo.type} (${evidenceInfo.confidence.toFixed(2)})`,
+      '',
+    ];
+  });
+}
+
+function appendScoreExplanationSection(
+  lines: string[],
+  results: readonly WeightedValidationResult[],
+  report: ValidationReport,
+  serviceLabels: ReadonlyMap<string, string>,
+): void {
+  const scored = results.filter((result) => result.status !== 'skip');
+  const summary = getEvidenceSummary(report);
+
+  lines.push('');
+  lines.push(
+    theme.section(
+      `Score Decomposition - Global: ${report.scoreBreakdown.overall}/100 (${report.scoreBreakdown.grade})`,
+    ),
+  );
+  if (scored.length === 0) {
+    lines.push('No scored rules in the current filter.');
+    return;
+  }
+
+  lines.push(
+    `${pad('Rule', 24)} ${pad('Node', 18)} ${pad('Weight', 8)} ${pad('Result', 7)} ${pad('Evidence', 16)} Contribution`,
+  );
+  lines.push('-'.repeat(88));
+  scored.forEach((result) => {
+    const evidenceInfo = resolveResultEvidence(result);
+    const evidenceLabel = `${evidenceInfo.type}(${evidenceInfo.confidence.toFixed(2)})`;
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const nodeLabel = serviceLabel ? `${result.nodeName}/${serviceLabel}` : result.nodeName;
+    lines.push(
+      `${pad(result.ruleId, 24)} ${pad(nodeLabel, 18)} ${pad(result.weight.toFixed(1), 8)} ${pad(result.status.toUpperCase(), 7)} ${pad(evidenceLabel, 16)} ${formatSignedContribution(result)}`,
+    );
+  });
+  const potentialGain = Math.max(0, summary.potentialScore - report.scoreBreakdown.overall);
+  lines.push('');
+  lines.push('Evidence maturity distribution:');
+  lines.push(`  Tested: ${summary.counts.tested}/${summary.total} rules`);
+  lines.push(`  Observed: ${summary.counts.observed}/${summary.total} rules`);
+  lines.push(`  Inferred: ${summary.counts.inferred}/${summary.total} rules`);
+  lines.push(`  Declared: ${summary.counts.declared}/${summary.total} rules`);
+  lines.push(`  Expired: ${summary.counts.expired}/${summary.total} rules`);
+  lines.push(`  Potential gain if all passing rules were tested: +${potentialGain} points`);
+}
+
+function appendMarkdownScoreExplanation(
+  lines: string[],
+  results: readonly WeightedValidationResult[],
+  report: ValidationReport,
+  serviceLabels: ReadonlyMap<string, string>,
+): void {
+  const scored = results.filter((result) => result.status !== 'skip');
+  const summary = getEvidenceSummary(report);
+
+  lines.push(`## Score Decomposition - ${report.scoreBreakdown.overall}/100 (${report.scoreBreakdown.grade})`);
+  lines.push('');
+  if (scored.length === 0) {
+    lines.push('No scored rules in the current filter.');
+    return;
+  }
+
+  lines.push('| Rule | Node | Weight | Result | Evidence | Contribution |');
+  lines.push('| --- | --- | ---: | --- | --- | ---: |');
+  scored.forEach((result) => {
+    const evidenceInfo = resolveResultEvidence(result);
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const nodeLabel = serviceLabel ? `${result.nodeName}/${serviceLabel}` : result.nodeName;
+    lines.push(
+      `| ${result.ruleId} | ${nodeLabel} | ${result.weight.toFixed(1)} | ${result.status.toUpperCase()} | ${evidenceInfo.type} (${evidenceInfo.confidence.toFixed(2)}) | ${formatSignedContribution(result)} |`,
+    );
+  });
+  const potentialGain = Math.max(0, summary.potentialScore - report.scoreBreakdown.overall);
+  lines.push('');
+  lines.push('### Evidence maturity distribution');
+  lines.push('');
+  lines.push(`- Tested: ${summary.counts.tested}/${summary.total} rules`);
+  lines.push(`- Observed: ${summary.counts.observed}/${summary.total} rules`);
+  lines.push(`- Inferred: ${summary.counts.inferred}/${summary.total} rules`);
+  lines.push(`- Declared: ${summary.counts.declared}/${summary.total} rules`);
+  lines.push(`- Expired: ${summary.counts.expired}/${summary.total} rules`);
+  lines.push(`- Potential gain if all passing rules were tested: +${potentialGain} points`);
+}
+
+function appendValidationEvidence(lines: string[], result: WeightedValidationResult): void {
+  renderValidationEvidence(result).forEach((line) => lines.push(line));
+}
+
+function appendContextualFindingEvidence(lines: string[], finding: ContextualFinding): void {
+  renderContextualEvidence(finding).forEach((line) => lines.push(line));
+}
+
+function renderMarkdownValidationEvidence(
+  result: WeightedValidationResult,
+): readonly string[] {
+  return renderValidationEvidence(result).map((line) => `- ${line}`);
+}
+
+function renderMarkdownContextualEvidence(
+  finding: ContextualFinding,
+): readonly string[] {
+  return renderContextualEvidence(finding).map((line) => `- ${line}`);
+}
+
+function renderValidationEvidence(result: WeightedValidationResult): readonly string[] {
+  return renderEvidenceLines(extractResultEvidence(result));
+}
+
+function renderContextualEvidence(finding: ContextualFinding): readonly string[] {
+  return renderEvidenceLines(finding.evidence ?? []);
+}
+
+function renderEvidenceLines(evidence: readonly Evidence[]): readonly string[] {
+  if (evidence.length === 0) {
+    return [];
+  }
+
+  const lines: string[] = [];
+  let expectedShown = false;
+  evidence.forEach((entry) => {
+    const label = isTestEvidence(entry) ? 'Test evidence' : 'Evidence';
+    lines.push(`${label}: ${formatEvidenceEntry(entry)}`);
+    if (!expectedShown && entry.observation.expected) {
+      lines.push(`Expected: ${entry.observation.expected}`);
+      expectedShown = true;
+    }
+  });
+  return lines;
+}
+
+function formatEvidenceEntry(entry: Evidence): string {
+  if (isTestEvidence(entry)) {
+    const status =
+      entry.testResult?.status?.toUpperCase() ?? String(entry.observation.value).toUpperCase();
+    const duration = entry.testResult?.duration ? ` (${entry.testResult.duration})` : '';
+    const executor = entry.testResult?.executor
+      ? `, self-declared by ${entry.testResult.executor}`
+      : ', self-declared';
+    const freshness = formatEvidenceFreshness(entry);
+    const testLabel = entry.source.origin === 'test' ? entry.source.testType : entry.observation.key;
+    return `${testLabel} ${status} on ${entry.timestamp.slice(0, 10)}${duration}${executor}${freshness ? ` - ${freshness}` : ''}`;
+  }
+
+  return `${entry.observation.key} = ${formatMetadataValue(entry.observation.value ?? null)} (${entry.type} ${entry.timestamp})`;
+}
+
+function formatEvidenceFreshness(entry: Evidence): string {
+  if (!entry.expiresAt) {
+    return '';
+  }
+
+  const freshness = checkFreshness(entry, new Date());
+  if (freshness.status === 'expired') {
+    return `EXPIRED (${entry.expiresAt.slice(0, 10)})`;
+  }
+  if (freshness.daysUntilExpiry === null) {
+    return '';
+  }
+  return `expires in ${freshness.daysUntilExpiry} day${freshness.daysUntilExpiry === 1 ? '' : 's'}`;
+}
+
+function resolveResultEvidence(
+  result: WeightedValidationResult,
+): { readonly type: EvidenceType; readonly confidence: number } {
+  const breakdown = result.weightBreakdown as WeightedValidationResult['weightBreakdown'] & {
+    readonly evidenceType?: EvidenceType;
+    readonly evidenceConfidence?: number;
+  };
+  if (breakdown.evidenceType && typeof breakdown.evidenceConfidence === 'number') {
+    return {
+      type: breakdown.evidenceType,
+      confidence: breakdown.evidenceConfidence,
+    };
+  }
+
+  const evidence = extractResultEvidence(result);
+  if (evidence.length === 0) {
+    return {
+      type: 'observed',
+      confidence: EVIDENCE_CONFIDENCE.observed,
+    };
+  }
+
+  const firstEvidence = evidence[0];
+  if (!firstEvidence) {
+    return {
+      type: 'observed',
+      confidence: EVIDENCE_CONFIDENCE.observed,
+    };
+  }
+
+  return evidence.reduce(
+    (strongest, entry) =>
+      EVIDENCE_CONFIDENCE[entry.type] > strongest.confidence
+        ? {
+            type: entry.type,
+            confidence: EVIDENCE_CONFIDENCE[entry.type],
+          }
+        : strongest,
+    {
+      type: firstEvidence.type,
+      confidence: EVIDENCE_CONFIDENCE[firstEvidence.type],
+    },
+  );
+}
+
+function extractResultEvidence(result: WeightedValidationResult): readonly Evidence[] {
+  return 'evidence' in result && Array.isArray(result.evidence) ? result.evidence : [];
+}
+
+function getEvidenceSummary(report: ValidationReport): EvidenceMaturitySummary {
+  return hasEvidenceSummary(report)
+    ? report.evidenceSummary
+    : summarizeEvidenceMaturity(report.results);
+}
+
+function hasEvidenceSummary(report: ValidationReport): report is ValidationReportWithEvidence {
+  return 'evidenceSummary' in report;
+}
+
+function buildServiceLookup(scan: ScanResults): ReadonlyMap<string, string> {
+  const entries =
+    scan.servicePosture?.services.flatMap((service) =>
+      service.service.resources.map((resource) => [resource.nodeId, service.service.id] as const),
+    ) ?? [];
+  return new Map(entries);
+}
+
+function isTestEvidence(entry: Evidence): boolean {
+  return entry.source.origin === 'test' || entry.type === 'tested' || entry.type === 'expired';
+}
+
+function formatSignedContribution(result: WeightedValidationResult): string {
+  if (result.status === 'pass') {
+    return `+${(result.weight * resolveResultEvidence(result).confidence).toFixed(1)}`;
+  }
+  if (result.status === 'warn') {
+    return `+${(result.weight * 0.5).toFixed(1)}`;
+  }
+  if (result.status === 'fail' || result.status === 'error') {
+    return `-${result.weight.toFixed(1)}`;
+  }
+  return '0.0';
+}
+
+function pad(value: string, width: number): string {
+  return value.length >= width ? value.slice(0, width) : value.padEnd(width);
 }

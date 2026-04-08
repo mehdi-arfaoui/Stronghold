@@ -1,22 +1,33 @@
+import { randomUUID } from 'node:crypto';
+
 import * as core from '@stronghold-dr/core';
 import {
+  applyEvidenceFreshness,
+  checkFreshness,
+  EVIDENCE_CONFIDENCE,
   deserializeDRPlan,
   dynamoDbPitrEnricher,
   ec2AsgEnricher,
   elasticacheFailoverEnricher,
   formatValidationReport,
   generateDRPlan,
+  mergeEvidenceIntoValidationReport,
   runValidation,
   s3ReplicationEnricher,
   scanAwsRegion,
   serializeDRPlan,
   transformToScanResult,
   validateDRPlan,
+  type ApiAddEvidenceInput,
+  type ApiEvidenceListResponse,
+  type ApiServicesResponse,
   type DRCategory,
   type DRPlan,
   type DRPlanValidationReport,
   type DiscoveryCredentials,
+  type Evidence,
   type InfraNode,
+  type ServicePosture,
   type ValidationReport,
   type ValidationSeverity,
 } from '@stronghold-dr/core';
@@ -45,6 +56,9 @@ export interface ValidationReportFilters {
   readonly category?: DRCategory;
   readonly severity?: ValidationSeverity;
 }
+
+const EVIDENCE_REPORT_TYPE = 'evidence';
+const DEFAULT_TESTED_EVIDENCE_EXPIRATION_DAYS = 90;
 
 export class ScanService {
   public constructor(
@@ -90,8 +104,15 @@ export class ScanService {
       throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
     }
     const servicePosture = await this.serviceDetectionService.getPersistedServicePosture(scanId);
+    const storedEvidence = await this.getStoredEvidence(scanId, this.buildServiceLookup(servicePosture));
+    const validationReport =
+      storedEvidence.length > 0
+        ? mergeEvidenceIntoValidationReport(data.validationReport, storedEvidence)
+        : data.validationReport;
+
     return {
       ...data,
+      validationReport,
       ...(servicePosture ? { servicePosture } : {}),
     };
   }
@@ -101,15 +122,115 @@ export class ScanService {
   }
 
   public async getLatestServices() {
-    return this.serviceDetectionService.getLatestServices();
+    const services = await this.serviceDetectionService.getLatestServices();
+    return this.enrichServicesResponseWithEvidence(services);
   }
 
   public async getServiceDetail(serviceId: string) {
-    return this.serviceDetectionService.getServiceDetail(serviceId);
+    const detail = await this.serviceDetectionService.getServiceDetail(serviceId);
+    const services = await this.enrichServicesResponseWithEvidence({
+      scanId: detail.scanId,
+      generatedAt: detail.generatedAt,
+      services: [detail.service],
+      unassigned: {
+        score: null,
+        resourceCount: detail.unassignedResourceCount,
+        contextualFindings: [],
+        recommendations: [],
+      },
+    });
+    return {
+      ...detail,
+      service: services.services[0] ?? detail.service,
+    };
   }
 
   public async redetectLatestServices() {
-    return this.serviceDetectionService.redetectLatestServices();
+    const services = await this.serviceDetectionService.redetectLatestServices();
+    return this.enrichServicesResponseWithEvidence(services);
+  }
+
+  public async listEvidence(filters: {
+    readonly nodeId?: string;
+    readonly serviceId?: string;
+  } = {}): Promise<ApiEvidenceListResponse> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const combinedEvidence = await this.getCombinedEvidence(latestScan.id);
+    const filtered = combinedEvidence.filter((entry) => {
+      if (filters.nodeId && entry.subject.nodeId !== filters.nodeId) {
+        return false;
+      }
+      if (filters.serviceId && entry.subject.serviceId !== filters.serviceId) {
+        return false;
+      }
+      return true;
+    });
+
+    return {
+      scanId: latestScan.id,
+      generatedAt: latestScan.updatedAt.toISOString(),
+      evidence: filtered,
+    };
+  }
+
+  public async getExpiringEvidence(): Promise<ApiEvidenceListResponse> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const combinedEvidence = await this.getCombinedEvidence(latestScan.id);
+    const expiring = combinedEvidence.filter((entry) => {
+      const freshness = checkFreshness(entry, new Date());
+      return freshness.status === 'expiring_soon' || freshness.status === 'expired';
+    });
+
+    return {
+      scanId: latestScan.id,
+      generatedAt: latestScan.updatedAt.toISOString(),
+      evidence: expiring,
+    };
+  }
+
+  public async addEvidence(input: ApiAddEvidenceInput): Promise<Evidence> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const serviceId =
+      input.serviceId ?? (await this.resolveServiceIdForNode(latestScan.id, input.nodeId)) ?? undefined;
+    const timestamp = new Date();
+    const expiresAt = new Date(timestamp);
+    expiresAt.setUTCDate(expiresAt.getUTCDate() + (input.expiresDays ?? DEFAULT_TESTED_EVIDENCE_EXPIRATION_DAYS));
+    const evidence: Evidence = {
+      id: randomUUID(),
+      type: 'tested',
+      source: {
+        origin: 'test',
+        testType: input.type,
+        testDate: timestamp.toISOString(),
+      },
+      subject: {
+        nodeId: input.nodeId,
+        ...(serviceId ? { serviceId } : {}),
+      },
+      observation: {
+        key: input.type,
+        value: input.result,
+        expected: 'success',
+        description: `Manual ${input.type} evidence recorded for ${input.nodeId}.`,
+      },
+      timestamp: timestamp.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+      testResult: {
+        status: input.result,
+        ...(input.duration ? { duration: input.duration } : {}),
+        ...(input.notes ? { notes: input.notes } : {}),
+        executor: input.author ?? 'unknown',
+      },
+    };
+
+    await this.scanRepository.saveReport({
+      scanId: latestScan.id,
+      type: EVIDENCE_REPORT_TYPE,
+      format: 'json',
+      content: evidence,
+    });
+
+    return evidence;
   }
 
   public async getValidationReport(
@@ -135,7 +256,11 @@ export class ScanService {
       return true;
     });
 
-    return runValidation(data.nodes, data.edges, rules);
+    const baseReport = runValidation(data.nodes, data.edges, rules);
+    const storedEvidence = await this.getStoredEvidence(scanId, this.buildServiceLookup(data.servicePosture ?? null));
+    return storedEvidence.length > 0
+      ? mergeEvidenceIntoValidationReport(baseReport, storedEvidence)
+      : baseReport;
   }
 
   public async getValidationSummary(scanId: string): Promise<{
@@ -234,6 +359,196 @@ export class ScanService {
     const data = await this.getScanData(scanId);
     const graph = buildGraph(data.nodes, data.edges);
     return validateDRPlan(parsed.value, graph);
+  }
+
+  private async getLatestCompletedScanRequired(): Promise<ScanSummary> {
+    const latestScan = await this.scanRepository.getLatestCompletedScanSummary();
+    if (!latestScan) {
+      throw new ServerError('No completed scan found', {
+        code: 'SCAN_NOT_FOUND',
+        status: 404,
+      });
+    }
+    return latestScan;
+  }
+
+  private async getCombinedEvidence(scanId: string): Promise<readonly Evidence[]> {
+    const [scanData, servicePosture, storedEvidenceReports] = await Promise.all([
+      this.infrastructureRepository.getScanData(scanId),
+      this.serviceDetectionService.getPersistedServicePosture(scanId),
+      this.scanRepository.listReportsByType(scanId, EVIDENCE_REPORT_TYPE),
+    ]);
+
+    if (!scanData) {
+      throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
+    }
+
+    const serviceLookup = this.buildServiceLookup(servicePosture);
+    const observedEvidence = this.collectValidationEvidence(scanData.validationReport, serviceLookup);
+    const storedEvidence = storedEvidenceReports
+      .flatMap((report) => this.toEvidenceArray(report.content))
+      .map((entry) => applyEvidenceFreshness(this.withServiceContext(entry, serviceLookup)));
+
+    return Array.from(
+      new Map(
+        [...observedEvidence, ...storedEvidence].map((entry) => [entry.id, entry] as const),
+      ).values(),
+    ).sort((left, right) => right.timestamp.localeCompare(left.timestamp));
+  }
+
+  private async getStoredEvidence(
+    scanId: string,
+    serviceLookup: ReadonlyMap<string, string>,
+  ): Promise<readonly Evidence[]> {
+    const reports = await this.scanRepository.listReportsByType(scanId, EVIDENCE_REPORT_TYPE);
+    return reports
+      .flatMap((report) => this.toEvidenceArray(report.content))
+      .map((entry) => applyEvidenceFreshness(this.withServiceContext(entry, serviceLookup)));
+  }
+
+  private async enrichServicesResponseWithEvidence(
+    response: ApiServicesResponse,
+  ): Promise<ApiServicesResponse> {
+    const serviceLookup = new Map(
+      response.services.flatMap((service) =>
+        service.service.resources.map((resource) => [resource.nodeId, service.service.id] as const),
+      ),
+    );
+    const evidence = await this.getCombinedEvidence(response.scanId);
+    return {
+      ...response,
+      services: response.services.map((service) => ({
+        ...service,
+        contextualFindings: service.contextualFindings.map((finding) =>
+          this.mergeContextualFindingEvidence(finding, evidence, serviceLookup),
+        ),
+      })),
+      unassigned: {
+        ...response.unassigned,
+        contextualFindings: response.unassigned.contextualFindings.map((finding) =>
+          this.mergeContextualFindingEvidence(finding, evidence, serviceLookup),
+        ),
+      },
+    };
+  }
+
+  private mergeContextualFindingEvidence<
+    TFinding extends {
+      readonly nodeId: string;
+      readonly ruleId: string;
+      readonly evidence?: readonly Evidence[];
+      readonly evidenceSummary?: {
+        readonly strongestType: Evidence['type'];
+        readonly confidence: number;
+      };
+    },
+  >(
+    finding: TFinding,
+    evidence: readonly Evidence[],
+    serviceLookup: ReadonlyMap<string, string>,
+  ): TFinding {
+    const matchingEvidence = evidence.filter(
+      (entry) =>
+        entry.subject.nodeId === finding.nodeId &&
+        (!entry.subject.ruleId || entry.subject.ruleId === finding.ruleId),
+    );
+    const mergedEvidence = Array.from(
+      new Map(
+        [...(finding.evidence ?? []), ...matchingEvidence].map((entry) => [
+          entry.id,
+          this.withServiceContext(entry, serviceLookup),
+        ] as const),
+      ).values(),
+    );
+    if (mergedEvidence.length === 0) {
+      return finding;
+    }
+
+    const firstEvidence = mergedEvidence[0];
+    if (!firstEvidence) {
+      return finding;
+    }
+
+    const strongest = mergedEvidence.reduce(
+      (current, entry) =>
+        EVIDENCE_CONFIDENCE[entry.type] > current.confidence
+          ? { strongestType: entry.type, confidence: EVIDENCE_CONFIDENCE[entry.type] }
+          : current,
+      {
+        strongestType: firstEvidence.type,
+        confidence: EVIDENCE_CONFIDENCE[firstEvidence.type],
+      },
+    );
+
+    return {
+      ...finding,
+      evidence: mergedEvidence,
+      evidenceSummary: strongest,
+    };
+  }
+
+  private collectValidationEvidence(
+    report: ValidationReport,
+    serviceLookup: ReadonlyMap<string, string>,
+  ): readonly Evidence[] {
+    const evidence = report.results.flatMap((result) =>
+      'evidence' in result && Array.isArray(result.evidence) ? result.evidence : [],
+    );
+
+    return Array.from(
+      new Map(
+        evidence
+          .map((entry) => applyEvidenceFreshness(this.withServiceContext(entry, serviceLookup)))
+          .map((entry) => [entry.id, entry] as const),
+      ).values(),
+    );
+  }
+
+  private buildServiceLookup(posture: ServicePosture | null): ReadonlyMap<string, string> {
+    const entries =
+      posture?.services.flatMap((service) =>
+        service.service.resources.map((resource) => [resource.nodeId, service.service.id] as const),
+      ) ?? [];
+    return new Map(entries);
+  }
+
+  private withServiceContext(
+    evidence: Evidence,
+    serviceLookup: ReadonlyMap<string, string>,
+  ): Evidence {
+    const serviceId = evidence.subject.serviceId ?? serviceLookup.get(evidence.subject.nodeId);
+    if (!serviceId) {
+      return evidence;
+    }
+
+    return {
+      ...evidence,
+      subject: {
+        ...evidence.subject,
+        serviceId,
+      },
+    };
+  }
+
+  private toEvidenceArray(content: unknown): readonly Evidence[] {
+    if (Array.isArray(content)) {
+      return content.filter((entry): entry is Evidence => Boolean(entry) && typeof entry === 'object');
+    }
+    if (content && typeof content === 'object') {
+      return [content as Evidence];
+    }
+    return [];
+  }
+
+  private async resolveServiceIdForNode(
+    scanId: string,
+    nodeId: string,
+  ): Promise<string | null> {
+    const posture = await this.serviceDetectionService.getPersistedServicePosture(scanId);
+    const service = posture?.services.find((entry) =>
+      entry.service.resources.some((resource) => resource.nodeId === nodeId),
+    );
+    return service?.service.id ?? null;
   }
 
   private async executeScan(scanId: string, params: CreateScanParams): Promise<void> {

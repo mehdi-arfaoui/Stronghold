@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { InfraNode, ValidationReport, WeightedValidationResult } from '../../validation/index.js';
+import type { Evidence } from '../../evidence/index.js';
+import type {
+  InfraNode,
+  ValidationReport,
+  WeightedValidationResult,
+  WeightedValidationResultWithEvidence,
+} from '../../validation/index.js';
 import { scoreServices } from '../service-scoring.js';
 import type { Service } from '../service-types.js';
 
@@ -52,8 +58,28 @@ describe('scoreServices', () => {
       nodes,
     );
 
-    expect(result.services[0]?.score).toBeGreaterThan(60);
-    expect(result.services[0]?.grade).toBe('B');
+    expect(result.services[0]?.score).toBe(68);
+    expect(result.services[0]?.grade).toBe('C');
+  });
+
+  it('rewards tested evidence more than observed evidence for passing service controls', () => {
+    const nodes = [createNode('lambda-1', 'SERVERLESS', 'lambda')];
+    const observedResult = scoreServices(
+      [createService('auth', 'Auth', ['lambda-1'])],
+      createValidationReport([createFinding('low', 'pass', 'lambda-1', 10, 'backup', 'observed')]),
+      nodes,
+    );
+    const testedResult = scoreServices(
+      [createService('auth', 'Auth', ['lambda-1'])],
+      createValidationReport([createFinding('low', 'pass', 'lambda-1', 10, 'backup', 'tested')]),
+      nodes,
+    );
+
+    expect(observedResult.services[0]?.score).toBe(85);
+    expect(testedResult.services[0]?.score).toBe(100);
+    expect(testedResult.services[0]?.score ?? 0).toBeGreaterThan(
+      observedResult.services[0]?.score ?? 0,
+    );
   });
 
   it('weights datastore findings more heavily than monitoring findings', () => {
@@ -160,7 +186,8 @@ function createFinding(
   nodeId: string,
   weight: number,
   category: WeightedValidationResult['category'],
-): WeightedValidationResult {
+  evidenceType: Evidence['type'] = 'observed',
+): WeightedValidationResultWithEvidence {
   return {
     ruleId: `${category}-${severity}-${nodeId}`,
     nodeId,
@@ -171,13 +198,53 @@ function createFinding(
     category,
     weight,
     message: `${nodeId} ${status}`,
+    evidence: [createEvidence(nodeId, category, evidenceType)],
     weightBreakdown: {
       severityWeight: 1,
       criticalityWeight: 1,
       blastRadiusWeight: 1,
       directDependentCount: 0,
+      evidenceType,
+      evidenceConfidence: {
+        observed: 0.85,
+        inferred: 0.5,
+        declared: 0.7,
+        tested: 1.0,
+        expired: 0.2,
+      }[evidenceType],
     },
   };
+}
+
+function createEvidence(
+  nodeId: string,
+  ruleId: string,
+  type: Evidence['type'],
+): Evidence {
+  return {
+    id: `${ruleId}-${nodeId}-${type}`,
+    type,
+    source:
+      type === 'tested' || type === 'expired'
+        ? { origin: 'test', testType: 'restore-test', testDate: '2026-04-08T00:00:00.000Z' }
+        : { origin: 'scan', scanTimestamp: '2026-04-08T00:00:00.000Z' },
+    subject: {
+      nodeId,
+      ruleId,
+    },
+    observation: {
+      key: 'backupRetentionPeriod',
+      value: statusValueForEvidence(type),
+      expected: '> 0',
+      description: `${type} evidence`,
+    },
+    timestamp: '2026-04-08T00:00:00.000Z',
+    ...(type === 'expired' ? { expiresAt: '2026-04-01T00:00:00.000Z' } : {}),
+  };
+}
+
+function statusValueForEvidence(type: Evidence['type']): unknown {
+  return type === 'expired' ? 'stale' : 'success';
 }
 
 function createValidationReport(

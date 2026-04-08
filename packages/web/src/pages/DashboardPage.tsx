@@ -1,6 +1,7 @@
 import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { listExpiringEvidence } from '@/api/evidence';
 import { getValidationSummary } from '@/api/reports';
 import { listScans } from '@/api/scans';
 import { listServices } from '@/api/services';
@@ -21,17 +22,19 @@ export default function DashboardPage(): JSX.Element {
   const fetchDashboard = useCallback(async () => {
     const scansResult = await listScans({ limit: 5 });
     const latestCompletedScan = scansResult.scans.find((scan) => scan.status === 'COMPLETED') ?? null;
-    const [summary, services] = latestCompletedScan
+    const [summary, services, evidence] = latestCompletedScan
       ? await Promise.all([
           getValidationSummary(latestCompletedScan.id),
           listServices().catch(() => null),
+          listExpiringEvidence().catch(() => null),
         ])
-      : [null, null];
+      : [null, null, null];
     return {
       scans: scansResult.scans,
       latestCompletedScan,
       summary,
       services,
+      evidence,
     };
   }, []);
 
@@ -105,6 +108,53 @@ export default function DashboardPage(): JSX.Element {
         <CategoryBreakdown categories={data.summary?.categories ?? null} />
         <TopFailures failures={data.summary?.topFailures ?? []} />
       </div>
+      <section className="panel p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Evidence alerts</p>
+            <h3 className="mt-2 text-2xl font-semibold text-foreground">Re-test signals</h3>
+          </div>
+          <div className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-muted-foreground">
+            {data.evidence?.evidence.length ?? 0} alert{(data.evidence?.evidence.length ?? 0) === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {data.evidence?.evidence.length ? (
+            data.evidence.evidence.slice(0, 3).map((entry) => {
+              const isExpired = entry.type === 'expired';
+              return (
+                <article
+                  key={entry.id}
+                  className={`rounded-2xl border p-4 ${
+                    isExpired
+                      ? 'border-red-500/30 bg-red-500/8'
+                      : 'border-amber-500/30 bg-amber-500/8'
+                  }`}
+                >
+                  <p className="text-xs uppercase tracking-[0.16em] text-subtle-foreground">
+                    {isExpired ? 'Expired evidence' : 'Expiring soon'}
+                  </p>
+                  <div className="mt-2 text-sm font-medium text-foreground">
+                    {entry.subject.serviceId ?? 'unassigned'} / {entry.subject.nodeId}
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">
+                    {entry.source.origin === 'test'
+                      ? `${entry.source.testType} ${entry.testResult?.status ?? entry.observation.value}`
+                      : `${entry.observation.key} = ${String(entry.observation.value)}`}
+                  </p>
+                  <p className="mt-2 text-xs uppercase tracking-[0.14em] text-subtle-foreground">
+                    {entry.expiresAt ? `Expires ${entry.expiresAt.slice(0, 10)}` : 'No expiration date'}
+                  </p>
+                </article>
+              );
+            })
+          ) : (
+            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground lg:col-span-3">
+              No expiring or expired evidence on the latest completed scan.
+            </div>
+          )}
+        </div>
+      </section>
       <section className="panel p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>

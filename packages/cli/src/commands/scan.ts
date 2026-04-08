@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import { Command } from 'commander';
 import {
+  FileEvidenceStore,
   generateRecommendations,
   selectTopRecommendations,
   type Service,
@@ -81,6 +82,7 @@ export function registerScanCommand(program: Command): void {
         const resolvedScanSettings = resolveAwsScanSettings(options);
         const paths = resolveStrongholdPaths();
         const previousAssignments = await loadPreviousServiceAssignments(paths, options.passphrase);
+        const evidence = await new FileEvidenceStore(paths.evidencePath).getAll();
         const flags = collectAuditFlags({
           '--all-regions': options.allRegions,
           '--no-save': !options.save,
@@ -137,6 +139,7 @@ export function registerScanCommand(program: Command): void {
           graphOverrides: resolvedOverrides.overrides,
           servicesFilePath: paths.servicesPath,
           previousAssignments,
+          evidence,
           identityMetadata: {
             authMode: context.authMode,
             ...(context.profile ? { profile: context.profile } : {}),

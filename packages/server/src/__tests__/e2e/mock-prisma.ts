@@ -57,6 +57,7 @@ export function createMockPrisma(): MockPrismaHarness {
   const report = withFallback('report', {
     create: vi.fn(async (args: { readonly data: UnknownRecord }) => createRelatedRecord(store.reports, args.data)),
     findFirst: vi.fn(async (args: { readonly where?: { readonly scanId?: string; readonly type?: string } }) => findLatestByScanId(store.reports, args.where?.scanId, args.where?.type)),
+    findMany: vi.fn(async (args: { readonly where?: { readonly scanId?: string; readonly type?: string } }) => listLatestByScanId(store.reports, args.where?.scanId, args.where?.type)),
   });
   const dRPlan = withFallback('dRPlan', {
     create: vi.fn(async (args: { readonly data: UnknownRecord }) => createRelatedRecord(store.drPlans, args.data)),

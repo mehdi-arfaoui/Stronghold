@@ -1,16 +1,25 @@
+import {
+  EVIDENCE_CONFIDENCE,
+  extractEvidence,
+  resolveStrongestEvidenceConfidence,
+  resolveStrongestEvidenceType,
+  type Evidence,
+} from '../evidence/index.js';
 import { getMetadata, readString } from '../graph/analysis-helpers.js';
 import type { DRPlan } from '../drp/drp-types.js';
 import type {
   DRCategory,
+  EvidenceMaturitySummary,
   Grade,
   InfraNode,
   ScoreBreakdown,
   ValidationContext,
   ValidationEdge,
-  ValidationReport,
+  ValidationReportWithEvidence,
   ValidationResult,
   ValidationRule,
   WeightedValidationResult,
+  WeightedValidationResultWithEvidence,
 } from './validation-types.js';
 import {
   collectNodeKinds,
@@ -54,14 +63,34 @@ export function calculateWeightedScore(
     return 100;
   }
 
-  const scored = results.filter((result) => scoreValueFor(result.status) !== null);
+  const scored = results.filter((result) => scoreValueFor(result) !== null);
   const denominator = scored.reduce((sum, result) => sum + result.weight, 0);
   if (denominator === 0) return 0;
 
   const numerator = scored.reduce(
-    (sum, result) => sum + result.weight * (scoreValueFor(result.status) ?? 0),
+    (sum, result) => sum + result.weight * (scoreValueFor(result) ?? 0),
     0,
   );
+  return Math.round((numerator / denominator) * 100);
+}
+
+export function calculatePotentialTestVerifiedScore(
+  results: readonly WeightedValidationResult[],
+): number {
+  if (results.length > 0 && results.every((result) => result.status === 'skip')) {
+    return 100;
+  }
+
+  const scored = results.filter((result) => scoreValueFor(result) !== null);
+  const denominator = scored.reduce((sum, result) => sum + result.weight, 0);
+  if (denominator === 0) return 0;
+
+  const numerator = scored.reduce((sum, result) => {
+    if (result.status === 'pass') {
+      return sum + result.weight;
+    }
+    return sum + result.weight * (scoreValueFor(result) ?? 0);
+  }, 0);
   return Math.round((numerator / denominator) * 100);
 }
 
@@ -71,7 +100,11 @@ export function runValidation(
   edges: ReadonlyArray<ValidationEdge>,
   rules: readonly ValidationRule[],
   drpPlan?: DRPlan,
-): ValidationReport {
+  options: {
+    readonly timestamp?: string;
+  } = {},
+): ValidationReportWithEvidence {
+  const timestamp = options.timestamp ?? new Date().toISOString();
   const backupCoverage = buildBackupCoverage(nodes, edges);
   const context: ValidationContext = {
     allNodes: nodes,
@@ -79,7 +112,7 @@ export function runValidation(
     ...(drpPlan ? { drpPlan } : {}),
     ...(backupCoverage.size > 0 ? { backupCoverage } : {}),
   };
-  const results = nodes.flatMap((node) => runNodeRules(node, context, rules, edges));
+  const results = nodes.flatMap((node) => runNodeRules(node, context, rules, edges, timestamp));
   const passed = countResults(results, 'pass');
   const failed = countResults(results, 'fail');
   const warnings = countResults(results, 'warn');
@@ -88,7 +121,7 @@ export function runValidation(
   const scoreBreakdown = calculateScoreBreakdown(results);
 
   return {
-    timestamp: new Date().toISOString(),
+    timestamp,
     totalChecks: results.length,
     passed,
     failed,
@@ -100,6 +133,7 @@ export function runValidation(
     scoreBreakdown,
     criticalFailures: collectCriticalFailures(results),
     scannedResources: nodes.length,
+    evidenceSummary: summarizeEvidenceMaturity(results),
   };
 }
 
@@ -129,23 +163,33 @@ function runNodeRules(
   context: ValidationContext,
   rules: readonly ValidationRule[],
   edges: ReadonlyArray<ValidationEdge>,
-): readonly WeightedValidationResult[] {
+  scanTimestamp: string,
+): readonly WeightedValidationResultWithEvidence[] {
   return rules
     .filter((rule) => isRuleApplicable(rule, node))
     .map((rule) => {
       try {
-        return toWeightedResult(rule.validate(node, context), node, rule, edges);
-      } catch (error) {
+        const result = rule.validate(node, context);
         return toWeightedResult(
-          {
-            ruleId: rule.id,
-            nodeId: node.id,
-            status: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          },
+          result,
           node,
           rule,
           edges,
+          extractEvidence(rule, node, result, scanTimestamp),
+        );
+      } catch (error) {
+        const errorResult: ValidationResult = {
+          ruleId: rule.id,
+          nodeId: node.id,
+          status: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        };
+        return toWeightedResult(
+          errorResult,
+          node,
+          rule,
+          edges,
+          extractEvidence(rule, node, errorResult, scanTimestamp),
         );
       }
     });
@@ -161,14 +205,18 @@ function toWeightedResult(
   node: InfraNode,
   rule: ValidationRule,
   edges: ReadonlyArray<ValidationEdge>,
-): WeightedValidationResult {
+  evidence: readonly Evidence[],
+): WeightedValidationResultWithEvidence {
   const directDependentCount = countDirectDependents(node.id, edges);
   const severityWeight = severityWeightFor(rule.severity);
   const criticalityWeight = criticalityWeightFor(node);
   const blastWeight = blastRadiusWeight(directDependentCount);
+  const evidenceType = resolveStrongestEvidenceType(evidence);
+  const evidenceConfidence = resolveStrongestEvidenceConfidence(evidence);
 
   return {
     ...result,
+    evidence,
     severity: rule.severity,
     category: rule.category,
     nodeName: node.name,
@@ -179,6 +227,8 @@ function toWeightedResult(
       criticalityWeight,
       blastRadiusWeight: blastWeight,
       directDependentCount,
+      evidenceType,
+      evidenceConfidence,
     },
   };
 }
@@ -215,7 +265,7 @@ function countResults(
   return results.filter((result) => result.status === status).length;
 }
 
-function calculateScoreBreakdown(
+export function calculateScoreBreakdown(
   results: readonly WeightedValidationResult[],
 ): ScoreBreakdown {
   const byCategory = createCategoryRecord(0);
@@ -246,10 +296,12 @@ function calculateScoreBreakdown(
   };
 }
 
-function scoreValueFor(status: ValidationResult['status']): number | null {
-  if (status === 'pass') return 1;
-  if (status === 'warn') return 0.5;
-  if (status === 'fail') return 0;
+function scoreValueFor(result: WeightedValidationResult): number | null {
+  if (result.status === 'pass') {
+    return resolveEvidenceConfidenceForResult(result);
+  }
+  if (result.status === 'warn') return 0.5;
+  if (result.status === 'fail') return 0;
   return null;
 }
 
@@ -261,9 +313,9 @@ export function gradeForScore(score: number): Grade {
   return 'F';
 }
 
-function collectCriticalFailures(
-  results: readonly WeightedValidationResult[],
-): readonly WeightedValidationResult[] {
+export function collectCriticalFailures<TResult extends WeightedValidationResult>(
+  results: readonly TResult[],
+): readonly TResult[] {
   return results
     .filter(
       (result) =>
@@ -294,4 +346,55 @@ function createCategoryRecord(value: number): Record<DRCategory, number> {
     recovery: value,
     replication: value,
   };
+}
+
+export function summarizeEvidenceMaturity(
+  results: readonly WeightedValidationResult[],
+): EvidenceMaturitySummary {
+  const scoredResults = results.filter((result) => result.status !== 'skip');
+  const counts: EvidenceMaturitySummary['counts'] = {
+    observed: 0,
+    inferred: 0,
+    declared: 0,
+    tested: 0,
+    expired: 0,
+  };
+
+  for (const result of scoredResults) {
+    counts[resolveEvidenceTypeForResult(result)] += 1;
+  }
+
+  return {
+    total: scoredResults.length,
+    counts,
+    potentialScore: calculatePotentialTestVerifiedScore(results),
+  };
+}
+
+function isWeightedResultWithEvidence(
+  result: WeightedValidationResult,
+): result is WeightedValidationResultWithEvidence {
+  return 'evidence' in result && Array.isArray(result.evidence);
+}
+
+function resolveEvidenceTypeForResult(
+  result: WeightedValidationResult,
+): Evidence['type'] {
+  if (isWeightedResultWithEvidence(result)) {
+    return result.weightBreakdown.evidenceType;
+  }
+  if (isWeightedResultWithEvidence(result) && result.evidence.length > 0) {
+    return resolveStrongestEvidenceType(result.evidence);
+  }
+  return 'observed';
+}
+
+function resolveEvidenceConfidenceForResult(result: WeightedValidationResult): number {
+  if (isWeightedResultWithEvidence(result)) {
+    return result.weightBreakdown.evidenceConfidence;
+  }
+  if (isWeightedResultWithEvidence(result) && result.evidence.length > 0) {
+    return resolveStrongestEvidenceConfidence(result.evidence);
+  }
+  return EVIDENCE_CONFIDENCE.observed;
 }

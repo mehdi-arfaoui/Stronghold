@@ -1,4 +1,5 @@
 import type { DRPlan } from '../drp/drp-types.js';
+import type { Evidence, EvidenceType } from '../evidence/index.js';
 import type { InfraNodeAttrs } from '../types/index.js';
 
 /** Infrastructure node alias used by the DR validation engine. */
@@ -61,6 +62,24 @@ export interface WeightedValidationResult extends ValidationResult {
   };
 }
 
+export interface ValidationResultWithEvidence extends ValidationResult {
+  readonly evidence: readonly Evidence[];
+}
+
+export interface WeightedValidationResultWithEvidence extends WeightedValidationResult {
+  readonly evidence: readonly Evidence[];
+  readonly weightBreakdown: WeightedValidationResult['weightBreakdown'] & {
+    readonly evidenceType: EvidenceType;
+    readonly evidenceConfidence: number;
+  };
+}
+
+export interface EvidenceMaturitySummary {
+  readonly total: number;
+  readonly counts: Record<EvidenceType, number>;
+  readonly potentialScore: number;
+}
+
 /** Weighted score summary for the overall posture report. */
 export interface ScoreBreakdown {
   readonly overall: number;
@@ -79,6 +98,7 @@ export interface ValidationRule {
   readonly category: DRCategory;
   readonly severity: ValidationSeverity;
   readonly appliesToTypes: readonly string[];
+  readonly observedKeys?: readonly string[];
   readonly validate: (node: InfraNode, context: ValidationContext) => ValidationResult;
 }
 
@@ -96,4 +116,10 @@ export interface ValidationReport {
   readonly scoreBreakdown: ScoreBreakdown;
   readonly criticalFailures: readonly WeightedValidationResult[];
   readonly scannedResources: number;
+}
+
+export interface ValidationReportWithEvidence extends ValidationReport {
+  readonly results: readonly WeightedValidationResultWithEvidence[];
+  readonly criticalFailures: readonly WeightedValidationResultWithEvidence[];
+  readonly evidenceSummary: EvidenceMaturitySummary;
 }

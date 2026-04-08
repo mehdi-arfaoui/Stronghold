@@ -1,11 +1,21 @@
+import type { Evidence } from '../evidence/index.js';
 import { describe, expect, it } from 'vitest';
 import type { InfraNodeAttrs } from '../types/infrastructure.js';
 import { formatValidationReport } from './validation-reporter.js';
-import { blastRadiusWeight, runValidation } from './validation-engine.js';
+import {
+  blastRadiusWeight,
+  calculatePotentialTestVerifiedScore,
+  calculateWeightedScore,
+  gradeForScore,
+  runValidation,
+  summarizeEvidenceMaturity,
+} from './validation-engine.js';
 import type {
   ValidationEdge,
   ValidationRule,
   ValidationStatus,
+  WeightedValidationResult,
+  WeightedValidationResultWithEvidence,
 } from './validation-types.js';
 
 function createNode(
@@ -82,18 +92,12 @@ describe('weighted scoring', () => {
   });
 
   it('returns a perfect score when all scored checks pass', () => {
-    const node = createNode('app-1', 'APPLICATION', { criticality: 'critical' });
-    const report = runValidation(
-      [node],
-      [],
-      [
-        createRule('backup_check', 'critical', 'backup', { 'app-1': 'pass' }, ['application']),
-        createRule('detect_check', 'high', 'detection', { 'app-1': 'pass' }, ['application']),
-      ],
-    );
+    const score = calculateWeightedScore([
+      createWeightedResult('pass', 10, 'observed'),
+      createWeightedResult('pass', 10, 'observed'),
+    ]);
 
-    expect(report.score).toBe(100);
-    expect(report.scoreBreakdown.overall).toBe(100);
+    expect(score).toBe(85);
   });
 
   it('returns a zero score when all scored checks fail', () => {
@@ -122,28 +126,18 @@ describe('weighted scoring', () => {
       ],
     );
 
-    expect(report.scoreBreakdown.byCategory.backup).toBe(100);
+    expect(report.scoreBreakdown.byCategory.backup).toBe(85);
     expect(report.scoreBreakdown.byCategory.detection).toBe(0);
-    expect(report.scoreBreakdown.overall).toBe(50);
+    expect(report.scoreBreakdown.overall).toBe(43);
     expect(report.scoreBreakdown.weakestCategory).toBe('detection');
   });
 
   it('assigns grades using the documented thresholds', () => {
-    const node = createNode('app-1');
-    const makeReport = (statuses: readonly ValidationStatus[]) =>
-      runValidation(
-        [node],
-        [],
-        statuses.map((status, index) =>
-          createRule(`rule_${index}`, 'medium', 'backup', { 'app-1': status }, ['application']),
-        ),
-      );
-
-    expect(makeReport(['pass', 'pass', 'pass', 'pass']).scoreBreakdown.grade).toBe('A');
-    expect(makeReport(['pass', 'pass', 'pass', 'fail']).scoreBreakdown.grade).toBe('B');
-    expect(makeReport(['pass', 'pass', 'warn', 'fail']).scoreBreakdown.grade).toBe('C');
-    expect(makeReport(['pass', 'pass', 'fail', 'fail']).scoreBreakdown.grade).toBe('D');
-    expect(makeReport(['fail', 'fail', 'fail', 'fail']).scoreBreakdown.grade).toBe('F');
+    expect(gradeForScore(90)).toBe('A');
+    expect(gradeForScore(75)).toBe('B');
+    expect(gradeForScore(60)).toBe('C');
+    expect(gradeForScore(40)).toBe('D');
+    expect(gradeForScore(39)).toBe('F');
   });
 
   it('uses the documented logarithmic blast radius mapping', () => {
@@ -252,7 +246,7 @@ describe('weighted scoring', () => {
 
     expect(report.errors).toBe(1);
     expect(report.results.find((result) => result.ruleId === 'broken_rule')?.status).toBe('error');
-    expect(report.score).toBe(100);
+    expect(report.score).toBe(85);
   });
 
   it('returns a perfect score when every produced result is skipped', () => {
@@ -279,8 +273,130 @@ describe('weighted scoring', () => {
       ],
     );
 
-    expect(report.score).toBe(50);
-    expect(report.scoreBreakdown.byCategory.backup).toBe(50);
+    expect(report.score).toBe(45);
+    expect(report.scoreBreakdown.byCategory.backup).toBe(45);
     expect(report.skipped).toBe(1);
   });
+
+  it('awards full credit to passing rules backed by tested evidence', () => {
+    expect(calculateWeightedScore([createWeightedResult('pass', 10, 'tested')])).toBe(100);
+  });
+
+  it('awards near-full credit to passing rules backed by observed evidence', () => {
+    expect(calculateWeightedScore([createWeightedResult('pass', 10, 'observed')])).toBe(85);
+  });
+
+  it('awards minimal credit to passing rules backed by expired evidence', () => {
+    expect(calculateWeightedScore([createWeightedResult('pass', 10, 'expired')])).toBe(20);
+  });
+
+  it('keeps failing rules at zero regardless of evidence type', () => {
+    expect(calculateWeightedScore([createWeightedResult('fail', 10, 'tested')])).toBe(0);
+    expect(calculateWeightedScore([createWeightedResult('fail', 10, 'observed')])).toBe(0);
+  });
+
+  it('scores all-tested passes higher than all-observed passes by a moderate margin', () => {
+    const observedScore = calculateWeightedScore([
+      createWeightedResult('pass', 10, 'observed'),
+      createWeightedResult('pass', 10, 'observed'),
+    ]);
+    const testedScore = calculateWeightedScore([
+      createWeightedResult('pass', 10, 'tested'),
+      createWeightedResult('pass', 10, 'tested'),
+    ]);
+
+    expect(testedScore).toBeGreaterThan(observedScore);
+    expect(testedScore - observedScore).toBe(15);
+  });
+
+  it('includes evidence type and confidence in the weight breakdown', () => {
+    const report = runValidation(
+      [createNode('app-1', 'APPLICATION', { backupRetentionPeriod: 7 })],
+      [],
+      [
+        {
+          ...createRule('backup_check', 'medium', 'backup', { 'app-1': 'pass' }, ['application']),
+          observedKeys: ['backupRetentionPeriod'],
+        },
+      ],
+    );
+
+    expect(report.results[0]?.weightBreakdown.evidenceType).toBe('observed');
+    expect(report.results[0]?.weightBreakdown.evidenceConfidence).toBe(0.85);
+  });
+
+  it('summarizes maturity distribution and potential score if all passing rules were tested', () => {
+    const results = [
+      createWeightedResult('pass', 10, 'observed'),
+      createWeightedResult('pass', 10, 'tested'),
+      createWeightedResult('pass', 10, 'expired'),
+      createWeightedResult('fail', 10, 'observed'),
+    ];
+
+    const summary = summarizeEvidenceMaturity(results);
+
+    expect(summary.counts.observed).toBe(2);
+    expect(summary.counts.tested).toBe(1);
+    expect(summary.counts.expired).toBe(1);
+    expect(summary.potentialScore).toBe(calculatePotentialTestVerifiedScore(results));
+    expect(summary.potentialScore).toBeGreaterThan(calculateWeightedScore(results));
+  });
 });
+
+function createWeightedResult(
+  status: WeightedValidationResult['status'],
+  weight: number,
+  evidenceType: Evidence['type'],
+): WeightedValidationResultWithEvidence {
+  const evidence = [createEvidence(evidenceType)];
+
+  return {
+    ruleId: `${status}-${evidenceType}`,
+    nodeId: `${status}-${evidenceType}-node`,
+    nodeName: `${status}-${evidenceType}-node`,
+    nodeType: 'test',
+    status,
+    severity: 'medium',
+    category: 'backup',
+    weight,
+    message: `${status} ${evidenceType}`,
+    evidence,
+    weightBreakdown: {
+      severityWeight: 1,
+      criticalityWeight: 1,
+      blastRadiusWeight: 1,
+      directDependentCount: 0,
+      evidenceType,
+      evidenceConfidence: {
+        observed: 0.85,
+        inferred: 0.5,
+        declared: 0.7,
+        tested: 1.0,
+        expired: 0.2,
+      }[evidenceType],
+    },
+  };
+}
+
+function createEvidence(type: Evidence['type']): Evidence {
+  return {
+    id: `evidence-${type}`,
+    type,
+    source:
+      type === 'tested' || type === 'expired'
+        ? { origin: 'test', testType: 'restore-test', testDate: '2026-04-08T00:00:00.000Z' }
+        : { origin: 'scan', scanTimestamp: '2026-04-08T00:00:00.000Z' },
+    subject: {
+      nodeId: `node-${type}`,
+      ruleId: `rule-${type}`,
+    },
+    observation: {
+      key: 'backupRetentionPeriod',
+      value: 7,
+      expected: '> 0',
+      description: `${type} evidence`,
+    },
+    timestamp: '2026-04-08T00:00:00.000Z',
+    ...(type === 'expired' ? { expiresAt: '2026-04-01T00:00:00.000Z' } : {}),
+  };
+}
