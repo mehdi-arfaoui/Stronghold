@@ -14,7 +14,8 @@ export type AuditAction =
   | 'scenarios'
   | 'scenarios_list'
   | 'scenarios_show'
-  | 'status';
+  | 'status'
+  | 'history';
 
 export interface AuditIdentity {
   readonly arn: string;

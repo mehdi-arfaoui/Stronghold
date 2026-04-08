@@ -1,4 +1,8 @@
-import type { ApiServiceDetailResponse, ContextualFinding } from '@stronghold-dr/core';
+import type {
+  ApiServiceDetailResponse,
+  ApiServiceHistoryResponse,
+  ContextualFinding,
+} from '@stronghold-dr/core';
 
 import { ServiceFindings } from './ServiceFindings';
 
@@ -24,9 +28,11 @@ function buildEvidenceSummary(findings: readonly ContextualFinding[]): Array<{
 
 export function ServiceDetail({
   detail,
+  history,
   onOpenGraph,
 }: {
   readonly detail: ApiServiceDetailResponse['service'] | null;
+  readonly history: ApiServiceHistoryResponse | null;
   readonly onOpenGraph: (serviceId: string) => void;
 }): JSX.Element {
   if (!detail) {
@@ -39,6 +45,8 @@ export function ServiceDetail({
 
   const evidenceSummary = buildEvidenceSummary(detail.contextualFindings);
   const totalEvidenceFindings = evidenceSummary.reduce((sum, entry) => sum + entry.count, 0);
+  const sparklinePoints = buildSparklinePoints(history?.snapshots ?? []);
+  const sparklineDirection = history?.trend?.direction ?? 'stable';
 
   return (
     <section className="space-y-6">
@@ -69,6 +77,38 @@ export function ServiceDetail({
           </div>
           <div className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-muted-foreground">
             {detail.contextualFindings.length} active finding{detail.contextualFindings.length === 1 ? '' : 's'}
+          </div>
+        </div>
+        <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Service trend</p>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Last {Math.max(sparklinePoints.length, 1)} scan{sparklinePoints.length === 1 ? '' : 's'} • {sparklineDirection}
+              </p>
+            </div>
+            <div className="rounded-full border border-border bg-card/70 px-3 py-1 text-xs uppercase tracking-[0.14em] text-muted-foreground">
+              {sparklineDirection}
+            </div>
+          </div>
+          <div className="mt-4">
+            {sparklinePoints.length > 1 ? (
+              <svg viewBox="0 0 220 64" className="h-16 w-full">
+                <path
+                  d={sparklinePoints}
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  className="text-sky-300"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ) : (
+              <div className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">
+                Trend data will appear after more history is collected for this service.
+              </div>
+            )}
           </div>
         </div>
         <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
@@ -156,4 +196,21 @@ export function ServiceDetail({
       </div>
     </section>
   );
+}
+
+function buildSparklinePoints(
+  snapshots: readonly ApiServiceHistoryResponse['snapshots'][number][],
+): string {
+  if (snapshots.length < 2) {
+    return '';
+  }
+
+  const step = 220 / Math.max(1, snapshots.length - 1);
+  return snapshots
+    .map((snapshot, index) => {
+      const x = index * step;
+      const y = 56 - Math.round((snapshot.score / 100) * 48);
+      return `${index === 0 ? 'M' : 'L'} ${x} ${y}`;
+    })
+    .join(' ');
 }

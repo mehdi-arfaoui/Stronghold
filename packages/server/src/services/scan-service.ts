@@ -3,10 +3,15 @@ import { randomUUID } from 'node:crypto';
 import * as core from '@stronghold-dr/core';
 import {
   analyzeBuiltInScenarios,
+  analyzeTrend,
   applyScenarioImpactToServicePosture,
   applyEvidenceFreshness,
+  applyDebtToSnapshot,
+  buildScanSnapshot,
   checkFreshness,
+  collectTrackedFindings,
   EVIDENCE_CONFIDENCE,
+  calculateServiceDebt,
   deserializeDRPlan,
   dynamoDbPitrEnricher,
   ec2AsgEnricher,
@@ -18,21 +23,28 @@ import {
   s3ReplicationEnricher,
   scanAwsRegion,
   serializeDRPlan,
+  trackFindings,
   transformToScanResult,
   validateDRPlan,
   type ApiAddEvidenceInput,
   type ApiEvidenceListResponse,
+  type ApiHistoryResponse,
+  type ApiHistoryTrendResponse,
   type ApiScenarioDetailResponse,
   type ApiScenariosResponse,
+  type ApiServiceHistoryResponse,
   type ApiServicesResponse,
   type DRCategory,
   type DRPlan,
   type DRPlanValidationReport,
   type DiscoveryCredentials,
   type Evidence,
+  type FindingLifecycle,
   type InfraNode,
+  type ScanSnapshot,
   type ScenarioAnalysis,
   type ServicePosture,
+  type ServiceDebt,
   type ValidationReport,
   type ValidationSeverity,
 } from '@stronghold-dr/core';
@@ -48,6 +60,7 @@ import {
 import { ServerError, toError } from '../errors/server-error.js';
 import { deserializeAnalysis } from './analysis-serialization.js';
 import { buildGraph } from './graph-builder.js';
+import { InMemoryFindingLifecycleStore } from './history-memory-store.js';
 import { runScanPipeline } from './scan-pipeline.js';
 import { ServiceDetectionService } from './service-detection.service.js';
 
@@ -64,6 +77,8 @@ export interface ValidationReportFilters {
 
 const EVIDENCE_REPORT_TYPE = 'evidence';
 const SCENARIO_REPORT_TYPE = 'scenarios';
+const HISTORY_SNAPSHOT_REPORT_TYPE = 'history_snapshot';
+const FINDING_LIFECYCLES_REPORT_TYPE = 'finding_lifecycles';
 const DEFAULT_TESTED_EVIDENCE_EXPIRATION_DAYS = 90;
 
 export class ScanService {
@@ -158,6 +173,84 @@ export class ScanService {
   public async redetectLatestServices() {
     const services = await this.serviceDetectionService.redetectLatestServices();
     return this.enrichServicesResponseWithEvidence(services);
+  }
+
+  public async listHistory(options: { readonly limit: number }): Promise<ApiHistoryResponse> {
+    const snapshots = await this.listHistorySnapshots(options.limit);
+    return {
+      snapshots,
+      total: snapshots.length,
+    };
+  }
+
+  public async getHistoryTrend(options: {
+    readonly limit: number;
+  }): Promise<ApiHistoryTrendResponse> {
+    const snapshots = await this.listHistorySnapshots(options.limit);
+    const lifecycles = await this.getLatestFindingLifecycles();
+    const currentDebt = await this.calculateLatestCurrentDebt(snapshots, lifecycles);
+
+    return {
+      snapshots,
+      trend: analyzeTrend(snapshots, lifecycles, currentDebt),
+    };
+  }
+
+  public async getServiceHistory(
+    serviceQuery: string,
+    options: {
+      readonly limit: number;
+    },
+  ): Promise<ApiServiceHistoryResponse> {
+    const snapshots = await this.listHistorySnapshots(options.limit);
+    const latestSnapshot = snapshots.at(-1);
+    const normalizedQuery = serviceQuery.trim().toLowerCase();
+    const service =
+      latestSnapshot?.services.find((entry) => entry.serviceId.toLowerCase() === normalizedQuery) ??
+      latestSnapshot?.services.find((entry) => entry.serviceName.toLowerCase() === normalizedQuery) ??
+      snapshots
+        .flatMap((snapshot) => snapshot.services)
+        .find(
+          (entry) =>
+            entry.serviceId.toLowerCase() === normalizedQuery ||
+            entry.serviceName.toLowerCase() === normalizedQuery,
+        );
+
+    if (!service) {
+      throw new ServerError('Service history not found', {
+        code: 'SCAN_NOT_FOUND',
+        status: 404,
+      });
+    }
+
+    const lifecycles = (await this.getLatestFindingLifecycles()).filter(
+      (entry) => entry.serviceId === service.serviceId,
+    );
+    const trend = await this.getHistoryTrend({ limit: options.limit });
+    return {
+      serviceId: service.serviceId,
+      serviceName: service.serviceName,
+      snapshots: snapshots
+        .flatMap((snapshot) => {
+          const match = snapshot.services.find((entry) => entry.serviceId === service.serviceId);
+          return match
+            ? [
+                {
+                  timestamp: snapshot.timestamp,
+                  score: match.score,
+                  grade: match.grade,
+                  findingCount: match.findingCount,
+                  criticalFindingCount: match.criticalFindingCount,
+                  resourceCount: match.resourceCount,
+                  ...(typeof match.debt === 'number' ? { debt: match.debt } : {}),
+                },
+              ]
+            : [];
+        }),
+      lifecycles,
+      trend:
+        trend.trend.services.find((entry) => entry.serviceId === service.serviceId) ?? null,
+    };
   }
 
   public async listScenarios(): Promise<ApiScenariosResponse> {
@@ -413,6 +506,121 @@ export class ScanService {
     return report ? (report.content as ScenarioAnalysis) : null;
   }
 
+  private async persistPostureMemory(params: {
+    readonly scanId: string;
+    readonly timestamp: Date;
+    readonly validationReport: ValidationReport;
+    readonly servicePosture: ServicePosture;
+    readonly scenarioAnalysis: ScenarioAnalysis;
+    readonly regions: readonly string[];
+    readonly totalResources: number;
+  }): Promise<void> {
+    const previousSnapshot = (await this.listHistorySnapshots(1))[0] ?? null;
+    const trackedFindings = collectTrackedFindings(
+      params.validationReport,
+      params.servicePosture,
+    );
+    const currentSnapshot = buildScanSnapshot({
+      scanId: params.scanId,
+      timestamp: params.timestamp.toISOString(),
+      validationReport: params.validationReport,
+      totalResources: params.totalResources,
+      regions: params.regions,
+      servicePosture: params.servicePosture,
+      scenarioAnalysis: params.scenarioAnalysis,
+    });
+    const lifecycleStore = new InMemoryFindingLifecycleStore(
+      await this.getLatestFindingLifecycles(),
+    );
+    await trackFindings(
+      trackedFindings.map((finding) => finding.findingKey),
+      {
+        addSnapshot: async () => undefined,
+        getSnapshots: async () =>
+          previousSnapshot ? [previousSnapshot, currentSnapshot] : [currentSnapshot],
+        getLatest: async () => currentSnapshot,
+        getPrevious: async () => previousSnapshot,
+        count: async () => (previousSnapshot ? 2 : 1),
+      },
+      {
+        lifecycleStore,
+        currentTimestamp: params.timestamp.toISOString(),
+        findingContextByKey: new Map(
+          trackedFindings.map((finding) => [finding.findingKey, finding] as const),
+        ),
+      },
+    );
+    const allLifecycles = await lifecycleStore.getAll(params.timestamp.toISOString());
+    const activeLifecycles = await lifecycleStore.getActive(params.timestamp.toISOString());
+    const currentDebt = calculateServiceDebt({
+      servicePosture: params.servicePosture,
+      trackedFindings,
+      findingLifecycles: activeLifecycles,
+      previousDebt: toPreviousDebt(previousSnapshot),
+    });
+    const enrichedSnapshot = applyDebtToSnapshot(currentSnapshot, currentDebt);
+
+    await this.scanRepository.saveReport({
+      scanId: params.scanId,
+      type: HISTORY_SNAPSHOT_REPORT_TYPE,
+      format: 'json',
+      content: enrichedSnapshot,
+      score: enrichedSnapshot.globalScore,
+      grade: enrichedSnapshot.globalGrade,
+    });
+    await this.scanRepository.saveReport({
+      scanId: params.scanId,
+      type: FINDING_LIFECYCLES_REPORT_TYPE,
+      format: 'json',
+      content: allLifecycles,
+    });
+  }
+
+  private async listHistorySnapshots(limit = 20): Promise<readonly ScanSnapshot[]> {
+    const reports = await this.scanRepository.listGlobalReportsByType(HISTORY_SNAPSHOT_REPORT_TYPE, {
+      limit,
+    });
+    return reports
+      .map((report) => report.content as ScanSnapshot)
+      .sort((left, right) => left.timestamp.localeCompare(right.timestamp));
+  }
+
+  private async getLatestFindingLifecycles(): Promise<readonly FindingLifecycle[]> {
+    const report = await this.scanRepository.getLatestGlobalReportByType(
+      FINDING_LIFECYCLES_REPORT_TYPE,
+    );
+    if (!report || !Array.isArray(report.content)) {
+      return [];
+    }
+
+    return report.content.filter(
+      (entry): entry is FindingLifecycle => Boolean(entry) && typeof entry === 'object',
+    );
+  }
+
+  private async calculateLatestCurrentDebt(
+    snapshots: readonly ScanSnapshot[],
+    lifecycles: readonly FindingLifecycle[],
+  ): Promise<readonly ServiceDebt[]> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const [scanData, servicePosture] = await Promise.all([
+      this.infrastructureRepository.getScanData(latestScan.id),
+      this.serviceDetectionService.getPersistedServicePosture(latestScan.id),
+    ]);
+    if (!scanData || !servicePosture) {
+      return [];
+    }
+
+    return calculateServiceDebt({
+      servicePosture,
+      trackedFindings: collectTrackedFindings(scanData.validationReport, servicePosture),
+      findingLifecycles: lifecycles.filter(
+        (lifecycle) => lifecycle.status === 'active' || lifecycle.status === 'recurrent',
+      ),
+      previousDebt: toPreviousDebt(snapshots.length >= 2 ? snapshots[snapshots.length - 2] ?? null : null),
+    });
+  }
+
   private async getLatestCompletedScanRequired(): Promise<ScanSummary> {
     const latestScan = await this.scanRepository.getLatestCompletedScanSummary();
     if (!latestScan) {
@@ -660,6 +868,15 @@ export class ScanService {
         format: 'json',
         content: scenarioAnalysis,
       });
+      await this.persistPostureMemory({
+        scanId,
+        timestamp: execution.timestamp,
+        validationReport: execution.artifacts.validationReport,
+        servicePosture: scenarioAwarePosture,
+        scenarioAnalysis,
+        regions: params.regions,
+        totalResources: execution.artifacts.nodes.length,
+      });
 
       if (execution.warnings.length > 0) {
         this.logger.warn('scan.completed_with_warnings', {
@@ -779,4 +996,21 @@ async function enrichNodes(
       warnings.push(`${enricher.name} enrichment failed for ${result.failed} resource(s).`);
     }
   }
+}
+
+function toPreviousDebt(snapshot: ScanSnapshot | null): readonly ServiceDebt[] {
+  if (!snapshot) {
+    return [];
+  }
+
+  return snapshot.services
+    .filter((service) => typeof service.debt === 'number')
+    .map((service) => ({
+      serviceId: service.serviceId,
+      serviceName: service.serviceName,
+      totalDebt: service.debt ?? 0,
+      criticalDebt: 0,
+      findingDebts: [],
+      trend: 'stable' as const,
+    }));
 }

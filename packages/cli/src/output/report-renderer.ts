@@ -1,7 +1,9 @@
 import {
+  buildFindingKey,
   checkFreshness,
   EVIDENCE_CONFIDENCE,
   summarizeEvidenceMaturity,
+  type FindingLifecycle,
   type ContextualFinding,
   type DRCategory,
   type Evidence,
@@ -36,7 +38,10 @@ export interface ReportRenderOptions {
   readonly category?: string;
   readonly severity?: string;
   readonly showPassed?: boolean;
+  readonly showResolved?: boolean;
   readonly explainScore?: boolean;
+  readonly findingLifecycles?: ReadonlyMap<string, FindingLifecycle>;
+  readonly resolvedLifecycles?: readonly FindingLifecycle[];
 }
 
 const CATEGORY_LABELS: Readonly<Record<DRCategory, string>> = {
@@ -78,6 +83,7 @@ export function renderTerminalReport(
 ): string {
   const filtered = filterValidationResults(report, options);
   const lines: string[] = [];
+  const findingLifecycles = options.findingLifecycles ?? new Map();
 
   lines.push(theme.section('DR Posture Score'));
   lines.push(`Score: ${formatGrade(report)}`);
@@ -89,9 +95,18 @@ export function renderTerminalReport(
   });
   appendEvidenceMaturitySection(lines, report);
 
-  appendSeveritySection(lines, 'Critical Failures', filtered, ['critical']);
-  appendSeveritySection(lines, 'High Failures', filtered, ['high']);
-  appendWarningsSection(lines, filtered);
+  appendSeveritySection(lines, 'Critical Failures', filtered, ['critical'], findingLifecycles, new Map());
+  appendSeveritySection(lines, 'High Failures', filtered, ['high'], findingLifecycles, new Map());
+  appendWarningsSection(lines, filtered, findingLifecycles, new Map());
+  if (options.showResolved) {
+    appendResolvedFindingsSection(
+      lines,
+      report.results,
+      options.resolvedLifecycles ?? [],
+      options,
+      new Map(),
+    );
+  }
 
   if (options.showPassed) {
     appendVerifiedControlsSection(lines, filtered, new Map());
@@ -114,6 +129,7 @@ export function renderMarkdownReport(
 ): string {
   const filtered = filterValidationResults(report, options);
   const lines: string[] = [];
+  const findingLifecycles = options.findingLifecycles ?? new Map();
 
   lines.push('## DR Posture Score');
   lines.push('');
@@ -130,15 +146,29 @@ export function renderMarkdownReport(
   lines.push('');
   lines.push('## Critical Failures');
   lines.push('');
-  lines.push(...renderMarkdownFindings(filtered, ['critical']));
+  lines.push(...renderMarkdownFindings(filtered, ['critical'], findingLifecycles, new Map()));
   lines.push('');
   lines.push('## High Failures');
   lines.push('');
-  lines.push(...renderMarkdownFindings(filtered, ['high']));
+  lines.push(...renderMarkdownFindings(filtered, ['high'], findingLifecycles, new Map()));
   lines.push('');
   lines.push('## Warnings');
   lines.push('');
-  lines.push(...renderMarkdownWarnings(filtered));
+  lines.push(...renderMarkdownWarnings(filtered, findingLifecycles, new Map()));
+
+  if (options.showResolved) {
+    lines.push('');
+    lines.push('## Resolved Findings');
+    lines.push('');
+    lines.push(
+      ...renderMarkdownResolvedFindings(
+        report.results,
+        options.resolvedLifecycles ?? [],
+        options,
+        new Map(),
+      ),
+    );
+  }
 
   if (options.showPassed) {
     lines.push('');
@@ -171,6 +201,7 @@ export function renderTerminalServiceReport(
 
   const lines: string[] = [];
   const serviceLabels = buildServiceLookup(scan);
+  const findingLifecycles = options.findingLifecycles ?? new Map();
   const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
   const scenarioHeadline = renderScenarioCoverageHeadline(scan);
   const scenarioCoverageLine = scan.scenarioAnalysis
@@ -200,7 +231,18 @@ export function renderTerminalServiceReport(
       lines,
       filterContextualFindings(service.contextualFindings, options),
       scenarioNameById,
+      findingLifecycles,
     );
+    if (options.showResolved) {
+      appendResolvedServiceFindings(
+        lines,
+        service.service.id,
+        service.service.name,
+        scan.validationReport.results,
+        options.resolvedLifecycles ?? [],
+        options,
+      );
+    }
     appendServiceRecommendations(lines, service.recommendations);
   }
 
@@ -217,6 +259,7 @@ export function renderTerminalServiceReport(
       lines,
       filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
       scenarioNameById,
+      findingLifecycles,
     );
     appendServiceRecommendations(lines, scan.servicePosture.unassigned.recommendations);
   }
@@ -254,6 +297,7 @@ export function renderMarkdownServiceReport(
 
   const lines: string[] = [];
   const serviceLabels = buildServiceLookup(scan);
+  const findingLifecycles = options.findingLifecycles ?? new Map();
   const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
   const scenarioHeadline = renderScenarioCoverageHeadline(scan);
   const scenarioCoverageLine = scan.scenarioAnalysis
@@ -292,7 +336,22 @@ export function renderMarkdownServiceReport(
       lines,
       filterContextualFindings(service.contextualFindings, options),
       scenarioNameById,
+      findingLifecycles,
     );
+    if (options.showResolved) {
+      lines.push('');
+      lines.push('### Resolved Findings');
+      lines.push('');
+      lines.push(
+        ...renderMarkdownResolvedServiceFindings(
+          service.service.id,
+          service.service.name,
+          scan.validationReport.results,
+          options.resolvedLifecycles ?? [],
+          options,
+        ),
+      );
+    }
     lines.push('');
     lines.push('### Recommendations');
     lines.push('');
@@ -308,6 +367,7 @@ export function renderMarkdownServiceReport(
       lines,
       filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
       scenarioNameById,
+      findingLifecycles,
     );
   }
 
@@ -383,6 +443,8 @@ function appendSeveritySection(
   title: string,
   results: readonly WeightedValidationResult[],
   severities: readonly ValidationSeverity[],
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
+  serviceLabels: ReadonlyMap<string, string>,
 ): void {
   const findings = results.filter(
     (result) =>
@@ -397,7 +459,11 @@ function appendSeveritySection(
   }
 
   findings.forEach((result) => {
-    lines.push(`${formatSeverityLabel(result)} ${result.ruleId} - ${result.nodeName}`);
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    lines.push(
+      `${formatSeverityLabel(result)} ${result.ruleId} - ${result.nodeName}${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+    );
+    appendLifecycleAge(lines, findingLifecycles.get(buildFindingKey(result.ruleId, result.nodeId)));
     lines.push(`DR impact: ${result.message}`);
     appendValidationEvidence(lines, result);
     if (result.weightBreakdown.directDependentCount > 0) {
@@ -415,6 +481,8 @@ function appendSeveritySection(
 function appendWarningsSection(
   lines: string[],
   results: readonly WeightedValidationResult[],
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
+  serviceLabels: ReadonlyMap<string, string>,
 ): void {
   lines.push('');
   lines.push(theme.section('Warnings'));
@@ -425,7 +493,11 @@ function appendWarningsSection(
   }
 
   warnings.forEach((result) => {
-    lines.push(`${theme.warn('warning')} ${result.ruleId} - ${result.nodeName}`);
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    lines.push(
+      `${theme.warn('warning')} ${result.ruleId} - ${result.nodeName}${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+    );
+    appendLifecycleAge(lines, findingLifecycles.get(buildFindingKey(result.ruleId, result.nodeId)));
     lines.push(`DR impact: ${result.message}`);
     appendValidationEvidence(lines, result);
     lines.push('');
@@ -435,6 +507,8 @@ function appendWarningsSection(
 function renderMarkdownFindings(
   results: readonly WeightedValidationResult[],
   severities: readonly ValidationSeverity[],
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
+  serviceLabels: ReadonlyMap<string, string>,
 ): readonly string[] {
   const findings = results.filter(
     (result) =>
@@ -446,8 +520,11 @@ function renderMarkdownFindings(
   }
 
   return findings.flatMap((result) => {
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const lifecycle = findingLifecycles.get(buildFindingKey(result.ruleId, result.nodeId));
     const lines = [
-      `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
+      `- **${result.ruleId}** on \`${result.nodeName}\`${serviceLabel ? ` (service: ${serviceLabel})` : ''}: ${result.message}`,
+      ...renderMarkdownLifecycleAge(lifecycle),
       ...renderMarkdownValidationEvidence(result),
     ];
     if (result.remediation) {
@@ -459,16 +536,23 @@ function renderMarkdownFindings(
 
 function renderMarkdownWarnings(
   results: readonly WeightedValidationResult[],
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
+  serviceLabels: ReadonlyMap<string, string>,
 ): readonly string[] {
   const warnings = results.filter((result) => result.status === 'warn');
   if (warnings.length === 0) {
     return ['No warnings.'];
   }
 
-  return warnings.flatMap((result) => [
-    `- **${result.ruleId}** on \`${result.nodeName}\`: ${result.message}`,
-    ...renderMarkdownValidationEvidence(result),
-  ]);
+  return warnings.flatMap((result) => {
+    const serviceLabel = serviceLabels.get(result.nodeId);
+    const lifecycle = findingLifecycles.get(buildFindingKey(result.ruleId, result.nodeId));
+    return [
+      `- **${result.ruleId}** on \`${result.nodeName}\`${serviceLabel ? ` (service: ${serviceLabel})` : ''}: ${result.message}`,
+      ...renderMarkdownLifecycleAge(lifecycle),
+      ...renderMarkdownValidationEvidence(result),
+    ];
+  });
 }
 
 function compareResults(
@@ -487,6 +571,7 @@ function appendContextualFindings(
   lines: string[],
   findings: readonly ContextualFinding[],
   scenarioNameById: ReadonlyMap<string, string>,
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
 ): void {
   lines.push('Contextual findings:');
   if (findings.length === 0) {
@@ -496,6 +581,7 @@ function appendContextualFindings(
 
   findings.forEach((finding) => {
     lines.push(`${formatFindingSeverity(finding.severity)} ${finding.ruleId} - ${finding.nodeName}`);
+    appendLifecycleAge(lines, findingLifecycles.get(buildFindingKey(finding.ruleId, finding.nodeId)));
     lines.push(`DR impact: ${finding.drImpact.summary}`);
     lines.push(`Recovery implication: ${finding.drImpact.recoveryImplication}`);
     appendContextualFindingEvidence(lines, finding);
@@ -542,6 +628,7 @@ function appendMarkdownContextualFindings(
   lines: string[],
   findings: readonly ContextualFinding[],
   scenarioNameById: ReadonlyMap<string, string>,
+  findingLifecycles: ReadonlyMap<string, FindingLifecycle>,
 ): void {
   if (findings.length === 0) {
     lines.push('No findings.');
@@ -549,7 +636,9 @@ function appendMarkdownContextualFindings(
   }
 
   findings.forEach((finding) => {
+    const lifecycle = findingLifecycles.get(buildFindingKey(finding.ruleId, finding.nodeId));
     lines.push(`- **${finding.ruleId}** on \`${finding.nodeName}\`: ${finding.drImpact.summary}`);
+    lines.push(...renderMarkdownLifecycleAge(lifecycle));
     lines.push(...renderMarkdownContextualEvidence(finding));
     lines.push(
       `- Technical: ${finding.technicalImpact.metadataKey}=${formatMetadataValue(finding.technicalImpact.metadataValue)} (expected ${finding.technicalImpact.expectedValue})`,
@@ -589,6 +678,152 @@ function appendMarkdownRecommendations(
     lines.push(`- Command: \`${recommendation.remediation.command}\``);
     lines.push('');
   });
+}
+
+function filterResolvedLifecycles(
+  resolvedLifecycles: readonly FindingLifecycle[],
+  options: ReportRenderOptions,
+  results: readonly WeightedValidationResult[],
+): readonly FindingLifecycle[] {
+  return resolvedLifecycles
+    .filter((lifecycle) => lifecycle.status === 'resolved')
+    .filter((lifecycle) => {
+      if (!options.severity || !lifecycle.severity) {
+        return true;
+      }
+      return SEVERITY_RANK[lifecycle.severity] >= SEVERITY_RANK[options.severity as ValidationSeverity];
+    })
+    .filter((lifecycle) => {
+      if (!options.category) {
+        return true;
+      }
+      const result = results.find(
+        (entry) => entry.ruleId === lifecycle.ruleId && entry.nodeId === lifecycle.nodeId,
+      );
+      return result?.category === options.category;
+    })
+    .sort(
+      (left, right) =>
+        (right.resolvedAt ?? right.lastSeenAt).localeCompare(left.resolvedAt ?? left.lastSeenAt) ||
+        left.ruleId.localeCompare(right.ruleId) ||
+        left.nodeId.localeCompare(right.nodeId),
+    );
+}
+
+function resolveLifecycleResolution(
+  lifecycle: FindingLifecycle,
+  results: readonly WeightedValidationResult[],
+): string {
+  const currentResult = results.find(
+    (entry) =>
+      entry.ruleId === lifecycle.ruleId &&
+      entry.nodeId === lifecycle.nodeId &&
+      entry.status === 'pass',
+  );
+  return currentResult?.message ?? 'No longer detected in the latest scan.';
+}
+
+function shortLifecycleNodeLabel(lifecycle: FindingLifecycle): string {
+  return lifecycle.nodeId.split('/').at(-1) ?? lifecycle.nodeId.split(':').at(-1) ?? lifecycle.nodeId;
+}
+
+function appendResolvedFindingsSection(
+  lines: string[],
+  results: readonly WeightedValidationResult[],
+  resolvedLifecycles: readonly FindingLifecycle[],
+  options: ReportRenderOptions,
+  serviceLabels: ReadonlyMap<string, string>,
+): void {
+  const resolved = filterResolvedLifecycles(resolvedLifecycles, options, results);
+  lines.push('');
+  lines.push(theme.section('Resolved Findings'));
+  if (resolved.length === 0) {
+    lines.push('No resolved findings in the current filter.');
+    return;
+  }
+
+  resolved.forEach((lifecycle) => {
+    const serviceLabel = serviceLabels.get(lifecycle.nodeId);
+    lines.push(
+      `RESOLVED ${lifecycle.ruleId} - ${shortLifecycleNodeLabel(lifecycle)}${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+    );
+    lines.push(
+      `Was active for ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (${lifecycle.firstSeenAt.slice(0, 10)} -> ${(lifecycle.resolvedAt ?? lifecycle.lastSeenAt).slice(0, 10)})`,
+    );
+    lines.push(`Resolution: ${resolveLifecycleResolution(lifecycle, results)}`);
+    lines.push('');
+  });
+}
+
+function renderMarkdownResolvedFindings(
+  results: readonly WeightedValidationResult[],
+  resolvedLifecycles: readonly FindingLifecycle[],
+  options: ReportRenderOptions,
+  serviceLabels: ReadonlyMap<string, string>,
+): readonly string[] {
+  const resolved = filterResolvedLifecycles(resolvedLifecycles, options, results);
+  if (resolved.length === 0) {
+    return ['No resolved findings in the current filter.'];
+  }
+
+  return resolved.flatMap((lifecycle) => {
+    const serviceLabel = serviceLabels.get(lifecycle.nodeId);
+    return [
+      `- **${lifecycle.ruleId}** on \`${shortLifecycleNodeLabel(lifecycle)}\`${serviceLabel ? ` (service: ${serviceLabel})` : ''}`,
+      `- Was active for ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (${lifecycle.firstSeenAt.slice(0, 10)} -> ${(lifecycle.resolvedAt ?? lifecycle.lastSeenAt).slice(0, 10)})`,
+      `- Resolution: ${resolveLifecycleResolution(lifecycle, results)}`,
+      '',
+    ];
+  });
+}
+
+function appendResolvedServiceFindings(
+  lines: string[],
+  serviceId: string,
+  _serviceName: string,
+  results: readonly WeightedValidationResult[],
+  resolvedLifecycles: readonly FindingLifecycle[],
+  options: ReportRenderOptions,
+): void {
+  const resolved = filterResolvedLifecycles(resolvedLifecycles, options, results).filter(
+    (lifecycle) => lifecycle.serviceId === serviceId,
+  );
+  lines.push('Resolved findings:');
+  if (resolved.length === 0) {
+    lines.push('No resolved findings.');
+    return;
+  }
+
+  resolved.forEach((lifecycle) => {
+    lines.push(`RESOLVED ${lifecycle.ruleId} - ${shortLifecycleNodeLabel(lifecycle)}`);
+    lines.push(
+      `Was active for ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (${lifecycle.firstSeenAt.slice(0, 10)} -> ${(lifecycle.resolvedAt ?? lifecycle.lastSeenAt).slice(0, 10)})`,
+    );
+    lines.push(`Resolution: ${resolveLifecycleResolution(lifecycle, results)}`);
+    lines.push('');
+  });
+}
+
+function renderMarkdownResolvedServiceFindings(
+  serviceId: string,
+  _serviceName: string,
+  results: readonly WeightedValidationResult[],
+  resolvedLifecycles: readonly FindingLifecycle[],
+  options: ReportRenderOptions,
+): readonly string[] {
+  const resolved = filterResolvedLifecycles(resolvedLifecycles, options, results).filter(
+    (lifecycle) => lifecycle.serviceId === serviceId,
+  );
+  if (resolved.length === 0) {
+    return ['No resolved findings.'];
+  }
+
+  return resolved.flatMap((lifecycle) => [
+    `- **${lifecycle.ruleId}** on \`${shortLifecycleNodeLabel(lifecycle)}\``,
+    `- Was active for ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (${lifecycle.firstSeenAt.slice(0, 10)} -> ${(lifecycle.resolvedAt ?? lifecycle.lastSeenAt).slice(0, 10)})`,
+    `- Resolution: ${resolveLifecycleResolution(lifecycle, results)}`,
+    '',
+  ]);
 }
 
 function appendEvidenceMaturitySection(lines: string[], report: ValidationReport): void {
@@ -753,6 +988,26 @@ function appendValidationEvidence(lines: string[], result: WeightedValidationRes
 
 function appendContextualFindingEvidence(lines: string[], finding: ContextualFinding): void {
   renderContextualEvidence(finding).forEach((line) => lines.push(line));
+}
+
+function appendLifecycleAge(lines: string[], lifecycle: FindingLifecycle | undefined): void {
+  if (!lifecycle) {
+    return;
+  }
+  lines.push(
+    `Age: ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (first seen: ${lifecycle.firstSeenAt.slice(0, 10)})`,
+  );
+}
+
+function renderMarkdownLifecycleAge(
+  lifecycle: FindingLifecycle | undefined,
+): readonly string[] {
+  if (!lifecycle) {
+    return [];
+  }
+  return [
+    `- Age: ${lifecycle.ageInDays} day${lifecycle.ageInDays === 1 ? '' : 's'} (first seen: ${lifecycle.firstSeenAt.slice(0, 10)})`,
+  ];
 }
 
 function renderMarkdownValidationEvidence(

@@ -29,6 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - DRP and runbook coverage validation for scenarios, including evidence-aware verdicts (`covered`, `partially_covered`, `uncovered`, `degraded`) and runbook liveness checks against current infrastructure references.
 - Scenario-aware contextual findings, CLI scenario workflows (`stronghold scenarios`, `stronghold scenarios list`, `stronghold scenarios show <id>`), scenario sections in reports/status/scan summaries, and persisted scenario coverage APIs (`GET /api/scenarios`, `GET /api/scenarios/:id`).
 - A new web scenario experience with a dedicated Scenarios page, dashboard scenario alerts, and graph scenario mode that highlights direct and cascading disruption impact paths.
+- DR posture memory with compact scan snapshots in `.stronghold/history.jsonl`, finding lifecycle tracking in `.stronghold/finding-lifecycles.json`, and derived temporal intelligence instead of raw scan-history copies.
+- Finding lifecycle metadata for first-seen, resolved, persistent, and recurrent DR failures, including age-aware reporting and recurrent-regression detection keyed by `ruleId::nodeId`.
+- Real DR debt scoring based on finding age, severity, service criticality, and recurrence, replacing the earlier age proxy and surfacing debt direction per service.
+- Rolling posture trend analysis with score, findings, scenario coverage, and evidence freshness highlights, capped to high-signal changes for status, history, and dashboard views.
+- New CLI posture-memory workflows with `stronghold history`, enhanced `stronghold status`, scan-summary deltas, and report finding ages plus optional resolved-finding sections.
+- Server-side posture history endpoints (`GET /api/history`, `GET /api/history/trend`, `GET /api/history/service/:id`) backed by persisted JSON report payloads instead of new database tables.
+- Dashboard posture trend visualization in the web app with a score-versus-coverage line chart, highlight cards, and service-detail score sparklines driven by the new history API.
 - Security documentation in [docs/security.md](docs/security.md).
 - An AGPL licensing FAQ in [docs/licensing-faq.md](docs/licensing-faq.md).
 

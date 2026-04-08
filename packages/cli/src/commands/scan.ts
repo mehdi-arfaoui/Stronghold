@@ -13,6 +13,7 @@ import {
   collectAuditFlags,
   resolveAuditIdentity,
 } from '../audit/command-audit.js';
+import { updateLocalPostureMemory } from '../history/posture-memory.js';
 import { resolveAwsScanSettings } from '../config/aws-scan-settings.js';
 import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
 import { resolveAwsExecutionContext } from '../config/credentials.js';
@@ -199,9 +200,13 @@ export function registerScanCommand(program: Command): void {
         if (options.save) {
           await saveScanResultsWithEncryption(execution.results, paths.latestScanPath, options);
         }
+        const postureMemory = await updateLocalPostureMemory(execution.results, paths);
+        const allWarnings = postureMemory.warning
+          ? [...execution.warnings, postureMemory.warning]
+          : execution.warnings;
 
-        if (options.verbose && execution.warnings.length > 0) {
-          execution.warnings.forEach((warning) => logger.warn(`[WARN] ${warning}`));
+        if (options.verbose && allWarnings.length > 0) {
+          allWarnings.forEach((warning) => logger.warn(`[WARN] ${warning}`));
         }
 
         const recommendations = generateRecommendations({
@@ -227,7 +232,12 @@ export function registerScanCommand(program: Command): void {
         } else if (options.output === 'summary') {
           const summary = renderScanSummary(execution.results, {
             ...(options.save ? { savedPath } : {}),
-            warnings: execution.warnings,
+            warnings: allWarnings,
+            postureDelta: {
+              currentSnapshot: postureMemory.currentSnapshot,
+              previousSnapshot: postureMemory.previousSnapshot,
+              lifecycleDelta: postureMemory.lifecycleDelta,
+            },
           });
           await writeOutput(summary);
           if (topRecommendations.length > 0) {

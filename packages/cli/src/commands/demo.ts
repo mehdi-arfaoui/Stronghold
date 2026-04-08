@@ -11,6 +11,7 @@ import {
   getCommandOptions,
 } from '../config/options.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
+import { updateLocalPostureMemory } from '../history/posture-memory.js';
 import { writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { renderScanSummary } from '../output/scan-summary.js';
@@ -66,6 +67,7 @@ export function registerDemoCommand(program: Command): void {
 
       const paths = resolveStrongholdPaths();
       await saveScanResultsWithEncryption(results, paths.latestScanPath, options);
+      const postureMemory = await updateLocalPostureMemory(results, paths);
       const savedPath = options.encrypt
         ? '.stronghold/latest-scan.stronghold-enc'
         : '.stronghold/latest-scan.json';
@@ -95,6 +97,12 @@ export function registerDemoCommand(program: Command): void {
       await writeOutput(
         renderScanSummary(results, {
           savedPath,
+          warnings: postureMemory.warning ? [postureMemory.warning] : [],
+          postureDelta: {
+            currentSnapshot: postureMemory.currentSnapshot,
+            previousSnapshot: postureMemory.previousSnapshot,
+            lifecycleDelta: postureMemory.lifecycleDelta,
+          },
         }),
       );
       if (topRecommendations.length > 0) {

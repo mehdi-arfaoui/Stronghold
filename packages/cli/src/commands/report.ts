@@ -1,12 +1,14 @@
 import { Command } from 'commander';
 import {
   redactObject,
+  type FindingLifecycle,
 } from '@stronghold-dr/core';
 
 import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
 import type { ReportCommandOptions } from '../config/options.js';
 import { getCommandOptions } from '../config/options.js';
+import { loadLocalPostureMemory } from '../history/posture-memory.js';
 import {
   buildServiceReportJson,
   filterValidationResults,
@@ -40,6 +42,7 @@ export function registerReportCommand(program: Command): void {
       'low',
     )
     .option('--show-passed', 'Include passing controls with their evidence', false)
+    .option('--show-resolved', 'Include findings resolved since the previous scan', false)
     .option('--explain-score', 'Show score decomposition and evidence maturity', false)
     .option('--verbose', 'Show detailed logs', false),
   ).action(async (_: ReportCommandOptions, command: Command) => {
@@ -51,6 +54,7 @@ export function registerReportCommand(program: Command): void {
         '--category': Boolean(options.category),
         '--severity': Boolean(options.severity),
         '--show-passed': options.showPassed,
+        '--show-resolved': options.showResolved,
         '--explain-score': options.explainScore,
         '--no-overrides': options.useOverrides === false,
         '--overrides': options.useOverrides !== false,
@@ -77,6 +81,16 @@ export function registerReportCommand(program: Command): void {
         const resolvedOverrides = resolveGraphOverrides(options);
         resolvedOverrides.warnings.forEach((warning) => writeError(warning));
         const effectiveScan = await rebuildScanResults(scan, resolvedOverrides.overrides);
+        const postureMemory = await loadLocalPostureMemory(effectiveScan, paths);
+        if (postureMemory.warning) {
+          writeError(postureMemory.warning);
+        }
+        const allLifecycles = options.redact
+          ? postureMemory.allLifecycles.map((lifecycle) => redactObject(lifecycle) as FindingLifecycle)
+          : postureMemory.allLifecycles;
+        const resolvedLifecycles = options.redact
+          ? selectResolvedSincePrevious(postureMemory).map((lifecycle) => redactObject(lifecycle) as FindingLifecycle)
+          : selectResolvedSincePrevious(postureMemory);
         const outputScan = options.redact
           ? (redactObject(effectiveScan) as typeof effectiveScan)
           : effectiveScan;
@@ -87,7 +101,12 @@ export function registerReportCommand(program: Command): void {
           ...(options.category ? { category: options.category } : {}),
           ...(options.severity ? { severity: options.severity } : {}),
           ...(options.showPassed ? { showPassed: true } : {}),
+          ...(options.showResolved ? { showResolved: true } : {}),
           ...(options.explainScore ? { explainScore: true } : {}),
+          findingLifecycles: new Map(
+            allLifecycles.map((lifecycle) => [lifecycle.findingKey, lifecycle] as const),
+          ),
+          resolvedLifecycles,
         };
         const hasServices =
           outputScan.servicePosture !== undefined &&
@@ -155,4 +174,17 @@ export function registerReportCommand(program: Command): void {
         throw error;
       }
     });
+}
+
+function selectResolvedSincePrevious(
+  postureMemory: Awaited<ReturnType<typeof loadLocalPostureMemory>>,
+): readonly FindingLifecycle[] {
+  const since = postureMemory.previousSnapshot?.timestamp;
+  if (!since) {
+    return [];
+  }
+
+  return postureMemory.resolvedLifecycles.filter(
+    (lifecycle) => lifecycle.resolvedAt !== undefined && lifecycle.resolvedAt >= since,
+  );
 }

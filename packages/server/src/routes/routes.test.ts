@@ -166,6 +166,34 @@ function createTestApp(options?: {
       generatedAt: '2026-03-27T15:00:00.000Z',
       evidence: [],
     }),
+    listHistory: vi.fn().mockResolvedValue({
+      snapshots: [],
+      total: 0,
+    }),
+    getHistoryTrend: vi.fn().mockResolvedValue({
+      snapshots: [],
+      trend: {
+        global: {
+          direction: 'stable',
+          scoreTrend: [],
+          findingTrend: [],
+          scenarioCoverageTrend: [],
+        },
+        services: [],
+        evidenceTrend: {
+          testedCount: [],
+          expiredCount: [],
+        },
+        highlights: [],
+      },
+    }),
+    getServiceHistory: vi.fn().mockResolvedValue({
+      serviceId: 'payment',
+      serviceName: 'Payment',
+      snapshots: [],
+      lifecycles: [],
+      trend: null,
+    }),
     getExpiringEvidence: vi.fn().mockResolvedValue({
       scanId: VALID_UUID,
       generatedAt: '2026-03-27T15:00:00.000Z',
@@ -364,6 +392,95 @@ describe('server routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.service.service.id).toBe('payment');
+  });
+
+  it('GET /api/history returns persisted posture snapshots', async () => {
+    const app = createTestApp({
+      scanService: {
+        listHistory: vi.fn().mockResolvedValue({
+          snapshots: [{ id: 'snapshot-1', timestamp: '2026-03-27T15:00:00.000Z' }],
+          total: 1,
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/history?limit=10');
+
+    expect(response.status).toBe(200);
+    expect(response.body.total).toBe(1);
+    expect(response.body.snapshots[0]?.id).toBe('snapshot-1');
+  });
+
+  it('GET /api/history/trend returns trend data and highlights', async () => {
+    const app = createTestApp({
+      scanService: {
+        getHistoryTrend: vi.fn().mockResolvedValue({
+          snapshots: [],
+          trend: {
+            global: {
+              direction: 'degrading',
+              scoreTrend: [],
+              findingTrend: [],
+              scenarioCoverageTrend: [],
+            },
+            services: [],
+            evidenceTrend: {
+              testedCount: [],
+              expiredCount: [],
+            },
+            highlights: [
+              {
+                type: 'score_degraded',
+                message: 'Global score dropped by 4 points (72 -> 68).',
+                severity: 'warning',
+              },
+            ],
+          },
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/history/trend');
+
+    expect(response.status).toBe(200);
+    expect(response.body.trend.global.direction).toBe('degrading');
+    expect(response.body.trend.highlights[0]?.type).toBe('score_degraded');
+  });
+
+  it('GET /api/history/service/:id returns per-service history', async () => {
+    const app = createTestApp({
+      scanService: {
+        getServiceHistory: vi.fn().mockResolvedValue({
+          serviceId: 'payment',
+          serviceName: 'Payment',
+          snapshots: [
+            {
+              timestamp: '2026-03-27T15:00:00.000Z',
+              score: 34,
+              grade: 'D',
+              findingCount: 5,
+              criticalFindingCount: 1,
+              resourceCount: 3,
+              debt: 680,
+            },
+          ],
+          lifecycles: [],
+          trend: {
+            serviceId: 'payment',
+            serviceName: 'Payment',
+            direction: 'degrading',
+            scoreTrend: [],
+            debtTrend: [],
+          },
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/history/service/payment');
+
+    expect(response.status).toBe(200);
+    expect(response.body.serviceId).toBe('payment');
+    expect(response.body.snapshots[0]?.score).toBe(34);
   });
 
   it('GET /api/scenarios returns the latest persisted scenario coverage analysis', async () => {

@@ -489,6 +489,52 @@ export class PrismaScanRepository {
     };
   }
 
+  public async getLatestGlobalReportByType(type: string): Promise<StoredReport | null> {
+    const report = await this.prisma.report.findFirst({
+      where: { type },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    if (!report) {
+      return null;
+    }
+
+    return {
+      id: report.id,
+      scanId: report.scanId,
+      type: report.type,
+      format: report.format,
+      content: report.content,
+      score: report.score,
+      grade: report.grade,
+      createdAt: report.createdAt,
+    };
+  }
+
+  public async listGlobalReportsByType(
+    type: string,
+    options: {
+      readonly limit?: number;
+    } = {},
+  ): Promise<readonly StoredReport[]> {
+    const reports = await this.prisma.report.findMany({
+      where: { type },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      ...(typeof options.limit === 'number' ? { take: options.limit } : {}),
+    });
+
+    return reports.map((report) => ({
+      id: report.id,
+      scanId: report.scanId,
+      type: report.type,
+      format: report.format,
+      content: report.content,
+      score: report.score,
+      grade: report.grade,
+      createdAt: report.createdAt,
+    }));
+  }
+
   public async listReportsByType(
     scanId: string,
     type: string,

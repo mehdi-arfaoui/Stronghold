@@ -23,6 +23,7 @@ describe('CLI help output', () => {
     expect(help).toContain('plan');
     expect(help).toContain('drift');
     expect(help).toContain('evidence');
+    expect(help).toContain('history');
     expect(help).toContain('overrides');
     expect(help).toContain('demo');
     expect(help).toContain('iam-policy');
@@ -55,6 +56,7 @@ describe('CLI help output', () => {
     const help = reportCommand?.helpInformation() ?? '';
 
     expect(help).toContain('--show-passed');
+    expect(help).toContain('--show-resolved');
     expect(help).toContain('--explain-score');
   });
 });

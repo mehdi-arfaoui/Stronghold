@@ -1,5 +1,7 @@
 import {
   summarizeEvidenceMaturity,
+  type FindingLifecycleDelta,
+  type ScanSnapshot,
   type ValidationReport,
   type WeightedValidationResult,
 } from '@stronghold-dr/core';
@@ -20,6 +22,11 @@ export function renderScanSummary(
   options: {
     readonly savedPath?: string;
     readonly warnings?: readonly string[];
+    readonly postureDelta?: {
+      readonly currentSnapshot: ScanSnapshot | null;
+      readonly previousSnapshot: ScanSnapshot | null;
+      readonly lifecycleDelta: FindingLifecycleDelta | null;
+    };
   } = {},
 ): string {
   if (hasDetectedServices(results.servicePosture)) {
@@ -34,12 +41,21 @@ function renderLegacyScanSummary(
   options: {
     readonly savedPath?: string;
     readonly warnings?: readonly string[];
+    readonly postureDelta?: {
+      readonly currentSnapshot: ScanSnapshot | null;
+      readonly previousSnapshot: ScanSnapshot | null;
+      readonly lifecycleDelta: FindingLifecycleDelta | null;
+    };
   } = {},
 ): string {
   const lines: string[] = [];
   lines.push(
     `Scan complete - ${results.regions.length} region${results.regions.length === 1 ? '' : 's'} scanned`,
   );
+  const temporalLines = renderTemporalDeltaLines(results, options.postureDelta);
+  if (temporalLines.length > 0) {
+    lines.push(...temporalLines);
+  }
   lines.push('');
   lines.push(...renderExecutionMetadata(results.scanMetadata, results));
   lines.push(`   DR Posture Score:      ${formatGrade(results.validationReport)}`);
@@ -84,6 +100,11 @@ function renderServiceCentricSummary(
   options: {
     readonly savedPath?: string;
     readonly warnings?: readonly string[];
+    readonly postureDelta?: {
+      readonly currentSnapshot: ScanSnapshot | null;
+      readonly previousSnapshot: ScanSnapshot | null;
+      readonly lifecycleDelta: FindingLifecycleDelta | null;
+    };
   },
 ): string {
   const posture = results.servicePosture!;
@@ -97,6 +118,10 @@ function renderServiceCentricSummary(
   lines.push(
     `Scan complete in ${duration} - ${discoveredResources} resources across ${results.regions.length} region${results.regions.length === 1 ? '' : 's'}`,
   );
+  const temporalLines = renderTemporalDeltaLines(results, options.postureDelta);
+  if (temporalLines.length > 0) {
+    lines.push(...temporalLines);
+  }
   lines.push('');
   lines.push(theme.section('Services'));
   lines.push('');
@@ -319,4 +344,72 @@ function formatDuration(durationMs: number): string {
 
 function formatTimeout(timeoutMs: number): string {
   return `${Math.round(timeoutMs / 1000)}s`;
+}
+
+function renderTemporalDeltaLines(
+  results: ScanResults,
+  postureDelta:
+    | {
+        readonly currentSnapshot: ScanSnapshot | null;
+        readonly previousSnapshot: ScanSnapshot | null;
+        readonly lifecycleDelta: FindingLifecycleDelta | null;
+      }
+    | undefined,
+): readonly string[] {
+  const currentSnapshot = postureDelta?.currentSnapshot;
+  const previousSnapshot = postureDelta?.previousSnapshot;
+  const lifecycleDelta = postureDelta?.lifecycleDelta;
+  if (!currentSnapshot) {
+    return [];
+  }
+
+  const scoreDelta = currentSnapshot.globalScore - (previousSnapshot?.globalScore ?? currentSnapshot.globalScore);
+  const scenarioDelta =
+    currentSnapshot.scenarioCoverage.covered -
+    (previousSnapshot?.scenarioCoverage.covered ?? currentSnapshot.scenarioCoverage.covered);
+
+  return [
+    `  Score: ${currentSnapshot.globalScore}/100 (${currentSnapshot.globalGrade}) ${formatScoreDelta(scoreDelta, previousSnapshot != null)}`,
+    `  Findings: ${currentSnapshot.totalFindings}${formatFindingDelta(lifecycleDelta)}`,
+    `  Scenarios: ${currentSnapshot.scenarioCoverage.covered}/${currentSnapshot.scenarioCoverage.total} covered ${formatScenarioDelta(scenarioDelta, previousSnapshot != null)}`,
+  ];
+}
+
+function formatScoreDelta(scoreDelta: number, hasPreviousSnapshot: boolean): string {
+  if (!hasPreviousSnapshot) {
+    return '- first scan';
+  }
+  if (scoreDelta > 0) {
+    return `^ +${scoreDelta} from last scan`;
+  }
+  if (scoreDelta < 0) {
+    return `v ${scoreDelta} from last scan`;
+  }
+  return '- unchanged';
+}
+
+function formatFindingDelta(lifecycleDelta: FindingLifecycleDelta | null | undefined): string {
+  if (!lifecycleDelta) {
+    return '';
+  }
+
+  const parts = [
+    `${lifecycleDelta.summary.newCount} new`,
+    `${lifecycleDelta.summary.resolvedCount} resolved`,
+    `${lifecycleDelta.summary.recurrentCount} recurrent`,
+  ];
+  return ` (${parts.join(', ')})`;
+}
+
+function formatScenarioDelta(scenarioDelta: number, hasPreviousSnapshot: boolean): string {
+  if (!hasPreviousSnapshot) {
+    return '(first scan)';
+  }
+  if (scenarioDelta > 0) {
+    return `(+${scenarioDelta} from last scan)`;
+  }
+  if (scenarioDelta < 0) {
+    return `(${scenarioDelta} from last scan)`;
+  }
+  return '(unchanged)';
 }

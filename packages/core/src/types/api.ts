@@ -2,6 +2,7 @@ import type { DRPlan, DRPlanValidationReport } from '../drp/drp-types.js';
 import type { GraphAnalysisReport } from './analysis.js';
 import type { DriftReport } from '../drift/drift-types.js';
 import type { Evidence } from '../evidence/index.js';
+import type { FindingLifecycle, PostureTrend, ScanSnapshot, ServiceTrend } from '../history/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
 import type { Scenario, ScenarioCoverageSummary } from '../scenarios/scenario-types.js';
@@ -169,4 +170,32 @@ export interface ApiAddEvidenceInput {
   readonly serviceId?: string;
   readonly expiresDays?: number;
   readonly author?: string;
+}
+
+export interface ApiHistoryResponse {
+  readonly snapshots: readonly ScanSnapshot[];
+  readonly total: number;
+}
+
+export interface ApiHistoryTrendResponse {
+  readonly snapshots: readonly ScanSnapshot[];
+  readonly trend: PostureTrend;
+}
+
+export interface ApiServiceHistorySnapshot {
+  readonly timestamp: string;
+  readonly score: number;
+  readonly grade: string;
+  readonly findingCount: number;
+  readonly criticalFindingCount: number;
+  readonly resourceCount: number;
+  readonly debt?: number;
+}
+
+export interface ApiServiceHistoryResponse {
+  readonly serviceId: string;
+  readonly serviceName: string;
+  readonly snapshots: readonly ApiServiceHistorySnapshot[];
+  readonly lifecycles: readonly FindingLifecycle[];
+  readonly trend: ServiceTrend | null;
 }

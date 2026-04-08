@@ -11,6 +11,7 @@ import { createRequestLogger } from './middleware/request-logger.js';
 import { createDriftRoutes } from './routes/drift.routes.js';
 import { createEvidenceRoutes } from './routes/evidence.routes.js';
 import { createHealthRoutes } from './routes/health.routes.js';
+import { createHistoryRoutes } from './routes/history.routes.js';
 import { createPlanRoutes } from './routes/plan.routes.js';
 import { createReportRoutes } from './routes/report.routes.js';
 import { createScanRoutes } from './routes/scan.routes.js';
@@ -46,6 +47,10 @@ export function createApp(dependencies: AppDependencies): Express {
   app.use(
     '/api/scans',
     createScanRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
+  );
+  app.use(
+    '/api',
+    createHistoryRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
   );
   app.use(
     '/api',

@@ -32,6 +32,7 @@ export const DEFAULT_PLAN_FORMAT = 'yaml';
 export const DEFAULT_DEMO_SCENARIO = 'startup';
 export const DEFAULT_DEMO_OUTPUT = 'summary';
 export const DEFAULT_DRIFT_OUTPUT = 'terminal';
+export const DEFAULT_HISTORY_LIMIT = 50;
 
 export type ScanOutputFormat = 'summary' | 'json' | 'silent';
 export type ReportOutputFormat = 'terminal' | 'markdown' | 'json';
@@ -74,8 +75,15 @@ export interface ReportCommandOptions extends GraphOverrideCommandOptions {
   readonly category?: string;
   readonly severity?: string;
   readonly showPassed: boolean;
+  readonly showResolved: boolean;
   readonly explainScore: boolean;
   readonly verbose: boolean;
+}
+
+export interface HistoryCommandOptions {
+  readonly service?: string;
+  readonly limit?: number;
+  readonly json: boolean;
 }
 
 export interface PlanGenerateCommandOptions extends GraphOverrideCommandOptions {
@@ -152,6 +160,10 @@ export function parseScannerTimeoutOption(value: string): number {
 
 export function parseFailThresholdOption(value: string): number {
   return parseBoundedInteger(value, 0, 100, '--fail-threshold');
+}
+
+export function parseHistoryLimitOption(value: string): number {
+  return parseBoundedInteger(value, 1, 50, '--limit');
 }
 
 export function isSupportedService(value: string): value is SupportedService {

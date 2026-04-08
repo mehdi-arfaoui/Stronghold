@@ -2,6 +2,7 @@ import type { ApiServiceSummary } from '@stronghold-dr/core';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+import { getServiceHistory } from '@/api/history';
 import { getServiceDetail, listServices, redetectServices } from '@/api/services';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -31,6 +32,14 @@ export default function ServicesPage(): JSX.Element {
         return null;
       }
       return getServiceDetail(selectedServiceId);
+    }, [selectedServiceId]),
+  );
+  const historyState = useAsync(
+    useCallback(async () => {
+      if (!selectedServiceId) {
+        return null;
+      }
+      return getServiceHistory(selectedServiceId).catch(() => null);
     }, [selectedServiceId]),
   );
 
@@ -109,6 +118,7 @@ export default function ServicesPage(): JSX.Element {
                   .then(() => {
                     servicesState.retry();
                     detailState.retry();
+                    historyState.retry();
                   })
                   .catch(() => undefined);
               }}
@@ -130,13 +140,14 @@ export default function ServicesPage(): JSX.Element {
             />
           ))}
         </div>
-        {detailState.isLoading ? (
+        {detailState.isLoading || historyState.isLoading ? (
           <CardSkeleton />
         ) : detailState.error ? (
           <ErrorState message={detailState.error.message} onRetry={detailState.retry} />
         ) : (
           <ServiceDetail
             detail={detailState.data?.service ?? null}
+            history={historyState.data}
             onOpenGraph={(serviceId) => navigate(`/graph?service=${serviceId}`)}
           />
         )}

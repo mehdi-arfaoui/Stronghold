@@ -1,31 +1,28 @@
-import fs from 'node:fs';
-
 import { Command } from 'commander';
-import { FileEvidenceStore, checkFreshness, type Evidence } from '@stronghold-dr/core';
+import {
+  FileEvidenceStore,
+  checkFreshness,
+  summarizeEvidenceMaturity,
+  type Evidence,
+  type FindingLifecycle,
+  type ServiceDebt,
+  type ValidationReport,
+  type ValidationReportWithEvidence,
+} from '@stronghold-dr/core';
 
 import { CommandAuditSession, resolveAuditIdentity } from '../audit/command-audit.js';
+import type { LoadedPostureMemory } from '../history/posture-memory.js';
+import { loadLocalPostureMemory } from '../history/posture-memory.js';
 import { writeOutput } from '../output/io.js';
 import {
-  getRenderedScenarios,
-  renderScenarioCoverageHeadline,
-  renderScenarioCoverageLine,
-} from '../output/scenario-renderer.js';
-import {
-  formatFindingsCount,
   hasDetectedServices,
   selectTopServiceRecommendations,
   sortServiceEntries,
 } from '../output/service-helpers.js';
 import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
+import type { ScanResults } from '../storage/file-store.js';
 import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
-
-const CRITICALITY_FACTORS = {
-  critical: 4,
-  high: 2,
-  medium: 1,
-  low: 0.5,
-} as const;
 
 export function registerStatusCommand(program: Command): void {
   program
@@ -50,7 +47,10 @@ export function registerStatusCommand(program: Command): void {
         });
         const effectiveScan = await rebuildScanResults(scan);
         const evidence = await new FileEvidenceStore(paths.evidencePath).getAll();
-        await writeOutput(renderStatusSnapshot(effectiveScan, paths.auditLogPath, evidence));
+        const postureMemory = await loadLocalPostureMemory(effectiveScan, paths);
+        await writeOutput(
+          renderStatusSnapshot(effectiveScan, paths.auditLogPath, evidence, postureMemory),
+        );
         await audit.finish({
           status: 'success',
           resourceCount: effectiveScan.nodes.length,
@@ -63,64 +63,211 @@ export function registerStatusCommand(program: Command): void {
 }
 
 export function renderStatusSnapshot(
-  scan: Awaited<ReturnType<typeof loadScanResultsWithEncryption>>,
-  auditLogPath: string,
+  scan: ScanResults,
+  _auditLogPath: string,
   evidence: readonly Evidence[] = [],
+  postureMemory?: LoadedPostureMemory,
 ): string {
-  const lines = [`DR Posture - ${scan.timestamp.slice(0, 10)}`, ''];
-  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
-  const scenarioCoverageLine = scan.scenarioAnalysis
-    ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
-    : null;
+  const scanCount = postureMemory?.snapshots.length ?? 0;
+  const heading =
+    scanCount > 0
+      ? `DR Posture - ${scan.timestamp.slice(0, 10)} (scan #${scanCount})`
+      : `DR Posture - ${scan.timestamp.slice(0, 10)}`;
+  const lines = [heading, ''];
+
   if (!hasDetectedServices(scan.servicePosture)) {
+    const summary = summarizeReportEvidence(scan.validationReport);
     lines.push(
-      scenarioHeadline ??
-        `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+      `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
     );
-    if (scenarioCoverageLine) {
-      lines.push(scenarioCoverageLine);
+    if (scan.scenarioAnalysis) {
+      lines.push(
+        `Scenarios: ${scan.scenarioAnalysis.summary.covered}/${scan.scenarioAnalysis.summary.total} covered | ${scan.scenarioAnalysis.summary.partiallyCovered} partial | ${scan.scenarioAnalysis.summary.uncovered} uncovered`,
+      );
     }
+    if (summary.total > 0) {
+      lines.push(
+        `Evidence: ${summary.counts.observed} observed, ${summary.counts.tested} tested, ${summary.counts.expired} expired`,
+      );
+    }
+    lines.push(
+      `Trend: ${formatTrendHeadline(postureMemory)}${describeTrendDelta(postureMemory)}`,
+    );
     lines.push(`Tip: Organize your resources into services with 'stronghold services detect'`);
-    lines.push(`Run 'stronghold scan' to refresh.`);
+    lines.push(`Run 'stronghold scan' to refresh. Run 'stronghold history' for the full timeline.`);
     return lines.join('\n');
   }
 
-  const ageDays = resolveDebtAgeDays(scan.timestamp, auditLogPath);
-  lines.push('  Services:');
+  const debtByService = new Map(
+    (postureMemory?.currentDebt ?? []).map((service) => [service.serviceId, service] as const),
+  );
+  const oldestByService = buildOldestFindingByService(postureMemory?.activeLifecycles ?? []);
+  const summary = summarizeReportEvidence(scan.validationReport);
 
+  lines.push('  Services:');
   for (const service of sortServiceEntries(scan.servicePosture.services)) {
-    const icon = service.score.findingsCount.critical > 0 ? 'x' : service.score.findingsCount.high > 0 ? '!' : 'v';
-    const debt = calculateDebt(service.score.criticality, ageDays, service.score.findings);
+    const totalFindings = countFindings(service.score.findingsCount);
+    const debt = debtByService.get(service.service.id);
+    const oldest = oldestByService.get(service.service.id);
     lines.push(
-      `    ${icon} ${service.service.id.padEnd(14)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatFindingsCount(service.score.findingsCount).padEnd(22)}${debt}`,
+      `    ${serviceIcon(service.score.findingsCount)} ${service.service.id.padEnd(14)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatServiceFindingTotal(totalFindings).padEnd(12)} debt: ${String(Math.round(debt?.totalDebt ?? 0)).padEnd(4)} ${formatDebtTrend(debt?.trend ?? 'stable')}${oldest ? `   oldest: ${oldest.ageInDays} days` : ''}`,
     );
   }
 
-  const scenarioAlerts = renderScenarioAlerts(scan);
-  if (scenarioAlerts.length > 0) {
+  if (scan.scenarioAnalysis) {
     lines.push('');
-    lines.push('  Scenarios:');
-    lines.push(...scenarioAlerts);
+    lines.push(
+      `  Scenarios: ${scan.scenarioAnalysis.summary.covered}/${scan.scenarioAnalysis.summary.total} covered | ${scan.scenarioAnalysis.summary.partiallyCovered} partial | ${scan.scenarioAnalysis.summary.uncovered} uncovered`,
+    );
+    const scenarioAlert = renderScenarioAlert(scan);
+    if (scenarioAlert) {
+      lines.push(`  ${scenarioAlert}`);
+    }
   }
-
+  if (summary.total > 0) {
+    lines.push(
+      `  Evidence: ${summary.counts.observed} observed, ${summary.counts.tested} tested, ${summary.counts.expired} expired`,
+    );
+  }
   const evidenceAlerts = renderEvidenceAlerts(evidence);
   if (evidenceAlerts.length > 0) {
     lines.push('');
     lines.push('  Evidence alerts:');
-    lines.push(...evidenceAlerts);
+    evidenceAlerts.forEach((alert) => {
+      lines.push(`    ${alert}`);
+    });
+  }
+
+  lines.push('');
+  lines.push(`  Trend: ${formatTrendHeadline(postureMemory)}${describeTrendDelta(postureMemory)}`);
+
+  const highlights = buildStatusHighlights(postureMemory, evidence);
+  if (highlights.length > 0) {
+    lines.push('');
+    lines.push('  Highlights:');
+    highlights.forEach((highlight) => {
+      lines.push(`    ${highlight}`);
+    });
   }
 
   const nextAction = selectTopServiceRecommendations(scan.servicePosture.recommendations, 1)[0] ?? null;
   lines.push('');
   lines.push(
-    `  ${scenarioHeadline ?? `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`}`,
-  );
-  lines.push(
     `  Next action: ${nextAction ? `${nextAction.title} [${nextAction.risk.toUpperCase()}]` : 'No safe recommendations available'}`,
   );
   lines.push('');
-  lines.push(`  Run 'stronghold scan' to refresh.`);
+  lines.push(`  Run 'stronghold scan' to refresh. Run 'stronghold history' for the full timeline.`);
+
   return lines.join('\n');
+}
+
+function summarizeReportEvidence(report: ValidationReport): ReturnType<typeof summarizeEvidenceMaturity> {
+  if (!('results' in report) || !Array.isArray(report.results)) {
+    return {
+      total: 0,
+      counts: {
+        observed: 0,
+        tested: 0,
+        inferred: 0,
+        declared: 0,
+        expired: 0,
+      },
+      potentialScore: report.scoreBreakdown.overall,
+    };
+  }
+  return hasEvidenceSummary(report)
+    ? report.evidenceSummary
+    : summarizeEvidenceMaturity(report.results);
+}
+
+function hasEvidenceSummary(
+  report: ValidationReport,
+): report is ValidationReportWithEvidence {
+  return 'evidenceSummary' in report;
+}
+
+function buildOldestFindingByService(
+  lifecycles: readonly FindingLifecycle[],
+): ReadonlyMap<string, FindingLifecycle> {
+  const oldestByService = new Map<string, FindingLifecycle>();
+  lifecycles.forEach((lifecycle) => {
+    if (!lifecycle.serviceId) {
+      return;
+    }
+    const existing = oldestByService.get(lifecycle.serviceId);
+    if (!existing || lifecycle.ageInDays > existing.ageInDays) {
+      oldestByService.set(lifecycle.serviceId, lifecycle);
+    }
+  });
+  return oldestByService;
+}
+
+function buildStatusHighlights(
+  postureMemory: LoadedPostureMemory | undefined,
+  evidence: readonly Evidence[],
+): readonly string[] {
+  if (!postureMemory) {
+    return [];
+  }
+
+  const highlights: string[] = [];
+  const topDebtFinding = postureMemory.currentDebt
+    .flatMap((service) =>
+      service.findingDebts.map((finding) => ({
+        serviceName: service.serviceName,
+        finding,
+      })),
+    )
+    .sort(
+      (left, right) =>
+        right.finding.debt - left.finding.debt ||
+        left.finding.findingKey.localeCompare(right.finding.findingKey),
+    )[0];
+  if (topDebtFinding) {
+    highlights.push(
+      `x ${topDebtFinding.finding.ruleId} on ${shortResourceLabel(topDebtFinding.finding.nodeId)} - ${topDebtFinding.finding.ageInDays} days unresolved (${topDebtFinding.finding.severity})`,
+    );
+  }
+
+  const recurrent = postureMemory.activeLifecycles.find((lifecycle) => lifecycle.isRecurrent);
+  if (recurrent) {
+    highlights.push(
+      `! ${recurrent.ruleId} on ${shortResourceLabel(recurrent.nodeId)} - recurrent (fixed then regressed)`,
+    );
+  }
+
+  const expired = evidence
+    .filter((entry) => checkFreshness(entry, new Date()).status === 'expired')
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp))[0];
+  if (expired) {
+    highlights.push(
+      `! ${evidenceLabel(expired)} evidence expired on ${shortResourceLabel(expired.subject.nodeId)}`,
+    );
+  }
+
+  postureMemory.trend.highlights.forEach((highlight) => {
+    const prefix = highlight.severity === 'critical' ? 'x' : highlight.severity === 'warning' ? '!' : 'i';
+    const message = `${prefix} ${highlight.message}`;
+    if (!highlights.includes(message)) {
+      highlights.push(message);
+    }
+  });
+
+  return highlights.slice(0, 3);
+}
+
+function renderScenarioAlert(scan: ScanResults): string | null {
+  const summary = scan.scenarioAnalysis?.summary;
+  if (!summary || summary.total === 0) {
+    return null;
+  }
+  if (summary.uncovered > 0) {
+    return `${summary.uncovered} uncovered scenario${summary.uncovered === 1 ? '' : 's'} require attention`;
+  }
+  if (summary.degraded > 0) {
+    return `${summary.degraded} degraded scenario${summary.degraded === 1 ? '' : 's'} require attention`;
+  }
+  return null;
 }
 
 function renderEvidenceAlerts(evidence: readonly Evidence[]): readonly string[] {
@@ -131,96 +278,88 @@ function renderEvidenceAlerts(evidence: readonly Evidence[]): readonly string[] 
     .sort((left, right) => left.entry.timestamp.localeCompare(right.entry.timestamp))
     .map(({ entry, freshness }) =>
       freshness.status === 'expired'
-        ? `    x ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} evidence EXPIRED - last test: ${entry.timestamp.slice(0, 10)}`
-        : `    ! ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} expires in ${freshness.daysUntilExpiry} days - re-test recommended`,
+        ? `x ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} evidence expired - last test: ${entry.timestamp.slice(0, 10)}`
+        : `! ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} expires in ${freshness.daysUntilExpiry} days - re-test recommended`,
     );
 }
 
-function renderScenarioAlerts(
-  scan: Awaited<ReturnType<typeof loadScanResultsWithEncryption>>,
-): readonly string[] {
-  if (!scan.scenarioAnalysis || scan.scenarioAnalysis.summary.total === 0) {
-    return [];
+function formatTrendHeadline(postureMemory: LoadedPostureMemory | undefined): string {
+  if (!postureMemory || postureMemory.snapshots.length < 2) {
+    return '- first scan';
   }
 
-  const summary = scan.scenarioAnalysis.summary;
-  const scenarios = getRenderedScenarios(scan.scenarioAnalysis);
-  const uncovered = scenarios.filter((scenario) => scenario.coverage?.verdict === 'uncovered');
-  const degraded = scenarios.filter((scenario) => scenario.coverage?.verdict === 'degraded');
-  const highlightedScenarios = (uncovered.length > 0 ? uncovered : degraded)
-    .slice(0, 3)
-    .map((scenario) => scenario.name)
-    .join(', ');
-  const lines = [
-    `    ${summary.covered}/${summary.total} covered, ${summary.partiallyCovered} partial, ${summary.uncovered} uncovered${summary.degraded > 0 ? `, ${summary.degraded} degraded` : ''}`,
-  ];
-
-  if (uncovered.length > 0) {
-    lines.push(
-      `    ${uncovered.length} uncovered scenario${uncovered.length === 1 ? '' : 's'} - including ${highlightedScenarios}`,
-    );
-  } else if (degraded.length > 0) {
-    lines.push(
-      `    ${degraded.length} degraded scenario${degraded.length === 1 ? '' : 's'} - including ${highlightedScenarios}`,
-    );
+  const direction = postureMemory.trend.global.direction;
+  if (direction === 'improving') {
+    return '^ improving';
   }
-
-  return lines;
+  if (direction === 'degrading') {
+    return 'v degrading';
+  }
+  return '- stable';
 }
 
-function calculateDebt(
-  criticality: keyof typeof CRITICALITY_FACTORS,
-  ageDays: number | null,
-  findings: readonly unknown[],
-): string {
-  if (findings.length === 0) {
+function describeTrendDelta(postureMemory: LoadedPostureMemory | undefined): string {
+  if (!postureMemory || postureMemory.snapshots.length < 2) {
     return '';
   }
-  if (ageDays === null) {
-    return '   debt: new';
+
+  const currentSnapshot = postureMemory.currentSnapshot;
+  if (!currentSnapshot) {
+    return '';
   }
-  const debt = Math.round(ageDays * CRITICALITY_FACTORS[criticality]);
-  return `   debt: ${debt} (${ageDays} days x ${criticality})`;
+  const referenceIndex = Math.max(0, postureMemory.snapshots.length - 5);
+  const referenceSnapshot = postureMemory.snapshots[referenceIndex] ?? postureMemory.previousSnapshot;
+  if (!referenceSnapshot) {
+    return '';
+  }
+
+  const scoreDelta = currentSnapshot.globalScore - referenceSnapshot.globalScore;
+  const days = diffDays(referenceSnapshot.timestamp, currentSnapshot.timestamp);
+  if (scoreDelta > 0) {
+    return ` (score improved ${scoreDelta} points in ${formatAgeWindow(days)})`;
+  }
+  if (scoreDelta < 0) {
+    return ` (score dropped ${Math.abs(scoreDelta)} points in ${formatAgeWindow(days)})`;
+  }
+  return ` (score unchanged in ${formatAgeWindow(days)})`;
 }
 
-function resolveDebtAgeDays(scanTimestamp: string, auditLogPath: string): number | null {
-  if (!fs.existsSync(auditLogPath)) {
-    return null;
+function formatDebtTrend(trend: ServiceDebt['trend']): string {
+  if (trend === 'increasing') {
+    return 'v';
   }
-
-  try {
-    const entries = fs
-      .readFileSync(auditLogPath, 'utf8')
-      .split(/\r?\n/)
-      .filter((line) => line.trim().length > 0)
-      .map((line) => JSON.parse(line) as {
-        readonly action?: string;
-        readonly timestamp?: string;
-        readonly result?: { readonly status?: string };
-      })
-      .filter((entry) => entry.action === 'scan' && entry.result?.status === 'success')
-      .map((entry) => entry.timestamp)
-      .filter((timestamp): timestamp is string => typeof timestamp === 'string')
-      .sort((left, right) => left.localeCompare(right));
-
-    if (entries.length < 2) {
-      return null;
-    }
-
-    const oldest = entries[0];
-    if (!oldest) {
-      return null;
-    }
-    const current = new Date(scanTimestamp).getTime();
-    const firstSeen = new Date(oldest).getTime();
-    if (!Number.isFinite(current) || !Number.isFinite(firstSeen)) {
-      return null;
-    }
-
-    return Math.max(0, Math.floor((current - firstSeen) / 86_400_000));
-  } catch {
-    return null;
+  if (trend === 'decreasing') {
+    return '^';
   }
+  return '-';
+}
+
+function serviceIcon(findingsCount: {
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+}): string {
+  if (findingsCount.critical > 0) {
+    return 'x';
+  }
+  if (countFindings(findingsCount) > 0) {
+    return '!';
+  }
+  return 'v';
+}
+
+function countFindings(findingsCount: {
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+}): number {
+  return findingsCount.critical + findingsCount.high + findingsCount.medium + findingsCount.low;
+}
+
+function formatServiceFindingTotal(totalFindings: number): string {
+  return `${totalFindings} finding${totalFindings === 1 ? '' : 's'}`;
 }
 
 function evidenceLabel(evidence: Evidence): string {
@@ -229,4 +368,21 @@ function evidenceLabel(evidence: Evidence): string {
 
 function shortResourceLabel(nodeId: string): string {
   return nodeId.split('/').at(-1) ?? nodeId.split(':').at(-1) ?? nodeId;
+}
+
+function formatAgeWindow(days: number): string {
+  if (days < 14) {
+    return `${days} day${days === 1 ? '' : 's'}`;
+  }
+  const weeks = Math.max(1, Math.round(days / 7));
+  return `${weeks} week${weeks === 1 ? '' : 's'}`;
+}
+
+function diffDays(startAt: string, endAt: string): number {
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
+  return Math.max(0, Math.round((end - start) / 86_400_000));
 }

@@ -8,6 +8,7 @@ import { writeError } from './output/io.js';
 import { registerDemoCommand } from './commands/demo.js';
 import { registerDriftCommand } from './commands/drift.js';
 import { registerEvidenceCommand } from './commands/evidence.js';
+import { registerHistoryCommand } from './commands/history.js';
 import { registerIamPolicyCommand } from './commands/iam-policy.js';
 import { registerInitCommand } from './commands/init.js';
 import { registerPlanCommand } from './commands/plan.js';
@@ -35,6 +36,7 @@ export function createProgram(): Command {
   registerPlanCommand(program);
   registerDriftCommand(program);
   registerEvidenceCommand(program);
+  registerHistoryCommand(program);
   registerOverridesCommand(program);
   registerDemoCommand(program);
   registerIamPolicyCommand(program);
