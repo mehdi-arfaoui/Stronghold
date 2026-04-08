@@ -18,7 +18,7 @@ export interface DiscoveredResource {
   readonly type: string;
   readonly ip?: string | null;
   readonly hostname?: string | null;
-  tags?: string[] | null;
+  tags?: Record<string, string> | string[] | null;
   metadata?: Record<string, unknown> | null;
   readonly openPorts?: OpenPort[] | null;
 }

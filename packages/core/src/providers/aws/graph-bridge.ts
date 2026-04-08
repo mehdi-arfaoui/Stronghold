@@ -517,9 +517,18 @@ export function transformToScanResult(
   return { nodes, edges, provider, scannedAt: new Date() };
 }
 
-function parseTags(rawTags: string[] | null | undefined): Record<string, string> {
+function parseTags(rawTags: DiscoveredResource['tags']): Record<string, string> {
   const tags: Record<string, string> = {};
   if (!rawTags) return tags;
+  if (!Array.isArray(rawTags) && typeof rawTags === 'object') {
+    for (const [key, value] of Object.entries(rawTags)) {
+      if (typeof value !== 'string') continue;
+      const normalizedKey = key.trim();
+      if (!normalizedKey) continue;
+      tags[normalizedKey] = value;
+    }
+    return tags;
+  }
   for (const tag of rawTags) {
     const separator = tag.lastIndexOf(':');
     if (separator > 0 && separator < tag.length - 1) {

@@ -5,11 +5,13 @@
 import {
   ListHostedZonesCommand,
   ListResourceRecordSetsCommand,
+  ListTagsForResourceCommand,
 } from '@aws-sdk/client-route-53';
 import type { ResourceRecordSet } from '@aws-sdk/client-route-53';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createRoute53Client, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 function normalizeDnsName(value: string | undefined): string | undefined {
   if (!value) return undefined;
@@ -75,6 +77,7 @@ export async function scanRoute53HostedZones(
   const route53 = createRoute53Client(options);
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
   let marker: string | undefined;
   let isTruncated = true;
 
@@ -87,21 +90,40 @@ export async function scanRoute53HostedZones(
       const hostedZoneId = normalizeHostedZoneId(zone.Id);
       if (!hostedZoneId) continue;
       const zoneName = normalizeDnsName(zone.Name) ?? hostedZoneId;
+      const tags = await fetchAwsTagsWithRetry(
+        () =>
+          route53.send(
+            new ListTagsForResourceCommand({
+              ResourceType: 'hostedzone',
+              ResourceId: hostedZoneId,
+            }),
+            getAwsCommandOptions(options),
+          ),
+        (response) => tagsArrayToMap(response.ResourceTagSet?.Tags),
+        {
+          description: `Route53 tag discovery unavailable in global`,
+          warnings,
+          warningDeduper: tagWarnings,
+        },
+      );
+      const displayName = getNameTag(tags) ?? zoneName;
 
       resources.push(
         buildResource({
           source: 'aws',
           externalId: hostedZoneId,
-          name: zoneName,
+          name: displayName,
           kind: 'infra',
           type: 'ROUTE53_HOSTED_ZONE',
+          tags,
           metadata: {
             region: 'global',
             hostedZoneId,
             name: zoneName,
             recordCount: zone.ResourceRecordSetCount ?? 0,
             isPrivate: zone.Config?.PrivateZone ?? false,
-            displayName: zoneName,
+            displayName,
+            ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
           },
         }),
       );

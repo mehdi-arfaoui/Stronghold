@@ -5,11 +5,13 @@
 import {
   DescribeLoadBalancerAttributesCommand,
   DescribeLoadBalancersCommand,
+  DescribeTagsCommand,
   DescribeTargetGroupsCommand,
   ElasticLoadBalancingV2Client,
 } from '@aws-sdk/client-elastic-load-balancing-v2';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
+import { getNameTag, runAwsReadWithRetry, tagsArrayToMap } from '../tag-utils.js';
 import { buildResource, paginateAws } from '../scan-utils.js';
 
 function parseBooleanAttribute(value: string | undefined): boolean | undefined {
@@ -25,6 +27,42 @@ function extractLoadBalancerResourceName(loadBalancerArn: string | undefined): s
   return index >= 0 ? loadBalancerArn.slice(index + marker.length) : undefined;
 }
 
+async function readLoadBalancerTags(
+  elb: ElasticLoadBalancingV2Client,
+  options: AwsClientOptions,
+  loadBalancers: readonly {
+    readonly LoadBalancerArn?: string;
+  }[],
+  warnings: string[],
+): Promise<ReadonlyMap<string, Record<string, string>>> {
+  const tagsByArn = new Map<string, Record<string, string>>();
+  const arns = loadBalancers
+    .map((loadBalancer) => loadBalancer.LoadBalancerArn)
+    .filter((arn): arn is string => Boolean(arn));
+  const warningDeduper = new Set<string>();
+
+  for (let index = 0; index < arns.length; index += 20) {
+    const batch = arns.slice(index, index + 20);
+    const response = await runAwsReadWithRetry(
+      () =>
+        elb.send(new DescribeTagsCommand({ ResourceArns: batch }), getAwsCommandOptions(options)),
+      {
+        description: `ELB tag discovery unavailable in ${options.region}`,
+        warnings,
+        warningDeduper,
+      },
+    );
+    if (!response) continue;
+
+    for (const tagDescription of response.TagDescriptions ?? []) {
+      if (!tagDescription.ResourceArn) continue;
+      tagsByArn.set(tagDescription.ResourceArn, tagsArrayToMap(tagDescription.Tags));
+    }
+  }
+
+  return tagsByArn;
+}
+
 export async function scanLoadBalancers(
   options: AwsClientOptions,
 ): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
@@ -38,8 +76,13 @@ export async function scanLoadBalancers(
     (response) => response.LoadBalancers,
     (response) => response.NextMarker,
   );
+  const loadBalancerTags = await readLoadBalancerTags(elb, options, loadBalancers, warnings);
 
   for (const loadBalancer of loadBalancers) {
+    const tags = loadBalancer.LoadBalancerArn
+      ? (loadBalancerTags.get(loadBalancer.LoadBalancerArn) ?? {})
+      : {};
+    const displayName = getNameTag(tags) ?? loadBalancer.LoadBalancerName ?? 'elb';
     const availabilityZones = (loadBalancer.AvailabilityZones ?? [])
       .map((zone) => zone.ZoneName)
       .filter((zone): zone is string => Boolean(zone));
@@ -116,10 +159,11 @@ export async function scanLoadBalancers(
       buildResource({
         source: 'aws',
         externalId: loadBalancer.LoadBalancerArn ?? loadBalancer.LoadBalancerName ?? 'elb',
-        name: loadBalancer.LoadBalancerName ?? 'elb',
+        name: displayName,
         kind: 'infra',
         type: 'ELB',
         ip: loadBalancer.DNSName ?? null,
+        tags,
         metadata: {
           scheme: loadBalancer.Scheme,
           type: loadBalancer.Type,
@@ -137,7 +181,8 @@ export async function scanLoadBalancers(
           loadBalancingCrossZoneEnabled: crossZoneLoadBalancing,
           healthCheck,
           healthChecks,
-          displayName: loadBalancer.LoadBalancerName ?? 'elb',
+          displayName,
+          ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
         },
       }),
     );

@@ -2,11 +2,16 @@
  * Scans CloudWatch alarms and the resources they monitor.
  */
 
-import { CloudWatchClient, DescribeAlarmsCommand } from '@aws-sdk/client-cloudwatch';
+import {
+  CloudWatchClient,
+  DescribeAlarmsCommand,
+  ListTagsForResourceCommand,
+} from '@aws-sdk/client-cloudwatch';
 import type { Dimension, MetricAlarm } from '@aws-sdk/client-cloudwatch';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { buildResource } from '../scan-utils.js';
+import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 const MONITORED_DIMENSION_NAMES = new Set([
   'InstanceId',
@@ -42,8 +47,10 @@ function extractMonitoredReferences(dimensions: readonly Dimension[] | undefined
     .filter((value, index, items) => items.indexOf(value) === index);
 }
 
-async function listMetricAlarms(options: AwsClientOptions): Promise<readonly MetricAlarm[]> {
-  const cloudwatch = createAwsClient(CloudWatchClient, options);
+async function listMetricAlarms(
+  cloudwatch: CloudWatchClient,
+  options: AwsClientOptions,
+): Promise<readonly MetricAlarm[]> {
   const alarms: MetricAlarm[] = [];
   let nextToken: string | undefined;
 
@@ -64,16 +71,38 @@ async function listMetricAlarms(options: AwsClientOptions): Promise<readonly Met
 
 export async function scanCloudWatchAlarms(
   options: AwsClientOptions,
-): Promise<DiscoveredResource[]> {
-  const alarms = await listMetricAlarms(options);
+): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
+  const cloudwatch = createAwsClient(CloudWatchClient, options);
+  const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
+  const alarms = await listMetricAlarms(cloudwatch, options);
+  const resources: DiscoveredResource[] = [];
 
-  return alarms.map((alarm) =>
-    buildResource({
+  for (const alarm of alarms) {
+    const tags = alarm.AlarmArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            cloudwatch.send(
+              new ListTagsForResourceCommand({ ResourceARN: alarm.AlarmArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => tagsArrayToMap(response.Tags),
+          {
+            description: `CloudWatch tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    const displayName = getNameTag(tags) ?? alarm.AlarmName ?? 'alarm';
+
+    resources.push(buildResource({
       source: 'aws',
       externalId: alarm.AlarmArn ?? `cloudwatch-alarm:${alarm.AlarmName ?? 'alarm'}`,
-      name: alarm.AlarmName ?? 'alarm',
+      name: displayName,
       kind: 'infra',
       type: 'CLOUDWATCH_ALARM',
+      tags,
       metadata: {
         region: options.region,
         alarmArn: alarm.AlarmArn,
@@ -88,8 +117,11 @@ export async function scanCloudWatchAlarms(
         actionsEnabled: alarm.ActionsEnabled ?? false,
         alarmActions: (alarm.AlarmActions ?? []).filter((value): value is string => Boolean(value)),
         state: alarm.StateValue,
-        displayName: alarm.AlarmName ?? 'alarm',
+        displayName,
+        ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
       },
-    }),
-  );
+    }));
+  }
+
+  return { resources, warnings };
 }

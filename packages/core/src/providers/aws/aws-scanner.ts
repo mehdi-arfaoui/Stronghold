@@ -7,6 +7,14 @@ import type {
   ScanOptions,
   ScanOutput,
 } from '../provider-interface.js';
+import {
+  computeRetryDelayMs,
+  DEFAULT_AWS_RETRY_POLICY,
+  getAwsErrorMessage,
+  getAwsFailureType,
+  isAwsThrottlingError,
+  type AwsRetryPolicy,
+} from './aws-retry-utils.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from './aws-client-factory.js';
 import { processWithConcurrencyLimit, sleep } from './scan-utils.js';
 import { scanAuroraClusters } from './services/aurora-scanner.js';
@@ -38,12 +46,12 @@ export const MAX_SCANNER_CONCURRENCY = 16;
 export const DEFAULT_SCANNER_TIMEOUT_MS = 60_000;
 export const MIN_SCANNER_TIMEOUT_MS = 10_000;
 export const MAX_SCANNER_TIMEOUT_MS = 300_000;
-export const DEFAULT_AWS_RETRY_POLICY = {
-  maxAttempts: 3,
-  initialBackoffMs: 1_000,
-  backoffMultiplier: 2,
-  maxJitterMs: 250,
-} as const;
+export {
+  computeRetryDelayMs,
+  DEFAULT_AWS_RETRY_POLICY,
+  isAwsThrottlingError,
+  type AwsRetryPolicy,
+} from './aws-retry-utils.js';
 
 const SERVICE_SCANNERS = [
   'EC2',
@@ -78,13 +86,6 @@ export interface AwsServiceScannerDefinition {
   readonly name: string;
   readonly global?: boolean;
   readonly scan: AwsServiceScanner;
-}
-
-export interface AwsRetryPolicy {
-  readonly maxAttempts: number;
-  readonly initialBackoffMs: number;
-  readonly backoffMultiplier: number;
-  readonly maxJitterMs: number;
 }
 
 export interface AwsServiceScanResult {
@@ -282,61 +283,6 @@ function shouldScanService(
   serviceName: string,
 ): boolean {
   return requestedServices === null || requestedServices.has(serviceName);
-}
-
-function getAwsErrorCode(error: unknown): string {
-  if (!error || typeof error !== 'object') {
-    return '';
-  }
-  const candidate = error as Record<string, unknown>;
-  return String(candidate.name ?? candidate.Code ?? candidate.code ?? '');
-}
-
-function getAwsErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message.trim().length > 0) {
-    return error.message;
-  }
-  return String(error);
-}
-
-function getAwsFailureType(error: unknown): string {
-  const code = getAwsErrorCode(error);
-  if (code) {
-    return code;
-  }
-  if (error instanceof Error && error.name.trim().length > 0) {
-    return error.name;
-  }
-  return 'UnknownError';
-}
-
-export function isAwsThrottlingError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-
-  const candidate = error as Record<string, unknown>;
-  const code = getAwsErrorCode(error);
-  if (code === 'ThrottlingException' || code === 'TooManyRequestsException') {
-    return true;
-  }
-
-  if (candidate.$retryable && typeof candidate.$retryable === 'object') {
-    return (candidate.$retryable as Record<string, unknown>).throttling === true;
-  }
-
-  return false;
-}
-
-export function computeRetryDelayMs(
-  retryAttempt: number,
-  policy: AwsRetryPolicy = DEFAULT_AWS_RETRY_POLICY,
-  random = Math.random,
-): number {
-  const baseDelay =
-    policy.initialBackoffMs * policy.backoffMultiplier ** Math.max(retryAttempt - 1, 0);
-  const jitterCap = Math.min(policy.maxJitterMs, Math.round(baseDelay * 0.25));
-  return baseDelay + Math.round(random() * jitterCap);
 }
 
 function normalizeScannerConcurrency(value: number | undefined): number {

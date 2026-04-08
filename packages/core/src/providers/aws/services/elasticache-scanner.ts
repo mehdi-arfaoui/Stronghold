@@ -6,15 +6,20 @@ import {
   ElastiCacheClient,
   DescribeCacheClustersCommand,
   DescribeReplicationGroupsCommand,
+  ListTagsForResourceCommand,
 } from '@aws-sdk/client-elasticache';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
+import { addWarningOnce, fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
+import { getCallerIdentity } from '../get-caller-identity.js';
 import { paginateAws, buildResource } from '../scan-utils.js';
 
 export async function scanElastiCacheClusters(
   options: AwsClientOptions,
-): Promise<DiscoveredResource[]> {
+): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
   const elasticache = createAwsClient(ElastiCacheClient, options);
+  const warnings: string[] = [];
+  const tagWarnings = new Set<string>();
 
   const replicationGroups = await paginateAws(
     (marker) =>
@@ -42,20 +47,64 @@ export async function scanElastiCacheClusters(
     (response) => response.Marker,
   );
 
-  return cacheClusters.map((cluster) => {
+  let accountIdPromise: Promise<string | null> | null = null;
+  const resolveAccountId = async (): Promise<string | null> => {
+    if (!accountIdPromise) {
+      accountIdPromise = getCallerIdentity({
+        ...options.credentials,
+        region: options.region,
+      }).then((identity) => identity?.accountId ?? null);
+    }
+    return accountIdPromise;
+  };
+
+  const resources: DiscoveredResource[] = [];
+
+  for (const cluster of cacheClusters) {
     const clusterId = cluster.CacheClusterId ?? 'elasticache';
     const replicationGroupId = cluster.ReplicationGroupId;
     const groupClusterCount = replicationGroupId
       ? (memberCountByGroup.get(replicationGroupId) ?? 0)
       : 0;
     const replicaCount = groupClusterCount > 0 ? Math.max(0, groupClusterCount - 1) : 0;
+    let resourceArn = cluster.ARN;
+    if (!resourceArn && clusterId) {
+      const accountId = await resolveAccountId();
+      if (accountId) {
+        resourceArn = `arn:aws:elasticache:${options.region}:${accountId}:cluster:${clusterId}`;
+      } else {
+        addWarningOnce(
+          warnings,
+          tagWarnings,
+          `elasticache-missing-account:${options.region}`,
+          `ElastiCache tag discovery unavailable in ${options.region} (MissingAccountId). Continuing without tags.`,
+        );
+      }
+    }
+    const tags = resourceArn
+      ? await fetchAwsTagsWithRetry(
+          () =>
+            elasticache.send(
+              new ListTagsForResourceCommand({ ResourceName: resourceArn! }),
+              getAwsCommandOptions(options),
+            ),
+          (response) => tagsArrayToMap(response.TagList),
+          {
+            description: `ElastiCache tag discovery unavailable in ${options.region}`,
+            warnings,
+            warningDeduper: tagWarnings,
+          },
+        )
+      : {};
+    const displayName = getNameTag(tags) ?? clusterId;
 
-    return buildResource({
+    resources.push(buildResource({
       source: 'aws',
       externalId: cluster.ARN ?? clusterId,
-      name: clusterId,
+      name: displayName,
       kind: 'infra',
       type: 'ELASTICACHE',
+      tags,
       metadata: {
         region: options.region,
         cacheClusterId: clusterId,
@@ -79,8 +128,11 @@ export async function scanElastiCacheClusters(
           cluster.ConfigurationEndpoint?.Port ?? cluster.CacheNodes?.[0]?.Endpoint?.Port,
         configurationEndpoint: cluster.ConfigurationEndpoint?.Address,
         primaryEndpoint: cluster.CacheNodes?.[0]?.Endpoint?.Address,
-        displayName: clusterId,
+        displayName,
+        ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
       },
-    });
-  });
+    }));
+  }
+
+  return { resources, warnings };
 }

@@ -14,7 +14,7 @@ function createResource(
     kind: overrides.kind ?? 'infra',
     type: overrides.type,
     metadata: overrides.metadata ?? {},
-    tags: overrides.tags ?? [],
+    tags: overrides.tags ?? {},
     ip: overrides.ip ?? null,
     hostname: overrides.hostname ?? null,
     openPorts: overrides.openPorts ?? null,
@@ -166,6 +166,35 @@ describe('transformToScanResult', () => {
     expect(node.availabilityZone).toBe('eu-west-1a');
     expect(node.metadata.region).toBe('eu-west-1');
     expect(node.metadata.availabilityZone).toBe('eu-west-1a');
+  });
+
+  it('accepts object tags from scanners and preserves the Name tag for display', () => {
+    const result = transformToScanResult(
+      [
+        createResource({
+          externalId: 'arn:aws:rds:eu-west-1:123456789012:db:orders-db',
+          type: 'RDS',
+          name: 'orders-db',
+          tags: {
+            service: 'orders',
+            Name: 'orders-primary',
+          },
+          metadata: {
+            region: 'eu-west-1',
+            dbIdentifier: 'orders-db',
+          },
+        }),
+      ],
+      [],
+      'aws',
+    );
+    const node = findNode(result, 'arn:aws:rds:eu-west-1:123456789012:db:orders-db');
+
+    expect(node.name).toBe('orders-primary');
+    expect(node.tags).toEqual({
+      service: 'orders',
+      Name: 'orders-primary',
+    });
   });
 
   it('creates secured_by edges between compute nodes and their security groups', () => {
