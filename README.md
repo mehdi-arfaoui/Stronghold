@@ -5,268 +5,303 @@
 
 # Stronghold
 
-**The first open-source disaster recovery automation platform for cloud infrastructure.**
+**Open-source disaster recovery readiness system for cloud infrastructure.**
 
-Your disaster recovery plan is dead. Stronghold makes it alive.
+Stronghold turns disaster recovery from static documentation into a living, evidence-backed, scenario-aware system.
+
+It tells you not only what is wrong, but which critical service is no longer recoverable, why, whether the runbook still matches reality, and how your DR posture is evolving over time.
+
+The system is service-centric, evidence-backed, scenario-aware, runbook-validating, posture-tracking, and governance-aware.
+
+> Disaster recovery is usually documented once and trusted for months.  
+> Stronghold keeps it alive by continuously mapping services, validating assumptions, tracking evidence, checking scenario coverage, and detecting when recovery paths degrade.
+
+> Stronghold is read-only by design. It never modifies your infrastructure, sends no telemetry, and can run entirely in your environment.
 
 <p align="center">
   <img src="docs/assets/demo.gif" alt="Stronghold CLI demo" width="800">
 </p>
 
+## What Stronghold is now
 
-### Web UI
+Stronghold is no longer just:
 
-<p align="center">
-  <img src="docs/assets/web-dashboard.png" alt="Stronghold Dashboard" width="800">
-</p>
+- a cloud scanner
+- a dependency graph
+- a DR score
+- a YAML DR plan generator
 
-<p align="center">
-  <img src="docs/assets/web-graph.png" alt="Stronghold Dependency Graph" width="800">
-</p>
+It is a system that helps teams answer five questions:
 
-## The Problem
+1. What do we actually have?
+2. What breaks if this fails?
+3. Do we still have a viable recovery path?
+4. What evidence supports that belief?
+5. Has our DR posture improved or degraded over time?
 
-Most companies have a disaster recovery plan buried in a 50-page Word document that no one maintains.
-When infrastructure changes - and it changes constantly - the plan becomes stale within weeks.
-When disaster strikes, teams discover their plan is fiction.
+Stronghold has moved from resource-centric inventory to service-centric recoverability, from static checks to contextualized findings, from score-only output to scenario coverage, from config presence to evidence maturity, from one-off snapshots to posture memory, and from static DR documents to living runbooks that can be checked against current infrastructure.
 
-**The result:** longer outages, more data loss, and a lot of finger-pointing in the post-mortem.
+## The problem
 
-## What Stronghold Does
+Most DR tooling stops at configuration checks or static documentation.
 
-Stronghold connects to your cloud infrastructure, discovers every resource and dependency,
-and automatically generates a disaster recovery plan you can version in Git.
+Teams may know that backups exist, but not whether critical services are still recoverable, whether recovery paths still match the live environment, whether the recorded evidence is fresh, or whether a previously accepted risk has quietly become dangerous again.
 
-- 🔍 **Auto-discovery** - Scans 16 AWS services, maps every dependency, finds single points of failure
-- 📊 **DR Posture Score** - Weighted score across 6 DR categories: backup, redundancy, failover, detection, recovery, replication
-- 📋 **DRP-as-Code** - Generates a YAML disaster recovery plan with recovery order, strategies, and honest RTO/RPO estimates
-- 🔄 **Drift Detection** - Compares scans over time to detect when your DR posture degrades
-- ⚡ **Honest RTO/RPO** - Documents what AWS confirms, says "requires testing" when no reliable estimate exists
-- 🏗️ **Dependency Graph** - Visualizes blast radius: "if this node fails, these 12 services go down"
+Infrastructure changes constantly. Backup and failover settings are useful, but they are not the same as proven recoverability. Without a living view, teams lack a reliable way to track service recovery coverage, scenario readiness, runbook validity, proof freshness, and regressions over time.
 
-## Quick Start
+## What Stronghold does
 
-**Try it in 10 seconds - no AWS credentials needed:**
+1. **Service-centric DR model.** Stronghold maps cloud resources into services and workloads using CloudFormation signals, application tags, naming patterns, topology, and manual declarations. It reasons about recoverability at the service level, not just the resource level.
+2. **Contextualized findings.** A finding is not just "RDS has no backup." Stronghold attaches technical impact, DR impact, affected scenarios, and prioritized remediation so the issue is actionable in operational terms.
+3. **Evidence-backed posture.** Stronghold tracks `observed`, `inferred`, `declared`, `tested`, and `expired` evidence. It distinguishes "configuration was seen" from "recovery was tested" and surfaces freshness instead of pretending proof is stronger than it is.
+4. **Scenario coverage analysis.** Stronghold evaluates built-in disruption scenarios such as AZ failure, region failure, SPOF failure, and data corruption, then marks coverage as `covered`, `partially_covered`, `uncovered`, or `degraded`.
+5. **Runbook liveness.** Stronghold generates DR plans and executable runbooks, then checks whether referenced resources still exist and still match the current environment. It flags stale recovery assumptions before an incident exposes them.
+6. **Temporal posture memory.** Stronghold keeps history, tracks recurring and aging findings, calculates DR debt, highlights expiring evidence and accepted risks, and shows whether posture is improving, stable, or degrading.
+
+Stronghold does not just tell you that something is misconfigured. It tells you which critical service is now at risk, which scenarios are no longer covered, whether the runbook still matches reality, and how long the gap has existed.
+
+## Key concepts
+
+- **Service.** A logical workload composed of multiple cloud resources that must recover together.
+- **Finding.** A contextualized DR issue with technical impact, recovery impact, scenario impact, and remediation guidance.
+- **Evidence.** Support for a DR claim, classified as `observed`, `inferred`, `declared`, `tested`, or `expired`.
+- **Scenario coverage.** Whether a plausible failure scenario still has a viable and current recovery path.
+- **DR debt.** Accumulated unresolved recovery risk over time, weighted by severity, age, service criticality, and recurrence.
+
+## Example: from static check to living DR posture
+
+Old world:
+
+> "RDS instance `payment-db` has no backup."
+
+Stronghold view:
+
+```text
+Service: payment
+DR debt: 680
+Critical finding unresolved for 45 days
+
+Scenario coverage
+- AZ failure: uncovered
+- Data corruption: uncovered
+- Region failure: partially covered
+
+Evidence
+- backup retention: observed as disabled
+- last restore test: expired
+- runbook liveness: broken (references missing replica `payment-db-dr`)
+
+Next action
+1. Enable automated backups
+2. Register a restore test
+3. Regenerate and validate the payment runbook
+```
+
+## Quick start
+
+Try the built-in demo first:
 
 ```bash
 npx @stronghold-dr/cli demo
 ```
 
-**Scan your real infrastructure:**
+Then run it on a real environment:
 
 ```bash
 npx @stronghold-dr/cli scan --region eu-west-1
+npx @stronghold-dr/cli status
 npx @stronghold-dr/cli report
+npx @stronghold-dr/cli scenarios
 npx @stronghold-dr/cli plan generate > drp.yaml
+npx @stronghold-dr/cli plan runbook > runbook.yaml
 ```
 
-**Or install globally:**
+Useful follow-up:
 
 ```bash
-npm install -g @stronghold-dr/cli
-stronghold scan --region eu-west-1
+npx @stronghold-dr/cli iam-policy > stronghold-policy.json
+npx @stronghold-dr/cli history
 ```
 
-**Generate the minimal IAM policy you need:**
+Notes:
 
-```bash
-stronghold iam-policy > stronghold-policy.json
-```
+- Stronghold is read-only and makes no AWS changes.
+- Results get stronger with broader read-only IAM visibility.
+- Some service boundaries, dependencies, and scenario effects may be inferred with varying confidence. Stronghold surfaces that uncertainty instead of hiding it.
+- Stronghold supports account-aware configuration, but each scan evaluates one AWS account at a time.
 
-> 🔒 **Read-only.** Stronghold never modifies your infrastructure. Zero telemetry. Zero data sent anywhere.
+Start with [docs/getting-started.md](docs/getting-started.md) for the full walkthrough.
 
-Want the full walkthrough? Start with [docs/getting-started.md](docs/getting-started.md).
+## Why Stronghold is different
 
-## How Stronghold Compares
+- Service-centric, not resource-only
+- Scenario coverage, not just checklist findings
+- Evidence maturity, not just config presence
+- Living runbooks, not static DR documents
+- Temporal DR posture, not one-time scan results
+- Explicit uncertainty, not fake precision
+- Self-hosted, auditable, and zero telemetry
 
-| Feature | Stronghold | Velero | AWS Resilience Hub | Zerto | CloudEndure |
-|---------|-----------|--------|-------------------|-------|-------------|
-| Open-source | ✅ AGPL-3.0 | ✅ Apache-2.0 | ❌ | ❌ | ❌ |
-| Auto-discovery | ✅ 16 services | ❌ K8s only | ✅ AWS only | ❌ | ❌ |
-| Dependency graph | ✅ | ❌ | Partial | ❌ | ❌ |
-| DRP-as-Code (YAML) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Blast radius analysis | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Drift detection | ✅ | ❌ | Partial | ❌ | ❌ |
-| Honest RTO | ✅ | N/A | Partial | ❌ | ❌ |
-| Multi-cloud | AWS (Azure planned) | K8s | AWS only | Multi | AWS only |
-| Self-hosted | ✅ Docker | ✅ | N/A | ❌ | N/A |
-| Cost | Free | Free | AWS pricing | $$$$$ | AWS pricing |
+| Capability | Generic cloud scanner | Stronghold |
+| --- | --- | --- |
+| Resource checks | Yes | Yes |
+| Service model | Usually no | Yes |
+| Scenario coverage | Usually no | Yes |
+| Evidence maturity | Usually shallow | Yes |
+| Runbook validation | Rare | Yes |
+| DR debt tracking | Rare | Yes |
+| Open source | Sometimes | Yes |
+| Self-hosted | Sometimes | Yes |
 
 ## Architecture
 
 ```text
-┌─────────────────────────────────────────────┐
-│                  CLI / Web UI               │
-├─────────────────────────────────────────────┤
-│                @stronghold-dr/core          │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
-│  │ Scanners │  │  Graph   │  │    DRP    │ │
-│  │  AWS     │  │  Engine  │  │ Generator │ │
-│  │  Azure * │  │  (SPOF,  │  │ (YAML,    │ │
-│  │          │  │  blast)  │  │  RTO/RPO) │ │
-│  └──────────┘  └──────────┘  └───────────┘ │
-│  ┌──────────┐  ┌──────────┐  ┌───────────┐ │
-│  │  Drift   │  │ Validat° │  │  Scoring  │ │
-│  │ Detector │  │  Engine  │  │ (weighted)│ │
-│  └──────────┘  └──────────┘  └───────────┘ │
-├─────────────────────────────────────────────┤
-│            Ports & Adapters                 │
-│   (Prisma, File Store, Console Logger)      │
-└─────────────────────────────────────────────┘
-                * Azure: scanner skeleton, coming soon
+CLI / Web / GitHub Action
+          |
+          v
+Discovery -> Service Model -> Graph & Confidence
+                         -> Findings Engine
+                         -> Evidence Engine
+                         -> Scenario Coverage Engine
+                         -> Runbook Validation
+                         -> Posture Memory
+                         -> Governance Layer
+          |
+          v
+Local Files / PostgreSQL / Audit Trail
 ```
 
-Monorepo structure:
+- **Discovery.** Read-only AWS scanners normalize infrastructure metadata across 16 services.
+- **Service model and graph.** Resources are grouped into services and linked through dependency analysis with explicit confidence limits.
+- **Findings and evidence.** Validation rules generate contextual findings and attach evidence maturity rather than binary certainty.
+- **Scenario and runbooks.** Built-in scenarios evaluate coverage, while generated plans and runbooks are validated against current state.
+- **Posture memory and governance.** History, finding lifecycle, DR debt, declared ownership, risk acceptances, and policy checks provide continuity between scans.
+- **Storage and audit.** CLI artifacts live under `.stronghold/`; self-hosted mode persists shared state in PostgreSQL. Audit logging is always on.
 
-- `packages/core` - Pure business logic, zero framework dependencies
-- `packages/cli` - CLI entry point for the community
-- `packages/server` - Express API for the web UI
-- `packages/web` - React frontend with dependency graph visualization
+See [docs/architecture.md](docs/architecture.md) for the detailed package and pipeline view.
 
-## CLI Commands
+## What Stronghold proves - and what it does not
 
-| Command | Description |
-|---------|-------------|
-| `stronghold scan` | Scan AWS infrastructure (default region from env) |
-| `stronghold scan --region eu-west-1,us-east-1` | Scan specific regions |
-| `stronghold scan --all-regions` | Scan all active AWS regions |
-| `stronghold scan --services rds,aurora,s3` | Scan specific services only |
-| `stronghold report` | Display the full DR posture report |
-| `stronghold report --category backup` | Filter by DR category |
-| `stronghold report --format markdown` | Export as Markdown |
-| `stronghold plan generate` | Generate DRP-as-Code (YAML) |
-| `stronghold plan validate --plan drp.yaml` | Validate plan against current infra |
-| `stronghold drift check` | Detect DR posture drift between scans |
-| `stronghold demo` | Run with sample infrastructure (no AWS needed) |
-| `stronghold iam-policy` | Generate minimal IAM policy for scanning |
+Stronghold can prove or support:
 
-All commands support `--verbose` and `--help`.
+- observed infrastructure configuration
+- inferred dependency and service hypotheses with confidence limits
+- declared governance decisions such as ownership and risk acceptances
+- recorded test evidence and evidence freshness
+- scenario coverage assessment based on the current model, evidence, and runbook state
+- runbook validity against the current infrastructure snapshot
 
-Security-related CLI options:
+Stronghold does not automatically prove:
 
-- `--encrypt` encrypts sensitive local artifacts such as saved scans, DR plans, and drift baselines.
-- `--redact` masks ARNs, IPs, and common AWS identifiers in generated output.
-- audit logging is always enabled and written to `.stronghold/audit.jsonl`.
+- that every business dependency is captured
+- that a restore will succeed unless tested evidence exists
+- that a scenario is fully survivable under real crisis conditions
+- that human coordination, third parties, vendors, or business procedures are ready
+- that declared ownership has been independently verified
 
-## Self-Hosted (Docker)
+Stronghold is designed to reduce fiction in disaster recovery, not replace real exercises, architecture judgment, or crisis leadership.
 
-Run the full platform (API + Web UI + PostgreSQL):
+## Trust model
+
+- Read-only by design. Stronghold inspects infrastructure and generates plans and runbooks, but it never changes infrastructure and never executes recovery commands.
+- Zero telemetry. The CLI can run entirely locally, and self-hosted deployments keep data in your environment.
+- Local-first artifacts. CLI state lives under `.stronghold/`; self-hosted mode stores shared data in your PostgreSQL instance.
+- Built-in protection. `--encrypt` supports encrypted local artifacts, and `--redact` masks identifiers before sharing output.
+- Auditability. The audit trail is always on in both CLI and server flows.
+- Honest uncertainty. Stronghold uses explicit evidence types and confidence-aware inference instead of false precision.
+
+See [docs/security.md](docs/security.md) for the security model and deployment guidance.
+
+## CLI capabilities
+
+| Intent | Commands |
+| --- | --- |
+| Discover | `scan`, `init`, `iam-policy`, `services detect`, `services list` |
+| Assess | `status`, `report`, `scenarios`, `services show <id>` |
+| Plan | `plan generate`, `plan runbook`, `plan validate` |
+| Track | `drift check`, `history` |
+| Govern | `evidence add`, `evidence list`, `evidence show <id>`, `governance init`, `governance accept`, `governance validate`, `overrides init`, `overrides validate` |
+
+Run `stronghold --help` or `stronghold <command> --help` for options such as `--encrypt`, `--redact`, `--verbose`, `--account`, `--profile`, and `--role-arn`.
+
+## Deployment options
+
+### CLI
+
+Use Stronghold locally or in CI with `npx @stronghold-dr/cli ...`, or install it globally with `npm install -g @stronghold-dr/cli`.
+
+### Self-hosted
+
+Run the API, web UI, and PostgreSQL with Docker Compose:
 
 ```bash
 git clone https://github.com/mehdi-arfaoui/stronghold.git
 cd stronghold
 cp .env.example .env
-# Edit .env: set DB_PASSWORD and AWS credentials
 docker compose up -d
 ```
 
-Open `http://localhost:8080` for the web UI.
+See [docs/self-hosted.md](docs/self-hosted.md) for deployment details.
 
-See [.env.example](.env.example) for all configuration options including AWS credential setup.
+### GitHub Action
 
-> 🔒 Generate the minimal read-only IAM policy: `stronghold iam-policy`
+A companion GitHub Action workspace is included for pull request checks and score regression gating. See [github-action/README.md](github-action/README.md) for details.
 
-## Security
+```yaml
+- name: Stronghold DR Check
+  uses: mehdi-arfaoui/stronghold-dr-check@v1
+  with:
+    aws-region: eu-west-1
+    aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+    aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    fail-under-score: 60
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
 
-Stronghold includes three built-in security layers for scan artifacts and report sharing:
+## Roadmap
 
-- Encryption: local CLI outputs can be written with `--encrypt`, and the server can encrypt scan data when `STRONGHOLD_ENCRYPTION_KEY` is set.
-- Redaction: `--redact` masks ARNs, IPs, and common AWS identifiers in generated output and server reports.
-- Audit trail: the CLI writes `.stronghold/audit.jsonl`, and the server persists audit events in `AuditLog` with `GET /api/audit`.
+### Implemented in v1.0.0
 
-See [docs/security.md](docs/security.md) for the threat model, storage model, and deployment guidance.
+- Read-only AWS discovery across 16 services with bounded concurrency, retries, and graph overrides
+- Account-aware scanning configuration for multiple AWS accounts, evaluated one account per scan
+- Service detection and service-level scoring
+- Contextualized findings and prioritized remediation
+- Evidence model and manual DR test evidence registration
+- Scenario coverage and runbook liveness checks
+- Posture memory, history, drift, and DR debt tracking
+- Lightweight governance with declared ownership, risk acceptances, and policy checks
+- Encryption, redaction, audit trail, self-hosted deployment, and a GitHub Action workspace
+
+### Next
+
+- Deeper cloud provider coverage
+- Stronger restore-test orchestration support
+- Richer CI/CD integrations
+- Board-ready and stakeholder-ready reporting
+- Collaborative workflows in self-hosted mode
+
+## Who Stronghold is for
+
+- **SRE and platform teams.** Know what is still recoverable, what degraded, and what needs action next.
+- **Security and resilience leaders.** Track evidence maturity, accepted risk, posture drift, and declared accountability.
+- **Engineering leadership.** Understand service-level DR exposure and remediation priorities without reducing everything to a single score.
 
 ## Documentation
 
 - [Getting Started](docs/getting-started.md)
 - [Architecture](docs/architecture.md)
 - [Security Model](docs/security.md)
-- [Licensing FAQ](docs/licensing-faq.md)
 - [DRP Specification](docs/drp-spec.md)
 - [AWS Provider](docs/providers/aws.md)
 - [Validation Rules](docs/validation-rules.md)
 - [Scoring](docs/scoring.md)
-- [Self-Hosted Deployment](docs/self-hosted.md)
-
-## What You Get
-
-```text
-DR Posture Score
-Score: 52/100 (Grade: D)
-
-Score by Category
-Backup        60/100 ############........
-Redundancy    78/100 ################....
-Failover      55/100 ###########.........
-Detection     40/100 ########............
-Recovery     100/100 ####################
-Replication    0/100 ....................
-
-Critical Failures
-critical backup_plan_exists - prod-db-primary
-No AWS Backup plan covers this resource.
-Impact: 2 services depend directly on this resource.
-Remediation: Attach the resource to an AWS Backup plan.
-
-critical rds_replica_healthy - prod-db-primary
-No read replicas found.
-Impact: 2 services depend directly on this resource.
-Remediation: Create at least one healthy read replica for the primary instance.
-
-High Failures
-high cloudwatch_alarm_exists - prod-db-primary
-No CloudWatch alarm targets this resource.
-Impact: 2 services depend directly on this resource.
-Remediation: Create at least one CloudWatch alarm to reduce detection time during incidents.
-
-Warnings
-No warnings.
-
-Methodology
-Weighted by rule severity x node criticality x blast radius (log2, direct dependents only)
-This score measures the percentage of recommended DR mechanisms in place, weighted by severity and impact. It does not guarantee recovery capability - only a tested DR plan can provide that assurance.
-```
-
-## What's in a Scan Result
-
-Scan results are stored locally in `.stronghold/latest-scan.json` by default, or in `.stronghold/latest-scan.stronghold-enc` when `--encrypt` is used. They contain:
-
-- **Included:** Resource ARNs, configuration metadata (backup settings, AZ placement, replication status), dependency maps, DR validation results
-- **Never included:** AWS credentials, secrets, application data, database contents, customer data
-
-Scan results contain infrastructure topology information. Review before sharing or committing to version control.
-
-## Roadmap
-
-- [x] AWS scanner (16 services including Aurora, EFS, Route53, CloudWatch)
-- [x] Dependency graph with SPOF and blast radius analysis
-- [x] DRP-as-Code - YAML generation with topological recovery order
-- [x] DR validation engine with weighted posture scoring
-- [x] Honest RTO/RPO with documented AWS sources
-- [x] Drift detection
-- [x] CLI with demo mode and IAM policy generator
-- [x] Self-hosted Docker deployment
-- [x] Web UI with interactive dependency graph
-- [x] Executable DRP (generate runbooks with AWS CLI commands)
-- [ ] Azure scanner (skeleton in place)
-- [ ] GCP scanner
-- [ ] Continuous drift monitoring (cloud feature)
-- [ ] Restore testing with measured RTO
-- [ ] PDF board-ready reports
-- [ ] NIS2 / DORA compliance mapping
-- [ ] Slack / PagerDuty integration
+- [Self-hosted Deployment](docs/self-hosted.md)
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
-
-```bash
-git clone https://github.com/mehdi-arfaoui/stronghold.git
-cd stronghold && npm install && npm run build && npm run test
-```
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
 
 ## License
 
-[AGPL-3.0](LICENSE) - free to use, modify, and self-host. If you modify and offer it as a service, you must open-source your changes.
-
-Built with heart for the DevOps and SRE community.
+[AGPL-3.0](LICENSE)
