@@ -1,5 +1,5 @@
 /**
- * Simulation propagation engine — cascades failures through the graph
+ * Graph scenario propagation engine — cascades failures through the graph
  * using realistic delay profiles per edge type.
  */
 
@@ -23,7 +23,7 @@ import {
   calculatePropagationDelay,
   inferPropagationEdgeType,
   normalizeDependencyEdge,
-} from './simulation-propagation-types.js';
+} from './graph-scenario-propagation-types.js';
 
 function toImpactSeverity(
   impactType: SimulationPropagationEvent['impactType'],
@@ -144,6 +144,8 @@ export function buildSimulationPropagation(input: {
 
   return { propagationTimeline: timeline, impactedNodes, cascadeNodes };
 }
+
+export const buildGraphScenarioPropagation = buildSimulationPropagation;
 
 function seedInitialFailures(
   initNodes: string[],

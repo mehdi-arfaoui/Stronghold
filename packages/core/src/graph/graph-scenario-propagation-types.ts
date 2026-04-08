@@ -1,5 +1,5 @@
 /**
- * Types and constants for simulation propagation delay model.
+ * Types and constants for graph scenario propagation delay modeling.
  */
 
 import { EdgeType, NodeType } from '../types/index.js';

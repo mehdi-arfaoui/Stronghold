@@ -7,7 +7,7 @@ import {
   type SimulationScenario,
 } from '../types/index.js';
 import type { GraphInstance } from './graph-instance.js';
-import { runSimulation } from './simulation-engine.js';
+import { runSimulation } from './graph-scenario-engine.js';
 
 type TestGraph = DirectedGraph<Record<string, unknown>, Record<string, unknown>>;
 

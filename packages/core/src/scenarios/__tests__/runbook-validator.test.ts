@@ -45,6 +45,28 @@ describe('validateRunbookLiveness', () => {
       }),
     );
   });
+
+  it('ignores generic AWS CLI tokens that are not resource identifiers', () => {
+    const runbook = createRunbook({
+      stepCommand:
+        'aws rds describe-db-instances --db-instance-identifier payment-db --region eu-west-3 --query "DBInstances[0].AvailabilityZone" --output text',
+    });
+    const validation = validateRunbookLiveness(runbook, [createNode('payment-db', 'DATABASE')]);
+
+    expect(validation.isAlive).toBe(true);
+    expect(validation.staleReferences).toEqual([]);
+  });
+
+  it('ignores target resource identifiers that represent future restore outputs', () => {
+    const runbook = createRunbook({
+      stepCommand:
+        'aws rds restore-db-instance-to-point-in-time --source-db-instance-identifier payment-db --target-db-instance-identifier payment-db-dr-20260408 --region eu-west-3',
+    });
+    const validation = validateRunbookLiveness(runbook, [createNode('payment-db', 'DATABASE')]);
+
+    expect(validation.isAlive).toBe(true);
+    expect(validation.staleReferences).toEqual([]);
+  });
 });
 
 function createRunbook(

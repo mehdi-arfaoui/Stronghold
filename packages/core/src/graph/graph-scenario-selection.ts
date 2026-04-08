@@ -1,5 +1,5 @@
 /**
- * Scenario application — resolves simulation scenarios into
+ * Graph scenario selection — resolves disruption scenarios into
  * affected node IDs by region, AZ, type, or custom selection.
  */
 
@@ -11,21 +11,21 @@ export const SCENARIO_TEMPLATES: ScenarioTemplate[] = [
   {
     id: 'region_loss',
     name: 'Complete Region Loss',
-    description: 'Simulates total loss of a cloud region (e.g., AWS eu-west-1)',
+    description: 'Models total loss of a cloud region (e.g., AWS eu-west-1)',
     icon: 'globe',
     params: [{ name: 'region', type: 'select', options: 'dynamic_from_graph' }],
   },
   {
     id: 'az_loss',
     name: 'Availability Zone Loss',
-    description: 'Simulates loss of a single AZ (e.g., eu-west-1a)',
+    description: 'Models loss of a single AZ (e.g., eu-west-1a)',
     icon: 'building',
     params: [{ name: 'az', type: 'select', options: 'dynamic_from_graph' }],
   },
   {
     id: 'ransomware',
     name: 'Ransomware Attack',
-    description: 'Simulates encryption of all servers of a given type/tag',
+    description: 'Models encryption of all servers of a given type/tag',
     icon: 'lock',
     params: [
       { name: 'targetType', type: 'select', options: Object.values(NodeType) },
@@ -35,14 +35,14 @@ export const SCENARIO_TEMPLATES: ScenarioTemplate[] = [
   {
     id: 'database_failure',
     name: 'Database Failure',
-    description: 'Simulates failure of one or more databases',
+    description: 'Models failure of one or more databases',
     icon: 'database',
     params: [{ name: 'databases', type: 'multi_select', options: 'dynamic_databases' }],
   },
   {
     id: 'network_partition',
     name: 'Network Partition',
-    description: 'Simulates loss of connectivity between two VPCs/subnets',
+    description: 'Models loss of connectivity between two VPCs/subnets',
     icon: 'plug',
     params: [
       { name: 'vpcA', type: 'select', options: 'dynamic_vpcs' },
@@ -52,14 +52,14 @@ export const SCENARIO_TEMPLATES: ScenarioTemplate[] = [
   {
     id: 'third_party_outage',
     name: 'Third-Party Service Outage',
-    description: 'Simulates unavailability of an external service (API, SaaS)',
+    description: 'Models unavailability of an external service (API, SaaS)',
     icon: 'cloud',
     params: [{ name: 'service', type: 'select', options: 'dynamic_third_party' }],
   },
   {
     id: 'dns_failure',
     name: 'DNS Failure',
-    description: 'Simulates a DNS service failure',
+    description: 'Models a DNS service failure',
     icon: 'signal',
     params: [],
   },
@@ -237,3 +237,7 @@ export function getScenarioOptions(graph: GraphInstance): Record<string, string[
     allNodes,
   };
 }
+
+export const GRAPH_SCENARIO_TEMPLATES = SCENARIO_TEMPLATES;
+export const applyGraphScenario = applyScenario;
+export const getGraphScenarioOptions = getScenarioOptions;

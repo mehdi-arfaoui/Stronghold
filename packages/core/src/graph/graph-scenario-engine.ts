@@ -1,6 +1,6 @@
 /**
- * Simulation engine — runs what-if scenarios on the infrastructure graph.
- * Orchestrates scenario application, cascade propagation, business impact,
+ * Graph scenario engine — runs what-if disruption scenarios on the infrastructure graph.
+ * Orchestrates scenario selection, cascade propagation, business impact,
  * recommendations, and war room data generation.
  */
 
@@ -16,8 +16,8 @@ import type {
 import { NodeType } from '../types/index.js';
 import type { GraphInstance } from './graph-instance.js';
 import { cloneGraph, calculateCascade } from './graph-utils.js';
-import { buildSimulationPropagation } from './simulation-propagation.js';
-import { applyScenario } from './simulation-scenarios.js';
+import { buildSimulationPropagation } from './graph-scenario-propagation.js';
+import { applyScenario } from './graph-scenario-selection.js';
 
 export function runSimulation(
   graph: GraphInstance,
@@ -103,6 +103,8 @@ export function runSimulation(
     postIncidentResilienceScore: calculatePostIncidentScore(totalAffected, totalNodes, cascade),
   };
 }
+
+export const analyzeGraphScenario = runSimulation;
 
 function identifyBusinessImpact(
   graph: GraphInstance,
@@ -243,7 +245,7 @@ function generateRecommendations(
       push({
         priority: 'P0',
         title: `Ajouter redondance pour ${node.name}`,
-        description: `${node.name} est marque comme SPOF et se trouve dans la zone d'impact de la simulation.`,
+        description: `${node.name} est marque comme SPOF et se trouve dans la zone d'impact du scenario.`,
         action: `Deployer une instance secondaire et valider le basculement pour ${node.name}.`,
         estimatedRto: 30,
         affectedNodes: [node.id],

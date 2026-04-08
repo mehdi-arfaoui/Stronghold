@@ -10,6 +10,46 @@ interface ReferenceMatch {
   readonly componentType: string;
 }
 
+const RESOURCE_REFERENCE_FLAGS = new Set([
+  'backup-plan-id',
+  'backup-vault-name',
+  'cache-cluster-id',
+  'cluster-name',
+  'db-cluster-identifier',
+  'db-instance-identifier',
+  'db-snapshot-identifier',
+  'file-system-id',
+  'function-name',
+  'group-id',
+  'health-check-id',
+  'hosted-zone-id',
+  'load-balancer-arn',
+  'load-balancer-name',
+  'mount-target-id',
+  'nodegroup-name',
+  'queue-name',
+  'queue-url',
+  'recovery-point-arn',
+  'replication-group-id',
+  'resource-arn',
+  'resource-id',
+  'source-db-instance-identifier',
+  'source-table-name',
+  'subnet-id',
+  'table-name',
+  'topic-arn',
+  'topic-name',
+  'vpc-id',
+]);
+
+const RESOURCE_TOKEN_PATTERNS = [
+  /arn:aws:[^\s"'`]+/gi,
+  /https:\/\/sqs\.[^\s"'`]+/gi,
+  /\broute53-record:[a-z0-9_.:-]+\b/gi,
+  /\b(?:i|sg|subnet|vpc|rtb|igw|nat|eni|eipalloc|eipassoc|vol|snap|fs|fsap|vpce|acl|lt|ami)-[a-z0-9-]+\b/gi,
+  /\bz[a-z0-9]{6,}\b/gi,
+] as const;
+
 export function validateRunbookLiveness(
   runbook: DRPRunbook,
   currentNodes: readonly InfraNodeAttrs[],
@@ -143,24 +183,24 @@ function extractCandidatesFromCommand(command: RunbookCommand): readonly string[
     return [];
   }
 
-  const explicitFlags = Array.from(
-    value.matchAll(/--[a-z0-9-]+\s+([A-Za-z0-9:/._-]+)/gi),
-    (match) => match[1] ?? '',
-  );
-  const tokens = value.match(/[A-Za-z0-9:/._-]{3,}/g) ?? [];
-  return Array.from(
-    new Set(
-      [...explicitFlags, ...tokens].filter((token) => {
-        const normalized = normalizeReference(token);
-        return (
-          normalized.startsWith('arn:') ||
-          normalized.includes('/') ||
-          normalized.includes(':') ||
-          /^[a-z0-9][a-z0-9._-]*-[a-z0-9._-]+$/i.test(normalized)
-        );
-      }),
-    ),
-  );
+  const candidates = new Set<string>();
+
+  for (const match of value.matchAll(/--([a-z0-9-]+)\s+("[^"]*"|'[^']*'|[^\s]+)/gi)) {
+    const flag = normalizeReference(match[1] ?? '');
+    const rawValue = match[2] ?? '';
+    if (!RESOURCE_REFERENCE_FLAGS.has(flag)) {
+      continue;
+    }
+    addCandidate(candidates, rawValue);
+  }
+
+  for (const pattern of RESOURCE_TOKEN_PATTERNS) {
+    for (const match of value.matchAll(pattern)) {
+      addCandidate(candidates, match[0] ?? '');
+    }
+  }
+
+  return Array.from(candidates);
 }
 
 function commandValue(command: RunbookCommand): string {
@@ -183,9 +223,39 @@ function stepMentionsReference(command: RunbookCommand, reference: string): bool
 }
 
 function normalizeReference(value: string): string {
-  return value.trim().replace(/^["']|["']$/g, '').toLowerCase();
+  return value
+    .trim()
+    .replace(/^[\s"'`([{<]+|[\s"'`,.;)\]}>]+$/g, '')
+    .replace(/\.$/, '')
+    .toLowerCase();
 }
 
 function buildStepId(component: ComponentRunbook, order: number): string {
   return `${component.componentId}:${order}`;
+}
+
+function addCandidate(target: Set<string>, value: string): void {
+  if (!shouldTrackReference(value)) {
+    return;
+  }
+  const normalized = normalizeReference(value);
+  target.add(normalized);
+}
+
+function shouldTrackReference(value: string): boolean {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return false;
+  }
+  if (/^<[^>]+>$/.test(trimmed)) {
+    return false;
+  }
+  const normalized = normalizeReference(trimmed);
+  if (/^\d+$/.test(normalized)) {
+    return false;
+  }
+  if (/^[a-z]{2}(?:-gov)?-[a-z]+-\d$/.test(normalized)) {
+    return false;
+  }
+  return true;
 }

@@ -1,4 +1,4 @@
-/** Failure simulation, war room, and recovery scenario types. */
+/** Graph-based scenario analysis, war room, and recovery scenario types. */
 
 import type { CascadeNode } from './analysis.js';
 
@@ -172,7 +172,7 @@ export interface LandingZoneReport {
   };
 }
 
-/** Scenario template for simulation presets. */
+/** Scenario template for graph scenario presets. */
 export interface ScenarioTemplate {
   readonly id: string;
   readonly name: string;

@@ -56,10 +56,20 @@ export { analyzeFullGraph } from './graph-analysis-engine.js';
 
 export { generateLandingZoneRecommendations } from './landing-zone-service.js';
 
-export { SCENARIO_TEMPLATES, applyScenario, getScenarioOptions } from './simulation-scenarios.js';
+export {
+  SCENARIO_TEMPLATES,
+  GRAPH_SCENARIO_TEMPLATES,
+  applyScenario,
+  applyGraphScenario,
+  getScenarioOptions,
+  getGraphScenarioOptions,
+} from './graph-scenario-selection.js';
 
-export { runSimulation } from './simulation-engine.js';
+export { runSimulation, analyzeGraphScenario } from './graph-scenario-engine.js';
 
-export { buildSimulationPropagation } from './simulation-propagation.js';
+export {
+  buildSimulationPropagation,
+  buildGraphScenarioPropagation,
+} from './graph-scenario-propagation.js';
 
 export { type GenerateBiaOptions, generateBIA } from './bia-engine.js';

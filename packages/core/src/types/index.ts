@@ -50,7 +50,7 @@ export {
   type LandingZoneItem,
   type LandingZoneReport,
   type ScenarioTemplate,
-} from './simulation.js';
+} from './graph-scenario.js';
 
 export {
   type CloudProvider,
