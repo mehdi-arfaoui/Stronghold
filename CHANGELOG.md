@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Encryption support for scan results with the CLI `--encrypt` flag and the server-side `STRONGHOLD_ENCRYPTION_KEY` setting.
 - A redaction engine for sensitive infrastructure data with the CLI `--redact` flag and the server `?redact=true` report query parameter.
 - An audit trail for CLI and server workflows with `.stronghold/audit.jsonl`, the `AuditLog` table, and `GET /api/audit`.
+- A service-centric DR intelligence layer with automatic service detection from CloudFormation stack tags, application tags and name prefixes, plus filtered topology clustering as a fallback.
+- Manual service definitions in `.stronghold/services.yml` with glob-based resource matching, conflict detection, flagged new matches, and merge precedence over auto-detected services.
+- Per-service DR scoring with weakest-link severity ceilings, role-aware weighting, unassigned-resource tracking, and contextual findings that combine technical impact, DR impact, remediation, and scenario-ready placeholders.
+- Service-aware CLI workflows with `stronghold services detect`, `stronghold services list`, `stronghold services show <name>`, and `stronghold status`, plus service-first scan and report output with backward-compatible fallback when no services are detected.
+- Persisted service posture in the server scan pipeline with dedicated REST endpoints: `GET /api/services`, `GET /api/services/:id`, and `POST /api/services/detect`.
+- A new web service experience with a dedicated Services page, per-service detail drill-down, dashboard service overview, and dependency graph coloring/filtering by service.
+- An auditable evidence model with five maturity levels (`observed`, `inferred`, `declared`, `tested`, `expired`) and confidence weights carried through validation, scoring, reports, and APIs.
+- Automatic evidence extraction for validation results, capturing raw observed metadata keys, values, expectations, timestamps, and inferred graph-based proofs for both passing and failing controls.
+- Manual DR test evidence registration with append-only `.stronghold/evidence.jsonl` storage, the CLI commands `stronghold evidence add`, `stronghold evidence list`, and `stronghold evidence show <id>`, plus server endpoints `GET /api/evidence`, `GET /api/evidence/expiring`, and `POST /api/evidence`.
+- Evidence freshness tracking with default expiration policies, expiring-soon and expired alerts in `stronghold status`, and retained historical evidence instead of silent deletion.
+- Evidence-aware scoring that rewards stronger proof for passing controls, exposes per-rule score decomposition with `stronghold report --explain-score`, and highlights the potential score gap between observed and test-verified resilience.
+- Evidence visibility across the product with evidence lines in CLI findings, evidence summaries in scan output, service-detail evidence badges in the web UI, and dashboard evidence alerts.
 - Security documentation in [docs/security.md](docs/security.md).
 - An AGPL licensing FAQ in [docs/licensing-faq.md](docs/licensing-faq.md).
 
