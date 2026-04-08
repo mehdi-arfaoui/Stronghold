@@ -6,6 +6,11 @@ import { FileEvidenceStore, checkFreshness, type Evidence } from '@stronghold-dr
 import { CommandAuditSession, resolveAuditIdentity } from '../audit/command-audit.js';
 import { writeOutput } from '../output/io.js';
 import {
+  getRenderedScenarios,
+  renderScenarioCoverageHeadline,
+  renderScenarioCoverageLine,
+} from '../output/scenario-renderer.js';
+import {
   formatFindingsCount,
   hasDetectedServices,
   selectTopServiceRecommendations,
@@ -63,8 +68,18 @@ export function renderStatusSnapshot(
   evidence: readonly Evidence[] = [],
 ): string {
   const lines = [`DR Posture - ${scan.timestamp.slice(0, 10)}`, ''];
+  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
+  const scenarioCoverageLine = scan.scenarioAnalysis
+    ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
+    : null;
   if (!hasDetectedServices(scan.servicePosture)) {
-    lines.push(`Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`);
+    lines.push(
+      scenarioHeadline ??
+        `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+    );
+    if (scenarioCoverageLine) {
+      lines.push(scenarioCoverageLine);
+    }
     lines.push(`Tip: Organize your resources into services with 'stronghold services detect'`);
     lines.push(`Run 'stronghold scan' to refresh.`);
     return lines.join('\n');
@@ -81,6 +96,13 @@ export function renderStatusSnapshot(
     );
   }
 
+  const scenarioAlerts = renderScenarioAlerts(scan);
+  if (scenarioAlerts.length > 0) {
+    lines.push('');
+    lines.push('  Scenarios:');
+    lines.push(...scenarioAlerts);
+  }
+
   const evidenceAlerts = renderEvidenceAlerts(evidence);
   if (evidenceAlerts.length > 0) {
     lines.push('');
@@ -91,7 +113,7 @@ export function renderStatusSnapshot(
   const nextAction = selectTopServiceRecommendations(scan.servicePosture.recommendations, 1)[0] ?? null;
   lines.push('');
   lines.push(
-    `  Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+    `  ${scenarioHeadline ?? `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`}`,
   );
   lines.push(
     `  Next action: ${nextAction ? `${nextAction.title} [${nextAction.risk.toUpperCase()}]` : 'No safe recommendations available'}`,
@@ -112,6 +134,38 @@ function renderEvidenceAlerts(evidence: readonly Evidence[]): readonly string[] 
         ? `    x ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} evidence EXPIRED - last test: ${entry.timestamp.slice(0, 10)}`
         : `    ! ${shortResourceLabel(entry.subject.nodeId)} ${evidenceLabel(entry)} expires in ${freshness.daysUntilExpiry} days - re-test recommended`,
     );
+}
+
+function renderScenarioAlerts(
+  scan: Awaited<ReturnType<typeof loadScanResultsWithEncryption>>,
+): readonly string[] {
+  if (!scan.scenarioAnalysis || scan.scenarioAnalysis.summary.total === 0) {
+    return [];
+  }
+
+  const summary = scan.scenarioAnalysis.summary;
+  const scenarios = getRenderedScenarios(scan.scenarioAnalysis);
+  const uncovered = scenarios.filter((scenario) => scenario.coverage?.verdict === 'uncovered');
+  const degraded = scenarios.filter((scenario) => scenario.coverage?.verdict === 'degraded');
+  const highlightedScenarios = (uncovered.length > 0 ? uncovered : degraded)
+    .slice(0, 3)
+    .map((scenario) => scenario.name)
+    .join(', ');
+  const lines = [
+    `    ${summary.covered}/${summary.total} covered, ${summary.partiallyCovered} partial, ${summary.uncovered} uncovered${summary.degraded > 0 ? `, ${summary.degraded} degraded` : ''}`,
+  ];
+
+  if (uncovered.length > 0) {
+    lines.push(
+      `    ${uncovered.length} uncovered scenario${uncovered.length === 1 ? '' : 's'} - including ${highlightedScenarios}`,
+    );
+  } else if (degraded.length > 0) {
+    lines.push(
+      `    ${degraded.length} degraded scenario${degraded.length === 1 ? '' : 's'} - including ${highlightedScenarios}`,
+    );
+  }
+
+  return lines;
 }
 
 function calculateDebt(

@@ -1,5 +1,6 @@
 export type ServerErrorCode =
   | 'SCAN_NOT_FOUND'
+  | 'SCENARIO_NOT_FOUND'
   | 'PLAN_NOT_FOUND'
   | 'REPORT_NOT_FOUND'
   | 'INVALID_INPUT'

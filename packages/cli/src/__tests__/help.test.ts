@@ -26,6 +26,7 @@ describe('CLI help output', () => {
     expect(help).toContain('overrides');
     expect(help).toContain('demo');
     expect(help).toContain('iam-policy');
+    expect(help).toContain('scenarios');
     expect(help).toContain('services');
     expect(help).toContain('status');
   });

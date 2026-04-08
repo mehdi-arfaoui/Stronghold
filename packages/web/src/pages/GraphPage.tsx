@@ -111,6 +111,7 @@ function buildIndividualNode(
   serviceLabel?: string,
   accentColor?: string,
   muted = false,
+  scenarioState?: GraphVisualData['scenarioState'],
 ): Node<GraphVisualData> {
   return {
     id: node.id,
@@ -125,12 +126,42 @@ function buildIndividualNode(
       serviceLabel,
       accentColor,
       muted,
+      scenarioState,
     },
   };
 }
 
 function normalizeEdgeProvenance(value: unknown): 'manual' | 'inferred' | 'aws-api' {
   return value === 'manual' || value === 'inferred' || value === 'aws-api' ? value : 'aws-api';
+}
+
+function isScenarioApplicationEdge(type: string): boolean {
+  return [
+    'depends_on',
+    'triggers',
+    'publishes_to',
+    'subscribes_to',
+    'connects_to',
+    'routes_to',
+  ].includes(type);
+}
+
+function resolveScenarioState(
+  nodeIds: readonly string[],
+  directIds: ReadonlySet<string>,
+  cascadeIds: ReadonlySet<string>,
+  scenarioMode: boolean,
+): GraphVisualData['scenarioState'] {
+  if (!scenarioMode) {
+    return undefined;
+  }
+  if (nodeIds.some((nodeId) => directIds.has(nodeId))) {
+    return 'direct';
+  }
+  if (nodeIds.some((nodeId) => cascadeIds.has(nodeId))) {
+    return 'cascade';
+  }
+  return 'unaffected';
 }
 
 export default function GraphPage(): JSX.Element {
@@ -145,6 +176,10 @@ export default function GraphPage(): JSX.Element {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [selectedServiceFilter, setSelectedServiceFilter] = useState<string | null>(
     searchParams.get('service'),
+  );
+  const [scenarioMode, setScenarioMode] = useState(searchParams.get('scenario') != null);
+  const [selectedScenarioId, setSelectedScenarioId] = useState<string | null>(
+    searchParams.get('scenario'),
   );
   const [focusRequest, setFocusRequest] = useState<{ readonly id: string; readonly nonce: number } | null>(null);
   const [command, setCommand] = useState<{ readonly type: 'zoom-in' | 'zoom-out' | 'fit'; readonly nonce: number } | null>(null);
@@ -176,6 +211,12 @@ export default function GraphPage(): JSX.Element {
 
   useEffect(() => {
     setSelectedServiceFilter(searchParams.get('service'));
+  }, [searchParams]);
+
+  useEffect(() => {
+    const scenario = searchParams.get('scenario');
+    setScenarioMode(scenario != null);
+    setSelectedScenarioId(scenario);
   }, [searchParams]);
 
   const rawNodes = useMemo(
@@ -214,6 +255,25 @@ export default function GraphPage(): JSX.Element {
         .sort((left, right) => left.name.localeCompare(right.name)),
     [data?.scanData.servicePosture?.services],
   );
+  const availableScenarios = useMemo(
+    () => data?.scanData.scenarioAnalysis?.scenarios ?? [],
+    [data?.scanData.scenarioAnalysis?.scenarios],
+  );
+
+  useEffect(() => {
+    if (!scenarioMode) {
+      return;
+    }
+
+    if (availableScenarios.length === 0) {
+      setSelectedScenarioId(null);
+      return;
+    }
+
+    if (!selectedScenarioId || !availableScenarios.some((scenario) => scenario.id === selectedScenarioId)) {
+      setSelectedScenarioId(availableScenarios[0]?.id ?? null);
+    }
+  }, [availableScenarios, scenarioMode, selectedScenarioId]);
 
   const allNodeMap = useMemo(
     () => new Map(rawNodes.map((node) => [node.id, node])),
@@ -228,6 +288,23 @@ export default function GraphPage(): JSX.Element {
   const statusMap = useMemo(
     () => (validationReport ? buildStatusMap(validationReport) : new Map<string, ValidationStatus>()),
     [validationReport],
+  );
+  const selectedScenario = useMemo(
+    () =>
+      availableScenarios.find((scenario) => scenario.id === selectedScenarioId) ?? null,
+    [availableScenarios, selectedScenarioId],
+  );
+  const directScenarioIds = useMemo(
+    () => new Set(selectedScenario?.impact?.directlyAffected.map((node) => node.nodeId) ?? []),
+    [selectedScenario],
+  );
+  const cascadeScenarioIds = useMemo(
+    () => new Set(selectedScenario?.impact?.cascadeAffected.map((node) => node.nodeId) ?? []),
+    [selectedScenario],
+  );
+  const affectedScenarioIds = useMemo(
+    () => new Set([...directScenarioIds, ...cascadeScenarioIds]),
+    [cascadeScenarioIds, directScenarioIds],
   );
 
   const filteredNodes = useMemo(
@@ -301,6 +378,12 @@ export default function GraphPage(): JSX.Element {
                   serviceColorById,
                   selectedServiceFilter,
                 ),
+                scenarioState: resolveScenarioState(
+                  members.map((member) => member.id),
+                  directScenarioIds,
+                  cascadeScenarioIds,
+                  scenarioMode,
+                ),
               },
             });
           }
@@ -318,8 +401,10 @@ export default function GraphPage(): JSX.Element {
           serviceAssignments.get(node.id)
             ? serviceColorById.get(serviceAssignments.get(node.id)?.id ?? '')
             : '#6b7280',
-          selectedServiceFilter !== null &&
-            serviceAssignments.get(node.id)?.id !== selectedServiceFilter,
+          (selectedServiceFilter !== null &&
+            serviceAssignments.get(node.id)?.id !== selectedServiceFilter) ||
+            (scenarioMode && !affectedScenarioIds.has(node.id)),
+          resolveScenarioState([node.id], directScenarioIds, cascadeScenarioIds, scenarioMode),
         ),
       );
     });
@@ -333,6 +418,7 @@ export default function GraphPage(): JSX.Element {
         readonly type: string;
         provenance: 'manual' | 'inferred' | 'aws-api';
         count: number;
+        highlighted: boolean;
       }
     >();
 
@@ -348,9 +434,15 @@ export default function GraphPage(): JSX.Element {
       }
 
       const key = `${source}:${target}:${edge.type}`;
+      const highlighted =
+        scenarioMode &&
+        affectedScenarioIds.has(edge.source) &&
+        affectedScenarioIds.has(edge.target) &&
+        isScenarioApplicationEdge(edge.type);
       const current = edgeWeights.get(key);
       if (current) {
         current.count += 1;
+        current.highlighted = current.highlighted || highlighted;
         const provenance = normalizeEdgeProvenance(edge.provenance);
         if (EDGE_PROVENANCE_PRIORITY[provenance] < EDGE_PROVENANCE_PRIORITY[current.provenance]) {
           current.provenance = provenance;
@@ -364,6 +456,7 @@ export default function GraphPage(): JSX.Element {
         type: edge.type,
         provenance: normalizeEdgeProvenance(edge.provenance),
         count: 1,
+        highlighted,
       });
     });
 
@@ -375,6 +468,8 @@ export default function GraphPage(): JSX.Element {
         label: value.count > 1 ? `${value.type} x${value.count}` : value.type,
         data: {
           provenance: value.provenance,
+          highlighted: value.highlighted,
+          dimmed: scenarioMode && !value.highlighted,
         },
       }),
     );
@@ -385,7 +480,7 @@ export default function GraphPage(): JSX.Element {
       memberGroupMap,
       nodeToDisplayMap: nodeToDisplay,
     };
-  }, [componentById, expandAll, expandedGroups, filteredNodes, rawEdges, selectedServiceFilter, selectedTypes.size, serviceAssignments, serviceColorById, statusMap]);
+  }, [affectedScenarioIds, cascadeScenarioIds, componentById, directScenarioIds, expandAll, expandedGroups, filteredNodes, rawEdges, scenarioMode, selectedServiceFilter, selectedTypes.size, serviceAssignments, serviceColorById, statusMap]);
 
   const searchOptions = useMemo(
     () =>
@@ -553,6 +648,63 @@ export default function GraphPage(): JSX.Element {
             </select>
           </section>
           <section className="panel p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Scenario mode</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Highlight direct and cascading disruption impact on the graph.
+                </p>
+              </div>
+              <label className="inline-flex items-center gap-3 text-sm text-foreground">
+                <input
+                  type="checkbox"
+                  className="h-4 w-4"
+                  style={{ accentColor: 'hsl(var(--accent))' }}
+                  checked={scenarioMode}
+                  onChange={(event) => setScenarioMode(event.target.checked)}
+                />
+                Enabled
+              </label>
+            </div>
+            {scenarioMode ? (
+              <div className="mt-4 space-y-3">
+                {availableScenarios.length > 0 ? (
+                  <select
+                    value={selectedScenarioId ?? ''}
+                    onChange={(event) => setSelectedScenarioId(event.target.value || null)}
+                    className="input-field w-full"
+                  >
+                    {availableScenarios.map((scenario) => (
+                      <option key={scenario.id} value={scenario.id}>
+                        {scenario.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-border p-3 text-sm text-muted-foreground">
+                    Scenario analysis is not available for the selected scan yet.
+                  </div>
+                )}
+                <div className="grid gap-3 md:grid-cols-3">
+                  <div className="rounded-2xl border border-border bg-elevated p-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-subtle-foreground">Direct</p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{selectedScenario?.impact?.directlyAffected.length ?? 0}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-elevated p-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-subtle-foreground">Cascade</p>
+                    <p className="mt-2 text-2xl font-semibold text-foreground">{selectedScenario?.impact?.cascadeAffected.length ?? 0}</p>
+                  </div>
+                  <div className="rounded-2xl border border-border bg-elevated p-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-subtle-foreground">Coverage</p>
+                    <p className="mt-2 text-sm font-medium text-foreground">
+                      {selectedScenario?.coverage?.verdict?.replace('_', ' ') ?? 'unknown'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </section>
+          <section className="panel p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Edge legend</p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm text-foreground">
               <div className="flex items-center gap-2">
@@ -570,6 +722,14 @@ export default function GraphPage(): JSX.Element {
                 />
                 <span>Manual override</span>
               </div>
+              {scenarioMode ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="w-9 border-t-2 border-amber-400" />
+                    <span>Scenario impact path</span>
+                  </div>
+                </>
+              ) : null}
             </div>
           </section>
           <InfraGraph

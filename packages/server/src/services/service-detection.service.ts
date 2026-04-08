@@ -74,13 +74,23 @@ export class ServiceDetectionService {
     params: BuildServicePostureParams,
   ): Promise<ServicePosture> {
     const { posture, warnings } = this.buildServicePosture(params);
+    return this.saveServicePosture(scanId, posture, params.validationReport.scoreBreakdown.overall, params.validationReport.scoreBreakdown.grade, warnings);
+  }
+
+  public async saveServicePosture(
+    scanId: string,
+    posture: ServicePosture,
+    score: number,
+    grade: string,
+    warnings: readonly string[] = [],
+  ): Promise<ServicePosture> {
     await this.scanRepository.saveReport({
       scanId,
       type: SERVICE_REPORT_TYPE,
       format: 'json',
       content: posture,
-      score: params.validationReport.scoreBreakdown.overall,
-      grade: params.validationReport.scoreBreakdown.grade,
+      score,
+      grade,
     });
 
     if (warnings.length > 0) {

@@ -12,6 +12,7 @@ import {
   hasDetectedServices,
   sortServiceEntries,
 } from './service-helpers.js';
+import { renderScenarioCoverageLine } from './scenario-renderer.js';
 import { formatGrade, theme } from './theme.js';
 
 export function renderScanSummary(
@@ -47,11 +48,21 @@ function renderLegacyScanSummary(
   lines.push('');
   lines.push(`   ${formatSeverityCounts(results.validationReport)}`);
   lines.push(...renderEvidenceSummary(results.validationReport));
+  const scenarioCoverage = results.scenarioAnalysis
+    ? renderScenarioCoverageLine(results.scenarioAnalysis.summary)
+    : null;
+  if (scenarioCoverage) {
+    lines.push('');
+    lines.push(`   ${scenarioCoverage}`);
+  }
 
   if (options.savedPath) {
     lines.push('');
     lines.push(`   Results saved to ${options.savedPath}`);
     lines.push(`   Run '${theme.command('stronghold report')}' for full DR posture report`);
+    if (scenarioCoverage) {
+      lines.push(`   Run '${theme.command('stronghold scenarios')}' for scenario coverage details`);
+    }
     lines.push(`   Run '${theme.command('stronghold plan generate')}' to export DRP as YAML`);
     lines.push(
       `   Run '${theme.command('stronghold plan runbook')}' to export an executable recovery runbook`,
@@ -115,11 +126,20 @@ function renderServiceCentricSummary(
 
   lines.push('');
   lines.push(`Global DR score: ${formatGrade(results.validationReport)}`);
+  const scenarioCoverage = results.scenarioAnalysis
+    ? renderScenarioCoverageLine(results.scenarioAnalysis.summary)
+    : null;
+  if (scenarioCoverage) {
+    lines.push(scenarioCoverage);
+  }
   lines.push(...renderEvidenceSummary(results.validationReport));
 
   if (options.savedPath) {
     lines.push(`Results saved to ${options.savedPath}`);
     lines.push(`Run '${theme.command('stronghold report')}' for the full DR posture report.`);
+    if (scenarioCoverage) {
+      lines.push(`Run '${theme.command('stronghold scenarios')}' for scenario coverage details.`);
+    }
     lines.push(`Run '${theme.command('stronghold services list')}' to manage service definitions.`);
     lines.push(`Run '${theme.command('stronghold plan generate')}' to export DRP as YAML.`);
     lines.push(

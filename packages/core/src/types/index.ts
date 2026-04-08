@@ -81,6 +81,8 @@ export {
   type ApiServiceSummary,
   type ApiServicesResponse,
   type ApiServiceDetailResponse,
+  type ApiScenariosResponse,
+  type ApiScenarioDetailResponse,
   type ApiStoredDrPlan,
   type ApiGeneratePlanResult,
   type ApiDriftEvent,

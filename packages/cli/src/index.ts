@@ -14,6 +14,7 @@ import { registerPlanCommand } from './commands/plan.js';
 import { registerReportCommand } from './commands/report.js';
 import { registerScanCommand } from './commands/scan.js';
 import { registerOverridesCommand } from './commands/overrides.js';
+import { registerScenariosCommand } from './commands/scenarios.js';
 import { registerServicesCommand } from './commands/services.js';
 import { registerStatusCommand } from './commands/status.js';
 
@@ -37,6 +38,7 @@ export function createProgram(): Command {
   registerOverridesCommand(program);
   registerDemoCommand(program);
   registerIamPolicyCommand(program);
+  registerScenariosCommand(program);
   registerServicesCommand(program);
   registerStatusCommand(program);
 

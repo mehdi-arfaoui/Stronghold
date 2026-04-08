@@ -10,6 +10,7 @@ import { buildServiceIndex, classifyResourceRole } from './service-utils.js';
 import type { ContextualFinding, RemediationAction } from './finding-types.js';
 import { humanizeRuleId, resolveImpactTemplate } from './impact-templates.js';
 import type { Service } from './service-types.js';
+import type { Scenario } from '../scenarios/scenario-types.js';
 
 interface TechnicalImpactHint {
   readonly metadataKey: string;
@@ -158,6 +159,32 @@ export function contextualizeFindings(
   });
 }
 
+export function populateScenarioImpact(
+  findings: readonly ContextualFinding[],
+  scenarios: readonly Scenario[],
+): readonly ContextualFinding[] {
+  return findings.map((finding) => {
+    const affectedScenarios = scenarios.filter((scenario) =>
+      isNodeAffectedInScenario(scenario, finding.nodeId),
+    );
+    if (affectedScenarios.length === 0) {
+      return {
+        ...finding,
+        scenarioImpact: null,
+      };
+    }
+
+    const worstScenario = selectWorstScenario(affectedScenarios, finding.serviceId);
+    return {
+      ...finding,
+      scenarioImpact: {
+        affectedScenarios: affectedScenarios.map((scenario) => scenario.id),
+        worstCaseOutcome: renderWorstCaseOutcome(worstScenario, finding.serviceId),
+      },
+    };
+  });
+}
+
 function extractFindingEvidence(finding: WeightedValidationResult): readonly Evidence[] {
   return 'evidence' in finding && Array.isArray(finding.evidence) ? finding.evidence : [];
 }
@@ -237,4 +264,101 @@ function canonicalRuleId(ruleId: string): string {
   if (ruleId.includes('dlq') || ruleId.includes('dead_letter')) return 'dead_letter_queue';
   if (ruleId.includes('encryption')) return 'encryption_at_rest';
   return ruleId;
+}
+
+function isNodeAffectedInScenario(scenario: Scenario, nodeId: string): boolean {
+  return (
+    scenario.impact?.directlyAffected.some((affected) => affected.nodeId === nodeId) === true ||
+    scenario.impact?.cascadeAffected.some((affected) => affected.nodeId === nodeId) === true
+  );
+}
+
+function selectWorstScenario(
+  scenarios: readonly Scenario[],
+  serviceId: string | null,
+): Scenario {
+  return scenarios
+    .slice()
+    .sort((left, right) => compareScenarioSeverity(left, right, serviceId))[0] ?? scenarios[0]!;
+}
+
+function compareScenarioSeverity(
+  left: Scenario,
+  right: Scenario,
+  serviceId: string | null,
+): number {
+  return (
+    serviceImpactRank(resolveServiceScenarioStatus(right, serviceId)) -
+      serviceImpactRank(resolveServiceScenarioStatus(left, serviceId)) ||
+    scenarioTypeRank(right.type) - scenarioTypeRank(left.type) ||
+    left.id.localeCompare(right.id)
+  );
+}
+
+function resolveServiceScenarioStatus(
+  scenario: Scenario,
+  serviceId: string | null,
+): 'down' | 'degraded' | 'unaffected' {
+  if (!serviceId) {
+    return scenario.impact && scenario.impact.totalAffectedNodes > 0 ? 'degraded' : 'unaffected';
+  }
+  return (
+    scenario.impact?.serviceImpact.find((impact) => impact.serviceId === serviceId)?.status ??
+    'unaffected'
+  );
+}
+
+function serviceImpactRank(status: 'down' | 'degraded' | 'unaffected'): number {
+  switch (status) {
+    case 'down':
+      return 3;
+    case 'degraded':
+      return 2;
+    case 'unaffected':
+    default:
+      return 1;
+  }
+}
+
+function scenarioTypeRank(type: Scenario['type']): number {
+  switch (type) {
+    case 'data_corruption':
+      return 5;
+    case 'node_failure':
+      return 4;
+    case 'region_failure':
+      return 3;
+    case 'az_failure':
+      return 2;
+    case 'service_outage':
+      return 1;
+    case 'custom':
+    default:
+      return 0;
+  }
+}
+
+function renderWorstCaseOutcome(
+  scenario: Scenario,
+  serviceId: string | null,
+): string {
+  switch (scenario.type) {
+    case 'az_failure':
+      return 'In an AZ failure, this resource becomes unavailable and the service has no failover path.';
+    case 'data_corruption':
+      return 'If data is corrupted, recovery requires a restore from backup which is not configured.';
+    case 'node_failure': {
+      const cascadeCount =
+        scenario.impact?.cascadeAffected.filter(
+          (affected) => !serviceId || affected.serviceId === serviceId,
+        ).length ?? 0;
+      return `If this SPOF fails, ${cascadeCount} dependent resource${cascadeCount === 1 ? '' : 's'} also ${cascadeCount === 1 ? 'fails' : 'fail'}.`;
+    }
+    case 'region_failure':
+      return 'If the region becomes unavailable, this resource loses its primary path and the service must recover elsewhere.';
+    case 'service_outage':
+    case 'custom':
+    default:
+      return 'This disruption removes the current recovery path for the affected service.';
+  }
 }

@@ -11,6 +11,9 @@ export type AuditAction =
   | 'services_detect'
   | 'services_list'
   | 'services_show'
+  | 'scenarios'
+  | 'scenarios_list'
+  | 'scenarios_show'
   | 'status';
 
 export interface AuditIdentity {
