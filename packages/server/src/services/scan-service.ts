@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import * as core from '@stronghold-dr/core';
 import {
+  analyzeBuiltInScenarios,
+  applyScenarioImpactToServicePosture,
   applyEvidenceFreshness,
   checkFreshness,
   EVIDENCE_CONFIDENCE,
@@ -20,6 +22,8 @@ import {
   validateDRPlan,
   type ApiAddEvidenceInput,
   type ApiEvidenceListResponse,
+  type ApiScenarioDetailResponse,
+  type ApiScenariosResponse,
   type ApiServicesResponse,
   type DRCategory,
   type DRPlan,
@@ -27,6 +31,7 @@ import {
   type DiscoveryCredentials,
   type Evidence,
   type InfraNode,
+  type ScenarioAnalysis,
   type ServicePosture,
   type ValidationReport,
   type ValidationSeverity,
@@ -58,6 +63,7 @@ export interface ValidationReportFilters {
 }
 
 const EVIDENCE_REPORT_TYPE = 'evidence';
+const SCENARIO_REPORT_TYPE = 'scenarios';
 const DEFAULT_TESTED_EVIDENCE_EXPIRATION_DAYS = 90;
 
 export class ScanService {
@@ -103,7 +109,10 @@ export class ScanService {
     if (!data) {
       throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
     }
-    const servicePosture = await this.serviceDetectionService.getPersistedServicePosture(scanId);
+    const [servicePosture, scenarioAnalysis] = await Promise.all([
+      this.serviceDetectionService.getPersistedServicePosture(scanId),
+      this.getPersistedScenarioAnalysis(scanId),
+    ]);
     const storedEvidence = await this.getStoredEvidence(scanId, this.buildServiceLookup(servicePosture));
     const validationReport =
       storedEvidence.length > 0
@@ -114,6 +123,7 @@ export class ScanService {
       ...data,
       validationReport,
       ...(servicePosture ? { servicePosture } : {}),
+      ...(scenarioAnalysis ? { scenarioAnalysis } : {}),
     };
   }
 
@@ -148,6 +158,43 @@ export class ScanService {
   public async redetectLatestServices() {
     const services = await this.serviceDetectionService.redetectLatestServices();
     return this.enrichServicesResponseWithEvidence(services);
+  }
+
+  public async listScenarios(): Promise<ApiScenariosResponse> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const analysis = await this.getPersistedScenarioAnalysis(latestScan.id);
+
+    return {
+      scanId: latestScan.id,
+      generatedAt: latestScan.updatedAt.toISOString(),
+      scenarios: analysis?.scenarios ?? [],
+      defaultScenarioIds: analysis?.defaultScenarioIds ?? [],
+      summary: analysis?.summary ?? {
+        total: 0,
+        covered: 0,
+        partiallyCovered: 0,
+        uncovered: 0,
+        degraded: 0,
+      },
+    };
+  }
+
+  public async getScenarioDetail(id: string): Promise<ApiScenarioDetailResponse> {
+    const scenarios = await this.listScenarios();
+    const scenario = scenarios.scenarios.find((entry) => entry.id === id);
+    if (!scenario) {
+      throw new ServerError('Scenario not found', {
+        code: 'SCENARIO_NOT_FOUND',
+        status: 404,
+      });
+    }
+
+    return {
+      scanId: scenarios.scanId,
+      generatedAt: scenarios.generatedAt,
+      scenario,
+      summary: scenarios.summary,
+    };
   }
 
   public async listEvidence(filters: {
@@ -359,6 +406,11 @@ export class ScanService {
     const data = await this.getScanData(scanId);
     const graph = buildGraph(data.nodes, data.edges);
     return validateDRPlan(parsed.value, graph);
+  }
+
+  public async getPersistedScenarioAnalysis(scanId: string): Promise<ScenarioAnalysis | null> {
+    const report = await this.scanRepository.getLatestReportByType(scanId, SCENARIO_REPORT_TYPE);
+    return report ? (report.content as ScenarioAnalysis) : null;
   }
 
   private async getLatestCompletedScanRequired(): Promise<ScanSummary> {
@@ -576,12 +628,37 @@ export class ScanService {
         drPlan: execution.artifacts.drPlan,
         drPlanValidation: validation,
       });
-      await this.serviceDetectionService.persistServicePosture(scanId, {
+      const servicePostureResult = this.serviceDetectionService.buildServicePosture({
         nodes: execution.artifacts.nodes,
         edges: execution.artifacts.edges,
         validationReport: execution.artifacts.validationReport,
         drPlan: execution.artifacts.drPlan,
         previousAssignments,
+      });
+      const scenarioAnalysis = analyzeBuiltInScenarios({
+        graph: execution.artifacts.graph,
+        nodes: execution.artifacts.nodes,
+        services: servicePostureResult.posture.detection.services,
+        analysis: execution.artifacts.analysis,
+        drp: execution.artifacts.drPlan,
+        evidence: [],
+      });
+      const scenarioAwarePosture = applyScenarioImpactToServicePosture(
+        servicePostureResult.posture,
+        scenarioAnalysis.scenarios,
+      );
+      await this.serviceDetectionService.saveServicePosture(
+        scanId,
+        scenarioAwarePosture,
+        execution.artifacts.validationReport.scoreBreakdown.overall,
+        execution.artifacts.validationReport.scoreBreakdown.grade,
+        servicePostureResult.warnings,
+      );
+      await this.scanRepository.saveReport({
+        scanId,
+        type: SCENARIO_REPORT_TYPE,
+        format: 'json',
+        content: scenarioAnalysis,
       });
 
       if (execution.warnings.length > 0) {

@@ -25,6 +25,11 @@ import {
   hasDetectedServices,
   sortServiceEntries,
 } from './service-helpers.js';
+import {
+  buildScenarioNameLookup,
+  renderScenarioCoverageHeadline,
+  renderScenarioCoverageLine,
+} from './scenario-renderer.js';
 import { buildAsciiBar, formatGrade, formatSeverityLabel, theme } from './theme.js';
 
 export interface ReportRenderOptions {
@@ -166,9 +171,17 @@ export function renderTerminalServiceReport(
 
   const lines: string[] = [];
   const serviceLabels = buildServiceLookup(scan);
+  const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
+  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
+  const scenarioCoverageLine = scan.scenarioAnalysis
+    ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
+    : null;
 
   lines.push(theme.section('Executive Summary'));
-  lines.push(`Global score: ${formatGrade(scan.validationReport)}`);
+  lines.push(scenarioHeadline ?? `Global score: ${formatGrade(scan.validationReport)}`);
+  if (scenarioCoverageLine) {
+    lines.push(scenarioCoverageLine);
+  }
   lines.push(`Services detected: ${scan.servicePosture.services.length}`);
   lines.push(
     `Critical services: ${scan.servicePosture.services.filter((service) => service.score.criticality === 'critical').length}`,
@@ -186,6 +199,7 @@ export function renderTerminalServiceReport(
     appendContextualFindings(
       lines,
       filterContextualFindings(service.contextualFindings, options),
+      scenarioNameById,
     );
     appendServiceRecommendations(lines, service.recommendations);
   }
@@ -202,6 +216,7 @@ export function renderTerminalServiceReport(
     appendContextualFindings(
       lines,
       filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
+      scenarioNameById,
     );
     appendServiceRecommendations(lines, scan.servicePosture.unassigned.recommendations);
   }
@@ -239,11 +254,23 @@ export function renderMarkdownServiceReport(
 
   const lines: string[] = [];
   const serviceLabels = buildServiceLookup(scan);
+  const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
+  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
+  const scenarioCoverageLine = scan.scenarioAnalysis
+    ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
+    : null;
 
   lines.push('## Executive Summary');
   lines.push('');
-  lines.push(`- Global score: ${scan.validationReport.scoreBreakdown.overall}/100`);
-  lines.push(`- Grade: ${scan.validationReport.scoreBreakdown.grade}`);
+  lines.push(
+    scenarioHeadline
+      ? `- ${scenarioHeadline}`
+      :
+      `- Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+  );
+  if (scenarioCoverageLine) {
+    lines.push(`- ${scenarioCoverageLine}`);
+  }
   lines.push(`- Services detected: ${scan.servicePosture.services.length}`);
   lines.push('');
   appendMarkdownEvidenceMaturity(lines, scan.validationReport);
@@ -264,6 +291,7 @@ export function renderMarkdownServiceReport(
     appendMarkdownContextualFindings(
       lines,
       filterContextualFindings(service.contextualFindings, options),
+      scenarioNameById,
     );
     lines.push('');
     lines.push('### Recommendations');
@@ -279,6 +307,7 @@ export function renderMarkdownServiceReport(
     appendMarkdownContextualFindings(
       lines,
       filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, options),
+      scenarioNameById,
     );
   }
 
@@ -343,6 +372,9 @@ export function buildServiceReportJson(
           recommendations: [],
         },
     recommendations: posture?.recommendations ?? [],
+    scenarios: scan.scenarioAnalysis?.scenarios ?? [],
+    defaultScenarioIds: scan.scenarioAnalysis?.defaultScenarioIds ?? [],
+    scenarioCoverage: scan.scenarioAnalysis?.summary ?? null,
   };
 }
 
@@ -454,6 +486,7 @@ function compareResults(
 function appendContextualFindings(
   lines: string[],
   findings: readonly ContextualFinding[],
+  scenarioNameById: ReadonlyMap<string, string>,
 ): void {
   lines.push('Contextual findings:');
   if (findings.length === 0) {
@@ -473,6 +506,12 @@ function appendContextualFindings(
       lines.push(
         `Remediation: ${finding.remediation.actions[0].title} [${finding.remediation.risk.toUpperCase()}]`,
       );
+    }
+    if (finding.scenarioImpact) {
+      lines.push(
+        `Scenarios: Affects ${finding.scenarioImpact.affectedScenarios.length} scenario${finding.scenarioImpact.affectedScenarios.length === 1 ? '' : 's'} (${formatScenarioList(finding.scenarioImpact.affectedScenarios, scenarioNameById)})`,
+      );
+      lines.push(`Worst case: ${finding.scenarioImpact.worstCaseOutcome}`);
     }
     lines.push('');
   });
@@ -502,6 +541,7 @@ function appendServiceRecommendations(
 function appendMarkdownContextualFindings(
   lines: string[],
   findings: readonly ContextualFinding[],
+  scenarioNameById: ReadonlyMap<string, string>,
 ): void {
   if (findings.length === 0) {
     lines.push('No findings.');
@@ -519,6 +559,12 @@ function appendMarkdownContextualFindings(
       lines.push(
         `- Remediation: ${finding.remediation.actions[0].title} [${finding.remediation.risk.toUpperCase()}]`,
       );
+    }
+    if (finding.scenarioImpact) {
+      lines.push(
+        `- Scenarios: Affects ${finding.scenarioImpact.affectedScenarios.length} scenario${finding.scenarioImpact.affectedScenarios.length === 1 ? '' : 's'} (${formatScenarioList(finding.scenarioImpact.affectedScenarios, scenarioNameById)})`,
+      );
+      lines.push(`- Worst case: ${finding.scenarioImpact.worstCaseOutcome}`);
     }
     lines.push('');
   });
@@ -761,6 +807,15 @@ function formatEvidenceEntry(entry: Evidence): string {
   }
 
   return `${entry.observation.key} = ${formatMetadataValue(entry.observation.value ?? null)} (${entry.type} ${entry.timestamp})`;
+}
+
+function formatScenarioList(
+  scenarioIds: readonly string[],
+  scenarioNameById: ReadonlyMap<string, string>,
+): string {
+  return scenarioIds
+    .map((scenarioId) => scenarioNameById.get(scenarioId) ?? scenarioId)
+    .join(', ');
 }
 
 function formatEvidenceFreshness(entry: Evidence): string {

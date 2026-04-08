@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { listExpiringEvidence } from '@/api/evidence';
 import { getValidationSummary } from '@/api/reports';
 import { listScans } from '@/api/scans';
+import { listScenarios } from '@/api/scenarios';
 import { listServices } from '@/api/services';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
@@ -22,17 +23,19 @@ export default function DashboardPage(): JSX.Element {
   const fetchDashboard = useCallback(async () => {
     const scansResult = await listScans({ limit: 5 });
     const latestCompletedScan = scansResult.scans.find((scan) => scan.status === 'COMPLETED') ?? null;
-    const [summary, services, evidence] = latestCompletedScan
+    const [summary, scenarios, services, evidence] = latestCompletedScan
       ? await Promise.all([
           getValidationSummary(latestCompletedScan.id),
+          listScenarios().catch(() => null),
           listServices().catch(() => null),
           listExpiringEvidence().catch(() => null),
         ])
-      : [null, null, null];
+      : [null, null, null, null];
     return {
       scans: scansResult.scans,
       latestCompletedScan,
       summary,
+      scenarios,
       services,
       evidence,
     };
@@ -77,6 +80,7 @@ export default function DashboardPage(): JSX.Element {
           score={data.summary?.score ?? data.latestCompletedScan?.score ?? null}
           grade={data.summary?.grade ?? data.latestCompletedScan?.grade ?? null}
           createdAt={data.latestCompletedScan?.createdAt}
+          scenarioSummary={data.scenarios?.summary ?? null}
         />
         <div className="panel flex flex-col justify-between p-6">
           <div>
@@ -94,16 +98,53 @@ export default function DashboardPage(): JSX.Element {
               </button>
               <button
                 type="button"
-                onClick={() => navigate(data.latestCompletedScan ? `/drp/${data.latestCompletedScan.id}` : '/drp')}
+                onClick={() => navigate('/scenarios')}
                 className="btn-secondary text-left"
               >
-                Export DRP
+                Scenario Analysis
               </button>
             </div>
           </div>
-          <p className="mt-6 text-sm text-muted-foreground">The dashboard surfaces the latest completed scan so recovery posture is visible at a glance.</p>
+          <p className="mt-6 text-sm text-muted-foreground">The dashboard now combines score, evidence, and scenario coverage so the most important recovery gaps stay visible at a glance.</p>
         </div>
       </div>
+      <section className="panel p-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Scenario alerts</p>
+            <h3 className="mt-2 text-2xl font-semibold text-foreground">Top uncovered scenarios</h3>
+          </div>
+          <button type="button" onClick={() => navigate('/scenarios')} className="btn-secondary">
+            Open Scenarios
+          </button>
+        </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-3">
+          {(data.scenarios?.scenarios ?? [])
+            .filter((scenario) => scenario.coverage?.verdict === 'uncovered' || scenario.coverage?.verdict === 'degraded')
+            .slice(0, 3)
+            .map((scenario) => (
+              <button
+                key={scenario.id}
+                type="button"
+                onClick={() => navigate('/scenarios')}
+                className="rounded-2xl border border-rose-500/20 bg-rose-500/8 p-4 text-left transition-colors duration-150 hover:border-rose-500/35"
+              >
+                <p className="text-xs uppercase tracking-[0.16em] text-rose-200">
+                  {String(scenario.coverage?.verdict ?? 'unknown').replace('_', ' ')}
+                </p>
+                <div className="mt-2 text-lg font-semibold text-foreground">{scenario.name}</div>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {scenario.coverage?.summary ?? 'No recovery path is available for this disruption impact.'}
+                </p>
+              </button>
+            ))}
+          {!(data.scenarios?.scenarios ?? []).some((scenario) => scenario.coverage?.verdict === 'uncovered' || scenario.coverage?.verdict === 'degraded') ? (
+            <div className="rounded-2xl border border-dashed border-border p-4 text-sm text-muted-foreground lg:col-span-3">
+              No uncovered or degraded scenarios on the latest completed scan.
+            </div>
+          ) : null}
+        </div>
+      </section>
       <div className="grid gap-6 xl:grid-cols-2">
         <CategoryBreakdown categories={data.summary?.categories ?? null} />
         <TopFailures failures={data.summary?.topFailures ?? []} />

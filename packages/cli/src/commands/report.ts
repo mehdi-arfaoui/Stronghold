@@ -17,6 +17,7 @@ import {
 } from '../output/report-renderer.js';
 import { writeError, writeOutput } from '../output/io.js';
 import { renderRecommendationSection } from '../output/recommendations.js';
+import { renderScenarioCoverageSection } from '../output/scenario-renderer.js';
 import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
 import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
@@ -91,14 +92,29 @@ export function registerReportCommand(program: Command): void {
         const hasServices =
           outputScan.servicePosture !== undefined &&
           outputScan.servicePosture.services.length > 0;
+        const scenarioSection =
+          options.format === 'json'
+            ? ''
+            : renderScenarioCoverageSection(
+                outputScan.scenarioAnalysis,
+                options.format === 'markdown' ? 'markdown' : 'terminal',
+              );
 
         const contents =
           options.format === 'markdown'
-            ? `${hasServices ? renderMarkdownServiceReport(outputScan, filters) : renderMarkdownReport(report, filters)}\n\n${renderRecommendationSection(
-                recommendations,
-                effectiveScan.validationReport.score,
-                'markdown',
-              )}`
+            ? [
+                hasServices
+                  ? renderMarkdownServiceReport(outputScan, filters)
+                  : renderMarkdownReport(report, filters),
+                renderRecommendationSection(
+                  recommendations,
+                  effectiveScan.validationReport.score,
+                  'markdown',
+                ),
+                scenarioSection,
+              ]
+                .filter((section) => section.length > 0)
+                .join('\n\n')
             : options.format === 'json'
               ? JSON.stringify(
                   hasServices
@@ -108,15 +124,26 @@ export function registerReportCommand(program: Command): void {
                         results: filterValidationResults(report, filters),
                         services: [],
                         recommendations,
+                        scenarios: outputScan.scenarioAnalysis?.scenarios ?? [],
+                        defaultScenarioIds: outputScan.scenarioAnalysis?.defaultScenarioIds ?? [],
+                        scenarioCoverage: outputScan.scenarioAnalysis?.summary ?? null,
                       },
                   null,
                   2,
                 )
-              : `${hasServices ? renderTerminalServiceReport(outputScan, filters) : renderTerminalReport(report, filters)}\n\n${renderRecommendationSection(
-                  recommendations,
-                  effectiveScan.validationReport.score,
-                  'terminal',
-                )}`;
+              : [
+                  hasServices
+                    ? renderTerminalServiceReport(outputScan, filters)
+                    : renderTerminalReport(report, filters),
+                  renderRecommendationSection(
+                    recommendations,
+                    effectiveScan.validationReport.score,
+                    'terminal',
+                  ),
+                  scenarioSection,
+                ]
+                  .filter((section) => section.length > 0)
+                  .join('\n\n');
 
         await writeOutput(contents, options.output);
         await audit.finish({

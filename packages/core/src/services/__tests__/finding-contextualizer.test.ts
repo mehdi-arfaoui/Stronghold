@@ -2,9 +2,10 @@ import { describe, expect, it } from 'vitest';
 
 import type { Recommendation } from '../../recommendations/recommendation-types.js';
 import type { InfraNode, WeightedValidationResult } from '../../validation/index.js';
-import { contextualizeFindings } from '../finding-contextualizer.js';
+import { contextualizeFindings, populateScenarioImpact } from '../finding-contextualizer.js';
 import { resolveImpactTemplate } from '../impact-templates.js';
 import type { Service } from '../service-types.js';
+import type { Scenario } from '../../scenarios/scenario-types.js';
 
 describe('contextualizeFindings', () => {
   it('produces all four dimensions for a datastore finding in a service', () => {
@@ -104,6 +105,50 @@ describe('contextualizeFindings', () => {
     )[0];
 
     expect(contextual?.drImpact.summary).toContain('Unknown Rule');
+  });
+
+  it('populates affected scenarios for findings on impacted nodes', () => {
+    const findings = contextualizeFindings(
+      [createFinding('backup_configured', 'db-1', 'high', 'backup')],
+      [createNode('db-1', 'DATABASE', 'rds')],
+      [createService('payment', 'Payment', 'db-1', 'datastore')],
+    );
+
+    const enriched = populateScenarioImpact(findings, [
+      createScenario('payment-spof', 'node_failure', 'payment', ['db-1'], ['api-1']),
+    ]);
+
+    expect(enriched[0]?.scenarioImpact).toEqual({
+      affectedScenarios: ['payment-spof'],
+      worstCaseOutcome: 'If this SPOF fails, 1 dependent resource also fails.',
+    });
+  });
+
+  it('keeps scenarioImpact null for isolated nodes', () => {
+    const findings = contextualizeFindings(
+      [createFinding('backup_configured', 'db-1', 'high', 'backup')],
+      [createNode('db-1', 'DATABASE', 'rds')],
+      [createService('payment', 'Payment', 'db-1', 'datastore')],
+    );
+
+    const enriched = populateScenarioImpact(findings, []);
+
+    expect(enriched[0]?.scenarioImpact).toBeNull();
+  });
+
+  it('picks the worst-case outcome when multiple scenarios affect the same finding', () => {
+    const findings = contextualizeFindings(
+      [createFinding('backup_configured', 'db-1', 'high', 'backup')],
+      [createNode('db-1', 'DATABASE', 'rds')],
+      [createService('payment', 'Payment', 'db-1', 'datastore')],
+    );
+
+    const enriched = populateScenarioImpact(findings, [
+      createScenario('az-failure', 'az_failure', 'payment', ['db-1'], []),
+      createScenario('data-corruption', 'data_corruption', 'payment', ['db-1'], []),
+    ]);
+
+    expect(enriched[0]?.scenarioImpact?.worstCaseOutcome).toContain('If data is corrupted');
   });
 });
 
@@ -206,6 +251,56 @@ function createRecommendation(nodeId: string, ruleId: string): Recommendation {
       requiresMaintenanceWindow: false,
       estimatedDuration: '1-2 minutes',
       prerequisites: ['Have change approval.'],
+    },
+  };
+}
+
+function createScenario(
+  id: string,
+  type: Scenario['type'],
+  serviceId: string,
+  directlyAffected: readonly string[],
+  cascadeAffected: readonly string[],
+): Scenario {
+  return {
+    id,
+    name: id,
+    description: id,
+    type,
+    disruption: {
+      affectedNodes: directlyAffected,
+      selectionCriteria: id,
+    },
+    impact: {
+      directlyAffected: directlyAffected.map((nodeId) => ({
+        nodeId,
+        nodeName: nodeId,
+        serviceId,
+        reason: 'direct',
+        impactType: 'direct',
+        cascadeDepth: 0,
+      })),
+      cascadeAffected: cascadeAffected.map((nodeId) => ({
+        nodeId,
+        nodeName: nodeId,
+        serviceId,
+        reason: 'cascade',
+        impactType: 'cascade',
+        cascadeDepth: 1,
+      })),
+      totalAffectedNodes: directlyAffected.length + cascadeAffected.length,
+      totalAffectedServices: [serviceId],
+      serviceImpact: [
+        {
+          serviceId,
+          serviceName: serviceId,
+          affectedResources: directlyAffected.length + cascadeAffected.length,
+          totalResources: directlyAffected.length + cascadeAffected.length,
+          percentageAffected: 100,
+          criticalResourcesAffected: directlyAffected,
+          status: 'down',
+        },
+      ],
     },
   };
 }

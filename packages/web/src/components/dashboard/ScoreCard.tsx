@@ -1,13 +1,17 @@
+import type { ScenarioCoverageSummary } from '@stronghold-dr/core';
+
 import { getGradeColor } from '@/lib/utils';
 
 export function ScoreCard({
   score,
   grade,
   createdAt,
+  scenarioSummary,
 }: {
   readonly score: number | null;
   readonly grade: string | null;
   readonly createdAt?: string;
+  readonly scenarioSummary?: ScenarioCoverageSummary | null;
 }): JSX.Element {
   const clampedScore = Math.max(0, Math.min(100, Math.round(score ?? 0)));
 
@@ -34,6 +38,17 @@ export function ScoreCard({
           }}
         />
       </div>
+      {scenarioSummary && scenarioSummary.total > 0 ? (
+        <div className="mt-5 rounded-2xl border border-border bg-elevated p-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Scenario coverage</p>
+          <div className="mt-2 text-2xl font-semibold text-foreground">
+            {scenarioSummary.covered}/{scenarioSummary.total}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            scenarios covered, with {scenarioSummary.uncovered} uncovered and {scenarioSummary.degraded} degraded.
+          </p>
+        </div>
+      ) : null}
       <p className="mt-4 text-sm text-muted-foreground">
         {createdAt
           ? `Based on scan completed ${new Date(createdAt).toLocaleString()}.`

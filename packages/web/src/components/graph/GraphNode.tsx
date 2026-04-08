@@ -24,7 +24,28 @@ export type GraphVisualData = Record<string, unknown> & {
   readonly accentColor?: string;
   readonly serviceLabel?: string;
   readonly muted?: boolean;
+  readonly scenarioState?: 'direct' | 'cascade' | 'unaffected';
 };
+
+function resolveScenarioAccent(state: GraphVisualData['scenarioState']): {
+  readonly borderColor?: string;
+  readonly backgroundColor?: string;
+} {
+  switch (state) {
+    case 'direct':
+      return {
+        borderColor: '#ef4444',
+        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+      };
+    case 'cascade':
+      return {
+        borderColor: '#f59e0b',
+        backgroundColor: 'rgba(245, 158, 11, 0.12)',
+      };
+    default:
+      return {};
+  }
+}
 
 function resolveIcon(nodeType: string): LucideIcon {
   const normalized = nodeType.toLowerCase();
@@ -73,6 +94,7 @@ function resolveIcon(nodeType: string): LucideIcon {
 export function GraphNode({ data, selected }: NodeProps): JSX.Element {
   const nodeData = data as GraphVisualData;
   const Icon = resolveIcon(nodeData.nodeType);
+  const scenarioAccent = resolveScenarioAccent(nodeData.scenarioState);
 
   return (
     <div
@@ -81,8 +103,9 @@ export function GraphNode({ data, selected }: NodeProps): JSX.Element {
         selected ? 'ring-2 ring-accent/35' : '',
       )}
       style={{
-        borderColor: getStatusColor(nodeData.status),
-        opacity: nodeData.muted ? 0.45 : 1,
+        borderColor: scenarioAccent.borderColor ?? getStatusColor(nodeData.status),
+        backgroundColor: scenarioAccent.backgroundColor,
+        opacity: nodeData.muted || nodeData.scenarioState === 'unaffected' ? 0.3 : 1,
       }}
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-accent/70" />

@@ -115,6 +115,52 @@ function createTestApp(options?: {
       },
       unassignedResourceCount: 0,
     }),
+    listScenarios: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      scenarios: [],
+      defaultScenarioIds: [],
+      summary: {
+        total: 0,
+        covered: 0,
+        partiallyCovered: 0,
+        uncovered: 0,
+        degraded: 0,
+      },
+    }),
+    getScenarioDetail: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      scenario: {
+        id: 'az-failure-eu-west-1a',
+        name: 'AZ failure - eu-west-1a',
+        description: 'Removes every resource placed in eu-west-1a and evaluates the downstream disruption impact.',
+        type: 'az_failure',
+        disruption: {
+          affectedNodes: ['payment-db'],
+          selectionCriteria: 'All resources in eu-west-1a',
+        },
+        impact: {
+          directlyAffected: [],
+          cascadeAffected: [],
+          totalAffectedNodes: 0,
+          totalAffectedServices: [],
+          serviceImpact: [],
+        },
+        coverage: {
+          verdict: 'uncovered',
+          details: [],
+          summary: 'No recovery path exists.',
+        },
+      },
+      summary: {
+        total: 1,
+        covered: 0,
+        partiallyCovered: 0,
+        uncovered: 1,
+        degraded: 0,
+      },
+    }),
     listEvidence: vi.fn().mockResolvedValue({
       scanId: VALID_UUID,
       generatedAt: '2026-03-27T15:00:00.000Z',
@@ -318,6 +364,25 @@ describe('server routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.service.service.id).toBe('payment');
+  });
+
+  it('GET /api/scenarios returns the latest persisted scenario coverage analysis', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/scenarios');
+
+    expect(response.status).toBe(200);
+    expect(response.body.scanId).toBe(VALID_UUID);
+    expect(Array.isArray(response.body.scenarios)).toBe(true);
+  });
+
+  it('GET /api/scenarios/:id returns a specific scenario detail', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/scenarios/az-failure-eu-west-1a');
+
+    expect(response.status).toBe(200);
+    expect(response.body.scenario.id).toBe('az-failure-eu-west-1a');
   });
 
   it('GET /api/evidence returns the latest evidence payload', async () => {

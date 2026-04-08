@@ -24,6 +24,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Evidence freshness tracking with default expiration policies, expiring-soon and expired alerts in `stronghold status`, and retained historical evidence instead of silent deletion.
 - Evidence-aware scoring that rewards stronger proof for passing controls, exposes per-rule score decomposition with `stronghold report --explain-score`, and highlights the potential score gap between observed and test-verified resilience.
 - Evidence visibility across the product with evidence lines in CLI findings, evidence summaries in scan output, service-detail evidence badges in the web UI, and dashboard evidence alerts.
+- Scenario coverage analysis with graph-based disruption modeling for AZ failure, region failure, SPOF failure, data corruption, and custom-ready scenarios without executing against real infrastructure.
+- Built-in scenario generation from scan results with default AZ failure and data corruption coverage, top-10 SPOF scenarios by blast radius, optional multi-region failure coverage, and a capped default scenario set for actionable output.
+- DRP and runbook coverage validation for scenarios, including evidence-aware verdicts (`covered`, `partially_covered`, `uncovered`, `degraded`) and runbook liveness checks against current infrastructure references.
+- Scenario-aware contextual findings, CLI scenario workflows (`stronghold scenarios`, `stronghold scenarios list`, `stronghold scenarios show <id>`), scenario sections in reports/status/scan summaries, and persisted scenario coverage APIs (`GET /api/scenarios`, `GET /api/scenarios/:id`).
+- A new web scenario experience with a dedicated Scenarios page, dashboard scenario alerts, and graph scenario mode that highlights direct and cascading disruption impact paths.
 - Security documentation in [docs/security.md](docs/security.md).
 - An AGPL licensing FAQ in [docs/licensing-faq.md](docs/licensing-faq.md).
 

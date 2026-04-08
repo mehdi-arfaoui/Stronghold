@@ -17,6 +17,8 @@ import { GroupedNode } from './GroupedNode';
 
 export interface GraphEdgeVisualData extends Record<string, unknown> {
   readonly provenance?: 'manual' | 'inferred' | 'aws-api';
+  readonly highlighted?: boolean;
+  readonly dimmed?: boolean;
 }
 
 interface GraphPalette {
@@ -137,17 +139,21 @@ function GraphCanvas({
   const styledEdges = useMemo(
     () =>
       edges.map((edge) => {
+        const isScenarioHighlighted = edge.data?.highlighted === true;
+        const isScenarioDimmed = edge.data?.dimmed === true;
         const isRelated = activeNodeId != null && (edge.source === activeNodeId || edge.target === activeNodeId);
-        const hasContext = activeNodeId != null;
+        const hasContext = activeNodeId != null || isScenarioHighlighted || isScenarioDimmed;
         const provenance = edge.data?.provenance ?? 'aws-api';
-        const edgeColor = isRelated
+        const edgeColor = isScenarioHighlighted
+          ? '#f59e0b'
+          : isRelated
           ? palette.edgeActive
           : provenance === 'manual'
             ? palette.edgeManual
             : provenance === 'inferred'
               ? palette.edgeInferred
               : palette.edgeAwsApi;
-        const labelBgPadding: [number, number] = isRelated ? [10, 6] : [8, 4];
+        const labelBgPadding: [number, number] = isRelated || isScenarioHighlighted ? [10, 6] : [8, 4];
         const strokeDasharray =
           provenance === 'manual' ? '10 6' : provenance === 'inferred' ? '6 6' : undefined;
 
@@ -159,14 +165,17 @@ function GraphCanvas({
           labelBgPadding,
           labelBgBorderRadius: 999,
           labelBgStyle: {
-            fill: isRelated ? palette.edgeLabelBackgroundActive : palette.edgeLabelBackground,
-            opacity: hasContext && !isRelated ? 0.48 : 0.94,
+            fill:
+              isRelated || isScenarioHighlighted
+                ? palette.edgeLabelBackgroundActive
+                : palette.edgeLabelBackground,
+            opacity: hasContext && !isRelated && !isScenarioHighlighted ? 0.48 : 0.94,
           },
           labelStyle: {
-            fill: isRelated ? palette.edgeLabelActive : palette.edgeLabel,
+            fill: isRelated || isScenarioHighlighted ? palette.edgeLabelActive : palette.edgeLabel,
             fontSize: 11,
-            fontWeight: isRelated ? 600 : 500,
-            opacity: hasContext && !isRelated ? 0.55 : 1,
+            fontWeight: isRelated || isScenarioHighlighted ? 600 : 500,
+            opacity: hasContext && !isRelated && !isScenarioHighlighted ? 0.55 : 1,
           },
           markerEnd: {
             type: MarkerType.ArrowClosed,
@@ -174,9 +183,16 @@ function GraphCanvas({
           },
           style: {
             stroke: edgeColor,
-            strokeWidth: provenance === 'manual' ? (isRelated ? 3 : 2.1) : isRelated ? 2.8 : 1.7,
+            strokeWidth:
+              isScenarioHighlighted
+                ? 3.2
+                : provenance === 'manual'
+                  ? (isRelated ? 3 : 2.1)
+                  : isRelated
+                    ? 2.8
+                    : 1.7,
             ...(strokeDasharray ? { strokeDasharray } : {}),
-            opacity: hasContext && !isRelated ? 0.22 : 0.78,
+            opacity: isScenarioDimmed ? 0.12 : hasContext && !isRelated && !isScenarioHighlighted ? 0.22 : 0.78,
             transition: 'stroke 150ms ease, opacity 150ms ease, stroke-width 150ms ease',
           },
         };

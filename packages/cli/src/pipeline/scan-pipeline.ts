@@ -1,6 +1,8 @@
 import {
+  analyzeBuiltInScenarios,
   allValidationRules,
   analyzeFullGraph,
+  applyScenarioImpactToServicePosture,
   buildServicePosture,
   generateDRPlan,
   generateRecommendations,
@@ -90,6 +92,18 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     manualServices: manualServices?.services,
     onLog: input.onServiceLog,
   });
+  const scenarioAnalysis = analyzeBuiltInScenarios({
+    graph,
+    nodes: analyzedNodes,
+    services: servicePosture.detection.services,
+    analysis,
+    drp: drpPlan,
+    evidence: input.evidence ?? [],
+  });
+  const scenarioAwareServicePosture = applyScenarioImpactToServicePosture(
+    servicePosture,
+    scenarioAnalysis.scenarios,
+  );
 
   return {
     timestamp: input.timestamp,
@@ -100,7 +114,8 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     analysis: serializeAnalysis(analysis),
     validationReport,
     drpPlan,
-    servicePosture,
+    servicePosture: scenarioAwareServicePosture,
+    scenarioAnalysis,
     ...(input.scanMetadata ? { scanMetadata: input.scanMetadata } : {}),
     ...(allWarnings.length > 0 || serviceWarnings.length > 0
       ? { warnings: [...allWarnings, ...serviceWarnings] }

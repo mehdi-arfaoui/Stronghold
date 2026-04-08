@@ -4,6 +4,7 @@ import type { DriftReport } from '../drift/drift-types.js';
 import type { Evidence } from '../evidence/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
+import type { Scenario, ScenarioCoverageSummary } from '../scenarios/scenario-types.js';
 import type {
   ContextualFinding,
   Service,
@@ -57,6 +58,11 @@ export interface ApiScanData {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly servicePosture?: ServicePosture;
+  readonly scenarioAnalysis?: {
+    readonly scenarios: readonly Scenario[];
+    readonly defaultScenarioIds: readonly string[];
+    readonly summary: ScenarioCoverageSummary;
+  };
 }
 
 export interface ApiValidationSummary {
@@ -96,6 +102,21 @@ export interface ApiServiceDetailResponse {
   readonly generatedAt: string;
   readonly service: ApiServiceSummary;
   readonly unassignedResourceCount: number;
+}
+
+export interface ApiScenariosResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly scenarios: readonly Scenario[];
+  readonly defaultScenarioIds: readonly string[];
+  readonly summary: ScenarioCoverageSummary;
+}
+
+export interface ApiScenarioDetailResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly scenario: Scenario;
+  readonly summary: ScenarioCoverageSummary;
 }
 
 export interface ApiStoredDrPlan {
