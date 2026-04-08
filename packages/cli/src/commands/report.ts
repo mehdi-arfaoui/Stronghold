@@ -1,16 +1,22 @@
 import { Command } from 'commander';
-import { redactObject } from '@stronghold-dr/core';
+import {
+  redactObject,
+} from '@stronghold-dr/core';
 
 import { CommandAuditSession, collectAuditFlags, resolveAuditIdentity } from '../audit/command-audit.js';
 import { addGraphOverrideOptions, resolveGraphOverrides } from '../config/graph-overrides.js';
 import type { ReportCommandOptions } from '../config/options.js';
 import { getCommandOptions } from '../config/options.js';
 import {
+  buildServiceReportJson,
   filterValidationResults,
+  renderMarkdownServiceReport,
   renderMarkdownReport,
+  renderTerminalServiceReport,
   renderTerminalReport,
 } from '../output/report-renderer.js';
 import { writeError, writeOutput } from '../output/io.js';
+import { renderRecommendationSection } from '../output/recommendations.js';
 import { rebuildScanResults } from '../pipeline/rebuild-scan.js';
 import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
@@ -73,27 +79,45 @@ export function registerReportCommand(program: Command): void {
         const resolvedOverrides = resolveGraphOverrides(options);
         resolvedOverrides.warnings.forEach((warning) => writeError(warning));
         const effectiveScan = await rebuildScanResults(scan, resolvedOverrides.overrides);
-        const report = options.redact
-          ? redactObject(effectiveScan.validationReport)
-          : effectiveScan.validationReport;
+        const outputScan = options.redact
+          ? (redactObject(effectiveScan) as typeof effectiveScan)
+          : effectiveScan;
+        const report = outputScan.validationReport;
+        const recommendations =
+          outputScan.servicePosture?.recommendations ?? [];
         const filters = {
           ...(options.category ? { category: options.category } : {}),
           ...(options.severity ? { severity: options.severity } : {}),
         };
+        const hasServices =
+          outputScan.servicePosture !== undefined &&
+          outputScan.servicePosture.services.length > 0;
 
         const contents =
           options.format === 'markdown'
-            ? renderMarkdownReport(report, filters)
+            ? `${hasServices ? renderMarkdownServiceReport(outputScan, filters) : renderMarkdownReport(report, filters)}\n\n${renderRecommendationSection(
+                recommendations,
+                effectiveScan.validationReport.score,
+                'markdown',
+              )}`
             : options.format === 'json'
               ? JSON.stringify(
-                  {
-                    ...report,
-                    results: filterValidationResults(report, filters),
-                  },
+                  hasServices
+                    ? buildServiceReportJson(outputScan, filters)
+                    : {
+                        ...report,
+                        results: filterValidationResults(report, filters),
+                        services: [],
+                        recommendations,
+                      },
                   null,
                   2,
                 )
-              : renderTerminalReport(report, filters);
+              : `${hasServices ? renderTerminalServiceReport(outputScan, filters) : renderTerminalReport(report, filters)}\n\n${renderRecommendationSection(
+                  recommendations,
+                  effectiveScan.validationReport.score,
+                  'terminal',
+                )}`;
 
         await writeOutput(contents, options.output);
         await audit.finish({

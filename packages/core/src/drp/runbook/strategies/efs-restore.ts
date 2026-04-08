@@ -147,5 +147,13 @@ function buildBackupRunbook(
   });
 }
 
-registerRunbookStrategy('efs', '*', generateEfsRunbook);
-registerRunbookStrategy('efs-filesystem', '*', generateEfsRunbook);
+registerRunbookStrategy('efs', '*', {
+  generate: generateEfsRunbook,
+  executionRisk: 'caution',
+  riskReason: 'EFS replication and mount-target changes can affect clients and should be scheduled.',
+});
+registerRunbookStrategy('efs-filesystem', '*', {
+  generate: generateEfsRunbook,
+  executionRisk: 'caution',
+  riskReason: 'EFS replication and mount-target changes can affect clients and should be scheduled.',
+});

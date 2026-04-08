@@ -7,6 +7,8 @@ export type InfraNode = InfraNodeAttrs;
 /** Severity assigned to a validation rule. */
 export type ValidationSeverity = 'critical' | 'high' | 'medium' | 'low';
 
+export type Grade = 'A' | 'B' | 'C' | 'D' | 'F';
+
 /** Disaster recovery pillar represented by a validation rule. */
 export type DRCategory =
   | 'backup'
@@ -63,7 +65,7 @@ export interface WeightedValidationResult extends ValidationResult {
 export interface ScoreBreakdown {
   readonly overall: number;
   readonly byCategory: Record<DRCategory, number>;
-  readonly grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  readonly grade: Grade;
   readonly weakestCategory: DRCategory;
   readonly scoringMethod: string;
   readonly disclaimer: string;

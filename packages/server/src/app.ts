@@ -13,6 +13,7 @@ import { createHealthRoutes } from './routes/health.routes.js';
 import { createPlanRoutes } from './routes/plan.routes.js';
 import { createReportRoutes } from './routes/report.routes.js';
 import { createScanRoutes } from './routes/scan.routes.js';
+import { createServicesRoutes } from './routes/services.routes.js';
 import { createAuditRoutes } from './routes/audit.routes.js';
 import type { DriftService } from './services/drift-service.js';
 import { PrismaAuditLogger } from './services/prisma-audit-logger.js';
@@ -51,6 +52,10 @@ export function createApp(dependencies: AppDependencies): Express {
   app.use(
     '/api',
     createPlanRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
+  );
+  app.use(
+    '/api',
+    createServicesRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
   );
   app.use(
     '/api',

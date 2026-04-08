@@ -2,6 +2,7 @@ import { getMetadata, readString } from '../graph/analysis-helpers.js';
 import type { DRPlan } from '../drp/drp-types.js';
 import type {
   DRCategory,
+  Grade,
   InfraNode,
   ScoreBreakdown,
   ValidationContext,
@@ -44,6 +45,24 @@ const NON_DEPENDENCY_EDGE_TYPES = new Set([
 export function blastRadiusWeight(directDependentCount: number): number {
   if (directDependentCount === 0) return 1;
   return Math.log2(directDependentCount + 1);
+}
+
+export function calculateWeightedScore(
+  results: readonly WeightedValidationResult[],
+): number {
+  if (results.length > 0 && results.every((result) => result.status === 'skip')) {
+    return 100;
+  }
+
+  const scored = results.filter((result) => scoreValueFor(result.status) !== null);
+  const denominator = scored.reduce((sum, result) => sum + result.weight, 0);
+  if (denominator === 0) return 0;
+
+  const numerator = scored.reduce(
+    (sum, result) => sum + result.weight * (scoreValueFor(result.status) ?? 0),
+    0,
+  );
+  return Math.round((numerator / denominator) * 100);
 }
 
 /** Executes every applicable validation rule against the provided infrastructure graph. */
@@ -206,11 +225,11 @@ function calculateScoreBreakdown(
   for (const category of DR_CATEGORIES) {
     const categoryResults = results.filter((result) => result.category === category);
     if (categoryResults.length > 0) populatedCategories.add(category);
-    categoryScores.set(category, scoreResults(categoryResults));
+    categoryScores.set(category, calculateWeightedScore(categoryResults));
     byCategory[category] = categoryScores.get(category) ?? 0;
   }
 
-  const overall = scoreResults(results);
+  const overall = calculateWeightedScore(results);
   const weakestCandidates = DR_CATEGORIES.filter((category) => populatedCategories.has(category));
   const weakestCategory = (weakestCandidates.length > 0 ? weakestCandidates : DR_CATEGORIES).reduce(
     (current, category) =>
@@ -227,22 +246,6 @@ function calculateScoreBreakdown(
   };
 }
 
-function scoreResults(results: readonly WeightedValidationResult[]): number {
-  if (results.length > 0 && results.every((result) => result.status === 'skip')) {
-    return 100;
-  }
-
-  const scored = results.filter((result) => scoreValueFor(result.status) !== null);
-  const denominator = scored.reduce((sum, result) => sum + result.weight, 0);
-  if (denominator === 0) return 0;
-
-  const numerator = scored.reduce(
-    (sum, result) => sum + result.weight * (scoreValueFor(result.status) ?? 0),
-    0,
-  );
-  return Math.round((numerator / denominator) * 100);
-}
-
 function scoreValueFor(status: ValidationResult['status']): number | null {
   if (status === 'pass') return 1;
   if (status === 'warn') return 0.5;
@@ -250,7 +253,7 @@ function scoreValueFor(status: ValidationResult['status']): number | null {
   return null;
 }
 
-function gradeForScore(score: number): ScoreBreakdown['grade'] {
+export function gradeForScore(score: number): Grade {
   if (score >= 90) return 'A';
   if (score >= 75) return 'B';
   if (score >= 60) return 'C';

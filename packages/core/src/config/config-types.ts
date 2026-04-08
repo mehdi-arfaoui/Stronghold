@@ -3,6 +3,7 @@ export const DEFAULT_STRONGHOLD_CONFIG_PATH = '.stronghold/config.yml';
 
 export interface StrongholdConfigDefaults {
   readonly regions?: readonly string[];
+  readonly allRegions?: boolean;
   readonly concurrency?: number;
   readonly scannerTimeout?: number;
 }
@@ -12,6 +13,7 @@ export interface StrongholdAccountConfig {
   readonly roleArn?: string;
   readonly externalId?: string;
   readonly regions?: readonly string[];
+  readonly allRegions?: boolean;
 }
 
 export interface StrongholdConfig {

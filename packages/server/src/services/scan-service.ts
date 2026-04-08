@@ -33,6 +33,7 @@ import { ServerError, toError } from '../errors/server-error.js';
 import { deserializeAnalysis } from './analysis-serialization.js';
 import { buildGraph } from './graph-builder.js';
 import { runScanPipeline } from './scan-pipeline.js';
+import { ServiceDetectionService } from './service-detection.service.js';
 
 export interface CreateScanParams {
   readonly provider: 'aws';
@@ -50,6 +51,7 @@ export class ScanService {
     private readonly scanRepository: PrismaScanRepository,
     private readonly infrastructureRepository: PrismaInfrastructureRepository,
     private readonly logger: Logger,
+    private readonly serviceDetectionService: ServiceDetectionService,
   ) {}
 
   public async recoverOrphanedScans(): Promise<number> {
@@ -87,11 +89,27 @@ export class ScanService {
     if (!data) {
       throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
     }
-    return data;
+    const servicePosture = await this.serviceDetectionService.getPersistedServicePosture(scanId);
+    return {
+      ...data,
+      ...(servicePosture ? { servicePosture } : {}),
+    };
   }
 
   public async deleteScan(scanId: string): Promise<boolean> {
     return this.scanRepository.deleteScan(scanId);
+  }
+
+  public async getLatestServices() {
+    return this.serviceDetectionService.getLatestServices();
+  }
+
+  public async getServiceDetail(serviceId: string) {
+    return this.serviceDetectionService.getServiceDetail(serviceId);
+  }
+
+  public async redetectLatestServices() {
+    return this.serviceDetectionService.redetectLatestServices();
   }
 
   public async getValidationReport(
@@ -224,6 +242,12 @@ export class ScanService {
     try {
       const execution = await this.runAwsScan(params);
       const validation = validateDRPlan(execution.artifacts.drPlan, execution.artifacts.graph);
+      const previousCompletedScan = await this.scanRepository.getLatestCompletedScanSummary();
+      const previousAssignments =
+        previousCompletedScan
+          ? (await this.serviceDetectionService.getPersistedServicePosture(previousCompletedScan.id))
+              ?.detection.services
+          : undefined;
 
       await this.scanRepository.saveCompletedScan({
         scanId,
@@ -236,6 +260,13 @@ export class ScanService {
         validationReport: execution.artifacts.validationReport,
         drPlan: execution.artifacts.drPlan,
         drPlanValidation: validation,
+      });
+      await this.serviceDetectionService.persistServicePosture(scanId, {
+        nodes: execution.artifacts.nodes,
+        edges: execution.artifacts.edges,
+        validationReport: execution.artifacts.validationReport,
+        drPlan: execution.artifacts.drPlan,
+        previousAssignments,
       });
 
       if (execution.warnings.length > 0) {

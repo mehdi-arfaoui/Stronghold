@@ -21,6 +21,7 @@ describe('envSchema', () => {
       corsOrigin: 'https://stronghold.example',
       corsOrigins: ['https://stronghold.example'],
       logLevel: 'warn',
+      servicesFilePath: expect.stringMatching(/\.stronghold[\\/]services\.yml$/),
       encryptionKey:
         '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
     });
@@ -35,6 +36,7 @@ describe('envSchema', () => {
     expect(config.nodeEnv).toBe('development');
     expect(config.corsOrigin).toBe('http://localhost:5173');
     expect(config.logLevel).toBe('info');
+    expect(config.servicesFilePath).toMatch(/\.stronghold[\\/]services\.yml$/);
   });
 
   it('fails when DATABASE_URL is missing', () => {

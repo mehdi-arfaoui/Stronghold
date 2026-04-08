@@ -94,5 +94,13 @@ function generateEksRunbook(
   });
 }
 
-registerRunbookStrategy('eks', '*', generateEksRunbook);
-registerRunbookStrategy('eks-cluster', '*', generateEksRunbook);
+registerRunbookStrategy('eks', '*', {
+  generate: generateEksRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Cluster and node-group changes should be planned because workload placement can shift.',
+});
+registerRunbookStrategy('eks-cluster', '*', {
+  generate: generateEksRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Cluster and node-group changes should be planned because workload placement can shift.',
+});

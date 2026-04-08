@@ -7,6 +7,7 @@ import { AppLayout } from './components/layout/AppLayout';
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
 const ScanPage = lazy(() => import('./pages/ScanPage'));
 const ReportPage = lazy(() => import('./pages/ReportPage'));
+const ServicesPage = lazy(() => import('./pages/ServicesPage'));
 const GraphPage = lazy(() => import('./pages/GraphPage'));
 const DRPPage = lazy(() => import('./pages/DRPPage'));
 const DriftPage = lazy(() => import('./pages/DriftPage'));
@@ -31,6 +32,7 @@ export function App(): JSX.Element {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/scan" element={<ScanPage />} />
           <Route path="/report/:scanId?" element={<ReportPage />} />
+          <Route path="/services" element={<ServicesPage />} />
           <Route path="/graph/:scanId?" element={<GraphPage />} />
           <Route path="/drp/:scanId?" element={<DRPPage />} />
           <Route path="/drift" element={<DriftPage />} />

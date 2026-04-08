@@ -169,13 +169,22 @@ export function upsertByScanId(collection: Map<string, UnknownRecord>, scanId: s
   return nextValue;
 }
 
-export function findLatestByScanId(collection: Map<string, MockRelatedRecord>, scanId: string | undefined): MockRelatedRecord | null {
-  return listLatestByScanId(collection, scanId)[0] ?? null;
+export function findLatestByScanId(
+  collection: Map<string, MockRelatedRecord>,
+  scanId: string | undefined,
+  type?: string,
+): MockRelatedRecord | null {
+  return listLatestByScanId(collection, scanId, type)[0] ?? null;
 }
 
-export function listLatestByScanId(collection: Map<string, MockRelatedRecord>, scanId: string | undefined): readonly MockRelatedRecord[] {
+export function listLatestByScanId(
+  collection: Map<string, MockRelatedRecord>,
+  scanId: string | undefined,
+  type?: string,
+): readonly MockRelatedRecord[] {
   return [...collection.values()]
     .filter((record) => (scanId ? record.scanId === scanId : true))
+    .filter((record) => (type ? record.type === type : true))
     .sort(compareByCreatedAtDesc);
 }
 

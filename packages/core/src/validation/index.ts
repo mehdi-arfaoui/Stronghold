@@ -1,5 +1,6 @@
 export type {
   DRCategory,
+  Grade,
   InfraNode,
   ScoreBreakdown,
   ValidationSeverity,
@@ -14,6 +15,11 @@ export type {
 
 export { allValidationRules } from './validation-rules.js';
 
-export { blastRadiusWeight, runValidation } from './validation-engine.js';
+export {
+  blastRadiusWeight,
+  calculateWeightedScore,
+  gradeForScore,
+  runValidation,
+} from './validation-engine.js';
 
 export { formatValidationReport } from './validation-reporter.js';

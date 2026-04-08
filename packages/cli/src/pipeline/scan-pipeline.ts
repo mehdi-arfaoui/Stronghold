@@ -1,11 +1,15 @@
 import {
   allValidationRules,
   analyzeFullGraph,
+  buildServicePosture,
   generateDRPlan,
+  generateRecommendations,
   type GraphOverrides,
   runValidation,
   type GraphAnalysisReport,
   type InfraNode,
+  loadManualServices,
+  type Service,
 } from '@stronghold-dr/core';
 
 import { preparePipelineGraph } from './graph-adjustments.js';
@@ -22,7 +26,10 @@ export interface ScanPipelineInput {
   readonly scanMetadata?: ScanResults['scanMetadata'];
   readonly warnings?: readonly string[];
   readonly isDemo?: boolean;
+  readonly servicesFilePath?: string;
+  readonly previousAssignments?: readonly Service[];
   readonly onStage?: (stage: 'graph' | 'validation' | 'plan') => void | Promise<void>;
+  readonly onServiceLog?: (message: string) => void;
 }
 
 export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanResults> {
@@ -46,6 +53,30 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     provider: input.provider,
     generatedAt: new Date(input.timestamp),
   });
+  const recommendations = generateRecommendations({
+    nodes: analyzedNodes,
+    validationReport,
+    drpPlan,
+    isDemo: input.isDemo,
+  });
+  const manualServices = input.servicesFilePath
+    ? loadManualServices(analyzedNodes, {
+        filePath: input.servicesFilePath,
+        previousAssignments: input.previousAssignments,
+      })
+    : null;
+  const serviceWarnings = [
+    ...(manualServices?.warnings ?? []),
+    ...formatNewMatchesWarnings(manualServices?.newMatches ?? []),
+  ];
+  const servicePosture = buildServicePosture({
+    nodes: analyzedNodes,
+    edges: analyzedEdges,
+    validationReport,
+    recommendations,
+    manualServices: manualServices?.services,
+    onLog: input.onServiceLog,
+  });
 
   return {
     timestamp: input.timestamp,
@@ -56,8 +87,11 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     analysis: serializeAnalysis(analysis),
     validationReport,
     drpPlan,
+    servicePosture,
     ...(input.scanMetadata ? { scanMetadata: input.scanMetadata } : {}),
-    ...(allWarnings.length > 0 ? { warnings: allWarnings } : {}),
+    ...(allWarnings.length > 0 || serviceWarnings.length > 0
+      ? { warnings: [...allWarnings, ...serviceWarnings] }
+      : {}),
     ...(input.isDemo ? { isDemo: true } : {}),
   };
 }
@@ -75,4 +109,17 @@ export function serializeAnalysis(report: GraphAnalysisReport): SerializedGraphA
     cascadeChains: report.cascadeChains,
     resilienceScore: report.resilienceScore,
   };
+}
+
+function formatNewMatchesWarnings(
+  matches: ReadonlyArray<{
+    readonly serviceId: string;
+    readonly serviceName: string;
+    readonly resourceIds: readonly string[];
+  }>,
+): readonly string[] {
+  return matches.map(
+    (match) =>
+      `${match.resourceIds.length} new resource${match.resourceIds.length === 1 ? '' : 's'} matched service "${match.serviceName}" since the previous assignment review.`,
+  );
 }

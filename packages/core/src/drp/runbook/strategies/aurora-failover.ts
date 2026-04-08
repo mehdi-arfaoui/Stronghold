@@ -97,4 +97,8 @@ function generateAuroraFailoverRunbook(
   });
 }
 
-registerRunbookStrategy('aurora-cluster', 'aurora_failover', generateAuroraFailoverRunbook);
+registerRunbookStrategy('aurora-cluster', 'aurora_failover', {
+  generate: generateAuroraFailoverRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Aurora failover and topology changes can cause a brief interruption and should be planned.',
+});

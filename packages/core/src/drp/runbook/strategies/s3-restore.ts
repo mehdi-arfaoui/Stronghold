@@ -210,5 +210,13 @@ function hasReplication(metadata: Record<string, unknown>): boolean {
   );
 }
 
-registerRunbookStrategy('s3', '*', generateS3Runbook);
-registerRunbookStrategy('s3-bucket', '*', generateS3Runbook);
+registerRunbookStrategy('s3', '*', {
+  generate: generateS3Runbook,
+  executionRisk: 'safe',
+  riskReason: 'S3 versioning and replication changes are additive and do not require downtime.',
+});
+registerRunbookStrategy('s3-bucket', '*', {
+  generate: generateS3Runbook,
+  executionRisk: 'safe',
+  riskReason: 'S3 versioning and replication changes are additive and do not require downtime.',
+});

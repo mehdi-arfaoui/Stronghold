@@ -198,5 +198,13 @@ function buildSnapshotSteps(
   ];
 }
 
-registerRunbookStrategy('rds', 'backup_restore', generateRdsRestoreRunbook);
-registerRunbookStrategy('rds-instance', 'backup_restore', generateRdsRestoreRunbook);
+registerRunbookStrategy('rds', 'backup_restore', {
+  generate: generateRdsRestoreRunbook,
+  executionRisk: 'safe',
+  riskReason: 'Backup posture improvements on RDS are usually additive and do not require downtime.',
+});
+registerRunbookStrategy('rds-instance', 'backup_restore', {
+  generate: generateRdsRestoreRunbook,
+  executionRisk: 'safe',
+  riskReason: 'Backup posture improvements on RDS are usually additive and do not require downtime.',
+});

@@ -4,6 +4,7 @@ import {
   LayoutDashboard,
   Radar,
   RefreshCcw,
+  Layers3,
   type LucideIcon,
 } from 'lucide-react';
 
@@ -62,6 +63,7 @@ export const NAVIGATION_ITEMS: readonly NavigationItem[] = [
   { label: 'Dashboard', path: '/', icon: LayoutDashboard },
   { label: 'Scan', path: '/scan', icon: Radar },
   { label: 'Report', path: '/report', icon: Activity },
+  { label: 'Services', path: '/services', icon: Layers3 },
   { label: 'Graph', path: '/graph', icon: RefreshCcw },
   { label: 'DR Plan', path: '/drp', icon: ClipboardList },
   { label: 'Drift', path: '/drift', icon: Activity },
@@ -71,6 +73,7 @@ export const PAGE_TITLES: Record<string, string> = {
   '/': 'Disaster Recovery Dashboard',
   '/scan': 'Run an infrastructure scan',
   '/report': 'Validation report',
+  '/services': 'Service posture',
   '/graph': 'Dependency graph',
   '/drp': 'Recovery plan',
   '/drift': 'Drift history',

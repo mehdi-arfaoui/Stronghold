@@ -30,6 +30,7 @@ export interface AwsScanHooks {
   readonly onRegionComplete?: (region: string, durationMs: number) => void | Promise<void>;
   readonly onProgress?: (region: string, progress: DiscoveryProgress) => void | Promise<void>;
   readonly onStage?: (message: string) => void | Promise<void>;
+  readonly onServiceLog?: (message: string) => void | Promise<void>;
 }
 
 export interface AwsScanIdentityMetadata {
@@ -49,6 +50,8 @@ export interface AwsScanOptions {
   readonly graphOverrides?: GraphOverrides | null;
   readonly identityMetadata?: AwsScanIdentityMetadata;
   readonly hooks?: AwsScanHooks;
+  readonly servicesFilePath?: string;
+  readonly previousAssignments?: readonly import('@stronghold-dr/core').Service[];
 }
 
 export interface AwsScanExecution {
@@ -128,6 +131,8 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
     graphOverrides: options.graphOverrides,
     scanMetadata,
     warnings,
+    servicesFilePath: options.servicesFilePath,
+    previousAssignments: options.previousAssignments,
     onStage: (stage) => {
       if (stage === 'graph') {
         return options.hooks?.onStage?.('Building dependency graph...');
@@ -137,6 +142,7 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
       }
       return options.hooks?.onStage?.('Generating DR plan...');
     },
+    onServiceLog: (message) => options.hooks?.onServiceLog?.(message),
   });
 
   const allWarnings = results.warnings ?? warnings;

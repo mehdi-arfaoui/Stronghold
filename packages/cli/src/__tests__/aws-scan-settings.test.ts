@@ -127,6 +127,52 @@ describe('resolveAwsScanSettings', () => {
     expect(settings.scannerTimeout).toBe(60);
   });
 
+  it('uses the default account config automatically when present', () => {
+    const settings = resolveAwsScanSettings(createOptions(), {
+      config: {
+        version: 1,
+        defaults: {
+          regions: ['eu-central-1'],
+        },
+        accounts: {
+          default: {
+            profile: 'production',
+            regions: ['eu-west-1'],
+          },
+        },
+      },
+    });
+
+    expect(settings).toEqual({
+      allRegions: false,
+      explicitRegions: ['eu-west-1'],
+      accountName: 'default',
+      profile: 'production',
+      concurrency: 5,
+      scannerTimeout: 60,
+    });
+  });
+
+  it('uses all_regions from config when no explicit region is provided', () => {
+    const settings = resolveAwsScanSettings(
+      createOptions(),
+      {
+        config: {
+          version: 1,
+          defaults: {
+            allRegions: true,
+          },
+        },
+      },
+    );
+
+    expect(settings).toEqual({
+      allRegions: true,
+      concurrency: 5,
+      scannerTimeout: 60,
+    });
+  });
+
   it('rejects account selection when the config file is missing', () => {
     expect(() =>
       resolveAwsScanSettings(createOptions({ account: 'production' }), { config: null }),

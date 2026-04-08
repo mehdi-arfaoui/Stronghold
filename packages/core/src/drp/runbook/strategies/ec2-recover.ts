@@ -171,5 +171,13 @@ function buildStandaloneRunbook(
   });
 }
 
-registerRunbookStrategy('ec2', '*', generateEc2Runbook);
-registerRunbookStrategy('ec2-instance', '*', generateEc2Runbook);
+registerRunbookStrategy('ec2', '*', {
+  generate: generateEc2Runbook,
+  executionRisk: 'caution',
+  riskReason: 'EC2 recovery posture changes can rebalance capacity or routing and should be planned.',
+});
+registerRunbookStrategy('ec2-instance', '*', {
+  generate: generateEc2Runbook,
+  executionRisk: 'caution',
+  riskReason: 'EC2 recovery posture changes can rebalance capacity or routing and should be planned.',
+});

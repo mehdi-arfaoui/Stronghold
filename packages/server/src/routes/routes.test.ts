@@ -24,6 +24,7 @@ function createTestApp(options?: {
     corsOrigin: 'http://localhost:5173',
     corsOrigins: ['http://localhost:5173'],
     logLevel: 'error',
+    servicesFilePath: 'C:\\temp\\.stronghold\\services.yml',
   };
   const logger = new ServerLogger(config);
   const prisma = {
@@ -74,6 +75,57 @@ function createTestApp(options?: {
     generatePlan: vi.fn(),
     getLatestPlan: vi.fn(),
     validatePlan: vi.fn(),
+    getLatestServices: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      services: [],
+      unassigned: {
+        score: null,
+        resourceCount: 0,
+        contextualFindings: [],
+        recommendations: [],
+      },
+    }),
+    getServiceDetail: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      service: {
+        service: {
+          id: 'payment',
+          name: 'Payment',
+          criticality: 'critical',
+          detectionSource: { type: 'manual', file: '.stronghold/services.yml', confidence: 1 },
+          resources: [],
+          metadata: {},
+        },
+        score: {
+          serviceId: 'payment',
+          serviceName: 'Payment',
+          resourceCount: 0,
+          criticality: 'critical',
+          detectionSource: { type: 'manual', file: '.stronghold/services.yml', confidence: 1 },
+          score: 34,
+          grade: 'D',
+          findingsCount: { critical: 1, high: 0, medium: 0, low: 0 },
+          findings: [],
+          coverageGaps: [],
+        },
+        contextualFindings: [],
+        recommendations: [],
+      },
+      unassignedResourceCount: 0,
+    }),
+    redetectLatestServices: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      services: [],
+      unassigned: {
+        score: null,
+        resourceCount: 0,
+        contextualFindings: [],
+        recommendations: [],
+      },
+    }),
     ...options?.scanService,
   } as unknown as ScanService;
   const driftService = {
@@ -219,6 +271,34 @@ describe('server routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.entries).toEqual([]);
+  });
+
+  it('GET /api/services returns the latest persisted services snapshot', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/services');
+
+    expect(response.status).toBe(200);
+    expect(response.body.scanId).toBe(VALID_UUID);
+    expect(Array.isArray(response.body.services)).toBe(true);
+  });
+
+  it('GET /api/services/:id returns a specific service detail', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/services/payment');
+
+    expect(response.status).toBe(200);
+    expect(response.body.service.service.id).toBe('payment');
+  });
+
+  it('POST /api/services/detect triggers re-detection on the latest scan', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).post('/api/services/detect');
+
+    expect(response.status).toBe(200);
+    expect(response.body.scanId).toBe(VALID_UUID);
   });
 
   it('GET /api/scans/:id/report redacts JSON output when requested', async () => {

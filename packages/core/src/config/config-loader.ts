@@ -105,6 +105,11 @@ function readDefaults(
   rejectCredentialKeys(value, pathLabel, issues);
 
   const regions = readStringArray(value.regions, `${pathLabel}.regions`, issues);
+  const allRegions = readOptionalBoolean(
+    value.all_regions ?? value.allRegions,
+    `${pathLabel}.all_regions`,
+    issues,
+  );
   const concurrency = readOptionalInteger(value.concurrency, 1, 16, `${pathLabel}.concurrency`, issues);
   const scannerTimeout = readOptionalInteger(
     value.scanner_timeout ?? value.scannerTimeout,
@@ -116,6 +121,7 @@ function readDefaults(
 
   return {
     ...(regions ? { regions } : {}),
+    ...(allRegions !== undefined ? { allRegions } : {}),
     ...(concurrency !== undefined ? { concurrency } : {}),
     ...(scannerTimeout !== undefined ? { scannerTimeout } : {}),
   };
@@ -149,12 +155,18 @@ function readAccounts(
       `${pathLabel}.${accountName}.regions`,
       issues,
     );
+    const allRegions = readOptionalBoolean(
+      accountValue.all_regions ?? accountValue.allRegions,
+      `${pathLabel}.${accountName}.all_regions`,
+      issues,
+    );
 
     accounts[accountName] = {
       ...(profile ? { profile } : {}),
       ...(roleArn ? { roleArn } : {}),
       ...(externalId ? { externalId } : {}),
       ...(regions ? { regions } : {}),
+      ...(allRegions !== undefined ? { allRegions } : {}),
     };
   }
 
@@ -182,6 +194,23 @@ function readOptionalInteger(
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
     issues.push(`${pathLabel} must be an integer between ${min} and ${max}.`);
+    return undefined;
+  }
+
+  return value;
+}
+
+function readOptionalBoolean(
+  value: unknown,
+  pathLabel: string,
+  issues: string[],
+): boolean | undefined {
+  if (value == null) {
+    return undefined;
+  }
+
+  if (typeof value !== 'boolean') {
+    issues.push(`${pathLabel} must be a boolean.`);
     return undefined;
   }
 

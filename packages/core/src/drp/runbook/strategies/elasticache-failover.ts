@@ -72,4 +72,8 @@ function generateElastiCacheRunbook(
   });
 }
 
-registerRunbookStrategy('elasticache', '*', generateElastiCacheRunbook);
+registerRunbookStrategy('elasticache', '*', {
+  generate: generateElastiCacheRunbook,
+  executionRisk: 'caution',
+  riskReason: 'Replica and failover changes can trigger reconnects and should be scheduled.',
+});

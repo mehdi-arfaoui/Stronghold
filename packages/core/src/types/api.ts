@@ -3,6 +3,13 @@ import type { GraphAnalysisReport } from './analysis.js';
 import type { DriftReport } from '../drift/drift-types.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
+import type {
+  ContextualFinding,
+  Service,
+  ServicePosture,
+  ServiceRecommendationProjection,
+  ServiceScore,
+} from '../services/index.js';
 
 export type ApiScanStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'PARTIAL';
 
@@ -48,6 +55,7 @@ export interface ApiScanData {
   readonly edges: ReadonlyArray<ScanEdge>;
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
+  readonly servicePosture?: ServicePosture;
 }
 
 export interface ApiValidationSummary {
@@ -61,6 +69,32 @@ export interface ApiValidationSummary {
     readonly severity: ValidationSeverity;
     readonly message: string;
   }[];
+}
+
+export interface ApiServiceSummary {
+  readonly service: Service;
+  readonly score: ServiceScore;
+  readonly contextualFindings: readonly ContextualFinding[];
+  readonly recommendations: readonly ServiceRecommendationProjection[];
+}
+
+export interface ApiServicesResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly services: readonly ApiServiceSummary[];
+  readonly unassigned: {
+    readonly score: ServiceScore | null;
+    readonly resourceCount: number;
+    readonly contextualFindings: readonly ContextualFinding[];
+    readonly recommendations: readonly ServiceRecommendationProjection[];
+  };
+}
+
+export interface ApiServiceDetailResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly service: ApiServiceSummary;
+  readonly unassignedResourceCount: number;
 }
 
 export interface ApiStoredDrPlan {

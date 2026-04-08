@@ -21,6 +21,9 @@ export type GraphVisualData = Record<string, unknown> & {
   readonly status: string;
   readonly count?: number;
   readonly emphasis?: string;
+  readonly accentColor?: string;
+  readonly serviceLabel?: string;
+  readonly muted?: boolean;
 };
 
 function resolveIcon(nodeType: string): LucideIcon {
@@ -77,7 +80,10 @@ export function GraphNode({ data, selected }: NodeProps): JSX.Element {
         'min-w-[210px] rounded-2xl border-2 bg-card/95 px-4 py-3 shadow-panel transition-colors duration-150',
         selected ? 'ring-2 ring-accent/35' : '',
       )}
-      style={{ borderColor: getStatusColor(nodeData.status) }}
+      style={{
+        borderColor: getStatusColor(nodeData.status),
+        opacity: nodeData.muted ? 0.45 : 1,
+      }}
     >
       <Handle type="target" position={Position.Left} className="!h-2 !w-2 !border-0 !bg-accent/70" />
       <Handle type="source" position={Position.Right} className="!h-2 !w-2 !border-0 !bg-accent/70" />
@@ -88,6 +94,14 @@ export function GraphNode({ data, selected }: NodeProps): JSX.Element {
         <div className="min-w-0">
           <div className="truncate text-sm font-semibold text-foreground">{nodeData.label}</div>
           <div className="mt-1 truncate text-xs text-muted-foreground">{nodeData.subtitle}</div>
+          {nodeData.serviceLabel ? (
+            <div
+              className="mt-2 inline-flex rounded-full px-2 py-1 text-[10px] uppercase tracking-[0.16em] text-white"
+              style={{ backgroundColor: nodeData.accentColor ?? '#64748b' }}
+            >
+              {nodeData.serviceLabel}
+            </div>
+          ) : null}
           {nodeData.emphasis ? <div className="mt-2 text-xs text-accent-soft-foreground">{nodeData.emphasis}</div> : null}
         </div>
       </div>

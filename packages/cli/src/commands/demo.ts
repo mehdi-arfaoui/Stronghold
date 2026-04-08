@@ -1,4 +1,8 @@
 import { Command } from 'commander';
+import {
+  generateRecommendations,
+  selectTopRecommendations,
+} from '@stronghold-dr/core';
 
 import type { DemoCommandOptions } from '../config/options.js';
 import {
@@ -8,6 +12,7 @@ import {
 } from '../config/options.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
 import { writeOutput } from '../output/io.js';
+import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { renderScanSummary } from '../output/scan-summary.js';
 import { formatDemoMessage } from '../output/theme.js';
 import { runScanPipeline } from '../pipeline/scan-pipeline.js';
@@ -64,9 +69,26 @@ export function registerDemoCommand(program: Command): void {
       const savedPath = options.encrypt
         ? '.stronghold/latest-scan.stronghold-enc'
         : '.stronghold/latest-scan.json';
+      const recommendations = generateRecommendations({
+        nodes: results.nodes,
+        validationReport: results.validationReport,
+        drpPlan: results.drpPlan,
+        isDemo: true,
+        redact: options.redact,
+      });
+      const topRecommendations = selectTopRecommendations(recommendations);
 
       if (options.output === 'json') {
-        await writeOutput(JSON.stringify(results, null, 2));
+        await writeOutput(
+          JSON.stringify(
+            {
+              ...results,
+              recommendations,
+            },
+            null,
+            2,
+          ),
+        );
         return;
       }
 
@@ -75,6 +97,17 @@ export function registerDemoCommand(program: Command): void {
           savedPath,
         }),
       );
+      if (topRecommendations.length > 0) {
+        await writeOutput('');
+        await writeOutput(
+          renderRecommendationHighlights(
+            topRecommendations,
+            results.validationReport.score,
+            'stronghold report',
+            recommendations.length,
+          ),
+        );
+      }
       await writeOutput('');
       await writeOutput(
         'This was a demo. To scan your real infrastructure: stronghold scan --region <your-region>',

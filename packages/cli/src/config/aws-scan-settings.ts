@@ -35,19 +35,22 @@ export function resolveAwsScanSettings(
   const config = Object.prototype.hasOwnProperty.call(resolutionOptions, 'config')
     ? (resolutionOptions.config ?? null)
     : loadStrongholdConfig(resolutionOptions.configPath);
-  const accountConfig = resolveAccountConfig(options.account, config);
+  const selectedAccountName = resolveSelectedAccountName(options.account, config);
+  const accountConfig = resolveAccountConfig(selectedAccountName, config);
   const profile = firstDefined(options.profile, accountConfig?.profile);
   const roleArn = firstDefined(options.roleArn, accountConfig?.roleArn);
   const externalId = firstDefined(options.externalId, accountConfig?.externalId);
-
-  const explicitRegions = options.allRegions
+  const configAllRegions =
+    accountConfig?.allRegions === true || config?.defaults?.allRegions === true;
+  const allRegions = options.allRegions || (options.region ? false : configAllRegions);
+  const explicitRegions = allRegions
     ? undefined
     : firstNonEmptyArray(options.region, accountConfig?.regions, config?.defaults?.regions);
 
   return {
-    allRegions: options.allRegions,
+    allRegions,
     ...(explicitRegions ? { explicitRegions } : {}),
-    ...(options.account ? { accountName: options.account } : {}),
+    ...(selectedAccountName ? { accountName: selectedAccountName } : {}),
     ...(profile ? { profile } : {}),
     ...(roleArn ? { roleArn } : {}),
     ...(externalId ? { externalId } : {}),
@@ -58,6 +61,17 @@ export function resolveAwsScanSettings(
       firstDefined(options.scannerTimeout, config?.defaults?.scannerTimeout) ??
       DEFAULT_SCANNER_TIMEOUT_SECONDS,
   };
+}
+
+function resolveSelectedAccountName(
+  explicitAccountName: string | undefined,
+  config: StrongholdConfig | null,
+): string | undefined {
+  if (explicitAccountName) {
+    return explicitAccountName;
+  }
+
+  return config?.accounts?.default ? 'default' : undefined;
 }
 
 function resolveAccountConfig(
