@@ -34,10 +34,37 @@ function normalizeAuditEntry(entry: AuditEntry): AuditEntry {
     parameters: {
       ...(entry.parameters.regions ? { regions: [...entry.parameters.regions] } : {}),
       ...(entry.parameters.services ? { services: [...entry.parameters.services] } : {}),
+      ...(entry.parameters.profile ? { profile: entry.parameters.profile } : {}),
+      ...(entry.parameters.concurrency !== undefined
+        ? { concurrency: entry.parameters.concurrency }
+        : {}),
+      ...(entry.parameters.scannerTimeoutSeconds !== undefined
+        ? { scannerTimeoutSeconds: entry.parameters.scannerTimeoutSeconds }
+        : {}),
+      ...(entry.parameters.roleArn ? { roleArn: entry.parameters.roleArn } : {}),
+      ...(entry.parameters.accountName ? { accountName: entry.parameters.accountName } : {}),
       ...(entry.parameters.outputFormat
         ? { outputFormat: entry.parameters.outputFormat }
         : {}),
       ...(entry.parameters.flags ? { flags: [...entry.parameters.flags] } : {}),
+      ...(entry.parameters.governancePath
+        ? { governancePath: entry.parameters.governancePath }
+        : {}),
+      ...(entry.parameters.findingKey ? { findingKey: entry.parameters.findingKey } : {}),
+      ...(entry.parameters.acceptanceId ? { acceptanceId: entry.parameters.acceptanceId } : {}),
+      ...(entry.parameters.acceptedBy ? { acceptedBy: entry.parameters.acceptedBy } : {}),
+      ...(entry.parameters.justification
+        ? { justification: entry.parameters.justification }
+        : {}),
+      ...(entry.parameters.expiresAt ? { expiresAt: entry.parameters.expiresAt } : {}),
+      ...(entry.parameters.policyId ? { policyId: entry.parameters.policyId } : {}),
+      ...(entry.parameters.policyName ? { policyName: entry.parameters.policyName } : {}),
+      ...(entry.parameters.serviceId ? { serviceId: entry.parameters.serviceId } : {}),
+      ...(entry.parameters.owner ? { owner: entry.parameters.owner } : {}),
+      ...(entry.parameters.confirmedAt ? { confirmedAt: entry.parameters.confirmedAt } : {}),
+      ...(entry.parameters.nextReviewAt ? { nextReviewAt: entry.parameters.nextReviewAt } : {}),
+      ...(entry.parameters.severity ? { severity: entry.parameters.severity } : {}),
+      ...(entry.parameters.note ? { note: entry.parameters.note } : {}),
     },
     result: {
       status: entry.result.status,

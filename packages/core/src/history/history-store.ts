@@ -127,6 +127,11 @@ export function buildScanSnapshot(input: BuildScanSnapshotInput): ScanSnapshot {
       partiallyCovered: input.scenarioAnalysis?.summary.partiallyCovered ?? 0,
       uncovered: input.scenarioAnalysis?.summary.uncovered ?? 0,
     },
+    ...(input.servicePosture || input.governance
+      ? {
+          governance: buildGovernanceSnapshot(input),
+        }
+      : {}),
     evidenceDistribution: {
       observed: evidenceSummary.counts.observed,
       inferred: evidenceSummary.counts.inferred,
@@ -168,6 +173,28 @@ function buildServiceSnapshots(posture: ServicePosture | null | undefined): read
       resourceCount: service.service.resources.length,
     };
   });
+}
+
+function buildGovernanceSnapshot(
+  input: BuildScanSnapshotInput,
+): NonNullable<ScanSnapshot['governance']> {
+  const services = input.servicePosture?.services ?? [];
+  const confirmedOwners = services.filter(
+    (service) => service.service.governance?.ownerStatus === 'confirmed',
+  ).length;
+  const ownerCoverage =
+    services.length === 0 ? 0 : Math.round((confirmedOwners / services.length) * 100);
+
+  return {
+    ownerCoverage,
+    activeAcceptances: input.governance?.riskAcceptances.filter(
+      (acceptance) => acceptance.status === 'active',
+    ).length ?? 0,
+    expiredAcceptances: input.governance?.riskAcceptances.filter(
+      (acceptance) => acceptance.status === 'expired',
+    ).length ?? 0,
+    policyViolations: input.governance?.policyViolations?.length ?? 0,
+  };
 }
 
 function resolveEvidenceSummary(
@@ -217,6 +244,7 @@ function validateScanSnapshot(value: unknown, filePath: string): ScanSnapshot {
     services: readServiceSnapshots(value.services, filePath),
     ...(typeof value.totalDebt === 'number' ? { totalDebt: value.totalDebt } : {}),
     scenarioCoverage: readScenarioCoverage(value.scenarioCoverage, filePath),
+    ...(value.governance ? { governance: readGovernanceSnapshot(value.governance, filePath) } : {}),
     evidenceDistribution: readNumberRecord(
       value.evidenceDistribution,
       filePath,
@@ -274,6 +302,34 @@ function readScenarioCoverage(
       'scenarioCoverage.partiallyCovered',
     ),
     uncovered: readNumber(value.uncovered, filePath, 'scenarioCoverage.uncovered'),
+  };
+}
+
+function readGovernanceSnapshot(
+  value: unknown,
+  filePath: string,
+): NonNullable<ScanSnapshot['governance']> {
+  if (!isRecord(value)) {
+    throw new Error(`History snapshot at ${filePath} has an invalid governance section.`);
+  }
+
+  return {
+    ownerCoverage: readNumber(value.ownerCoverage, filePath, 'governance.ownerCoverage'),
+    activeAcceptances: readNumber(
+      value.activeAcceptances,
+      filePath,
+      'governance.activeAcceptances',
+    ),
+    expiredAcceptances: readNumber(
+      value.expiredAcceptances,
+      filePath,
+      'governance.expiredAcceptances',
+    ),
+    policyViolations: readNumber(
+      value.policyViolations,
+      filePath,
+      'governance.policyViolations',
+    ),
   };
 }
 

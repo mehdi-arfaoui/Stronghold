@@ -2,6 +2,8 @@ import type {
   ContextualFinding,
   Criticality,
   DetectionSource,
+  OwnerStatus,
+  Service,
   ServicePosture,
   ServicePostureService,
   ServiceRecommendationProjection,
@@ -52,11 +54,45 @@ export function sortServiceScores(
 }
 
 export function formatDeclaredOwner(owner: string | undefined): string {
-  return owner ? `${owner} (declared)` : 'Not declared';
+  return owner ? `${owner} (declared)` : 'not assigned';
 }
 
 export function formatDeclaredOwnerVerbose(owner: string | undefined): string {
-  return owner ? `${owner} (declared, not verified)` : 'Not declared';
+  return owner ? `${owner} (declared, not verified)` : 'not assigned';
+}
+
+export function formatServiceOwner(service: Pick<Service, 'owner' | 'governance'>): string {
+  if (!service.governance) {
+    return formatDeclaredOwner(service.owner);
+  }
+
+  const owner = service.governance.owner ?? service.owner;
+  return formatOwnershipStatus(owner, service.governance.ownerStatus);
+}
+
+export function formatServiceOwnerVerbose(service: Pick<Service, 'owner' | 'governance'>): string {
+  if (!service.governance) {
+    return formatDeclaredOwnerVerbose(service.owner);
+  }
+
+  const owner = service.governance.owner ?? service.owner;
+  return formatOwnershipStatus(owner, service.governance.ownerStatus);
+}
+
+function formatOwnershipStatus(
+  owner: string | undefined,
+  ownerStatus: OwnerStatus,
+): string {
+  if (ownerStatus === 'none' || !owner) {
+    return 'not assigned';
+  }
+  if (ownerStatus === 'confirmed') {
+    return `${owner} ✓`;
+  }
+  if (ownerStatus === 'review_due') {
+    return `${owner} ⚠ review due`;
+  }
+  return `${owner} (unconfirmed)`;
 }
 
 export function formatDetectionSource(source: DetectionSource): string {
@@ -102,9 +138,11 @@ export function filterContextualFindings(
   filters: {
     readonly category?: string;
     readonly severity?: string;
+    readonly includeRiskAccepted?: boolean;
   },
 ): readonly ContextualFinding[] {
   return findings
+    .filter((finding) => (filters.includeRiskAccepted ? true : finding.riskAccepted !== true))
     .filter((finding) => (filters.category ? finding.category === filters.category : true))
     .filter((finding) =>
       filters.severity

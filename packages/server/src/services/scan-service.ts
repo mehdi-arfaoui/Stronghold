@@ -4,11 +4,14 @@ import * as core from '@stronghold-dr/core';
 import {
   analyzeBuiltInScenarios,
   analyzeTrend,
+  applyPoliciesToServicePosture,
+  applyRiskAcceptancesToServicePosture,
   applyScenarioImpactToServicePosture,
   applyEvidenceFreshness,
   applyDebtToSnapshot,
   buildScanSnapshot,
   checkFreshness,
+  collectGovernanceAuditEvents,
   collectTrackedFindings,
   EVIDENCE_CONFIDENCE,
   calculateServiceDebt,
@@ -18,6 +21,8 @@ import {
   elasticacheFailoverEnricher,
   formatValidationReport,
   generateDRPlan,
+  logGovernanceAuditEvents,
+  materializeRiskAcceptances,
   mergeEvidenceIntoValidationReport,
   runValidation,
   s3ReplicationEnricher,
@@ -28,6 +33,10 @@ import {
   validateDRPlan,
   type ApiAddEvidenceInput,
   type ApiEvidenceListResponse,
+  type ApiGovernanceAcceptancesResponse,
+  type ApiGovernancePoliciesResponse,
+  type ApiGovernancePolicySummary,
+  type ApiGovernanceResponse,
   type ApiHistoryResponse,
   type ApiHistoryTrendResponse,
   type ApiScenarioDetailResponse,
@@ -40,6 +49,7 @@ import {
   type DiscoveryCredentials,
   type Evidence,
   type FindingLifecycle,
+  type GovernanceState,
   type InfraNode,
   type ScanSnapshot,
   type ScenarioAnalysis,
@@ -61,6 +71,7 @@ import { ServerError, toError } from '../errors/server-error.js';
 import { deserializeAnalysis } from './analysis-serialization.js';
 import { buildGraph } from './graph-builder.js';
 import { InMemoryFindingLifecycleStore } from './history-memory-store.js';
+import { PrismaAuditLogger } from './prisma-audit-logger.js';
 import { runScanPipeline } from './scan-pipeline.js';
 import { ServiceDetectionService } from './service-detection.service.js';
 
@@ -77,6 +88,7 @@ export interface ValidationReportFilters {
 
 const EVIDENCE_REPORT_TYPE = 'evidence';
 const SCENARIO_REPORT_TYPE = 'scenarios';
+const GOVERNANCE_REPORT_TYPE = 'governance';
 const HISTORY_SNAPSHOT_REPORT_TYPE = 'history_snapshot';
 const FINDING_LIFECYCLES_REPORT_TYPE = 'finding_lifecycles';
 const DEFAULT_TESTED_EVIDENCE_EXPIRATION_DAYS = 90;
@@ -87,6 +99,7 @@ export class ScanService {
     private readonly infrastructureRepository: PrismaInfrastructureRepository,
     private readonly logger: Logger,
     private readonly serviceDetectionService: ServiceDetectionService,
+    private readonly auditLogger: PrismaAuditLogger,
   ) {}
 
   public async recoverOrphanedScans(): Promise<number> {
@@ -124,9 +137,10 @@ export class ScanService {
     if (!data) {
       throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
     }
-    const [servicePosture, scenarioAnalysis] = await Promise.all([
+    const [servicePosture, scenarioAnalysis, governance] = await Promise.all([
       this.serviceDetectionService.getPersistedServicePosture(scanId),
       this.getPersistedScenarioAnalysis(scanId),
+      this.getPersistedGovernance(scanId),
     ]);
     const storedEvidence = await this.getStoredEvidence(scanId, this.buildServiceLookup(servicePosture));
     const validationReport =
@@ -138,6 +152,7 @@ export class ScanService {
       ...data,
       validationReport,
       ...(servicePosture ? { servicePosture } : {}),
+      ...(governance ? { governance } : {}),
       ...(scenarioAnalysis ? { scenarioAnalysis } : {}),
     };
   }
@@ -506,11 +521,54 @@ export class ScanService {
     return report ? (report.content as ScenarioAnalysis) : null;
   }
 
+  public async getPersistedGovernance(scanId: string): Promise<GovernanceState | null> {
+    const report = await this.scanRepository.getLatestReportByType(scanId, GOVERNANCE_REPORT_TYPE);
+    return report ? (report.content as GovernanceState) : null;
+  }
+
+  public async getLatestGovernance(): Promise<ApiGovernanceResponse> {
+    const latestScan = await this.scanRepository.getLatestCompletedScanSummary();
+    if (!latestScan) {
+      return buildGovernanceResponse(new Date().toISOString(), null, null);
+    }
+
+    const [servicePosture, governance] = await Promise.all([
+      this.serviceDetectionService.getPersistedServicePosture(latestScan.id),
+      this.getPersistedGovernance(latestScan.id),
+    ]);
+
+    return buildGovernanceResponse(latestScan.updatedAt.toISOString(), servicePosture, governance);
+  }
+
+  public async listGovernanceAcceptances(): Promise<ApiGovernanceAcceptancesResponse> {
+    const governance = await this.getLatestGovernance();
+    return {
+      generatedAt: governance.generatedAt,
+      acceptances: governance.riskAcceptances,
+    };
+  }
+
+  public async listGovernancePolicies(): Promise<ApiGovernancePoliciesResponse> {
+    const governance = await this.getLatestGovernance();
+    return {
+      generatedAt: governance.generatedAt,
+      policies: governance.policies,
+    };
+  }
+
+  public async acceptGovernanceRisk(): Promise<never> {
+    throw new ServerError('Governance file editing is not available over the API.', {
+      code: 'NOT_IMPLEMENTED',
+      status: 501,
+    });
+  }
+
   private async persistPostureMemory(params: {
     readonly scanId: string;
     readonly timestamp: Date;
     readonly validationReport: ValidationReport;
     readonly servicePosture: ServicePosture;
+    readonly governance?: GovernanceState | null;
     readonly scenarioAnalysis: ScenarioAnalysis;
     readonly regions: readonly string[];
     readonly totalResources: number;
@@ -527,6 +585,7 @@ export class ScanService {
       totalResources: params.totalResources,
       regions: params.regions,
       servicePosture: params.servicePosture,
+      ...(params.governance ? { governance: params.governance } : {}),
       scenarioAnalysis: params.scenarioAnalysis,
     });
     const lifecycleStore = new InMemoryFindingLifecycleStore(
@@ -818,11 +877,13 @@ export class ScanService {
       const execution = await this.runAwsScan(params);
       const validation = validateDRPlan(execution.artifacts.drPlan, execution.artifacts.graph);
       const previousCompletedScan = await this.scanRepository.getLatestCompletedScanSummary();
-      const previousAssignments =
-        previousCompletedScan
-          ? (await this.serviceDetectionService.getPersistedServicePosture(previousCompletedScan.id))
-              ?.detection.services
-          : undefined;
+      const previousServicePosture = previousCompletedScan
+        ? await this.serviceDetectionService.getPersistedServicePosture(previousCompletedScan.id)
+        : null;
+      const previousGovernance = previousCompletedScan
+        ? await this.getPersistedGovernance(previousCompletedScan.id)
+        : null;
+      const previousAssignments = previousServicePosture?.detection.services;
 
       await this.scanRepository.saveCompletedScan({
         scanId,
@@ -855,13 +916,79 @@ export class ScanService {
         servicePostureResult.posture,
         scenarioAnalysis.scenarios,
       );
+      const riskAcceptanceOutcome = servicePostureResult.governance
+        ? applyRiskAcceptancesToServicePosture(
+            scenarioAwarePosture,
+            execution.artifacts.validationReport,
+            execution.artifacts.nodes,
+            materializeRiskAcceptances(servicePostureResult.governance.riskAcceptances),
+            execution.timestamp,
+          )
+        : null;
+      const policyOutcome = servicePostureResult.governance
+        ? applyPoliciesToServicePosture(
+            riskAcceptanceOutcome?.posture ?? scenarioAwarePosture,
+            servicePostureResult.governance.policies,
+            execution.artifacts.nodes,
+          )
+        : null;
+      const finalPosture =
+        policyOutcome?.posture ?? riskAcceptanceOutcome?.posture ?? scenarioAwarePosture;
+      const governanceState = servicePostureResult.governance
+        ? {
+            riskAcceptances: riskAcceptanceOutcome?.governance.riskAcceptances ?? [],
+            score:
+              riskAcceptanceOutcome?.governance.score ?? {
+                withAcceptances: {
+                  score: execution.artifacts.validationReport.scoreBreakdown.overall,
+                  grade: execution.artifacts.validationReport.scoreBreakdown.grade,
+                },
+                withoutAcceptances: {
+                  score: execution.artifacts.validationReport.scoreBreakdown.overall,
+                  grade: execution.artifacts.validationReport.scoreBreakdown.grade,
+                },
+                excludedFindings: 0,
+              },
+            policies: servicePostureResult.governance.policies,
+            policyViolations: policyOutcome?.violations ?? [],
+          }
+        : null;
       await this.serviceDetectionService.saveServicePosture(
         scanId,
-        scenarioAwarePosture,
-        execution.artifacts.validationReport.scoreBreakdown.overall,
-        execution.artifacts.validationReport.scoreBreakdown.grade,
+        finalPosture,
+        governanceState?.score.withAcceptances.score ??
+          execution.artifacts.validationReport.scoreBreakdown.overall,
+        governanceState?.score.withAcceptances.grade ??
+          execution.artifacts.validationReport.scoreBreakdown.grade,
         servicePostureResult.warnings,
       );
+      if (governanceState) {
+        await this.scanRepository.saveReport({
+          scanId,
+          type: GOVERNANCE_REPORT_TYPE,
+          format: 'json',
+          content: governanceState,
+          score: governanceState.score.withAcceptances.score,
+          grade: governanceState.score.withAcceptances.grade,
+        });
+        const governanceEvents = collectGovernanceAuditEvents(
+          {
+            timestamp: execution.timestamp.toISOString(),
+            servicePosture: finalPosture,
+            governance: governanceState,
+          },
+          previousCompletedScan
+            ? {
+                timestamp: previousCompletedScan.updatedAt.toISOString(),
+                servicePosture: previousServicePosture,
+                governance: previousGovernance,
+              }
+            : null,
+        );
+        await logGovernanceAuditEvents(this.auditLogger, governanceEvents, {
+          timestamp: execution.timestamp.toISOString(),
+        });
+      }
       await this.scanRepository.saveReport({
         scanId,
         type: SCENARIO_REPORT_TYPE,
@@ -872,7 +999,8 @@ export class ScanService {
         scanId,
         timestamp: execution.timestamp,
         validationReport: execution.artifacts.validationReport,
-        servicePosture: scenarioAwarePosture,
+        servicePosture: finalPosture,
+        governance: governanceState,
         scenarioAnalysis,
         regions: params.regions,
         totalResources: execution.artifacts.nodes.length,
@@ -1013,4 +1141,34 @@ function toPreviousDebt(snapshot: ScanSnapshot | null): readonly ServiceDebt[] {
       findingDebts: [],
       trend: 'stable' as const,
     }));
+}
+
+function buildGovernanceResponse(
+  generatedAt: string,
+  servicePosture: ServicePosture | null,
+  governance: GovernanceState | null,
+): ApiGovernanceResponse {
+  const violations = governance?.policyViolations ?? [];
+  const policies = (governance?.policies ?? []).map((policy) => ({
+    policy,
+    violationCount: violations.filter((violation) => violation.policyId === policy.id).length,
+    violations: violations.filter((violation) => violation.policyId === policy.id),
+  })) satisfies readonly ApiGovernancePolicySummary[];
+
+  return {
+    generatedAt,
+    ownership:
+      servicePosture?.services.map((service) => ({
+        serviceId: service.service.id,
+        serviceName: service.service.name,
+        owner: service.service.governance?.owner ?? service.service.owner ?? null,
+        ownerStatus: service.service.governance?.ownerStatus ?? (service.service.owner ? 'declared' : 'none'),
+        confirmedAt: service.service.governance?.confirmedAt ?? null,
+        nextReviewAt: service.service.governance?.nextReviewAt ?? null,
+      })) ?? [],
+    riskAcceptances: governance?.riskAcceptances ?? [],
+    policies,
+    violations,
+    score: governance?.score ?? null,
+  };
 }

@@ -34,15 +34,19 @@ describe('services command renderers', () => {
     expect(rendered).toContain('Unassigned: 1 resources');
   });
 
-  it('renders a merged services list with declared owners', () => {
+  it('renders a merged services list with governance ownership status', () => {
     const rendered = renderServicesList(createPosture([
       createServicePosture('payment', 'Payment', 'manual', ['db-1', 'lambda-1'], {
         owner: 'team-backend',
         criticality: 'critical',
+        governance: {
+          owner: 'team-backend',
+          ownerStatus: 'confirmed',
+        },
       }),
     ]));
 
-    expect(rendered).toContain('owner: team-backend (declared)');
+    expect(rendered).toContain('owner: team-backend ✓');
     expect(rendered).toContain('source: manual');
   });
 
@@ -56,7 +60,11 @@ describe('services command renderers', () => {
     expect(renderServiceDetail(createServicePosture('payment', 'Payment', 'manual', ['db-1', 'lambda-1'], {
       owner: 'team-backend',
       criticality: 'critical',
-    }))).toContain('Owner: team-backend (declared, not verified)');
+      governance: {
+        owner: 'team-backend',
+        ownerStatus: 'review_due',
+      },
+    }))).toContain('Owner: team-backend ⚠ review due');
     expect(renderServicesYaml([service])).toContain('payment:');
     expect(renderServicesYaml([service])).toContain('- db-1');
   });
@@ -98,12 +106,14 @@ function createServicePosture(
   options: {
     readonly owner?: string;
     readonly criticality?: Service['criticality'];
+    readonly governance?: Service['governance'];
   } = {},
 ): ServicePostureService {
   const service = {
     ...createService(id, name, detectionType, resourceIds),
     ...(options.owner ? { owner: options.owner } : {}),
     ...(options.criticality ? { criticality: options.criticality } : {}),
+    ...(options.governance ? { governance: options.governance } : {}),
   };
 
   return {

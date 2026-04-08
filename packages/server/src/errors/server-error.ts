@@ -9,6 +9,7 @@ export type ServerErrorCode =
   | 'AWS_ERROR'
   | 'PLAN_INVALID'
   | 'DB_ERROR'
+  | 'NOT_IMPLEMENTED'
   | 'INTERNAL_ERROR';
 
 export interface ServerErrorOptions {

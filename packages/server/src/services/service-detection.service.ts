@@ -2,10 +2,12 @@ import {
   buildServicePosture,
   deserializeDRPlan,
   generateRecommendations,
+  loadGovernanceConfig,
   loadManualServices,
   type ApiServiceDetailResponse,
   type ApiServicesResponse,
   type DRPlan,
+  type GovernanceConfig,
   type InfraNode,
   type ScanEdge,
   type ServicePosture,
@@ -34,11 +36,16 @@ export class ServiceDetectionService {
     private readonly infrastructureRepository: PrismaInfrastructureRepository,
     private readonly logger: Logger,
     private readonly servicesFilePath: string,
+    private readonly governanceFilePath: string,
   ) {}
 
   public buildServicePosture(
     params: BuildServicePostureParams,
-  ): { readonly posture: ServicePosture; readonly warnings: readonly string[] } {
+  ): {
+    readonly posture: ServicePosture;
+    readonly warnings: readonly string[];
+    readonly governance: GovernanceConfig | null;
+  } {
     const recommendations = generateRecommendations({
       nodes: params.nodes,
       validationReport: params.validationReport,
@@ -55,17 +62,23 @@ export class ServiceDetectionService {
         `${match.resourceIds.length} new resources matched service "${match.serviceName}" since the previous scan.`,
       ]) ?? []),
     ];
+    const governanceWarnings: string[] = [];
+    const governance = loadGovernanceConfig(this.governanceFilePath, {
+      onWarning: (warning) => governanceWarnings.push(warning),
+    });
     const posture = buildServicePosture({
       nodes: params.nodes,
       edges: params.edges,
       validationReport: params.validationReport,
       recommendations,
       manualServices: manualServices?.services,
+      governance,
     });
 
     return {
       posture,
-      warnings,
+      warnings: [...warnings, ...governanceWarnings],
+      governance,
     };
   }
 

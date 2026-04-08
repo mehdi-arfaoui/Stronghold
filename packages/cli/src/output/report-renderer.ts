@@ -19,17 +19,16 @@ import {
 import type { ScanResults } from '../storage/file-store.js';
 import {
   filterContextualFindings,
-  formatDeclaredOwnerVerbose,
   formatDetectionSource,
   formatFindingsCount,
   formatFindingSeverity,
   formatMetadataValue,
+  formatServiceOwnerVerbose,
   hasDetectedServices,
   sortServiceEntries,
 } from './service-helpers.js';
 import {
   buildScenarioNameLookup,
-  renderScenarioCoverageHeadline,
   renderScenarioCoverageLine,
 } from './scenario-renderer.js';
 import { buildAsciiBar, formatGrade, formatSeverityLabel, theme } from './theme.js';
@@ -203,13 +202,22 @@ export function renderTerminalServiceReport(
   const serviceLabels = buildServiceLookup(scan);
   const findingLifecycles = options.findingLifecycles ?? new Map();
   const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
-  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
   const scenarioCoverageLine = scan.scenarioAnalysis
     ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
     : null;
+  const scoreComparison = scan.governance?.score ?? null;
 
   lines.push(theme.section('Executive Summary'));
-  lines.push(scenarioHeadline ?? `Global score: ${formatGrade(scan.validationReport)}`);
+  lines.push(
+    scoreComparison
+      ? `Global score: ${scoreComparison.withAcceptances.score}/100 (${scoreComparison.withAcceptances.grade}) - without acceptances: ${scoreComparison.withoutAcceptances.score}/100 (${scoreComparison.withoutAcceptances.grade})`
+      : `Global score: ${formatGrade(scan.validationReport)}`,
+  );
+  if (scoreComparison && scoreComparison.excludedFindings > 0) {
+    lines.push(
+      `Risk-accepted findings excluded from score: ${scoreComparison.excludedFindings}`,
+    );
+  }
   if (scenarioCoverageLine) {
     lines.push(scenarioCoverageLine);
   }
@@ -223,7 +231,7 @@ export function renderTerminalServiceReport(
     lines.push('');
     lines.push(theme.section(`Service: ${service.service.name} (${service.score.grade} - ${service.score.score}/100)`));
     lines.push(`Criticality: ${service.score.criticality}`);
-    lines.push(`Owner: ${formatDeclaredOwnerVerbose(service.score.owner)}`);
+    lines.push(`Owner: ${formatServiceOwnerVerbose(service.service)}`);
     lines.push(`Source: ${formatDetectionSource(service.score.detectionSource)}`);
     lines.push(`Resources: ${service.service.resources.length}`);
     lines.push(`Findings: ${formatFindingsCount(service.score.findingsCount)}`);
@@ -264,6 +272,15 @@ export function renderTerminalServiceReport(
     appendServiceRecommendations(lines, scan.servicePosture.unassigned.recommendations);
   }
 
+  appendRiskAcceptedFindingsSection(
+    lines,
+    filterContextualFindings(scan.servicePosture.contextualFindings, {
+      ...options,
+      includeRiskAccepted: true,
+    }).filter((finding) => finding.riskAcceptance),
+    scan.timestamp,
+  );
+
   lines.push('');
   lines.push(theme.section('Recommendations Summary'));
   appendServiceRecommendations(lines, scan.servicePosture.recommendations);
@@ -299,19 +316,24 @@ export function renderMarkdownServiceReport(
   const serviceLabels = buildServiceLookup(scan);
   const findingLifecycles = options.findingLifecycles ?? new Map();
   const scenarioNameById = buildScenarioNameLookup(scan.scenarioAnalysis ?? null);
-  const scenarioHeadline = renderScenarioCoverageHeadline(scan);
   const scenarioCoverageLine = scan.scenarioAnalysis
     ? renderScenarioCoverageLine(scan.scenarioAnalysis.summary)
     : null;
+  const scoreComparison = scan.governance?.score ?? null;
 
   lines.push('## Executive Summary');
   lines.push('');
   lines.push(
-    scenarioHeadline
-      ? `- ${scenarioHeadline}`
-      :
-      `- Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+    scoreComparison
+      ? `- Global score: ${scoreComparison.withAcceptances.score}/100 (${scoreComparison.withAcceptances.grade})`
+      : `- Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
   );
+  if (scoreComparison) {
+    lines.push(
+      `- Without acceptances: ${scoreComparison.withoutAcceptances.score}/100 (${scoreComparison.withoutAcceptances.grade})`,
+    );
+    lines.push(`- Risk-accepted findings excluded from score: ${scoreComparison.excludedFindings}`);
+  }
   if (scenarioCoverageLine) {
     lines.push(`- ${scenarioCoverageLine}`);
   }
@@ -325,7 +347,7 @@ export function renderMarkdownServiceReport(
     lines.push('');
     lines.push(`- Name: ${service.service.name}`);
     lines.push(`- Criticality: ${service.score.criticality}`);
-    lines.push(`- Owner: ${formatDeclaredOwnerVerbose(service.score.owner)}`);
+    lines.push(`- Owner: ${formatServiceOwnerVerbose(service.service)}`);
     lines.push(`- Source: ${formatDetectionSource(service.score.detectionSource)}`);
     lines.push(`- Resources: ${service.service.resources.length}`);
     lines.push(`- Findings: ${formatFindingsCount(service.score.findingsCount)}`);
@@ -371,6 +393,15 @@ export function renderMarkdownServiceReport(
     );
   }
 
+  appendMarkdownRiskAcceptedFindingsSection(
+    lines,
+    filterContextualFindings(scan.servicePosture.contextualFindings, {
+      ...options,
+      includeRiskAccepted: true,
+    }).filter((finding) => finding.riskAcceptance),
+    scan.timestamp,
+  );
+
   lines.push('');
   lines.push('## Recommendations Summary');
   lines.push('');
@@ -410,8 +441,8 @@ export function buildServiceReportJson(
     ...scan.validationReport,
     results: filterValidationResults(scan.validationReport, filters),
     global: {
-      score: scan.validationReport.scoreBreakdown.overall,
-      grade: scan.validationReport.scoreBreakdown.grade,
+      score: scan.governance?.score.withAcceptances.score ?? scan.validationReport.scoreBreakdown.overall,
+      grade: scan.governance?.score.withAcceptances.grade ?? scan.validationReport.scoreBreakdown.grade,
       serviceCount: posture?.services.length ?? 0,
       unassignedResources: posture?.unassigned.resourceCount ?? scan.nodes.length,
     },
@@ -432,6 +463,22 @@ export function buildServiceReportJson(
           recommendations: [],
         },
     recommendations: posture?.recommendations ?? [],
+    governance: scan.governance
+      ? {
+          ownership:
+            posture?.services.map((service) => ({
+              serviceId: service.service.id,
+              owner: service.service.governance?.owner ?? service.service.owner ?? null,
+              ownerStatus: service.service.governance?.ownerStatus ?? 'declared',
+              confirmedAt: service.service.governance?.confirmedAt ?? null,
+              nextReviewAt: service.service.governance?.nextReviewAt ?? null,
+            })) ?? [],
+          riskAcceptances: scan.governance.riskAcceptances,
+          policies: scan.governance.policies ?? [],
+          violations: scan.governance.policyViolations ?? [],
+          score: scan.governance.score,
+        }
+      : null,
     scenarios: scan.scenarioAnalysis?.scenarios ?? [],
     defaultScenarioIds: scan.scenarioAnalysis?.defaultScenarioIds ?? [],
     scenarioCoverage: scan.scenarioAnalysis?.summary ?? null,
@@ -581,6 +628,7 @@ function appendContextualFindings(
 
   findings.forEach((finding) => {
     lines.push(`${formatFindingSeverity(finding.severity)} ${finding.ruleId} - ${finding.nodeName}`);
+    appendPolicyViolationLines(lines, finding.policyViolations);
     appendLifecycleAge(lines, findingLifecycles.get(buildFindingKey(finding.ruleId, finding.nodeId)));
     lines.push(`DR impact: ${finding.drImpact.summary}`);
     lines.push(`Recovery implication: ${finding.drImpact.recoveryImplication}`);
@@ -638,6 +686,7 @@ function appendMarkdownContextualFindings(
   findings.forEach((finding) => {
     const lifecycle = findingLifecycles.get(buildFindingKey(finding.ruleId, finding.nodeId));
     lines.push(`- **${finding.ruleId}** on \`${finding.nodeName}\`: ${finding.drImpact.summary}`);
+    appendMarkdownPolicyViolations(lines, finding.policyViolations);
     lines.push(...renderMarkdownLifecycleAge(lifecycle));
     lines.push(...renderMarkdownContextualEvidence(finding));
     lines.push(
@@ -677,6 +726,127 @@ function appendMarkdownRecommendations(
     }
     lines.push(`- Command: \`${recommendation.remediation.command}\``);
     lines.push('');
+  });
+}
+
+function appendRiskAcceptedFindingsSection(
+  lines: string[],
+  findings: readonly ContextualFinding[],
+  asOfTimestamp: string,
+): void {
+  if (findings.length === 0) {
+    return;
+  }
+
+  lines.push('');
+  lines.push(theme.section('Risk-Accepted Findings'));
+
+  findings.forEach((finding) => {
+    const acceptance = finding.riskAcceptance;
+    if (!acceptance) {
+      return;
+    }
+
+    lines.push(
+      `${riskAcceptanceHeadline(acceptance.status)} ${finding.ruleId} - ${finding.nodeName}${finding.serviceId ? ` (service: ${finding.serviceId})` : ''}`,
+    );
+    appendPolicyViolationLines(lines, finding.policyViolations);
+    lines.push(`Accepted by: ${acceptance.acceptedBy} on ${acceptance.acceptedAt.slice(0, 10)}`);
+    lines.push(`Justification: ${acceptance.justification}`);
+    lines.push(formatRiskAcceptanceTiming(acceptance, asOfTimestamp));
+    lines.push(`Original severity: ${acceptance.severityAtAcceptance}`);
+    lines.push(
+      `Current severity: ${finding.severity}${acceptance.severityAtAcceptance === finding.severity ? ' (unchanged)' : ''}`,
+    );
+    if (acceptance.status !== 'active') {
+      lines.push('This finding is ACTIVE again. Re-accept or remediate.');
+    }
+    lines.push('');
+  });
+}
+
+function appendMarkdownRiskAcceptedFindingsSection(
+  lines: string[],
+  findings: readonly ContextualFinding[],
+  asOfTimestamp: string,
+): void {
+  if (findings.length === 0) {
+    return;
+  }
+
+  lines.push('');
+  lines.push('## Risk-Accepted Findings');
+  lines.push('');
+
+  findings.forEach((finding) => {
+    const acceptance = finding.riskAcceptance;
+    if (!acceptance) {
+      return;
+    }
+
+    lines.push(
+      `- **${riskAcceptanceHeadline(acceptance.status)} ${finding.ruleId}** on \`${finding.nodeName}\`${finding.serviceId ? ` (service: ${finding.serviceId})` : ''}`,
+    );
+    appendMarkdownPolicyViolations(lines, finding.policyViolations);
+    lines.push(`- Accepted by: ${acceptance.acceptedBy} on ${acceptance.acceptedAt.slice(0, 10)}`);
+    lines.push(`- Justification: ${acceptance.justification}`);
+    lines.push(`- ${formatRiskAcceptanceTiming(acceptance, asOfTimestamp)}`);
+    lines.push(`- Original severity: ${acceptance.severityAtAcceptance}`);
+    lines.push(
+      `- Current severity: ${finding.severity}${acceptance.severityAtAcceptance === finding.severity ? ' (unchanged)' : ''}`,
+    );
+    if (acceptance.status !== 'active') {
+      lines.push('- This finding is ACTIVE again. Re-accept or remediate.');
+    }
+    lines.push('');
+  });
+}
+
+function riskAcceptanceHeadline(status: NonNullable<ContextualFinding['riskAcceptance']>['status']): string {
+  if (status === 'expired') {
+    return 'EXPIRED ACCEPTANCE';
+  }
+  if (status === 'superseded') {
+    return 'SUPERSEDED ACCEPTANCE';
+  }
+  return 'ACCEPTED';
+}
+
+function formatRiskAcceptanceTiming(
+  acceptance: NonNullable<ContextualFinding['riskAcceptance']>,
+  asOfTimestamp: string,
+): string {
+  const dayDelta = signedDiffDays(asOfTimestamp, acceptance.expiresAt);
+  if (acceptance.status === 'expired') {
+    return `Expired: ${acceptance.expiresAt.slice(0, 10)} (${Math.abs(dayDelta)} days ago)`;
+  }
+  return `Expires: ${acceptance.expiresAt.slice(0, 10)} (${dayDelta} days remaining)`;
+}
+
+function signedDiffDays(startAt: string, endAt: string): number {
+  const start = new Date(startAt).getTime();
+  const end = new Date(endAt).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end)) {
+    return 0;
+  }
+  return Math.round((end - start) / 86_400_000);
+}
+
+function appendPolicyViolationLines(
+  lines: string[],
+  violations: ContextualFinding['policyViolations'],
+): void {
+  violations?.forEach((violation) => {
+    lines.push(`POLICY VIOLATION: ${violation.policyId} "${violation.policyName}"`);
+  });
+}
+
+function appendMarkdownPolicyViolations(
+  lines: string[],
+  violations: ContextualFinding['policyViolations'],
+): void {
+  violations?.forEach((violation) => {
+    lines.push(`- POLICY VIOLATION: ${violation.policyId} "${violation.policyName}"`);
   });
 }
 

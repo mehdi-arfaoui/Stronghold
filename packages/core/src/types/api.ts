@@ -2,12 +2,18 @@ import type { DRPlan, DRPlanValidationReport } from '../drp/drp-types.js';
 import type { GraphAnalysisReport } from './analysis.js';
 import type { DriftReport } from '../drift/drift-types.js';
 import type { Evidence } from '../evidence/index.js';
+import type {
+  GovernancePolicyDefinition,
+} from '../governance/governance-types.js';
+import type { GovernanceScoreComparison, RiskAcceptance } from '../governance/risk-acceptance.js';
+import type { PolicyViolation } from '../governance/policy-types.js';
 import type { FindingLifecycle, PostureTrend, ScanSnapshot, ServiceTrend } from '../history/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
 import type { Scenario, ScenarioCoverageSummary } from '../scenarios/scenario-types.js';
 import type {
   ContextualFinding,
+  OwnerStatus,
   Service,
   ServicePosture,
   ServiceRecommendationProjection,
@@ -59,6 +65,12 @@ export interface ApiScanData {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly servicePosture?: ServicePosture;
+  readonly governance?: {
+    readonly riskAcceptances: readonly RiskAcceptance[];
+    readonly score: GovernanceScoreComparison;
+    readonly policies?: readonly GovernancePolicyDefinition[];
+    readonly policyViolations?: readonly PolicyViolation[];
+  };
   readonly scenarioAnalysis?: {
     readonly scenarios: readonly Scenario[];
     readonly defaultScenarioIds: readonly string[];
@@ -103,6 +115,52 @@ export interface ApiServiceDetailResponse {
   readonly generatedAt: string;
   readonly service: ApiServiceSummary;
   readonly unassignedResourceCount: number;
+}
+
+export interface ApiGovernanceOwnershipSummary {
+  readonly serviceId: string;
+  readonly serviceName: string;
+  readonly owner: string | null;
+  readonly ownerStatus: OwnerStatus | 'declared';
+  readonly confirmedAt: string | null;
+  readonly nextReviewAt: string | null;
+}
+
+export interface ApiGovernancePolicySummary {
+  readonly policy: GovernancePolicyDefinition;
+  readonly violationCount: number;
+  readonly violations: readonly PolicyViolation[];
+}
+
+export interface ApiGovernanceResponse {
+  readonly generatedAt: string;
+  readonly ownership: readonly ApiGovernanceOwnershipSummary[];
+  readonly riskAcceptances: readonly RiskAcceptance[];
+  readonly policies: readonly ApiGovernancePolicySummary[];
+  readonly violations: readonly PolicyViolation[];
+  readonly score: GovernanceScoreComparison | null;
+}
+
+export interface ApiGovernanceAcceptancesResponse {
+  readonly generatedAt: string;
+  readonly acceptances: readonly RiskAcceptance[];
+}
+
+export interface ApiGovernancePoliciesResponse {
+  readonly generatedAt: string;
+  readonly policies: readonly ApiGovernancePolicySummary[];
+}
+
+export interface ApiGovernanceAcceptInput {
+  readonly findingKey: string;
+  readonly acceptedBy: string;
+  readonly justification: string;
+  readonly expiresDays: number;
+}
+
+export interface ApiGovernanceAcceptResult {
+  readonly acceptanceId: string;
+  readonly expiresAt: string;
 }
 
 export interface ApiScenariosResponse {

@@ -10,6 +10,7 @@ import { globalLimiter } from './middleware/rate-limiter.js';
 import { createRequestLogger } from './middleware/request-logger.js';
 import { createDriftRoutes } from './routes/drift.routes.js';
 import { createEvidenceRoutes } from './routes/evidence.routes.js';
+import { createGovernanceRoutes } from './routes/governance.routes.js';
 import { createHealthRoutes } from './routes/health.routes.js';
 import { createHistoryRoutes } from './routes/history.routes.js';
 import { createPlanRoutes } from './routes/plan.routes.js';
@@ -71,6 +72,10 @@ export function createApp(dependencies: AppDependencies): Express {
   app.use(
     '/api',
     createEvidenceRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
+  );
+  app.use(
+    '/api',
+    createGovernanceRoutes(dependencies.scanService, dependencies.auditLogger, dependencies.logger),
   );
   app.use(
     '/api',

@@ -2,10 +2,14 @@ import {
   analyzeBuiltInScenarios,
   allValidationRules,
   analyzeFullGraph,
+  applyPoliciesToServicePosture,
   applyScenarioImpactToServicePosture,
+  applyRiskAcceptancesToServicePosture,
   buildServicePosture,
   generateDRPlan,
   generateRecommendations,
+  loadGovernanceConfig,
+  materializeRiskAcceptances,
   mergeEvidenceIntoValidationReport,
   type GraphOverrides,
   runValidation,
@@ -31,6 +35,7 @@ export interface ScanPipelineInput {
   readonly warnings?: readonly string[];
   readonly isDemo?: boolean;
   readonly servicesFilePath?: string;
+  readonly governanceFilePath?: string;
   readonly previousAssignments?: readonly Service[];
   readonly evidence?: readonly Evidence[];
   readonly onStage?: (stage: 'graph' | 'validation' | 'plan') => void | Promise<void>;
@@ -39,12 +44,16 @@ export interface ScanPipelineInput {
 
 export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanResults> {
   await input.onStage?.('graph');
+  const governanceWarnings: string[] = [];
+  const governance = loadGovernanceConfig(input.governanceFilePath, {
+    onWarning: (warning) => governanceWarnings.push(warning),
+  });
   const prepared = preparePipelineGraph({
     nodes: input.nodes,
     edges: input.edges,
     graphOverrides: input.graphOverrides,
   });
-  const allWarnings = [...(input.warnings ?? []), ...prepared.warnings];
+  const allWarnings = [...(input.warnings ?? []), ...governanceWarnings, ...prepared.warnings];
   const graph = buildGraph(prepared.nodes, prepared.edges);
   const analysis = await analyzeFullGraph(graph);
   const analyzedNodes = snapshotNodes(graph);
@@ -90,6 +99,7 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     validationReport,
     recommendations,
     manualServices: manualServices?.services,
+    governance,
     onLog: input.onServiceLog,
   });
   const scenarioAnalysis = analyzeBuiltInScenarios({
@@ -104,6 +114,43 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     servicePosture,
     scenarioAnalysis.scenarios,
   );
+  const riskAcceptanceOutcome = governance
+    ? applyRiskAcceptancesToServicePosture(
+        scenarioAwareServicePosture,
+        validationReport,
+        analyzedNodes,
+        materializeRiskAcceptances(governance.riskAcceptances),
+        new Date(input.timestamp),
+      )
+    : null;
+  const policyOutcome = governance
+    ? applyPoliciesToServicePosture(
+        riskAcceptanceOutcome?.posture ?? scenarioAwareServicePosture,
+        governance.policies,
+        analyzedNodes,
+      )
+    : null;
+  const finalPosture =
+    policyOutcome?.posture ?? riskAcceptanceOutcome?.posture ?? scenarioAwareServicePosture;
+  const governanceState = governance
+    ? {
+        riskAcceptances: riskAcceptanceOutcome?.governance.riskAcceptances ?? [],
+        score:
+          riskAcceptanceOutcome?.governance.score ?? {
+            withAcceptances: {
+              score: validationReport.scoreBreakdown.overall,
+              grade: validationReport.scoreBreakdown.grade,
+            },
+            withoutAcceptances: {
+              score: validationReport.scoreBreakdown.overall,
+              grade: validationReport.scoreBreakdown.grade,
+            },
+            excludedFindings: 0,
+          },
+        policies: governance.policies,
+        policyViolations: policyOutcome?.violations ?? [],
+      }
+    : undefined;
 
   return {
     timestamp: input.timestamp,
@@ -114,7 +161,8 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     analysis: serializeAnalysis(analysis),
     validationReport,
     drpPlan,
-    servicePosture: scenarioAwareServicePosture,
+    servicePosture: finalPosture,
+    ...(governanceState ? { governance: governanceState } : {}),
     scenarioAnalysis,
     ...(input.scanMetadata ? { scanMetadata: input.scanMetadata } : {}),
     ...(allWarnings.length > 0 || serviceWarnings.length > 0

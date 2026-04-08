@@ -42,6 +42,7 @@ export function createE2eContext(
     corsOrigins: ['http://localhost:5173'],
     logLevel: 'error',
     servicesFilePath: 'C:\\temp\\.stronghold\\services.yml',
+    governanceFilePath: 'C:\\temp\\.stronghold\\governance.yml',
     ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
   };
   const logger = new ServerLogger(config);
@@ -57,12 +58,14 @@ export function createE2eContext(
     infrastructureRepository,
     logger,
     config.servicesFilePath,
+    config.governanceFilePath,
   );
   const scanService = new ScanService(
     scanRepository,
     infrastructureRepository,
     logger,
     serviceDetectionService,
+    auditLogger,
   );
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 

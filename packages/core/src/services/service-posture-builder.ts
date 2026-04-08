@@ -5,12 +5,14 @@ import { contextualizeFindings } from './finding-contextualizer.js';
 import { mergeServices } from './services-merger.js';
 import { scoreServices } from './service-scoring.js';
 import { buildServiceIndex } from './service-utils.js';
+import { resolveOwnership } from '../governance/index.js';
 import type { ContextualFinding } from './finding-types.js';
 import type { Service } from './service-types.js';
 import type {
   ServicePosture,
   ServiceRecommendationProjection,
 } from './service-posture-types.js';
+import type { GovernanceConfig } from '../governance/governance-types.js';
 
 const ACTIONABLE_STATUSES = new Set(['fail', 'warn', 'error']);
 
@@ -20,6 +22,7 @@ export interface BuildServicePostureInput {
   readonly validationReport: ValidationReport;
   readonly recommendations?: readonly Recommendation[];
   readonly manualServices?: readonly Service[];
+  readonly governance?: GovernanceConfig | null;
   readonly onLog?: (message: string) => void;
 }
 
@@ -31,17 +34,18 @@ export function buildServicePosture(input: BuildServicePostureInput): ServicePos
     input.manualServices && input.manualServices.length > 0
       ? mergeServices(autoDetected, input.manualServices)
       : autoDetected;
-  const scoring = scoreServices(detection.services, input.validationReport, input.nodes);
+  const resolvedServices = resolveOwnership(detection.services, input.governance ?? null);
+  const scoring = scoreServices(resolvedServices, input.validationReport, input.nodes);
   const findings = input.validationReport.results.filter((result) =>
     ACTIONABLE_STATUSES.has(result.status),
   );
   const contextualFindings = contextualizeFindings(
     findings,
     input.nodes,
-    detection.services,
+    resolvedServices,
     input.recommendations ?? [],
   );
-  const serviceIndex = buildServiceIndex(detection.services);
+  const serviceIndex = buildServiceIndex(resolvedServices);
   const scoreByServiceId = new Map(
     scoring.services.map((serviceScore) => [serviceScore.serviceId, serviceScore] as const),
   );
@@ -54,7 +58,7 @@ export function buildServicePosture(input: BuildServicePostureInput): ServicePos
     scoring,
     contextualFindings,
     recommendations,
-    services: detection.services.map((service) => ({
+    services: resolvedServices.map((service) => ({
       service,
       score: scoreByServiceId.get(service.id) ?? buildFallbackScore(service),
       contextualFindings: contextualFindings.filter((finding) => finding.serviceId === service.id),

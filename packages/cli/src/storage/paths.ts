@@ -14,6 +14,7 @@ export interface StrongholdPaths {
   readonly historyPath: string;
   readonly findingLifecyclesPath: string;
   readonly servicesPath: string;
+  readonly governancePath: string;
   readonly gitignorePath: string;
 }
 
@@ -25,6 +26,7 @@ const EVIDENCE_FILENAME = 'evidence.jsonl';
 const HISTORY_FILENAME = 'history.jsonl';
 const FINDING_LIFECYCLES_FILENAME = 'finding-lifecycles.json';
 const SERVICES_FILENAME = 'services.yml';
+const GOVERNANCE_FILENAME = 'governance.yml';
 const GITIGNORE_FILENAME = '.gitignore';
 
 export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
@@ -40,6 +42,7 @@ export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
     historyPath: path.join(rootDir, HISTORY_FILENAME),
     findingLifecyclesPath: path.join(rootDir, FINDING_LIFECYCLES_FILENAME),
     servicesPath: path.join(rootDir, SERVICES_FILENAME),
+    governancePath: path.join(rootDir, GOVERNANCE_FILENAME),
     gitignorePath: path.join(rootDir, GITIGNORE_FILENAME),
   };
 }

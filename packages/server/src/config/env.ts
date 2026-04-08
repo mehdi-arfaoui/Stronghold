@@ -13,6 +13,7 @@ export const envSchema = z.object({
     .regex(/^[0-9a-fA-F]{64}$/, 'STRONGHOLD_ENCRYPTION_KEY must be a 32-byte hex string')
     .optional(),
   STRONGHOLD_SERVICES_FILE: z.string().optional(),
+  STRONGHOLD_GOVERNANCE_PATH: z.string().optional(),
 });
 
 export interface ServerConfig {
@@ -24,6 +25,7 @@ export interface ServerConfig {
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
   readonly encryptionKey?: string;
   readonly servicesFilePath: string;
+  readonly governanceFilePath: string;
 }
 
 export function parseEnvironment(environment: NodeJS.ProcessEnv): ServerConfig {
@@ -39,6 +41,7 @@ export function parseEnvironment(environment: NodeJS.ProcessEnv): ServerConfig {
       .filter((origin) => origin.length > 0),
     logLevel: parsed.LOG_LEVEL,
     servicesFilePath: path.resolve(parsed.STRONGHOLD_SERVICES_FILE ?? '.stronghold/services.yml'),
+    governanceFilePath: path.resolve(parsed.STRONGHOLD_GOVERNANCE_PATH ?? '.stronghold/governance.yml'),
     ...(parsed.STRONGHOLD_ENCRYPTION_KEY
       ? { encryptionKey: parsed.STRONGHOLD_ENCRYPTION_KEY }
       : {}),

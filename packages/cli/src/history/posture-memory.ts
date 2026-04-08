@@ -59,6 +59,7 @@ export async function updateLocalPostureMemory(
       totalResources: results.scanMetadata?.discoveredResourceCount ?? results.nodes.length,
       regions: results.regions,
       servicePosture: results.servicePosture,
+      governance: results.governance,
       scenarioAnalysis: results.scenarioAnalysis,
       evidenceSummary,
       scanDurationMs: results.scanMetadata?.totalDurationMs,

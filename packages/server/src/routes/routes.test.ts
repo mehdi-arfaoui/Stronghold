@@ -25,6 +25,7 @@ function createTestApp(options?: {
     corsOrigins: ['http://localhost:5173'],
     logLevel: 'error',
     servicesFilePath: 'C:\\temp\\.stronghold\\services.yml',
+    governanceFilePath: 'C:\\temp\\.stronghold\\governance.yml',
   };
   const logger = new ServerLogger(config);
   const prisma = {
@@ -228,6 +229,37 @@ function createTestApp(options?: {
         recommendations: [],
       },
     }),
+    getLatestGovernance: vi.fn().mockResolvedValue({
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      ownership: [
+        {
+          serviceId: 'payment',
+          serviceName: 'Payment',
+          owner: 'team-backend',
+          ownerStatus: 'confirmed',
+          confirmedAt: '2026-03-15T10:00:00.000Z',
+          nextReviewAt: '2026-06-13T10:00:00.000Z',
+        },
+      ],
+      riskAcceptances: [],
+      policies: [],
+      violations: [],
+      score: null,
+    }),
+    listGovernanceAcceptances: vi.fn().mockResolvedValue({
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      acceptances: [],
+    }),
+    listGovernancePolicies: vi.fn().mockResolvedValue({
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      policies: [],
+    }),
+    acceptGovernanceRisk: vi.fn().mockRejectedValue(
+      new ServerError('Governance file editing is not available over the API.', {
+        code: 'NOT_IMPLEMENTED',
+        status: 501,
+      }),
+    ),
     ...options?.scanService,
   } as unknown as ScanService;
   const driftService = {
@@ -392,6 +424,99 @@ describe('server routes', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.service.service.id).toBe('payment');
+  });
+
+  it('GET /api/governance returns the latest governance payload', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/governance');
+
+    expect(response.status).toBe(200);
+    expect(response.body.ownership[0]?.serviceId).toBe('payment');
+  });
+
+  it('GET /api/governance/acceptances returns governance acceptances', async () => {
+    const app = createTestApp({
+      scanService: {
+        listGovernanceAcceptances: vi.fn().mockResolvedValue({
+          generatedAt: '2026-03-27T15:00:00.000Z',
+          acceptances: [
+            {
+              id: 'ra-001',
+              findingKey: 'backup_plan_exists::payment-db',
+              acceptedBy: 'mehdi@stronghold.software',
+              justification: 'Accepted for testing.',
+              acceptedAt: '2026-03-27T15:00:00.000Z',
+              expiresAt: '2026-06-25T15:00:00.000Z',
+              severityAtAcceptance: 'high',
+              status: 'active',
+            },
+          ],
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/governance/acceptances');
+
+    expect(response.status).toBe(200);
+    expect(response.body.acceptances[0]?.id).toBe('ra-001');
+  });
+
+  it('GET /api/governance/policies returns governance policies', async () => {
+    const app = createTestApp({
+      scanService: {
+        listGovernancePolicies: vi.fn().mockResolvedValue({
+          generatedAt: '2026-03-27T15:00:00.000Z',
+          policies: [
+            {
+              policy: {
+                id: 'pol-001',
+                name: 'Critical services must have backup',
+                description: 'Critical datastores need backup coverage.',
+                rule: 'backup_plan_exists',
+                appliesTo: {
+                  service_criticality: 'critical',
+                  resource_role: 'datastore',
+                },
+                severity: 'critical',
+              },
+              violationCount: 1,
+              violations: [
+                {
+                  policyId: 'pol-001',
+                  policyName: 'Critical services must have backup',
+                  findingKey: 'backup_plan_exists::payment-db',
+                  nodeId: 'payment-db',
+                  serviceId: 'payment',
+                  severity: 'critical',
+                  message: 'backup_plan_exists violates policy pol-001.',
+                },
+              ],
+            },
+          ],
+        }),
+      },
+    });
+
+    const response = await request(app).get('/api/governance/policies');
+
+    expect(response.status).toBe(200);
+    expect(response.body.policies[0]?.policy.id).toBe('pol-001');
+    expect(response.body.policies[0]?.violationCount).toBe(1);
+  });
+
+  it('POST /api/governance/accept returns 501 when server-side governance editing is unavailable', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).post('/api/governance/accept').send({
+      finding: 'backup_plan_exists::payment-db',
+      by: 'mehdi@stronghold.software',
+      justification: 'Accepted for testing.',
+      expires: 90,
+    });
+
+    expect(response.status).toBe(501);
+    expect(response.body.error.code).toBe('NOT_IMPLEMENTED');
   });
 
   it('GET /api/history returns persisted posture snapshots', async () => {

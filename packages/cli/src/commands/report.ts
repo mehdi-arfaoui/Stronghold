@@ -127,7 +127,7 @@ export function registerReportCommand(program: Command): void {
                   : renderMarkdownReport(report, filters),
                 renderRecommendationSection(
                   recommendations,
-                  effectiveScan.validationReport.score,
+                  effectiveScan.governance?.score.withAcceptances.score ?? effectiveScan.validationReport.score,
                   'markdown',
                 ),
                 scenarioSection,
@@ -143,6 +143,15 @@ export function registerReportCommand(program: Command): void {
                         results: filterValidationResults(report, filters),
                         services: [],
                         recommendations,
+                        governance: outputScan.governance
+                          ? {
+                              ownership: [],
+                              riskAcceptances: outputScan.governance.riskAcceptances,
+                              policies: outputScan.governance.policies ?? [],
+                              violations: outputScan.governance.policyViolations ?? [],
+                              score: outputScan.governance.score,
+                            }
+                          : null,
                         scenarios: outputScan.scenarioAnalysis?.scenarios ?? [],
                         defaultScenarioIds: outputScan.scenarioAnalysis?.defaultScenarioIds ?? [],
                         scenarioCoverage: outputScan.scenarioAnalysis?.summary ?? null,
@@ -156,7 +165,7 @@ export function registerReportCommand(program: Command): void {
                     : renderTerminalReport(report, filters),
                   renderRecommendationSection(
                     recommendations,
-                    effectiveScan.validationReport.score,
+                    effectiveScan.governance?.score.withAcceptances.score ?? effectiveScan.validationReport.score,
                     'terminal',
                   ),
                   scenarioSection,

@@ -1,5 +1,11 @@
 import type { ApiServiceSummary } from '@stronghold-dr/core';
 
+import {
+  formatOwnerName,
+  ownerStatusLabel,
+  ownerStatusTone,
+  resolveOwnerPresentation,
+} from '@/components/governance/governance-utils';
 import { cn, getGradeColor } from '@/lib/utils';
 
 function findingSummary(service: ApiServiceSummary): string {
@@ -28,6 +34,8 @@ export function ServiceCard({
   readonly selected: boolean;
   readonly onClick: () => void;
 }): JSX.Element {
+  const owner = resolveOwnerPresentation(service.service);
+
   return (
     <button
       type="button"
@@ -60,8 +68,16 @@ export function ServiceCard({
           <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Findings</div>
         </div>
         <div>
-          <div className="text-sm font-medium text-foreground">
-            {service.score.owner ? `${service.score.owner} (declared)` : 'Not declared'}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="text-sm font-medium text-foreground">{formatOwnerName(owner)}</div>
+            <div
+              className={cn(
+                'rounded-full border px-2.5 py-1 text-[11px] uppercase tracking-[0.14em]',
+                ownerStatusTone(owner.status),
+              )}
+            >
+              {ownerStatusLabel(owner.status)}
+            </div>
           </div>
           <div className="text-xs uppercase tracking-[0.14em] text-muted-foreground">Owner</div>
         </div>

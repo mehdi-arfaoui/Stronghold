@@ -1,5 +1,6 @@
 import type { EvidenceMaturitySummary, Grade, ValidationReport } from '../validation/index.js';
 import type { ScenarioAnalysis } from '../scenarios/index.js';
+import type { GovernanceState } from '../governance/index.js';
 import type { ServicePosture } from '../services/index.js';
 
 export interface ServiceSnapshot {
@@ -29,6 +30,12 @@ export interface ScanSnapshot {
     readonly partiallyCovered: number;
     readonly uncovered: number;
   };
+  readonly governance?: {
+    readonly ownerCoverage: number;
+    readonly activeAcceptances: number;
+    readonly expiredAcceptances: number;
+    readonly policyViolations: number;
+  };
   readonly evidenceDistribution: Record<string, number>;
   readonly findingIds: readonly string[];
   readonly regions: readonly string[];
@@ -44,6 +51,7 @@ export interface BuildScanSnapshotInput {
   readonly totalResources: number;
   readonly regions: readonly string[];
   readonly servicePosture?: ServicePosture | null;
+  readonly governance?: GovernanceState | null;
   readonly scenarioAnalysis?: ScenarioAnalysis | null;
   readonly evidenceSummary?: EvidenceMaturitySummary | null;
   readonly scanDurationMs?: number;

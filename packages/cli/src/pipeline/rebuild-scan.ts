@@ -25,6 +25,7 @@ export async function rebuildScanResults(
       ? {}
       : {
           servicesFilePath: resolveStrongholdPaths().servicesPath,
+          governanceFilePath: resolveStrongholdPaths().governancePath,
           previousAssignments: scan.servicePosture?.detection.services,
         }),
   });

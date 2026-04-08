@@ -8,14 +8,14 @@ import {
 
 import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
 import {
-  formatDeclaredOwner,
   formatFindingsCount,
+  formatServiceOwner,
   formatSourceBadge,
   hasDetectedServices,
   sortServiceEntries,
 } from './service-helpers.js';
 import { renderScenarioCoverageLine } from './scenario-renderer.js';
-import { formatGrade, theme } from './theme.js';
+import { theme } from './theme.js';
 
 export function renderScanSummary(
   results: ScanResults,
@@ -49,6 +49,7 @@ function renderLegacyScanSummary(
   } = {},
 ): string {
   const lines: string[] = [];
+  const displayedScore = resolveDisplayedScore(results);
   lines.push(
     `Scan complete - ${results.regions.length} region${results.regions.length === 1 ? '' : 's'} scanned`,
   );
@@ -58,7 +59,9 @@ function renderLegacyScanSummary(
   }
   lines.push('');
   lines.push(...renderExecutionMetadata(results.scanMetadata, results));
-  lines.push(`   DR Posture Score:      ${formatGrade(results.validationReport)}`);
+  lines.push(
+    `   DR Posture Score:      ${displayedScore.score}/100 (${displayedScore.grade})`,
+  );
   lines.push('');
   lines.push(...renderTopIssues(results.validationReport));
   lines.push('');
@@ -109,6 +112,7 @@ function renderServiceCentricSummary(
 ): string {
   const posture = results.servicePosture!;
   const lines: string[] = [];
+  const displayedScore = resolveDisplayedScore(results);
   const discoveredResources = results.scanMetadata?.discoveredResourceCount ?? results.nodes.length;
   const duration =
     results.scanMetadata?.totalDurationMs !== undefined
@@ -127,15 +131,11 @@ function renderServiceCentricSummary(
   lines.push('');
 
   for (const service of sortServiceEntries(posture.services)) {
-    const owner = service.score.owner
-      ? `owner: ${formatDeclaredOwner(service.score.owner)}`
-      : `source: ${formatSourceBadge(service.score.detectionSource)}`;
+    const owner = `owner: ${formatServiceOwner(service.service)}`;
     lines.push(
       `  ${service.service.id.padEnd(16)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatFindingsCount(service.score.findingsCount).padEnd(22)} ${owner}`,
     );
-    if (service.score.owner) {
-      lines.push(`                     source: ${formatSourceBadge(service.score.detectionSource)}`);
-    }
+    lines.push(`                     source: ${formatSourceBadge(service.score.detectionSource)}`);
   }
 
   if (posture.unassigned.resourceCount > 0) {
@@ -150,7 +150,12 @@ function renderServiceCentricSummary(
   }
 
   lines.push('');
-  lines.push(`Global DR score: ${formatGrade(results.validationReport)}`);
+  lines.push(`Global DR score: ${displayedScore.score}/100 (${displayedScore.grade})`);
+  if (results.governance?.score) {
+    lines.push(
+      `Without acceptances: ${results.governance.score.withoutAcceptances.score}/100 (${results.governance.score.withoutAcceptances.grade})`,
+    );
+  }
   const scenarioCoverage = results.scenarioAnalysis
     ? renderScenarioCoverageLine(results.scenarioAnalysis.summary)
     : null;
@@ -184,13 +189,22 @@ function renderServiceCentricSummary(
 
 export function determineScanExitCode(results: ScanResults): 0 | 1 {
   if (!results.scanMetadata) {
-    return results.validationReport.score >= 60 ? 0 : 1;
+    return resolveDisplayedScore(results).score >= 60 ? 0 : 1;
   }
   return results.scanMetadata.successfulScanners > 0 ? 0 : 1;
 }
 
 export function determineSilentExitCode(report: ValidationReport): 0 | 1 {
   return report.score >= 60 ? 0 : 1;
+}
+
+function resolveDisplayedScore(
+  results: ScanResults,
+): { readonly score: number; readonly grade: string } {
+  return results.governance?.score.withAcceptances ?? {
+    score: results.validationReport.scoreBreakdown.overall,
+    grade: results.validationReport.scoreBreakdown.grade,
+  };
 }
 
 export function selectTopIssues(

@@ -2,6 +2,7 @@ import { useCallback, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { listExpiringEvidence } from '@/api/evidence';
+import { getGovernance } from '@/api/governance';
 import { getHistoryTrend } from '@/api/history';
 import { getValidationSummary } from '@/api/reports';
 import { listScans } from '@/api/scans';
@@ -11,6 +12,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { CardSkeleton } from '@/components/common/Skeleton';
 import { CategoryBreakdown } from '@/components/dashboard/CategoryBreakdown';
+import { GovernanceOverview } from '@/components/governance/GovernanceOverview';
 import { HighlightsList } from '@/components/dashboard/HighlightsList';
 import { PostureTrendChart } from '@/components/dashboard/PostureTrendChart';
 import { RecentScans } from '@/components/dashboard/RecentScans';
@@ -26,15 +28,16 @@ export default function DashboardPage(): JSX.Element {
   const fetchDashboard = useCallback(async () => {
     const scansResult = await listScans({ limit: 5 });
     const latestCompletedScan = scansResult.scans.find((scan) => scan.status === 'COMPLETED') ?? null;
-    const [summary, scenarios, services, evidence, historyTrend] = latestCompletedScan
+    const [summary, scenarios, services, evidence, historyTrend, governance] = latestCompletedScan
       ? await Promise.all([
           getValidationSummary(latestCompletedScan.id),
           listScenarios().catch(() => null),
           listServices().catch(() => null),
           listExpiringEvidence().catch(() => null),
           getHistoryTrend().catch(() => null),
+          getGovernance().catch(() => null),
         ])
-      : [null, null, null, null, null];
+      : [null, null, null, null, null, null];
     return {
       scans: scansResult.scans,
       latestCompletedScan,
@@ -43,6 +46,7 @@ export default function DashboardPage(): JSX.Element {
       services,
       evidence,
       historyTrend,
+      governance,
     };
   }, []);
 
@@ -113,9 +117,15 @@ export default function DashboardPage(): JSX.Element {
           <p className="mt-6 text-sm text-muted-foreground">The dashboard now combines score, evidence, and scenario coverage so the most important recovery gaps stay visible at a glance.</p>
         </div>
       </div>
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
         <PostureTrendChart historyTrend={data.historyTrend} />
-        <HighlightsList historyTrend={data.historyTrend} onOpenServices={() => navigate('/services')} />
+        <div className="space-y-6">
+          <GovernanceOverview
+            governance={data.governance}
+            onOpenServices={() => navigate('/services')}
+          />
+          <HighlightsList historyTrend={data.historyTrend} onOpenServices={() => navigate('/services')} />
+        </div>
       </div>
       <section className="panel p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">

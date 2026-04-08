@@ -5,6 +5,7 @@ import {
   buildServicePosture,
   detectServices,
   generateRecommendations,
+  loadGovernanceConfig,
   loadManualServices,
   mergeServices,
   type LoadedManualServices,
@@ -20,9 +21,9 @@ import {
   resolveAuditIdentity,
 } from '../audit/command-audit.js';
 import {
-  formatDeclaredOwner,
-  formatDeclaredOwnerVerbose,
   formatFindingsCount,
+  formatServiceOwner,
+  formatServiceOwnerVerbose,
   formatSourceBadge,
   sortServiceEntries,
 } from '../output/service-helpers.js';
@@ -166,14 +167,12 @@ export function renderDetectedServices(result: ServiceDetectionResult): string {
 export function renderServicesList(posture: ServicePosture): string {
   const lines = [`Services (${posture.services.length}):`];
   for (const service of sortServiceEntries(posture.services)) {
-    const ownerLabel = service.score.owner ? `  owner: ${formatDeclaredOwner(service.score.owner)}` : '';
+    const ownerLabel = `owner: ${formatServiceOwner(service.service)}`;
     const sourceLabel = formatSourceBadge(service.score.detectionSource);
     lines.push(
-      `  ${service.service.id.padEnd(14)} ${service.score.criticality.padEnd(8)} ${String(service.service.resources.length).padStart(2)} resources  ${String(service.score.score).padStart(3)}/100  ${service.score.grade}  ${ownerLabel || `source: ${sourceLabel}`}`,
+      `  ${service.service.id.padEnd(14)} ${service.score.criticality.padEnd(8)} ${String(service.service.resources.length).padStart(2)} resources  ${String(service.score.score).padStart(3)}/100  ${service.score.grade}  ${ownerLabel}`,
     );
-    if (ownerLabel) {
-      lines.push(`                    source: ${sourceLabel}`);
-    }
+    lines.push(`                    source: ${sourceLabel}`);
   }
   lines.push('');
   lines.push(`Unassigned: ${posture.unassigned.resourceCount} resources`);
@@ -192,7 +191,7 @@ export function renderServiceDetail(service: ServicePostureService): string {
     `Service: ${service.service.id}`,
     `  Name: ${service.service.name}`,
     `  Criticality: ${service.score.criticality}`,
-    `  Owner: ${formatDeclaredOwnerVerbose(service.score.owner)}`,
+    `  Owner: ${formatServiceOwnerVerbose(service.service)}`,
     `  Source: ${formatSourceBadge(service.score.detectionSource)}`,
     '',
     `  Resources (${service.service.resources.length}):`,
@@ -295,6 +294,7 @@ async function loadServicesView(): Promise<{
       isDemo: scan.isDemo,
     }),
     manualServices: manualServices?.services,
+    governance: loadGovernanceConfig(paths.governancePath),
   });
 
   return {

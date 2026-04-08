@@ -65,7 +65,11 @@ export function renderScenarioCoverageHeadline(scan: ScanResults): string | null
     return null;
   }
 
-  return `Global DR score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade}) - ${summary.covered}/${summary.total} scenarios covered`;
+  const score = scan.governance?.score.withAcceptances ?? {
+    score: scan.validationReport.scoreBreakdown.overall,
+    grade: scan.validationReport.scoreBreakdown.grade,
+  };
+  return `Global DR score: ${score.score}/100 (${score.grade}) - ${summary.covered}/${summary.total} scenarios covered`;
 }
 
 export function renderScenarioCoverageSection(

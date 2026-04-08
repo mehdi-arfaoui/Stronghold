@@ -13,8 +13,10 @@ import {
 import { CommandAuditSession, resolveAuditIdentity } from '../audit/command-audit.js';
 import type { LoadedPostureMemory } from '../history/posture-memory.js';
 import { loadLocalPostureMemory } from '../history/posture-memory.js';
+import { renderGovernanceTip } from '../output/governance-renderer.js';
 import { writeOutput } from '../output/io.js';
 import {
+  formatServiceOwner,
   hasDetectedServices,
   selectTopServiceRecommendations,
   sortServiceEntries,
@@ -74,12 +76,21 @@ export function renderStatusSnapshot(
       ? `DR Posture - ${scan.timestamp.slice(0, 10)} (scan #${scanCount})`
       : `DR Posture - ${scan.timestamp.slice(0, 10)}`;
   const lines = [heading, ''];
+  const displayedScore = scan.governance?.score.withAcceptances ?? {
+    score: scan.validationReport.scoreBreakdown.overall,
+    grade: scan.validationReport.scoreBreakdown.grade,
+  };
 
   if (!hasDetectedServices(scan.servicePosture)) {
     const summary = summarizeReportEvidence(scan.validationReport);
     lines.push(
-      `Global score: ${scan.validationReport.scoreBreakdown.overall}/100 (${scan.validationReport.scoreBreakdown.grade})`,
+      `Global score: ${displayedScore.score}/100 (${displayedScore.grade})`,
     );
+    if (scan.governance?.score) {
+      lines.push(
+        `Score without acceptances: ${scan.governance.score.withoutAcceptances.score}/100 (${scan.governance.score.withoutAcceptances.grade})`,
+      );
+    }
     if (scan.scenarioAnalysis) {
       lines.push(
         `Scenarios: ${scan.scenarioAnalysis.summary.covered}/${scan.scenarioAnalysis.summary.total} covered | ${scan.scenarioAnalysis.summary.partiallyCovered} partial | ${scan.scenarioAnalysis.summary.uncovered} uncovered`,
@@ -93,6 +104,7 @@ export function renderStatusSnapshot(
     lines.push(
       `Trend: ${formatTrendHeadline(postureMemory)}${describeTrendDelta(postureMemory)}`,
     );
+    lines.push(scan.governance ? renderGovernanceHeadline(scan) : renderGovernanceTip());
     lines.push(`Tip: Organize your resources into services with 'stronghold services detect'`);
     lines.push(`Run 'stronghold scan' to refresh. Run 'stronghold history' for the full timeline.`);
     return lines.join('\n');
@@ -110,12 +122,37 @@ export function renderStatusSnapshot(
     const debt = debtByService.get(service.service.id);
     const oldest = oldestByService.get(service.service.id);
     lines.push(
-      `    ${serviceIcon(service.score.findingsCount)} ${service.service.id.padEnd(14)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatServiceFindingTotal(totalFindings).padEnd(12)} debt: ${String(Math.round(debt?.totalDebt ?? 0)).padEnd(4)} ${formatDebtTrend(debt?.trend ?? 'stable')}${oldest ? `   oldest: ${oldest.ageInDays} days` : ''}`,
+      `    ${serviceIcon(service.score.findingsCount)} ${service.service.id.padEnd(14)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatServiceFindingTotal(totalFindings).padEnd(12)} debt: ${String(Math.round(debt?.totalDebt ?? 0)).padEnd(4)} ${formatDebtTrend(debt?.trend ?? 'stable')}   owner: ${formatServiceOwner(service.service)}${oldest ? `   oldest: ${oldest.ageInDays} days` : ''}`,
     );
   }
 
-  if (scan.scenarioAnalysis) {
+  const ownershipWarnings = renderOwnershipWarnings(scan.servicePosture.services, scan.timestamp);
+  if (ownershipWarnings.length > 0) {
     lines.push('');
+    lines.push('  Ownership:');
+    ownershipWarnings.forEach((warning) => {
+      lines.push(`    ${warning}`);
+    });
+  }
+
+  lines.push('');
+  if (scan.governance) {
+    lines.push('  Governance:');
+    renderGovernanceSummaryLines(scan).forEach((line) => {
+      lines.push(`    ${line}`);
+    });
+  } else {
+    lines.push(`  ${renderGovernanceTip()}`);
+  }
+
+  lines.push('');
+  lines.push(
+    scan.governance?.score
+      ? `  Score: ${displayedScore.score}/100 (${displayedScore.grade}) - without acceptances: ${scan.governance.score.withoutAcceptances.score}/100 (${scan.governance.score.withoutAcceptances.grade})`
+      : `  Score: ${displayedScore.score}/100 (${displayedScore.grade})`,
+  );
+
+  if (scan.scenarioAnalysis) {
     lines.push(
       `  Scenarios: ${scan.scenarioAnalysis.summary.covered}/${scan.scenarioAnalysis.summary.total} covered | ${scan.scenarioAnalysis.summary.partiallyCovered} partial | ${scan.scenarioAnalysis.summary.uncovered} uncovered`,
     );
@@ -385,4 +422,63 @@ function diffDays(startAt: string, endAt: string): number {
     return 0;
   }
   return Math.max(0, Math.round((end - start) / 86_400_000));
+}
+
+function renderOwnershipWarnings(
+  services: NonNullable<ScanResults['servicePosture']>['services'],
+  asOfTimestamp: string,
+): readonly string[] {
+  const asOf = new Date(asOfTimestamp).toISOString();
+
+  return services.flatMap((service) => {
+    const governance = service.service.governance;
+    const owner = governance?.owner ?? service.service.owner;
+    if (!governance) {
+      return [];
+    }
+
+    if (governance.ownerStatus === 'unconfirmed' && owner) {
+      return [`⚠ ${service.service.id} - owner unconfirmed (${owner})`];
+    }
+    if (governance.ownerStatus === 'review_due' && owner && governance.confirmedAt) {
+      return [
+        `⚠ ${service.service.id} - ownership review due (last confirmed: ${governance.confirmedAt.slice(0, 10)}, ${diffDays(governance.confirmedAt, asOf)} days ago)`,
+      ];
+    }
+    if (governance.ownerStatus === 'none') {
+      return [`⚠ ${service.service.id} - owner not assigned`];
+    }
+    return [];
+  });
+}
+
+function renderGovernanceHeadline(scan: ScanResults): string {
+  const activeAcceptances =
+    scan.governance?.riskAcceptances.filter((acceptance) => acceptance.status === 'active').length ?? 0;
+  const policyViolations = scan.governance?.policyViolations?.length ?? 0;
+  return `${activeAcceptances} active risk acceptance${activeAcceptances === 1 ? '' : 's'}, ${policyViolations} policy violation${policyViolations === 1 ? '' : 's'}`;
+}
+
+function renderGovernanceSummaryLines(scan: ScanResults): readonly string[] {
+  const activeAcceptances = scan.governance?.riskAcceptances.filter(
+    (acceptance) => acceptance.status === 'active',
+  ) ?? [];
+  const expiredAcceptances = scan.governance?.riskAcceptances.filter(
+    (acceptance) => acceptance.status === 'expired',
+  ) ?? [];
+  const reviewDueCount =
+    scan.servicePosture?.services.filter(
+      (service) => service.service.governance?.ownerStatus === 'review_due',
+    ).length ?? 0;
+  const policyViolationCount = scan.governance?.policyViolations?.length ?? 0;
+  const nextAcceptanceExpiry = activeAcceptances
+    .map((acceptance) => diffDays(scan.timestamp, acceptance.expiresAt))
+    .sort((left, right) => left - right)[0];
+
+  return [
+    `${activeAcceptances.length} risk acceptance${activeAcceptances.length === 1 ? '' : 's'} active${nextAcceptanceExpiry !== undefined ? ` (earliest expires in ${nextAcceptanceExpiry} days)` : ''}`,
+    `${expiredAcceptances.length} risk acceptance${expiredAcceptances.length === 1 ? '' : 's'} expired${expiredAcceptances.length > 0 ? ' - finding re-activated' : ''}`,
+    `${reviewDueCount} ownership review${reviewDueCount === 1 ? '' : 's'} due`,
+    `${policyViolationCount} policy violation${policyViolationCount === 1 ? '' : 's'}`,
+  ];
 }

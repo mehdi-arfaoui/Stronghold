@@ -1,5 +1,8 @@
 import type { ContextualFinding, Evidence } from '@stronghold-dr/core';
 
+import { RiskAcceptanceBadge } from '@/components/governance/RiskAcceptanceBadge';
+import { cn } from '@/lib/utils';
+
 function severityTone(severity: ContextualFinding['severity']): string {
   if (severity === 'critical') return 'border-red-500/35 bg-red-500/8';
   if (severity === 'high') return 'border-orange-500/35 bg-orange-500/8';
@@ -23,6 +26,52 @@ function formatEvidenceLine(entry: Evidence): string {
   return `${entry.observation.key} = ${String(entry.observation.value ?? 'null')}`;
 }
 
+function policyTone(severity: ContextualFinding['severity']): string {
+  if (severity === 'critical') return 'border-red-500/30 bg-red-500/10 text-red-100';
+  if (severity === 'high') return 'border-orange-500/30 bg-orange-500/10 text-orange-100';
+  return 'border-amber-500/30 bg-amber-500/10 text-amber-100';
+}
+
+function PolicyViolationBadge({
+  finding,
+}: {
+  readonly finding: ContextualFinding;
+}): JSX.Element | null {
+  if (!finding.policyViolations?.length) {
+    return null;
+  }
+
+  const highestSeverity = finding.policyViolations.some((entry) => entry.severity === 'critical')
+    ? 'critical'
+    : finding.policyViolations.some((entry) => entry.severity === 'high')
+      ? 'high'
+      : 'medium';
+
+  return (
+    <details className="group">
+      <summary
+        className={cn(
+          'list-none cursor-pointer rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em]',
+          policyTone(highestSeverity),
+        )}
+      >
+        policy violation
+      </summary>
+      <div className="mt-3 max-w-sm space-y-2 rounded-2xl border border-border bg-card/95 p-4 shadow-lg shadow-black/10">
+        {finding.policyViolations.map((violation) => (
+          <div key={`${violation.policyId}:${violation.findingKey}`} className="rounded-xl bg-card/70 p-3">
+            <p className="text-sm font-medium text-foreground">{violation.policyName}</p>
+            <p className="mt-1 text-xs uppercase tracking-[0.14em] text-subtle-foreground">
+              {violation.policyId} / {violation.severity}
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground">{violation.message}</p>
+          </div>
+        ))}
+      </div>
+    </details>
+  );
+}
+
 export function ServiceFindings({
   findings,
 }: {
@@ -41,15 +90,23 @@ export function ServiceFindings({
       {findings.map((finding) => {
         const strongestEvidence = finding.evidenceSummary?.strongestType ?? 'observed';
         const hasExpiredEvidence = finding.evidence?.some((entry) => entry.type === 'expired') ?? false;
+        const isAccepted = finding.riskAccepted === true;
 
         return (
           <article
             key={`${finding.nodeId}:${finding.ruleId}`}
-            className={`rounded-2xl border p-4 ${severityTone(finding.severity)}`}
+            className={cn(
+              'rounded-2xl border p-4',
+              isAccepted
+                ? 'border-emerald-500/25 bg-emerald-500/8'
+                : severityTone(finding.severity),
+            )}
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">{finding.severity}</p>
+                <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">
+                  {isAccepted ? 'accepted risk' : finding.severity}
+                </p>
                 <h4 className="mt-1 text-base font-semibold text-foreground">{finding.nodeName}</h4>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
@@ -64,8 +121,19 @@ export function ServiceFindings({
                     expired
                   </div>
                 ) : null}
+                {finding.riskAcceptance ? (
+                  <RiskAcceptanceBadge acceptance={finding.riskAcceptance} />
+                ) : null}
+                <PolicyViolationBadge finding={finding} />
               </div>
             </div>
+            {finding.riskAcceptance && !isAccepted ? (
+              <p className="mt-3 text-sm text-muted-foreground">
+                This acceptance is no longer suppressing the finding because it is
+                {' '}
+                {finding.riskAcceptance.status}.
+              </p>
+            ) : null}
             <p className="mt-3 text-sm font-medium text-foreground">{finding.drImpact.summary}</p>
             <p className="mt-2 text-sm text-muted-foreground">{finding.drImpact.recoveryImplication}</p>
             <div className="mt-3 grid gap-3 xl:grid-cols-3">
@@ -100,7 +168,7 @@ export function ServiceFindings({
                   <>
                     <p className="mt-2 text-sm text-foreground">{finding.remediation.actions[0].title}</p>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Risk: {finding.remediation.risk} - Score delta: +{finding.remediation.estimatedScoreDelta}
+                      Risk: {finding.remediation.risk} / Score delta: +{finding.remediation.estimatedScoreDelta}
                     </p>
                   </>
                 ) : (

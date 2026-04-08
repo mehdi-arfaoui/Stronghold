@@ -1,5 +1,7 @@
 import type { ExecutionRisk } from '../drp/runbook/runbook-types.js';
 import type { Evidence, EvidenceType } from '../evidence/index.js';
+import type { RiskAcceptance } from '../governance/risk-acceptance.js';
+import type { PolicyViolation } from '../governance/policy-types.js';
 import type { DRCategory, ValidationSeverity } from '../validation/validation-types.js';
 import type { ResourceRole } from './service-types.js';
 
@@ -57,4 +59,7 @@ export interface ContextualFinding {
     readonly estimatedScoreDelta: number;
     readonly risk: ExecutionRisk;
   } | null;
+  readonly riskAccepted?: boolean;
+  readonly riskAcceptance?: RiskAcceptance;
+  readonly policyViolations?: readonly PolicyViolation[];
 }

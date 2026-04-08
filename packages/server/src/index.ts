@@ -37,12 +37,14 @@ async function bootstrap(): Promise<void> {
     infrastructureRepository,
     logger,
     config.servicesFilePath,
+    config.governanceFilePath,
   );
   const scanService = new ScanService(
     scanRepository,
     infrastructureRepository,
     logger,
     serviceDetectionService,
+    auditLogger,
   );
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 

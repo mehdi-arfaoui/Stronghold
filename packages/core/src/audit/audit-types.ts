@@ -5,6 +5,8 @@ export type AuditAction =
   | 'plan_validate'
   | 'drift_check'
   | 'plan_runbook'
+  | 'governance'
+  | 'governance_validate'
   | 'evidence_add'
   | 'evidence_list'
   | 'evidence_show'
@@ -15,7 +17,14 @@ export type AuditAction =
   | 'scenarios_list'
   | 'scenarios_show'
   | 'status'
-  | 'history';
+  | 'history'
+  | 'risk_accept'
+  | 'risk_expire'
+  | 'risk_supersede'
+  | 'ownership_confirm'
+  | 'ownership_review_due'
+  | 'policy_violation'
+  | 'governance_edit';
 
 export interface AuditIdentity {
   readonly arn: string;
@@ -38,6 +47,20 @@ export interface AuditEntry {
     readonly accountName?: string;
     readonly outputFormat?: string;
     readonly flags?: readonly string[];
+    readonly governancePath?: string;
+    readonly findingKey?: string;
+    readonly acceptanceId?: string;
+    readonly acceptedBy?: string;
+    readonly justification?: string;
+    readonly expiresAt?: string;
+    readonly policyId?: string;
+    readonly policyName?: string;
+    readonly serviceId?: string;
+    readonly owner?: string;
+    readonly confirmedAt?: string;
+    readonly nextReviewAt?: string;
+    readonly severity?: string;
+    readonly note?: string;
   };
   readonly result: {
     readonly status: 'success' | 'failure' | 'partial';

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { Graph } from 'graphology';
 
+import type { GovernanceState } from '../../governance/index.js';
 import { analyzeBuiltInScenarios } from '../../scenarios/index.js';
 import { buildServicePosture } from '../../services/index.js';
 import { getStartupDemoPipelineInput } from '../../demo/startup-demo.js';
@@ -95,6 +96,46 @@ describe('FileHistoryStore', () => {
     expect(serialized).not.toContain('"nodes"');
     expect(serialized).not.toContain('"validationReport"');
   });
+
+  it('captures governance metrics in snapshots', async () => {
+    const snapshot = await createRealisticSnapshot({
+      riskAcceptances: [
+        {
+          id: 'ra-001',
+          findingKey: 'backup_plan_exists::payment-db',
+          acceptedBy: 'mehdi@example.com',
+          justification: 'Approved for staging',
+          acceptedAt: '2026-03-01T00:00:00Z',
+          expiresAt: '2026-09-01T00:00:00Z',
+          severityAtAcceptance: 'high',
+          status: 'active',
+        },
+      ],
+      score: {
+        withAcceptances: { score: 80, grade: 'B' },
+        withoutAcceptances: { score: 70, grade: 'C' },
+        excludedFindings: 1,
+      },
+      policyViolations: [
+        {
+          policyId: 'pol-001',
+          policyName: 'Critical services must have backup',
+          findingKey: 'backup_plan_exists::payment-db',
+          nodeId: 'payment-db',
+          serviceId: 'payment',
+          severity: 'critical',
+          message: 'payment-db violates policy "Critical services must have backup".',
+        },
+      ],
+    });
+
+    expect(snapshot.governance).toEqual({
+      ownerCoverage: 0,
+      activeAcceptances: 1,
+      expiredAcceptances: 0,
+      policyViolations: 1,
+    });
+  });
 });
 
 function createSnapshot(id: string, timestamp: string) {
@@ -143,7 +184,7 @@ function createSnapshot(id: string, timestamp: string) {
   };
 }
 
-async function createRealisticSnapshot() {
+async function createRealisticSnapshot(governance?: GovernanceState) {
   const demo = getStartupDemoPipelineInput();
   const graph = new Graph();
   demo.nodes.forEach((node) => {
@@ -185,6 +226,7 @@ async function createRealisticSnapshot() {
     totalResources: demo.nodes.length,
     regions: demo.regions,
     servicePosture,
+    ...(governance ? { governance } : {}),
     scenarioAnalysis,
     scanDurationMs: 14_200,
     scannerSuccessCount: 8,

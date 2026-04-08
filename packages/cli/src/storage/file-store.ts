@@ -6,6 +6,7 @@ import type {
   CircularDependency,
   DRPlan,
   EdgeProvenance,
+  GovernanceState,
   GraphAnalysisReport,
   InfraNode,
   RegionalRisk,
@@ -62,6 +63,7 @@ export interface ScanResults {
   readonly validationReport: ValidationReport;
   readonly drpPlan: DRPlan;
   readonly servicePosture?: ServicePosture;
+  readonly governance?: GovernanceState;
   readonly scenarioAnalysis?: ScenarioAnalysis;
   readonly scanMetadata?: ScanExecutionMetadata;
   readonly warnings?: readonly string[];
@@ -146,6 +148,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
   const servicePosture = isRecord(value.servicePosture)
     ? (value.servicePosture as unknown as ServicePosture)
     : null;
+  const governance = isRecord(value.governance)
+    ? (value.governance as unknown as GovernanceState)
+    : null;
   const scenarioAnalysis = isRecord(value.scenarioAnalysis)
     ? (value.scenarioAnalysis as unknown as ScenarioAnalysis)
     : null;
@@ -164,6 +169,7 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     validationReport,
     drpPlan,
     ...(servicePosture ? { servicePosture } : {}),
+    ...(governance ? { governance } : {}),
     ...(scenarioAnalysis ? { scenarioAnalysis } : {}),
     ...(isRecord(value.scanMetadata)
       ? { scanMetadata: value.scanMetadata as unknown as ScanExecutionMetadata }

@@ -110,7 +110,7 @@ export function registerDemoCommand(program: Command): void {
         await writeOutput(
           renderRecommendationHighlights(
             topRecommendations,
-            results.validationReport.score,
+            results.governance?.score.withAcceptances.score ?? results.validationReport.score,
             'stronghold report',
             recommendations.length,
           ),

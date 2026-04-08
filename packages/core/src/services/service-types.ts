@@ -27,6 +27,16 @@ export type DetectionSource =
     }
   | { readonly type: 'manual'; readonly file: string; readonly confidence: 1.0 };
 
+export type OwnerStatus = 'confirmed' | 'unconfirmed' | 'review_due' | 'none';
+
+export interface ServiceGovernance {
+  readonly owner?: string;
+  readonly contact?: string;
+  readonly ownerStatus: OwnerStatus;
+  readonly confirmedAt?: string;
+  readonly nextReviewAt?: string;
+}
+
 export interface ServiceResource {
   readonly nodeId: string;
   readonly role?: ResourceRole;
@@ -40,6 +50,7 @@ export interface Service {
   readonly resources: readonly ServiceResource[];
   readonly criticality: Criticality;
   readonly owner?: string;
+  readonly governance?: ServiceGovernance;
   readonly metadata: {
     readonly stackName?: string;
     readonly tagKey?: string;

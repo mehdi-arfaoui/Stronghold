@@ -2,10 +2,12 @@ import fs from 'node:fs';
 
 import { Command } from 'commander';
 import {
+  collectGovernanceAuditEvents,
   FileEvidenceStore,
+  FileAuditLogger,
   generateRecommendations,
+  logGovernanceAuditEvents,
   selectTopRecommendations,
-  type Service,
 } from '@stronghold-dr/core';
 
 import {
@@ -82,7 +84,8 @@ export function registerScanCommand(program: Command): void {
         const selectedServices = ensureVpcIncluded(options.services);
         const resolvedScanSettings = resolveAwsScanSettings(options);
         const paths = resolveStrongholdPaths();
-        const previousAssignments = await loadPreviousServiceAssignments(paths, options.passphrase);
+        const previousScan = await loadPreviousScanResults(paths, options.passphrase);
+        const previousAssignments = previousScan?.servicePosture?.detection.services;
         const evidence = await new FileEvidenceStore(paths.evidencePath).getAll();
         const flags = collectAuditFlags({
           '--all-regions': options.allRegions,
@@ -245,7 +248,8 @@ export function registerScanCommand(program: Command): void {
             await writeOutput(
               renderRecommendationHighlights(
                 topRecommendations,
-                execution.results.validationReport.score,
+                execution.results.governance?.score.withAcceptances.score ??
+                  execution.results.validationReport.score,
                 'stronghold report',
                 recommendations.length,
               ),
@@ -254,6 +258,33 @@ export function registerScanCommand(program: Command): void {
         }
 
         process.exitCode = determineScanExitCode(execution.results);
+        const governanceEvents =
+          execution.results.governance && execution.results.servicePosture
+            ? collectGovernanceAuditEvents(
+                {
+                  timestamp: execution.results.timestamp,
+                  governance: execution.results.governance,
+                  servicePosture: execution.results.servicePosture,
+                },
+                previousScan
+                  ? {
+                      timestamp: previousScan.timestamp,
+                      governance: previousScan.governance ?? null,
+                      servicePosture: previousScan.servicePosture ?? null,
+                    }
+                  : null,
+              )
+            : [];
+        if (governanceEvents.length > 0) {
+          await logGovernanceAuditEvents(
+            new FileAuditLogger(paths.auditLogPath),
+            governanceEvents,
+            {
+              timestamp: execution.results.timestamp,
+              ...(callerIdentity ? { identity: callerIdentity } : {}),
+            },
+          );
+        }
         await audit.finish({
           status: process.exitCode === 0 ? 'success' : 'failure',
           resourceCount: execution.results.nodes.length,
@@ -303,18 +334,17 @@ function maskAccountId(accountId: string): string {
   return `${accountId.slice(0, 2)}****${accountId.slice(-4)}`;
 }
 
-async function loadPreviousServiceAssignments(
+async function loadPreviousScanResults(
   paths: ReturnType<typeof resolveStrongholdPaths>,
   passphrase: string | undefined,
-): Promise<readonly Service[] | undefined> {
+): Promise<Awaited<ReturnType<typeof loadScanResultsWithEncryption>> | undefined> {
   const scanPath = resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
   if (!fs.existsSync(scanPath)) {
     return undefined;
   }
 
   try {
-    const previousScan = await loadScanResultsWithEncryption(scanPath, { passphrase });
-    return previousScan.servicePosture?.detection.services;
+    return await loadScanResultsWithEncryption(scanPath, { passphrase });
   } catch {
     return undefined;
   }

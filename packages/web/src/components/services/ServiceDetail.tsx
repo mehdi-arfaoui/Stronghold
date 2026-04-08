@@ -4,6 +4,15 @@ import type {
   ContextualFinding,
 } from '@stronghold-dr/core';
 
+import {
+  describeOwnerPresentation,
+  formatOwnerName,
+  ownerStatusLabel,
+  ownerStatusTone,
+  resolveOwnerPresentation,
+} from '@/components/governance/governance-utils';
+import { cn } from '@/lib/utils';
+
 import { ServiceFindings } from './ServiceFindings';
 
 function buildEvidenceSummary(findings: readonly ContextualFinding[]): Array<{
@@ -47,6 +56,13 @@ export function ServiceDetail({
   const totalEvidenceFindings = evidenceSummary.reduce((sum, entry) => sum + entry.count, 0);
   const sparklinePoints = buildSparklinePoints(history?.snapshots ?? []);
   const sparklineDirection = history?.trend?.direction ?? 'stable';
+  const owner = resolveOwnerPresentation(detail.service);
+  const activeFindings = detail.contextualFindings.filter((finding) => finding.riskAccepted !== true).length;
+  const acceptedFindings = detail.contextualFindings.filter((finding) => finding.riskAccepted === true).length;
+  const policyViolations = detail.contextualFindings.reduce(
+    (count, finding) => count + (finding.policyViolations?.length ?? 0),
+    0,
+  );
 
   return (
     <section className="space-y-6">
@@ -55,9 +71,21 @@ export function ServiceDetail({
           <div>
             <p className="text-xs uppercase tracking-[0.22em] text-subtle-foreground">{detail.score.criticality}</p>
             <h2 className="mt-2 text-3xl font-semibold text-foreground">{detail.service.name}</h2>
-            <p className="mt-2 text-sm text-muted-foreground">
-              Owner: {detail.score.owner ? `${detail.score.owner} (declared)` : 'Not declared'}
-            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <div className="text-sm font-medium text-foreground">{formatOwnerName(owner)}</div>
+              <div
+                className={cn(
+                  'rounded-full border px-3 py-1 text-xs uppercase tracking-[0.16em]',
+                  ownerStatusTone(owner.status),
+                )}
+              >
+                {ownerStatusLabel(owner.status)}
+              </div>
+            </div>
+            <p className="mt-2 text-sm text-muted-foreground">{describeOwnerPresentation(owner)}</p>
+            {owner.contact ? (
+              <p className="mt-2 text-sm text-muted-foreground">Contact: {owner.contact}</p>
+            ) : null}
           </div>
           <div className="text-right">
             <div className="text-4xl font-semibold text-foreground">{detail.score.score}</div>
@@ -76,8 +104,18 @@ export function ServiceDetail({
             {detail.service.resources.length} resources
           </div>
           <div className="rounded-full border border-border bg-card/70 px-4 py-2 text-sm text-muted-foreground">
-            {detail.contextualFindings.length} active finding{detail.contextualFindings.length === 1 ? '' : 's'}
+            {activeFindings} active finding{activeFindings === 1 ? '' : 's'}
           </div>
+          {acceptedFindings > 0 ? (
+            <div className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-100">
+              {acceptedFindings} risk accepted
+            </div>
+          ) : null}
+          {policyViolations > 0 ? (
+            <div className="rounded-full border border-red-500/30 bg-red-500/10 px-4 py-2 text-sm text-red-100">
+              {policyViolations} policy violation{policyViolations === 1 ? '' : 's'}
+            </div>
+          ) : null}
         </div>
         <div className="mt-5 rounded-2xl border border-border bg-card/60 p-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

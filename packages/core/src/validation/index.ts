@@ -21,8 +21,10 @@ export { allValidationRules } from './validation-rules.js';
 
 export {
   blastRadiusWeight,
+  calculateScoreBreakdown,
   calculatePotentialTestVerifiedScore,
   calculateWeightedScore,
+  collectCriticalFailures,
   gradeForScore,
   runValidation,
   summarizeEvidenceMaturity,
