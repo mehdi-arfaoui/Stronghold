@@ -1,11 +1,24 @@
 import {
+  type ContextualFinding,
   formatValidationReport,
+  type ServiceRecommendationProjection,
   type DRCategory,
   type ValidationReport,
   type ValidationSeverity,
   type WeightedValidationResult,
 } from '@stronghold-dr/core';
 
+import type { ScanResults } from '../storage/file-store.js';
+import {
+  filterContextualFindings,
+  formatDeclaredOwnerVerbose,
+  formatDetectionSource,
+  formatFindingsCount,
+  formatFindingSeverity,
+  formatMetadataValue,
+  hasDetectedServices,
+  sortServiceEntries,
+} from './service-helpers.js';
 import { buildAsciiBar, formatGrade, formatSeverityLabel, theme } from './theme.js';
 
 export interface ValidationFilters {
@@ -117,6 +130,151 @@ export function renderMarkdownReport(
   return lines.join('\n');
 }
 
+export function renderTerminalServiceReport(
+  scan: ScanResults,
+  filters: ValidationFilters,
+): string {
+  if (!hasDetectedServices(scan.servicePosture)) {
+    return `${renderTerminalReport(scan.validationReport, filters)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
+  }
+
+  const lines: string[] = [];
+  lines.push(theme.section('Executive Summary'));
+  lines.push(`Global score: ${formatGrade(scan.validationReport)}`);
+  lines.push(`Services detected: ${scan.servicePosture.services.length}`);
+  lines.push(
+    `Critical services: ${scan.servicePosture.services.filter((service) => service.score.criticality === 'critical').length}`,
+  );
+
+  for (const service of sortServiceEntries(scan.servicePosture.services)) {
+    lines.push('');
+    lines.push(theme.section(`Service: ${service.service.name} (${service.score.grade} - ${service.score.score}/100)`));
+    lines.push(`Criticality: ${service.score.criticality}`);
+    lines.push(`Owner: ${formatDeclaredOwnerVerbose(service.score.owner)}`);
+    lines.push(`Source: ${formatDetectionSource(service.score.detectionSource)}`);
+    lines.push(`Resources: ${service.service.resources.length}`);
+    lines.push(`Findings: ${formatFindingsCount(service.score.findingsCount)}`);
+    appendContextualFindings(
+      lines,
+      filterContextualFindings(service.contextualFindings, filters),
+    );
+    appendServiceRecommendations(lines, service.recommendations);
+  }
+
+  if (scan.servicePosture.unassigned.resourceCount > 0) {
+    lines.push('');
+    lines.push(theme.section('Unassigned Resources'));
+    lines.push(`Resources: ${scan.servicePosture.unassigned.resourceCount}`);
+    if (scan.servicePosture.unassigned.score) {
+      lines.push(
+        `Score: ${scan.servicePosture.unassigned.score.score}/100 (Grade: ${scan.servicePosture.unassigned.score.grade})`,
+      );
+    }
+    appendContextualFindings(
+      lines,
+      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, filters),
+    );
+    appendServiceRecommendations(lines, scan.servicePosture.unassigned.recommendations);
+  }
+
+  lines.push('');
+  lines.push(theme.section('Recommendations Summary'));
+  appendServiceRecommendations(lines, scan.servicePosture.recommendations);
+
+  return lines.join('\n');
+}
+
+export function renderMarkdownServiceReport(
+  scan: ScanResults,
+  filters: ValidationFilters,
+): string {
+  if (!hasDetectedServices(scan.servicePosture)) {
+    return `${renderMarkdownReport(scan.validationReport, filters)}\n\nTip: Organize your resources into services with 'stronghold services detect'`;
+  }
+
+  const lines: string[] = [];
+  lines.push('## Executive Summary');
+  lines.push('');
+  lines.push(`- Global score: ${scan.validationReport.scoreBreakdown.overall}/100`);
+  lines.push(`- Grade: ${scan.validationReport.scoreBreakdown.grade}`);
+  lines.push(`- Services detected: ${scan.servicePosture.services.length}`);
+
+  for (const service of sortServiceEntries(scan.servicePosture.services)) {
+    lines.push('');
+    lines.push(`## Service: ${service.service.id} (${service.score.grade} - ${service.score.score}/100)`);
+    lines.push('');
+    lines.push(`- Name: ${service.service.name}`);
+    lines.push(`- Criticality: ${service.score.criticality}`);
+    lines.push(`- Owner: ${formatDeclaredOwnerVerbose(service.score.owner)}`);
+    lines.push(`- Source: ${formatDetectionSource(service.score.detectionSource)}`);
+    lines.push(`- Resources: ${service.service.resources.length}`);
+    lines.push(`- Findings: ${formatFindingsCount(service.score.findingsCount)}`);
+    lines.push('');
+    lines.push('### Contextual Findings');
+    lines.push('');
+    appendMarkdownContextualFindings(
+      lines,
+      filterContextualFindings(service.contextualFindings, filters),
+    );
+    lines.push('');
+    lines.push('### Recommendations');
+    lines.push('');
+    appendMarkdownRecommendations(lines, service.recommendations);
+  }
+
+  if (scan.servicePosture.unassigned.resourceCount > 0) {
+    lines.push('');
+    lines.push('## Unassigned Resources');
+    lines.push('');
+    lines.push(`- Resource count: ${scan.servicePosture.unassigned.resourceCount}`);
+    appendMarkdownContextualFindings(
+      lines,
+      filterContextualFindings(scan.servicePosture.unassigned.contextualFindings, filters),
+    );
+  }
+
+  lines.push('');
+  lines.push('## Recommendations Summary');
+  lines.push('');
+  appendMarkdownRecommendations(lines, scan.servicePosture.recommendations);
+
+  return lines.join('\n');
+}
+
+export function buildServiceReportJson(
+  scan: ScanResults,
+  filters: ValidationFilters,
+): Record<string, unknown> {
+  const posture = scan.servicePosture;
+  return {
+    ...scan.validationReport,
+    results: filterValidationResults(scan.validationReport, filters),
+    global: {
+      score: scan.validationReport.scoreBreakdown.overall,
+      grade: scan.validationReport.scoreBreakdown.grade,
+      serviceCount: posture?.services.length ?? 0,
+      unassignedResources: posture?.unassigned.resourceCount ?? scan.nodes.length,
+    },
+    services:
+      posture?.services.map((service) => ({
+        ...service,
+        contextualFindings: filterContextualFindings(service.contextualFindings, filters),
+      })) ?? [],
+    unassigned: posture
+      ? {
+          ...posture.unassigned,
+          contextualFindings: filterContextualFindings(posture.unassigned.contextualFindings, filters),
+        }
+      : {
+          score: null,
+          resourceCount: scan.nodes.length,
+          contextualFindings: [],
+          recommendations: [],
+        },
+    recommendations: posture?.recommendations ?? [],
+  };
+}
+
 function appendSeveritySection(
   lines: string[],
   title: string,
@@ -211,4 +369,98 @@ function compareResults(
     left.ruleId.localeCompare(right.ruleId) ||
     left.nodeId.localeCompare(right.nodeId)
   );
+}
+
+function appendContextualFindings(
+  lines: string[],
+  findings: readonly ContextualFinding[],
+): void {
+  lines.push('Contextual findings:');
+  if (findings.length === 0) {
+    lines.push('No findings.');
+    return;
+  }
+
+  findings.forEach((finding) => {
+    lines.push(`${formatFindingSeverity(finding.severity)} ${finding.ruleId} - ${finding.nodeName}`);
+    lines.push(`DR impact: ${finding.drImpact.summary}`);
+    lines.push(`Recovery implication: ${finding.drImpact.recoveryImplication}`);
+    lines.push(
+      `Technical: ${finding.technicalImpact.metadataKey}=${formatMetadataValue(finding.technicalImpact.metadataValue)} (expected ${finding.technicalImpact.expectedValue})`,
+    );
+    if (finding.remediation?.actions[0]) {
+      lines.push(
+        `Remediation: ${finding.remediation.actions[0].title} [${finding.remediation.risk.toUpperCase()}]`,
+      );
+    }
+    lines.push('');
+  });
+}
+
+function appendServiceRecommendations(
+  lines: string[],
+  recommendations: readonly ServiceRecommendationProjection[],
+): void {
+  lines.push('Recommendations:');
+  if (recommendations.length === 0) {
+    lines.push('No recommendations.');
+    return;
+  }
+
+  recommendations.slice(0, 5).forEach((recommendation, index) => {
+    lines.push(
+      `${index + 1}. [${recommendation.risk.toUpperCase()}] ${recommendation.title} (+${recommendation.impact.scoreDelta})`,
+    );
+    if (recommendation.drImpactSummary) {
+      lines.push(`   DR impact: ${recommendation.drImpactSummary}`);
+    }
+    lines.push(`   Command: ${recommendation.remediation.command}`);
+  });
+}
+
+function appendMarkdownContextualFindings(
+  lines: string[],
+  findings: readonly ContextualFinding[],
+): void {
+  if (findings.length === 0) {
+    lines.push('No findings.');
+    return;
+  }
+
+  findings.forEach((finding) => {
+    lines.push(
+      `- **${finding.ruleId}** on \`${finding.nodeName}\`: ${finding.drImpact.summary}`,
+    );
+    lines.push(
+      `- Technical: ${finding.technicalImpact.metadataKey}=${formatMetadataValue(finding.technicalImpact.metadataValue)} (expected ${finding.technicalImpact.expectedValue})`,
+    );
+    lines.push(`- Recovery implication: ${finding.drImpact.recoveryImplication}`);
+    if (finding.remediation?.actions[0]) {
+      lines.push(
+        `- Remediation: ${finding.remediation.actions[0].title} [${finding.remediation.risk.toUpperCase()}]`,
+      );
+    }
+    lines.push('');
+  });
+}
+
+function appendMarkdownRecommendations(
+  lines: string[],
+  recommendations: readonly ServiceRecommendationProjection[],
+): void {
+  if (recommendations.length === 0) {
+    lines.push('No recommendations.');
+    return;
+  }
+
+  recommendations.slice(0, 8).forEach((recommendation) => {
+    lines.push(
+      `- **[${recommendation.risk.toUpperCase()}] ${recommendation.title}** (+${recommendation.impact.scoreDelta})`,
+    );
+    if (recommendation.drImpactSummary) {
+      lines.push(`- DR impact: ${recommendation.drImpactSummary}`);
+    }
+    lines.push(`- Command: \`${recommendation.remediation.command}\``);
+    lines.push('');
+  });
 }

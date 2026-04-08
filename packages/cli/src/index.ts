@@ -13,6 +13,8 @@ import { registerPlanCommand } from './commands/plan.js';
 import { registerReportCommand } from './commands/report.js';
 import { registerScanCommand } from './commands/scan.js';
 import { registerOverridesCommand } from './commands/overrides.js';
+import { registerServicesCommand } from './commands/services.js';
+import { registerStatusCommand } from './commands/status.js';
 
 export function createProgram(): Command {
   const program = new Command();
@@ -33,6 +35,8 @@ export function createProgram(): Command {
   registerOverridesCommand(program);
   registerDemoCommand(program);
   registerIamPolicyCommand(program);
+  registerServicesCommand(program);
+  registerStatusCommand(program);
 
   return program;
 }

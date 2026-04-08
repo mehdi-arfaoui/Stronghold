@@ -1,9 +1,30 @@
 import type { ValidationReport, WeightedValidationResult } from '@stronghold-dr/core';
 
 import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
+import {
+  formatDeclaredOwner,
+  formatFindingsCount,
+  formatSourceBadge,
+  hasDetectedServices,
+  sortServiceEntries,
+} from './service-helpers.js';
 import { formatGrade, theme } from './theme.js';
 
 export function renderScanSummary(
+  results: ScanResults,
+  options: {
+    readonly savedPath?: string;
+    readonly warnings?: readonly string[];
+  } = {},
+): string {
+  if (hasDetectedServices(results.servicePosture)) {
+    return renderServiceCentricSummary(results, options);
+  }
+
+  return renderLegacyScanSummary(results, options);
+}
+
+function renderLegacyScanSummary(
   results: ScanResults,
   options: {
     readonly savedPath?: string;
@@ -29,6 +50,74 @@ export function renderScanSummary(
     lines.push(`   Run '${theme.command('stronghold plan generate')}' to export DRP as YAML`);
     lines.push(
       `   Run '${theme.command('stronghold plan runbook')}' to export an executable recovery runbook`,
+    );
+  }
+
+  if (options.warnings && options.warnings.length > 0) {
+    lines.push('');
+    lines.push(
+      `   ${theme.warn(`Warnings: ${options.warnings.length} issue(s). Results may be incomplete or adjusted.`)}`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function renderServiceCentricSummary(
+  results: ScanResults,
+  options: {
+    readonly savedPath?: string;
+    readonly warnings?: readonly string[];
+  },
+): string {
+  const posture = results.servicePosture!;
+  const lines: string[] = [];
+  const discoveredResources = results.scanMetadata?.discoveredResourceCount ?? results.nodes.length;
+  const duration =
+    results.scanMetadata?.totalDurationMs !== undefined
+      ? formatDuration(results.scanMetadata.totalDurationMs)
+      : 'unknown time';
+
+  lines.push(
+    `Scan complete in ${duration} - ${discoveredResources} resources across ${results.regions.length} region${results.regions.length === 1 ? '' : 's'}`,
+  );
+  lines.push('');
+  lines.push(theme.section('Services'));
+  lines.push('');
+
+  for (const service of sortServiceEntries(posture.services)) {
+    const owner = service.score.owner
+      ? `owner: ${formatDeclaredOwner(service.score.owner)}`
+      : `source: ${formatSourceBadge(service.score.detectionSource)}`;
+    lines.push(
+      `  ${service.service.id.padEnd(16)} ${service.score.grade}  ${String(service.score.score).padStart(3)}/100   ${formatFindingsCount(service.score.findingsCount).padEnd(22)} ${owner}`,
+    );
+    if (service.score.owner) {
+      lines.push(`                     source: ${formatSourceBadge(service.score.detectionSource)}`);
+    }
+  }
+
+  if (posture.unassigned.resourceCount > 0) {
+    const unassignedScore = posture.unassigned.score;
+    const findingCount = unassignedScore
+      ? formatFindingsCount(unassignedScore.findingsCount)
+      : '0 critical findings';
+    lines.push('');
+    lines.push(
+      `  Unassigned       ${unassignedScore?.grade ?? '-'}  ${String(unassignedScore?.score ?? 0).padStart(3)}/100   ${posture.unassigned.resourceCount} resources with ${findingCount}`,
+    );
+  }
+
+  lines.push('');
+  lines.push(`Global DR score: ${formatGrade(results.validationReport)}`);
+
+  if (options.savedPath) {
+    lines.push(`Results saved to ${options.savedPath}`);
+    lines.push(`Run '${theme.command('stronghold report')}' for the full DR posture report.`);
+    lines.push(`Run '${theme.command('stronghold services list')}' to manage service definitions.`);
+    lines.push(`Run '${theme.command('stronghold plan generate')}' to export DRP as YAML.`);
+    lines.push(
+      `Run '${theme.command('stronghold plan runbook')}' to export an executable recovery runbook.`,
     );
   }
 

@@ -7,7 +7,7 @@ import type {
 } from '@stronghold-dr/core';
 import type { Edge, Node } from '@xyflow/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 import { generatePlan } from '@/api/plans';
 import { getLatestScan, getScanData } from '@/api/scans';
@@ -36,6 +36,8 @@ const EDGE_PROVENANCE_PRIORITY: Record<'manual' | 'inferred' | 'aws-api', number
   inferred: 1,
   'aws-api': 2,
 };
+
+const SERVICE_COLORS = ['#ef4444', '#0f766e', '#2563eb', '#ca8a04', '#c2410c', '#0891b2', '#4f46e5', '#be123c'];
 
 function readText(value: unknown): string | null {
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
@@ -106,6 +108,9 @@ function buildIndividualNode(
   node: InfraNode,
   status: ValidationStatus,
   component: DRPComponent | null,
+  serviceLabel?: string,
+  accentColor?: string,
+  muted = false,
 ): Node<GraphVisualData> {
   return {
     id: node.id,
@@ -117,6 +122,9 @@ function buildIndividualNode(
       nodeType: node.type,
       status,
       emphasis: component ? `RTO ${component.estimatedRTO}` : undefined,
+      serviceLabel,
+      accentColor,
+      muted,
     },
   };
 }
@@ -128,12 +136,16 @@ function normalizeEdgeProvenance(value: unknown): 'manual' | 'inferred' | 'aws-a
 export default function GraphPage(): JSX.Element {
   const { scanId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const setCurrentScanId = useAppStore((state) => state.setCurrentScanId);
 
   const [selectedTypes, setSelectedTypes] = useState<ReadonlySet<string>>(new Set());
   const [expandAll, setExpandAll] = useState(false);
   const [expandedGroups, setExpandedGroups] = useState<ReadonlySet<string>>(new Set());
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedServiceFilter, setSelectedServiceFilter] = useState<string | null>(
+    searchParams.get('service'),
+  );
   const [focusRequest, setFocusRequest] = useState<{ readonly id: string; readonly nonce: number } | null>(null);
   const [command, setCommand] = useState<{ readonly type: 'zoom-in' | 'zoom-out' | 'fit'; readonly nonce: number } | null>(null);
 
@@ -162,6 +174,10 @@ export default function GraphPage(): JSX.Element {
     setCurrentScanId(data?.resolvedScanId ?? null);
   }, [data?.resolvedScanId, setCurrentScanId]);
 
+  useEffect(() => {
+    setSelectedServiceFilter(searchParams.get('service'));
+  }, [searchParams]);
+
   const rawNodes = useMemo(
     () => data?.scanData.nodes ?? [],
     [data?.scanData.nodes],
@@ -171,10 +187,32 @@ export default function GraphPage(): JSX.Element {
     [data?.scanData.edges],
   );
   const validationReport = data?.scanData.validationReport ?? null;
+  const serviceAssignments = useMemo(() => {
+    const assignments = new Map<string, { readonly id: string; readonly name: string }>();
+    (data?.scanData.servicePosture?.services ?? []).forEach((service) => {
+      service.service.resources.forEach((resource) => {
+        assignments.set(resource.nodeId, {
+          id: service.service.id,
+          name: service.service.name,
+        });
+      });
+    });
+    return assignments;
+  }, [data?.scanData.servicePosture?.services]);
 
   const availableTypes = useMemo(
     () => Array.from(new Set(rawNodes.map((node) => node.type))).sort((left, right) => left.localeCompare(right)),
     [rawNodes],
+  );
+  const availableServices = useMemo(
+    () =>
+      (data?.scanData.servicePosture?.services ?? [])
+        .map((service) => ({
+          id: service.service.id,
+          name: service.service.name,
+        }))
+        .sort((left, right) => left.name.localeCompare(right.name)),
+    [data?.scanData.servicePosture?.services],
   );
 
   const allNodeMap = useMemo(
@@ -198,6 +236,16 @@ export default function GraphPage(): JSX.Element {
         ? rawNodes
         : rawNodes.filter((node) => selectedTypes.has(node.type)),
     [rawNodes, selectedTypes],
+  );
+  const serviceColorById = useMemo(
+    () =>
+      new Map(
+        availableServices.map((service) => [
+          service.id,
+          SERVICE_COLORS[Math.abs(hashValue(service.id)) % SERVICE_COLORS.length] ?? '#64748b',
+        ] as const),
+      ),
+    [availableServices],
   );
 
   const graphData = useMemo(() => {
@@ -247,6 +295,12 @@ export default function GraphPage(): JSX.Element {
                 subtitle: members.slice(0, 3).map((member) => primaryNodeLabel(member)).join(', '),
                 nodeType: members[0]?.type ?? 'GROUP',
                 status: groupStatus,
+                ...resolveServiceVisual(
+                  members.map((member) => member.id),
+                  serviceAssignments,
+                  serviceColorById,
+                  selectedServiceFilter,
+                ),
               },
             });
           }
@@ -260,6 +314,12 @@ export default function GraphPage(): JSX.Element {
           node,
           statusMap.get(node.id) ?? 'skip',
           componentById.get(node.id) ?? null,
+          serviceAssignments.get(node.id)?.name,
+          serviceAssignments.get(node.id)
+            ? serviceColorById.get(serviceAssignments.get(node.id)?.id ?? '')
+            : '#6b7280',
+          selectedServiceFilter !== null &&
+            serviceAssignments.get(node.id)?.id !== selectedServiceFilter,
         ),
       );
     });
@@ -325,7 +385,7 @@ export default function GraphPage(): JSX.Element {
       memberGroupMap,
       nodeToDisplayMap: nodeToDisplay,
     };
-  }, [componentById, expandAll, expandedGroups, filteredNodes, rawEdges, selectedTypes.size, statusMap]);
+  }, [componentById, expandAll, expandedGroups, filteredNodes, rawEdges, selectedServiceFilter, selectedTypes.size, serviceAssignments, serviceColorById, statusMap]);
 
   const searchOptions = useMemo(
     () =>
@@ -435,7 +495,7 @@ export default function GraphPage(): JSX.Element {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 xl:grid-cols-4">
+      <div className="grid gap-4 xl:grid-cols-5">
         <section className="panel p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Visible nodes</p>
           <div className="mt-2 text-3xl font-semibold text-foreground">{graphData.nodes.length}</div>
@@ -447,6 +507,10 @@ export default function GraphPage(): JSX.Element {
         <section className="panel p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Resources</p>
           <div className="mt-2 text-3xl font-semibold text-foreground">{rawNodes.length}</div>
+        </section>
+        <section className="panel p-4">
+          <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Services</p>
+          <div className="mt-2 text-3xl font-semibold text-foreground">{availableServices.length}</div>
         </section>
         <section className="panel p-4">
           <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Report score</p>
@@ -473,6 +537,21 @@ export default function GraphPage(): JSX.Element {
             onZoomOut={() => issueCommand('zoom-out')}
             onFitView={() => issueCommand('fit')}
           />
+          <section className="panel p-4">
+            <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Service highlight</p>
+            <select
+              value={selectedServiceFilter ?? ''}
+              onChange={(event) => setSelectedServiceFilter(event.target.value || null)}
+              className="input-field mt-3 w-full"
+            >
+              <option value="">All services</option>
+              {availableServices.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {service.name}
+                </option>
+              ))}
+            </select>
+          </section>
           <section className="panel p-4">
             <p className="text-xs uppercase tracking-[0.18em] text-subtle-foreground">Edge legend</p>
             <div className="mt-3 flex flex-wrap gap-4 text-sm text-foreground">
@@ -533,4 +612,46 @@ export default function GraphPage(): JSX.Element {
       </div>
     </div>
   );
+}
+
+function resolveServiceVisual(
+  nodeIds: readonly string[],
+  serviceAssignments: ReadonlyMap<string, { readonly id: string; readonly name: string }>,
+  serviceColorById: ReadonlyMap<string, string>,
+  selectedServiceFilter: string | null,
+): {
+  readonly serviceLabel?: string;
+  readonly accentColor?: string;
+  readonly muted?: boolean;
+} {
+  const assigned = nodeIds
+    .map((nodeId) => serviceAssignments.get(nodeId))
+    .filter((service): service is { readonly id: string; readonly name: string } => service != null);
+  if (assigned.length === 0) {
+    return {
+      serviceLabel: 'Unassigned',
+      accentColor: '#6b7280',
+      muted: selectedServiceFilter !== null,
+    };
+  }
+
+  const distinctIds = new Set(assigned.map((service) => service.id));
+  const primary = assigned[0];
+  if (!primary) {
+    return {};
+  }
+
+  return {
+    serviceLabel: distinctIds.size === 1 ? primary.name : `${distinctIds.size} services`,
+    accentColor: serviceColorById.get(primary.id) ?? '#64748b',
+    muted: selectedServiceFilter !== null && !distinctIds.has(selectedServiceFilter),
+  };
+}
+
+function hashValue(value: string): number {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) | 0;
+  }
+  return hash;
 }

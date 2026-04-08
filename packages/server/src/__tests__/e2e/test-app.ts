@@ -12,6 +12,7 @@ import { DriftService } from '../../services/drift-service.js';
 import { createScanDataEncryptionService } from '../../services/encryption.service.js';
 import { PrismaAuditLogger } from '../../services/prisma-audit-logger.js';
 import { ScanService } from '../../services/scan-service.js';
+import { ServiceDetectionService } from '../../services/service-detection.service.js';
 import { buildDemoArtifacts, createDemoScenario, type DemoScenario } from './fixtures.js';
 import { createMockPrisma, resetStore, type MockPrismaHarness } from './mock-prisma.js';
 
@@ -21,6 +22,7 @@ export interface E2eContext {
   readonly scanRepository: PrismaScanRepository;
   readonly infrastructureRepository: PrismaInfrastructureRepository;
   readonly scanService: ScanService;
+  readonly serviceDetectionService: ServiceDetectionService;
   readonly auditLogger: PrismaAuditLogger;
 }
 
@@ -39,6 +41,7 @@ export function createE2eContext(
     corsOrigin: 'http://localhost:5173',
     corsOrigins: ['http://localhost:5173'],
     logLevel: 'error',
+    servicesFilePath: 'C:\\temp\\.stronghold\\services.yml',
     ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
   };
   const logger = new ServerLogger(config);
@@ -49,7 +52,18 @@ export function createE2eContext(
     prisma.prisma,
     encryptionService,
   );
-  const scanService = new ScanService(scanRepository, infrastructureRepository, logger);
+  const serviceDetectionService = new ServiceDetectionService(
+    scanRepository,
+    infrastructureRepository,
+    logger,
+    config.servicesFilePath,
+  );
+  const scanService = new ScanService(
+    scanRepository,
+    infrastructureRepository,
+    logger,
+    serviceDetectionService,
+  );
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 
   if (options.autoCompleteScan) {
@@ -78,6 +92,7 @@ export function createE2eContext(
     scanRepository,
     infrastructureRepository,
     scanService,
+    serviceDetectionService,
     auditLogger,
   };
 }
@@ -109,6 +124,20 @@ export async function seedCompletedScan(
   };
 
   await context.scanRepository.saveScan(params);
+  const servicePosture = context.serviceDetectionService.buildServicePosture({
+    nodes: artifacts.nodes,
+    edges: artifacts.edges,
+    validationReport: artifacts.validationReport,
+    drPlan: artifacts.drPlan,
+  });
+  await context.scanRepository.saveReport({
+    scanId: options.scanId,
+    type: 'services',
+    format: 'json',
+    content: servicePosture.posture,
+    score: artifacts.validationReport.scoreBreakdown.overall,
+    grade: artifacts.validationReport.scoreBreakdown.grade,
+  });
   if (!options.persistPlan) {
     return;
   }

@@ -11,6 +11,7 @@ import { PrismaAuditLogger } from './services/prisma-audit-logger.js';
 import { DriftService } from './services/drift-service.js';
 import { createScanDataEncryptionService } from './services/encryption.service.js';
 import { ScanService } from './services/scan-service.js';
+import { ServiceDetectionService } from './services/service-detection.service.js';
 
 async function bootstrap(): Promise<void> {
   const config = loadConfig();
@@ -31,7 +32,18 @@ async function bootstrap(): Promise<void> {
   const auditLogger = new PrismaAuditLogger(prisma);
   const scanRepository = new PrismaScanRepository(prisma, encryptionService);
   const infrastructureRepository = new PrismaInfrastructureRepository(prisma, encryptionService);
-  const scanService = new ScanService(scanRepository, infrastructureRepository, logger);
+  const serviceDetectionService = new ServiceDetectionService(
+    scanRepository,
+    infrastructureRepository,
+    logger,
+    config.servicesFilePath,
+  );
+  const scanService = new ScanService(
+    scanRepository,
+    infrastructureRepository,
+    logger,
+    serviceDetectionService,
+  );
   const driftService = new DriftService(scanRepository, infrastructureRepository, logger);
 
   await prisma.$connect();

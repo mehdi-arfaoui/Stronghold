@@ -4,7 +4,11 @@ export type AuditAction =
   | 'plan_generate'
   | 'plan_validate'
   | 'drift_check'
-  | 'plan_runbook';
+  | 'plan_runbook'
+  | 'services_detect'
+  | 'services_list'
+  | 'services_show'
+  | 'status';
 
 export interface AuditIdentity {
   readonly arn: string;

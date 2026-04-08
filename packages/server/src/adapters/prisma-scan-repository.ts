@@ -352,6 +352,15 @@ export class PrismaScanRepository {
     return scan ? toSummary(scan) : null;
   }
 
+  public async getLatestCompletedScanSummary(): Promise<ScanSummary | null> {
+    const scan = await this.prisma.scan.findFirst({
+      where: { status: 'COMPLETED' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    return scan ? toSummary(scan) : null;
+  }
+
   public async getLatestScan(provider: string): Promise<ScanRecord | null> {
     const scan = await this.prisma.scan.findFirst({
       where: {
@@ -436,6 +445,31 @@ export class PrismaScanRepository {
   public async getLatestReport(scanId: string): Promise<StoredReport | null> {
     const report = await this.prisma.report.findFirst({
       where: { scanId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!report) {
+      return null;
+    }
+
+    return {
+      id: report.id,
+      scanId: report.scanId,
+      type: report.type,
+      format: report.format,
+      content: report.content,
+      score: report.score,
+      grade: report.grade,
+      createdAt: report.createdAt,
+    };
+  }
+
+  public async getLatestReportByType(
+    scanId: string,
+    type: string,
+  ): Promise<StoredReport | null> {
+    const report = await this.prisma.report.findFirst({
+      where: { scanId, type },
       orderBy: { createdAt: 'desc' },
     });
 

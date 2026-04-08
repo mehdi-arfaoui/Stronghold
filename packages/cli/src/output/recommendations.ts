@@ -1,4 +1,4 @@
-import type { Recommendation } from '@stronghold-dr/core';
+import type { Recommendation, ServiceRecommendationProjection } from '@stronghold-dr/core';
 
 const RISK_LABELS: Readonly<Record<Recommendation['risk'], string>> = {
   safe: 'SAFE',
@@ -7,7 +7,7 @@ const RISK_LABELS: Readonly<Record<Recommendation['risk'], string>> = {
 };
 
 export function renderRecommendationHighlights(
-  recommendations: readonly Recommendation[],
+  recommendations: ReadonlyArray<Recommendation | ServiceRecommendationProjection>,
   currentScore: number,
   detailsCommand = 'stronghold report',
   totalCount = recommendations.length,
@@ -20,17 +20,28 @@ export function renderRecommendationHighlights(
   let runningScore = currentScore;
 
   recommendations.forEach((recommendation, index) => {
-    const nextScore = Math.min(100, runningScore + recommendation.impact.scoreDelta);
+    const isServiceRecommendation = hasProjectedScore(recommendation);
+    const current = isServiceRecommendation
+      ? recommendation.projectedScore.current
+      : runningScore;
+    const nextScore = isServiceRecommendation
+      ? recommendation.projectedScore.next
+      : Math.min(100, runningScore + recommendation.impact.scoreDelta);
     lines.push(
-      `${index + 1}. [${RISK_LABELS[recommendation.risk]}] ${recommendation.title}`,
+      `${index + 1}. [${RISK_LABELS[recommendation.risk]}] ${recommendation.title}${isServiceRecommendation && recommendation.serviceName ? ` (service: ${recommendation.serviceName})` : ''}`,
     );
+    if (isServiceRecommendation && recommendation.drImpactSummary) {
+      lines.push(`   DR impact: ${recommendation.drImpactSummary}`);
+    }
     lines.push(
-      `   Impact: DR score +${nextScore - runningScore} (${runningScore} -> ${nextScore})  |  Category: ${recommendation.category}`,
+      buildImpactLine(recommendation, current, nextScore, runningScore),
     );
     lines.push(`   Command: ${recommendation.remediation.command}`);
     lines.push(`   ${renderRecommendationNote(recommendation)}`);
     lines.push('');
-    runningScore = nextScore;
+    if (!isServiceRecommendation && typeof nextScore === 'number') {
+      runningScore = nextScore;
+    }
   });
 
   lines.push(
@@ -40,7 +51,7 @@ export function renderRecommendationHighlights(
 }
 
 export function renderRecommendationSection(
-  recommendations: readonly Recommendation[],
+  recommendations: ReadonlyArray<Recommendation | ServiceRecommendationProjection>,
   currentScore: number,
   format: 'terminal' | 'markdown',
 ): string {
@@ -51,7 +62,7 @@ export function renderRecommendationSection(
   }
 
   const safeRecommendations = recommendations.filter((item) => item.risk === 'safe');
-  const safeScore = projectScore(currentScore, safeRecommendations);
+  const safeScore = projectScore(currentScore, safeRecommendations as readonly Recommendation[]);
   if (format === 'markdown') {
     const lines = ['## Recommendations', ''];
     lines.push(
@@ -111,7 +122,7 @@ export function projectScore(
 
 function renderRecommendationGroupTerminal(
   label: string,
-  recommendations: readonly Recommendation[],
+  recommendations: ReadonlyArray<Recommendation | ServiceRecommendationProjection>,
 ): readonly string[] {
   const lines = [`${label}`];
   if (recommendations.length === 0) {
@@ -121,9 +132,12 @@ function renderRecommendationGroupTerminal(
 
   recommendations.forEach((recommendation, index) => {
     lines.push(
-      `${index + 1}. [${RISK_LABELS[recommendation.risk]}] ${recommendation.title} (+${recommendation.impact.scoreDelta})`,
+      `${index + 1}. [${RISK_LABELS[recommendation.risk]}] ${recommendation.title}${hasProjectedScore(recommendation) && recommendation.serviceName ? ` (service: ${recommendation.serviceName})` : ''} (+${recommendation.impact.scoreDelta})`,
     );
     lines.push(`   Why: ${recommendation.description}`);
+    if (hasProjectedScore(recommendation) && recommendation.drImpactSummary) {
+      lines.push(`   DR impact: ${recommendation.drImpactSummary}`);
+    }
     lines.push(`   Command: ${recommendation.remediation.command}`);
     lines.push(`   Note: ${renderRecommendationNote(recommendation)}`);
     if (recommendation.risk === 'dangerous') {
@@ -139,7 +153,7 @@ function renderRecommendationGroupTerminal(
 
 function renderRecommendationGroupMarkdown(
   label: string,
-  recommendations: readonly Recommendation[],
+  recommendations: ReadonlyArray<Recommendation | ServiceRecommendationProjection>,
 ): readonly string[] {
   const lines = [`### ${label}`, ''];
   if (recommendations.length === 0) {
@@ -149,9 +163,12 @@ function renderRecommendationGroupMarkdown(
 
   recommendations.forEach((recommendation) => {
     lines.push(
-      `- **[${RISK_LABELS[recommendation.risk]}] ${recommendation.title}** (+${recommendation.impact.scoreDelta})`,
+      `- **[${RISK_LABELS[recommendation.risk]}] ${recommendation.title}${hasProjectedScore(recommendation) && recommendation.serviceName ? ` (service: ${recommendation.serviceName})` : ''}** (+${recommendation.impact.scoreDelta})`,
     );
     lines.push(`- Why: ${recommendation.description}`);
+    if (hasProjectedScore(recommendation) && recommendation.drImpactSummary) {
+      lines.push(`- DR impact: ${recommendation.drImpactSummary}`);
+    }
     lines.push(`- Command: \`${recommendation.remediation.command}\``);
     lines.push(`- Note: ${renderRecommendationNote(recommendation)}`);
     if (recommendation.risk === 'dangerous') {
@@ -176,4 +193,33 @@ function renderRecommendationNote(recommendation: Recommendation): string {
     return 'No downtime is expected, but this should still be planned and reviewed before execution.';
   }
   return 'No downtime is expected. Safe to apply through your normal change process.';
+}
+
+function hasProjectedScore(
+  recommendation: Recommendation | ServiceRecommendationProjection,
+): recommendation is ServiceRecommendationProjection {
+  return 'projectedScore' in recommendation;
+}
+
+function buildImpactLine(
+  recommendation: Recommendation | ServiceRecommendationProjection,
+  current: number | null | undefined,
+  nextScore: number | null | undefined,
+  fallbackCurrent: number,
+): string {
+  if (typeof current === 'number' && typeof nextScore === 'number') {
+    const currentGrade = hasProjectedScore(recommendation)
+      ? recommendation.projectedScore.currentGrade
+      : null;
+    const nextGrade = hasProjectedScore(recommendation)
+      ? recommendation.projectedScore.nextGrade
+      : null;
+    const label = hasProjectedScore(recommendation)
+      ? recommendation.serviceName ?? 'service'
+      : 'DR';
+    return `   Impact: ${label} score +${nextScore - current} (${current} -> ${nextScore})${currentGrade && nextGrade ? `, grade ${currentGrade} -> ${nextGrade}` : ''}`;
+  }
+
+  const projected = Math.min(100, fallbackCurrent + recommendation.impact.scoreDelta);
+  return `   Impact: DR score +${projected - fallbackCurrent} (${fallbackCurrent} -> ${projected})  |  Category: ${recommendation.category}`;
 }

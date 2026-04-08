@@ -1,7 +1,10 @@
+import fs from 'node:fs';
+
 import { Command } from 'commander';
 import {
   generateRecommendations,
   selectTopRecommendations,
+  type Service,
 } from '@stronghold-dr/core';
 
 import {
@@ -30,8 +33,8 @@ import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { determineScanExitCode, renderScanSummary } from '../output/scan-summary.js';
 import { formatReadOnlyMessage } from '../output/theme.js';
 import { runAwsScan } from '../pipeline/aws-scan.js';
-import { saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import { loadScanResultsWithEncryption, saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
+import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
 
 export function registerScanCommand(program: Command): void {
   addGraphOverrideOptions(
@@ -76,6 +79,8 @@ export function registerScanCommand(program: Command): void {
         resolvedOverrides.warnings.forEach((warning) => writeError(warning));
         const selectedServices = ensureVpcIncluded(options.services);
         const resolvedScanSettings = resolveAwsScanSettings(options);
+        const paths = resolveStrongholdPaths();
+        const previousAssignments = await loadPreviousServiceAssignments(paths, options.passphrase);
         const flags = collectAuditFlags({
           '--all-regions': options.allRegions,
           '--no-save': !options.save,
@@ -130,6 +135,8 @@ export function registerScanCommand(program: Command): void {
           scannerConcurrency: resolvedScanSettings.concurrency,
           scannerTimeoutMs: resolvedScanSettings.scannerTimeout * 1_000,
           graphOverrides: resolvedOverrides.overrides,
+          servicesFilePath: paths.servicesPath,
+          previousAssignments,
           identityMetadata: {
             authMode: context.authMode,
             ...(context.profile ? { profile: context.profile } : {}),
@@ -160,6 +167,11 @@ export function registerScanCommand(program: Command): void {
                 ...(progress.error ? { error: progress.error } : {}),
               });
             },
+            onServiceLog: (message) => {
+              if (options.verbose) {
+                logger.info(message);
+              }
+            },
             onStage: async (message) => {
               if (!shouldPrint || options.output !== 'summary') {
                 return;
@@ -182,7 +194,6 @@ export function registerScanCommand(program: Command): void {
           : '.stronghold/latest-scan.json';
 
         if (options.save) {
-          const paths = resolveStrongholdPaths();
           await saveScanResultsWithEncryption(execution.results, paths.latestScanPath, options);
         }
 
@@ -277,4 +288,21 @@ function maskAccountId(accountId: string): string {
     return '*'.repeat(accountId.length);
   }
   return `${accountId.slice(0, 2)}****${accountId.slice(-4)}`;
+}
+
+async function loadPreviousServiceAssignments(
+  paths: ReturnType<typeof resolveStrongholdPaths>,
+  passphrase: string | undefined,
+): Promise<readonly Service[] | undefined> {
+  const scanPath = resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
+  if (!fs.existsSync(scanPath)) {
+    return undefined;
+  }
+
+  try {
+    const previousScan = await loadScanResultsWithEncryption(scanPath, { passphrase });
+    return previousScan.servicePosture?.detection.services;
+  } catch {
+    return undefined;
+  }
 }

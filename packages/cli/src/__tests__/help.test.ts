@@ -25,6 +25,8 @@ describe('CLI help output', () => {
     expect(help).toContain('overrides');
     expect(help).toContain('demo');
     expect(help).toContain('iam-policy');
+    expect(help).toContain('services');
+    expect(help).toContain('status');
   });
 
   it('stronghold plan --help lists generate, validate, and runbook', () => {
@@ -53,6 +55,7 @@ describe('CLI rendered output', () => {
     const summary = renderScanSummary(results, { savedPath: '.stronghold/latest-scan.json' });
 
     expect(summary).toContain('stronghold plan runbook');
+    expect(summary).toContain('stronghold services list');
   });
 
   it('terminal report includes the scoring disclaimer', async () => {

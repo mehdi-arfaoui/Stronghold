@@ -9,6 +9,7 @@ import type {
   GraphAnalysisReport,
   InfraNode,
   RegionalRisk,
+  ServicePosture,
   ValidationReport,
 } from '@stronghold-dr/core';
 
@@ -59,6 +60,7 @@ export interface ScanResults {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly drpPlan: DRPlan;
+  readonly servicePosture?: ServicePosture;
   readonly scanMetadata?: ScanExecutionMetadata;
   readonly warnings?: readonly string[];
   readonly isDemo?: boolean;
@@ -139,6 +141,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     ? (value.validationReport as unknown as ValidationReport)
     : null;
   const drpPlan = isRecord(value.drpPlan) ? (value.drpPlan as unknown as DRPlan) : null;
+  const servicePosture = isRecord(value.servicePosture)
+    ? (value.servicePosture as unknown as ServicePosture)
+    : null;
 
   if (!timestamp || !provider || !nodes || !edges || !analysis || !validationReport || !drpPlan) {
     throw new FileStoreError(`Scan results at ${filePath} are missing required fields.`);
@@ -153,6 +158,7 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     analysis,
     validationReport,
     drpPlan,
+    ...(servicePosture ? { servicePosture } : {}),
     ...(isRecord(value.scanMetadata)
       ? { scanMetadata: value.scanMetadata as unknown as ScanExecutionMetadata }
       : {}),

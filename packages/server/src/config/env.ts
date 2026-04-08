@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import { z } from 'zod';
 
 export const envSchema = z.object({
@@ -10,6 +12,7 @@ export const envSchema = z.object({
     .string()
     .regex(/^[0-9a-fA-F]{64}$/, 'STRONGHOLD_ENCRYPTION_KEY must be a 32-byte hex string')
     .optional(),
+  STRONGHOLD_SERVICES_FILE: z.string().optional(),
 });
 
 export interface ServerConfig {
@@ -20,6 +23,7 @@ export interface ServerConfig {
   readonly corsOrigins: readonly string[];
   readonly logLevel: 'debug' | 'info' | 'warn' | 'error';
   readonly encryptionKey?: string;
+  readonly servicesFilePath: string;
 }
 
 export function parseEnvironment(environment: NodeJS.ProcessEnv): ServerConfig {
@@ -34,6 +38,7 @@ export function parseEnvironment(environment: NodeJS.ProcessEnv): ServerConfig {
       .map((origin) => origin.trim())
       .filter((origin) => origin.length > 0),
     logLevel: parsed.LOG_LEVEL,
+    servicesFilePath: path.resolve(parsed.STRONGHOLD_SERVICES_FILE ?? '.stronghold/services.yml'),
     ...(parsed.STRONGHOLD_ENCRYPTION_KEY
       ? { encryptionKey: parsed.STRONGHOLD_ENCRYPTION_KEY }
       : {}),
