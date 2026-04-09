@@ -19,9 +19,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mehdi-arfaoui/stronghold.git",
+    "url": "https://github.com/mehdi-arfaoui/Stronghold.git",
     "directory": "packages/cli"
   },
+  "homepage": "https://github.com/mehdi-arfaoui/Stronghold",
   "scripts": {
     "prebuild": "npm --prefix ../core run build",
     "pretypecheck": "npm --prefix ../core run build",
@@ -46,7 +47,7 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@stronghold-dr/core": "file:../core",
+    "@stronghold-dr/core": "1.0.0",
     "@aws-sdk/client-ec2": "^3.1017.0",
     "@aws-sdk/client-sts": "^3.1017.0",
     "chalk": "^5.3.0",

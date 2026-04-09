@@ -15,9 +15,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/mehdi-arfaoui/stronghold.git",
+    "url": "https://github.com/mehdi-arfaoui/Stronghold.git",
     "directory": "packages/core"
   },
+  "homepage": "https://github.com/mehdi-arfaoui/Stronghold",
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
