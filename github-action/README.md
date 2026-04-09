@@ -2,8 +2,6 @@
 
 GitHub Action that scans your AWS infrastructure and reports DR posture impact on pull requests.
 
-This package is developed inside the Stronghold monorepo under `github-action/`. When you're ready to publish it on the GitHub Marketplace, move the contents of this folder into the dedicated repository `mehdi-arfaoui/stronghold-dr-check`.
-
 ## Usage
 
 ```yaml
@@ -83,8 +81,14 @@ jobs:
 - Stronghold only logs high-level status from the action, not raw infrastructure details from the CLI.
 - Generate the minimal IAM policy with `npx @stronghold-dr/cli iam-policy`.
 
+## Public Repositories
+
+If your repository is public, use `--redact` or ensure the PR comment does not expose infrastructure identifiers. The default comment shows resource names but not full ARNs. Review the comment format above before enabling on public repos.
+
 ## Links
 
 - [Stronghold](https://github.com/mehdi-arfaoui/stronghold)
 - [Documentation](https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/getting-started.md)
 - [stronghold.software](https://stronghold.software)
+
+[![GitHub Marketplace](https://img.shields.io/badge/Marketplace-Stronghold%20DR%20Check-blue?logo=github)](https://github.com/marketplace/actions/stronghold-dr-check)
