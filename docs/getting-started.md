@@ -170,10 +170,122 @@ npx @stronghold-dr/cli drift check
 
 The baseline is stored in `.stronghold/baseline-scan.json`, or `.stronghold/baseline-scan.stronghold-enc` when `--encrypt` is enabled.
 
+## 7. Explore Services
+
+Stronghold groups resources into services automatically. After a scan:
+
+```bash
+# Detect services from CloudFormation, tags, and topology
+npx @stronghold-dr/cli services detect
+
+# List detected services
+npx @stronghold-dr/cli services list
+
+# Inspect a specific service
+npx @stronghold-dr/cli services show payment
+```
+
+To define services manually or override auto-detection, create `.stronghold/services.yml`:
+
+```yaml
+version: 1
+
+services:
+  payment:
+    name: Payment Service
+    criticality: critical
+    owner: platform-team
+    resources:
+      - "arn:aws:rds:*:*:db:payment-*"
+      - "arn:aws:lambda:*:*:function:payment-*"
+```
+
+Manual definitions take precedence over auto-detected ones.
+
+## 8. Review Evidence
+
+Stronghold tracks evidence maturity for DR claims. After scanning, check evidence status:
+
+```bash
+# See the overall posture with evidence alerts
+npx @stronghold-dr/cli status
+
+# List all evidence
+npx @stronghold-dr/cli evidence list
+
+# Register a manual DR test result
+npx @stronghold-dr/cli evidence add \
+  --node payment-db \
+  --type restore-test \
+  --result success \
+  --duration "15 min" \
+  --author "jane@company.com"
+```
+
+Evidence types: `observed` (from scan), `inferred` (from graph), `declared` (manual claim), `tested` (proven by exercise), `expired` (stale proof).
+
+Use `stronghold report --explain-score` to see how evidence maturity affects the score. Use `stronghold report --show-passed` to see passing rules and their evidence.
+
+## 9. Check Scenario Coverage
+
+Stronghold evaluates how well services survive plausible disruptions:
+
+```bash
+# List evaluated scenarios
+npx @stronghold-dr/cli scenarios
+
+# Show details for a specific scenario
+npx @stronghold-dr/cli scenarios show az-failure-eu-west-1a
+```
+
+Built-in scenarios include AZ failure, region failure, single points of failure, and data corruption. Coverage verdicts: `covered`, `partially_covered`, `uncovered`, `degraded`.
+
+Scenario coverage is included in the scan summary and in `stronghold status`.
+
+## 10. Track Posture Over Time
+
+Stronghold keeps a local history of scan snapshots:
+
+```bash
+# View scan history with trends
+npx @stronghold-dr/cli history
+
+# Filter by service
+npx @stronghold-dr/cli history --service payment
+```
+
+The `stronghold status` command shows posture trend, DR debt, and highlights such as expired evidence, uncovered scenarios, or recurrent findings.
+
+## 11. Set Up Governance
+
+For teams that need ownership tracking, risk acceptance, and policy enforcement:
+
+```bash
+# Generate a starter governance.yml
+npx @stronghold-dr/cli governance init
+
+# Accept a known risk with justification
+npx @stronghold-dr/cli governance accept \
+  --finding rds-no-backup::payment-db \
+  --by "cto@company.com" \
+  --justification "Migrating to Aurora next sprint" \
+  --expires 30
+
+# Validate governance file
+npx @stronghold-dr/cli governance validate
+```
+
+See [Governance](./governance.md) for the file format and current limits.
+
 ## Next Steps
 
 - [Architecture overview](./architecture.md)
 - [Security model](./security.md)
+- [Service model](./services.md)
+- [Evidence model](./evidence.md)
+- [Scenario coverage](./scenarios.md)
+- [Posture history](./history.md)
+- [Governance](./governance.md)
 - [DRP YAML specification](./drp-spec.md)
 - [AWS provider details](./providers/aws.md)
 - [Validation rules reference](./validation-rules.md)

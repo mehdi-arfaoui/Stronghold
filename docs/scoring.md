@@ -119,6 +119,78 @@ Stronghold also computes the same weighted formula independently for:
 
 This is often more actionable than the headline score. A system with a decent overall grade can still be dangerously weak in one category such as detection or replication.
 
+## Service-Level Scoring
+
+When services are detected, Stronghold computes a score per service using the same weighted formula, scoped to the resources within that service.
+
+### Severity Ceiling
+
+A service score is capped based on its worst unresolved finding:
+
+| Worst unresolved finding | Maximum grade | Maximum score |
+| --- | --- | --- |
+| `critical` | `D` | 40 |
+| `high` | `C` | 60 |
+| `medium` or `low` only | no extra cap | formula score |
+| no unresolved findings | `A` | 100 |
+
+This prevents a service with a critical unresolved finding from appearing healthy just because it has many passing lower-impact controls.
+
+### Role-Aware Weighting
+
+Within a service, resource roles affect scoring weight:
+
+| Role | Multiplier |
+| --- | --- |
+| `datastore` | 2.0x |
+| `compute` | 1.5x |
+| other roles | 1.0x |
+
+This reflects that losing a datastore is usually more damaging to recoverability than losing a stateless compute node.
+
+## Evidence Maturity Scoring
+
+For passing rules, the score credit is adjusted by the confidence of the strongest supporting evidence:
+
+| Evidence type | Confidence | Score credit for a pass |
+| --- | --- | --- |
+| `tested` | 1.0 | 100% |
+| `observed` | 0.85 | 85% |
+| `declared` | 0.7 | 70% |
+| `inferred` | 0.5 | 50% |
+| `expired` | 0.2 | 20% |
+
+Failing rules always contribute `0` regardless of evidence. Warning results still contribute `0.5` as defined in the base formula.
+
+Use `stronghold report --explain-score` to see the per-rule decomposition. The report also shows the potential score if all passing controls had current `tested` evidence.
+
+## Risk Acceptance and Scoring
+
+When a finding is covered by an active risk acceptance, it is excluded from the score. The report displays two scores:
+
+- `Score` with acceptances applied: the operational score
+- `Score without acceptances`: the raw score as if no findings were accepted
+
+This makes the impact of risk acceptances visible instead of hiding it. Expired or superseded acceptances re-activate the finding and it counts against the score again.
+
+In the CLI workflow, findings with policy violations cannot be accepted until the policy scope is removed or the finding is fixed.
+
+## DR Debt
+
+DR debt is a separate metric from the score. It measures accumulated unresolved recovery risk over time:
+
+```text
+debt = ageInDays × severityFactor × serviceCriticalityFactor × recurrenceMultiplier
+```
+
+Where:
+
+- `severityFactor`: critical=`4`, high=`2`, medium=`1`, low=`0.5`
+- `serviceCriticalityFactor`: critical=`4`, high=`2`, medium=`1`, low=`0.5`
+- `recurrenceMultiplier`: `1.5x` if the finding was resolved and later re-appeared
+
+Debt is summed across active findings and reported per service and globally. Service debt direction is derived from the previous stored debt snapshot with a 10% tolerance band (`increasing`, `stable`, `decreasing`).
+
 ## Transparency in Reports
 
 Each validation result includes the raw score inputs:

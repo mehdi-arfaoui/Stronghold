@@ -11,13 +11,21 @@ Stronghold follows a ports-and-adapters architecture. The domain logic lives in 
 +--------------------------------------------------------+
 |                  @stronghold-dr/core                   |
 |                                                        |
-|  Discovery -> Enrichment -> Graph -> Analysis          |
-|                           -> Validation -> DRP -> Drift|
+|  Discovery -> Graph -> [Overrides] -> Analysis         |
+|    -> Service Detection -> [Merge services.yml]        |
+|    -> Validation -> Evidence Extraction                |
+|    -> Scoring (service ceiling + evidence maturity)    |
+|    -> Contextual Findings (4 dimensions)               |
+|    -> Recommendations                                  |
+|    -> DRP Generation -> Runbooks                       |
+|    -> Scenario Coverage Analysis                       |
+|    -> Governance (ownership, risk, policies)           |
+|    -> History (snapshots, lifecycle, debt, trends)     |
+|    -> Report                                           |
+|                                                        |
+| Cross-cutting: Encryption | Redaction | Audit Trail    |
 +--------------------------------------------------------+
-|               Cross-cutting Concerns                   |
-|        Encryption      Redaction      Audit Trail      |
-+--------------------------------------------------------+
-|                   Ports & Adapters                     |
+|               Ports & Adapters                         |
 |    File store     Prisma/PostgreSQL      Logger        |
 +--------------------------------------------------------+
 ```
@@ -133,6 +141,62 @@ Drift compares two scan snapshots using deterministic resource matching by ID. I
 - dependency changes
 - DRP staleness when a previously generated plan no longer matches the live graph
 
+### 8. Service Detection
+
+Stronghold groups resources into logical services using multiple sources:
+
+| Source | Confidence | Method |
+| --- | --- | --- |
+| Manual (`services.yml`) | `1.0` | Glob patterns against resource identifiers and ARNs |
+| CloudFormation stacks | `0.9` | Stack membership, filtered to application stacks |
+| Application tags | `0.75` | Tags such as `service`, `app`, `application`, `workload`, `project`, `microservice`, `component` |
+| Topology clustering | `0.4-0.6` | Connected components on application dependency edges only |
+
+Merge precedence is deterministic: manual > cloudformation > tag > topology.
+
+Services are the unit of service-level scoring, scenario coverage, and governance. When no services are detected, Stronghold falls back to flat resource-level reporting.
+
+### 9. Evidence Model
+
+Validation results carry evidence metadata. Evidence does not change pass or fail status; it adjusts confidence on passing controls and surfaces the maturity of the underlying proof.
+
+Types: `observed` (from API response), `inferred` (from graph), `declared` (manual claim), `tested` (exercise result), `expired` (stale evidence).
+
+Evidence is extracted automatically during validation for all rules. Manual evidence can be registered with `stronghold evidence add`.
+
+Storage is append-only in the CLI (`.stronghold/evidence.jsonl`). In the server, evidence is stored as JSON report payloads associated with the scan.
+
+### 10. Scenario Coverage Analysis
+
+Stronghold evaluates built-in disruption scenarios without executing against live infrastructure:
+
+- AZ failure (per AZ)
+- Region failure (only when more than one region is present)
+- Single point of failure loss (ranked by blast radius)
+- Data corruption (per service with datastores)
+
+Impact propagation uses reverse BFS on application-level edges only. Infrastructure edges such as `contains`, placement, security groups, and IAM links are excluded. Cascade depth is capped at 10.
+
+Coverage verdicts combine recovery-path existence, evidence maturity, and runbook liveness: `covered`, `partially_covered`, `uncovered`, `degraded`.
+
+### 11. Posture Memory
+
+Stronghold keeps compact scan snapshots in `.stronghold/history.jsonl` with a default retention of 50 snapshots.
+
+Finding lifecycle tracking uses composite keys (`ruleId::nodeId`) to detect first-seen, resolved, persistent, and recurrent findings. DR debt is derived from finding age, severity, service criticality, and recurrence.
+
+Trend direction compares the latest posture against the average of recent stored snapshots. The CLI uses that trend to classify posture as improving, stable, or degrading and to generate highlights such as new critical findings, expired evidence, or debt milestones.
+
+### 12. Governance
+
+`.stronghold/governance.yml` provides three optional sections: ownership, risk acceptances, and custom policies.
+
+- Ownership records who is responsible for a service and whether that declaration is confirmed, unconfirmed, review due, or missing.
+- Risk acceptances exclude active accepted findings from the score while keeping the raw score visible for comparison.
+- Custom policies scope existing validation rules to specific services, roles, or tags and annotate violating findings.
+
+All governance events are recorded in the audit trail. The server exposes governance state read-only; `POST /api/governance/accept` intentionally returns `501`.
+
 ## Security Layers
 
 The security controls are cross-cutting concerns rather than extra pipeline stages:
@@ -149,6 +213,10 @@ The core package defines domain interfaces. Adapters differ by entry point:
 | --- | --- | --- |
 | Scan storage | Local JSON files | Prisma/PostgreSQL |
 | Infrastructure storage | Local JSON files | Prisma/PostgreSQL |
+| Evidence storage | `.stronghold/evidence.jsonl` | JSON report payloads |
+| History storage | `.stronghold/history.jsonl` | JSON report payloads |
+| Finding lifecycle | `.stronghold/finding-lifecycles.json` | JSON report payloads |
+| Governance state | `.stronghold/governance.yml` | `GET /api/governance` (read-only) |
 | Logging | Console output | Structured server logs |
 | Audit trail | JSONL file | Prisma `AuditLog` table |
 
