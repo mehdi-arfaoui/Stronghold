@@ -32,6 +32,11 @@ import {
 } from '../config/options.js';
 import { ConfigurationError } from '../errors/cli-error.js';
 import { ConsoleLogger } from '../output/console-logger.js';
+import {
+  calculateDebtChangePercent,
+  renderExecutiveSummary,
+  resolveExecutiveTrendFromSnapshots,
+} from '../output/executive-summary.js';
 import { writeError, writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { determineScanExitCode, renderScanSummary } from '../output/scan-summary.js';
@@ -243,6 +248,35 @@ export function registerScanCommand(program: Command): void {
             },
           });
           await writeOutput(summary);
+          const currentDebt =
+            postureMemory.currentSnapshot?.totalDebt ??
+            postureMemory.currentDebt.reduce((sum, service) => sum + service.totalDebt, 0);
+          await writeOutput('');
+          await writeOutput(
+            renderExecutiveSummary({
+              score:
+                execution.results.governance?.score.withAcceptances.score ??
+                execution.results.validationReport.scoreBreakdown.overall,
+              grade:
+                execution.results.governance?.score.withAcceptances.grade ??
+                execution.results.validationReport.scoreBreakdown.grade,
+              proofOfRecovery: execution.results.proofOfRecovery ?? null,
+              services: execution.results.servicePosture?.services ?? [],
+              scenarioAnalysis: execution.results.scenarioAnalysis ?? null,
+              scenariosCovered: execution.results.scenarioAnalysis?.summary.covered ?? 0,
+              scenariosTotal: execution.results.scenarioAnalysis?.summary.total ?? 0,
+              drDebt: currentDebt,
+              drDebtChange: calculateDebtChangePercent(
+                currentDebt,
+                postureMemory.previousSnapshot?.totalDebt,
+              ),
+              trend: resolveExecutiveTrendFromSnapshots(
+                postureMemory.currentSnapshot?.globalScore,
+                postureMemory.previousSnapshot?.globalScore,
+              ),
+              nextAction: topRecommendations[0] ?? null,
+            }),
+          );
           if (topRecommendations.length > 0) {
             await writeOutput('');
             await writeOutput(

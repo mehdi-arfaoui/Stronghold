@@ -8,6 +8,7 @@ import {
   type ValidationReportWithEvidence,
 } from '../validation/index.js';
 import type { ServicePosture } from '../services/index.js';
+import { calculateProofOfRecovery } from '../scoring/index.js';
 import type {
   BuildScanSnapshotInput,
   HistoryQueryOptions,
@@ -108,6 +109,10 @@ export class FileHistoryStore implements HistoryStore {
 export function buildScanSnapshot(input: BuildScanSnapshotInput): ScanSnapshot {
   const evidenceSummary = input.evidenceSummary ?? resolveEvidenceSummary(input.validationReport);
   const services = buildServiceSnapshots(input.servicePosture);
+  const proofOfRecovery = calculateProofOfRecovery({
+    validationReport: input.validationReport,
+    servicePosture: input.servicePosture,
+  });
   const findings = input.validationReport.results.filter((result) =>
     ACTIVE_FINDING_STATUSES.has(result.status),
   );
@@ -117,6 +122,8 @@ export function buildScanSnapshot(input: BuildScanSnapshotInput): ScanSnapshot {
     timestamp: input.timestamp,
     globalScore: input.validationReport.scoreBreakdown.overall,
     globalGrade: input.validationReport.scoreBreakdown.grade,
+    proofOfRecovery: proofOfRecovery.proofOfRecovery,
+    observedCoverage: proofOfRecovery.observedCoverage,
     totalResources: input.totalResources,
     totalFindings: findings.length,
     findingsBySeverity: countBySeverity(findings),
@@ -238,6 +245,16 @@ function validateScanSnapshot(value: unknown, filePath: string): ScanSnapshot {
     timestamp: readString(value.timestamp, filePath, 'timestamp'),
     globalScore: readNumber(value.globalScore, filePath, 'globalScore'),
     globalGrade: readString(value.globalGrade, filePath, 'globalGrade'),
+    proofOfRecovery:
+      value.proofOfRecovery === null
+        ? null
+        : typeof value.proofOfRecovery === 'number'
+          ? readNumber(value.proofOfRecovery, filePath, 'proofOfRecovery')
+          : null,
+    observedCoverage:
+      typeof value.observedCoverage === 'number'
+        ? readNumber(value.observedCoverage, filePath, 'observedCoverage')
+        : 0,
     totalResources: readNumber(value.totalResources, filePath, 'totalResources'),
     totalFindings: readNumber(value.totalFindings, filePath, 'totalFindings'),
     findingsBySeverity: readNumberRecord(value.findingsBySeverity, filePath, 'findingsBySeverity'),

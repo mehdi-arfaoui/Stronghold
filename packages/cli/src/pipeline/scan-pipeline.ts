@@ -6,6 +6,7 @@ import {
   applyScenarioImpactToServicePosture,
   applyRiskAcceptancesToServicePosture,
   buildServicePosture,
+  calculateProofOfRecovery,
   generateDRPlan,
   generateRecommendations,
   loadGovernanceConfig,
@@ -132,6 +133,10 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     : null;
   const finalPosture =
     policyOutcome?.posture ?? riskAcceptanceOutcome?.posture ?? scenarioAwareServicePosture;
+  const proofOfRecovery = calculateProofOfRecovery({
+    validationReport,
+    servicePosture: finalPosture,
+  });
   const governanceState = governance
     ? {
         riskAcceptances: riskAcceptanceOutcome?.governance.riskAcceptances ?? [],
@@ -161,6 +166,7 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     analysis: serializeAnalysis(analysis),
     validationReport,
     drpPlan,
+    proofOfRecovery,
     servicePosture: finalPosture,
     ...(governanceState ? { governance: governanceState } : {}),
     scenarioAnalysis,

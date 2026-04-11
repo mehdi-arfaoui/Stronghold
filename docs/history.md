@@ -15,6 +15,7 @@ Default retention is 50 snapshots.
 Each snapshot contains posture metrics such as:
 
 - global score and grade
+- proof-of-recovery and observed coverage metrics
 - total resource count
 - finding counts by severity
 - scenario coverage counts
@@ -24,6 +25,9 @@ Each snapshot contains posture metrics such as:
 - governance summary counts when governance is present
 
 Snapshots are stored as JSONL entries and replaced in place for the latest record when DR debt is added after lifecycle calculation.
+
+Snapshots also include proof-of-recovery and observed coverage metrics
+for trend tracking.
 
 ## Service-Level History
 

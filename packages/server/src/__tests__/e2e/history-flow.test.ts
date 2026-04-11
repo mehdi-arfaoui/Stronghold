@@ -30,11 +30,13 @@ describe('History Flow E2E', () => {
     expect(history.status).toBe(200);
     expect(history.body.total).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(history.body.snapshots)).toBe(true);
+    expect(history.body.snapshots[0]?.proofOfRecovery).toBeDefined();
 
     const trend = await request(context.app).get('/api/history/trend');
     expect(trend.status).toBe(200);
     expect(Array.isArray(trend.body.snapshots)).toBe(true);
     expect(trend.body.trend.global.direction).toBeDefined();
+    expect(Array.isArray(trend.body.trend.global.proofOfRecoveryTrend)).toBe(true);
 
     const services = await request(context.app).get('/api/services');
     expect(services.status).toBe(200);

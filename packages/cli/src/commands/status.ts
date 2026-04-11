@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import {
+  calculateProofOfRecovery,
   FileEvidenceStore,
   checkFreshness,
   summarizeEvidenceMaturity,
@@ -13,6 +14,11 @@ import {
 import { CommandAuditSession, resolveAuditIdentity } from '../audit/command-audit.js';
 import type { LoadedPostureMemory } from '../history/posture-memory.js';
 import { loadLocalPostureMemory } from '../history/posture-memory.js';
+import {
+  calculateDebtChangePercent,
+  renderExecutiveSummary,
+  resolveExecutiveTrend,
+} from '../output/executive-summary.js';
 import { renderGovernanceTip } from '../output/governance-renderer.js';
 import { writeOutput } from '../output/io.js';
 import {
@@ -80,6 +86,30 @@ export function renderStatusSnapshot(
     score: scan.validationReport.scoreBreakdown.overall,
     grade: scan.validationReport.scoreBreakdown.grade,
   };
+  const nextAction = scan.servicePosture
+    ? selectTopServiceRecommendations(scan.servicePosture.recommendations, 1)[0] ?? null
+    : null;
+  const proofOfRecovery = scan.proofOfRecovery ?? calculateProofOfRecovery({
+    validationReport: scan.validationReport,
+    servicePosture: scan.servicePosture,
+  });
+  const currentDebt =
+    postureMemory?.currentSnapshot?.totalDebt ??
+    postureMemory?.currentDebt.reduce((sum, service) => sum + service.totalDebt, 0) ??
+    0;
+  const executiveSummary = renderExecutiveSummary({
+    score: displayedScore.score,
+    grade: displayedScore.grade,
+    proofOfRecovery,
+    services: scan.servicePosture?.services ?? [],
+    scenarioAnalysis: scan.scenarioAnalysis ?? null,
+    scenariosCovered: scan.scenarioAnalysis?.summary.covered ?? 0,
+    scenariosTotal: scan.scenarioAnalysis?.summary.total ?? 0,
+    drDebt: currentDebt,
+    drDebtChange: calculateDebtChangePercent(currentDebt, postureMemory?.previousSnapshot?.totalDebt),
+    trend: resolveExecutiveTrend(scanCount, postureMemory?.trend.global.direction),
+    nextAction,
+  });
 
   if (!hasDetectedServices(scan.servicePosture)) {
     const summary = summarizeReportEvidence(scan.validationReport);
@@ -107,7 +137,7 @@ export function renderStatusSnapshot(
     lines.push(scan.governance ? renderGovernanceHeadline(scan) : renderGovernanceTip());
     lines.push(`Tip: Organize your resources into services with 'stronghold services detect'`);
     lines.push(`Run 'stronghold scan' to refresh. Run 'stronghold history' for the full timeline.`);
-    return lines.join('\n');
+    return `${executiveSummary}\n\n${lines.join('\n')}`;
   }
 
   const debtByService = new Map(
@@ -187,7 +217,6 @@ export function renderStatusSnapshot(
     });
   }
 
-  const nextAction = selectTopServiceRecommendations(scan.servicePosture.recommendations, 1)[0] ?? null;
   lines.push('');
   lines.push(
     `  Next action: ${nextAction ? `${nextAction.title} [${nextAction.risk.toUpperCase()}]` : 'No safe recommendations available'}`,
@@ -195,7 +224,7 @@ export function renderStatusSnapshot(
   lines.push('');
   lines.push(`  Run 'stronghold scan' to refresh. Run 'stronghold history' for the full timeline.`);
 
-  return lines.join('\n');
+  return `${executiveSummary}\n\n${lines.join('\n')}`;
 }
 
 function summarizeReportEvidence(report: ValidationReport): ReturnType<typeof summarizeEvidenceMaturity> {

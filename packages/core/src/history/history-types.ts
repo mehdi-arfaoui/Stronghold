@@ -19,6 +19,8 @@ export interface ScanSnapshot {
   readonly timestamp: string;
   readonly globalScore: number;
   readonly globalGrade: string;
+  readonly proofOfRecovery: number | null;
+  readonly observedCoverage: number;
   readonly totalResources: number;
   readonly totalFindings: number;
   readonly findingsBySeverity: Record<string, number>;

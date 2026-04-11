@@ -191,6 +191,31 @@ Where:
 
 Debt is summed across active findings and reported per service and globally. Service debt direction is derived from the previous stored debt snapshot with a 10% tolerance band (`increasing`, `stable`, `decreasing`).
 
+## Proof-of-Recovery
+
+Proof-of-recovery measures the percentage of critical services where at
+least one DR mechanism has been validated by a real test (evidence type
+`tested`, non-expired).
+
+```text
+proof_of_recovery = critical services with tested evidence / critical services × 100
+```
+
+This metric is distinct from the DR posture score. The score measures
+configuration completeness. Proof-of-recovery measures whether recovery
+has been proven.
+
+Stronghold reports both metrics together:
+
+- **Proof-of-recovery (tested):** percentage backed by real exercise evidence
+- **Observed coverage:** percentage backed by configuration observation
+
+The contrast between the two reveals the gap between "config exists"
+and "recovery was proven." A system with 0% tested and 73% observed has
+configuration in place but no proof it works.
+
+Proof-of-recovery is tracked in scan history and included in trend analysis.
+
 ## Transparency in Reports
 
 Each validation result includes the raw score inputs:

@@ -9,6 +9,7 @@ import type {
   GovernanceState,
   GraphAnalysisReport,
   InfraNode,
+  ProofOfRecoveryResult,
   RegionalRisk,
   ScenarioAnalysis,
   ServicePosture,
@@ -62,6 +63,7 @@ export interface ScanResults {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly drpPlan: DRPlan;
+  readonly proofOfRecovery?: ProofOfRecoveryResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: GovernanceState;
   readonly scenarioAnalysis?: ScenarioAnalysis;
@@ -145,6 +147,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     ? (value.validationReport as unknown as ValidationReport)
     : null;
   const drpPlan = isRecord(value.drpPlan) ? (value.drpPlan as unknown as DRPlan) : null;
+  const proofOfRecovery = isRecord(value.proofOfRecovery)
+    ? (value.proofOfRecovery as unknown as ProofOfRecoveryResult)
+    : null;
   const servicePosture = isRecord(value.servicePosture)
     ? (value.servicePosture as unknown as ServicePosture)
     : null;
@@ -168,6 +173,7 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     analysis,
     validationReport,
     drpPlan,
+    ...(proofOfRecovery ? { proofOfRecovery } : {}),
     ...(servicePosture ? { servicePosture } : {}),
     ...(governance ? { governance } : {}),
     ...(scenarioAnalysis ? { scenarioAnalysis } : {}),

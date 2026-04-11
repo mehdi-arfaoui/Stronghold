@@ -1,7 +1,7 @@
 import type {
+  ApiValidationReportResponse,
   ApiValidationSummary,
   DRCategory,
-  ValidationReport,
   ValidationSeverity,
 } from '@stronghold-dr/core';
 
@@ -26,8 +26,8 @@ function buildReportQuery(filters: {
   return query ? `?${query}` : '';
 }
 
-export async function getValidationReport(scanId: string): Promise<ValidationReport> {
-  return apiGet<ValidationReport>(`/api/scans/${scanId}/report`);
+export async function getValidationReport(scanId: string): Promise<ApiValidationReportResponse> {
+  return apiGet<ApiValidationReportResponse>(`/api/scans/${scanId}/report`);
 }
 
 export async function getValidationSummary(scanId: string): Promise<ApiValidationSummary> {

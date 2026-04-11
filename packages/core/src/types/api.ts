@@ -8,6 +8,7 @@ import type {
 import type { GovernanceScoreComparison, RiskAcceptance } from '../governance/risk-acceptance.js';
 import type { PolicyViolation } from '../governance/policy-types.js';
 import type { FindingLifecycle, PostureTrend, ScanSnapshot, ServiceTrend } from '../history/index.js';
+import type { ProofOfRecoveryResult } from '../scoring/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
 import type { Scenario, ScenarioCoverageSummary } from '../scenarios/scenario-types.js';
@@ -64,6 +65,7 @@ export interface ApiScanData {
   readonly edges: ReadonlyArray<ScanEdge>;
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
+  readonly proofOfRecovery?: ProofOfRecoveryResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: {
     readonly riskAcceptances: readonly RiskAcceptance[];
@@ -76,6 +78,10 @@ export interface ApiScanData {
     readonly defaultScenarioIds: readonly string[];
     readonly summary: ScenarioCoverageSummary;
   };
+}
+
+export interface ApiValidationReportResponse extends ValidationReport {
+  readonly proofOfRecovery: ProofOfRecoveryResult | null;
 }
 
 export interface ApiValidationSummary {

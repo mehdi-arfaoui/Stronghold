@@ -2,6 +2,8 @@ export interface PostureTrend {
   readonly global: {
     readonly direction: TrendDirection;
     readonly scoreTrend: readonly TrendPoint[];
+    readonly proofOfRecoveryTrend: readonly TrendPoint[];
+    readonly observedCoverageTrend: readonly TrendPoint[];
     readonly findingTrend: readonly TrendPoint[];
     readonly scenarioCoverageTrend: readonly TrendPoint[];
   };

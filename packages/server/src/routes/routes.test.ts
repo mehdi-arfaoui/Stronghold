@@ -177,6 +177,8 @@ function createTestApp(options?: {
         global: {
           direction: 'stable',
           scoreTrend: [],
+          proofOfRecoveryTrend: [],
+          observedCoverageTrend: [],
           findingTrend: [],
           scenarioCoverageTrend: [],
         },
@@ -545,6 +547,8 @@ describe('server routes', () => {
             global: {
               direction: 'degrading',
               scoreTrend: [],
+              proofOfRecoveryTrend: [],
+              observedCoverageTrend: [],
               findingTrend: [],
               scenarioCoverageTrend: [],
             },

@@ -12,6 +12,11 @@ import {
 } from '../config/options.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
 import { updateLocalPostureMemory } from '../history/posture-memory.js';
+import {
+  calculateDebtChangePercent,
+  renderExecutiveSummary,
+  resolveExecutiveTrendFromSnapshots,
+} from '../output/executive-summary.js';
 import { writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { renderScanSummary } from '../output/scan-summary.js';
@@ -103,6 +108,28 @@ export function registerDemoCommand(program: Command): void {
             previousSnapshot: postureMemory.previousSnapshot,
             lifecycleDelta: postureMemory.lifecycleDelta,
           },
+        }),
+      );
+      const currentDebt =
+        postureMemory.currentSnapshot?.totalDebt ??
+        postureMemory.currentDebt.reduce((sum, service) => sum + service.totalDebt, 0);
+      await writeOutput('');
+      await writeOutput(
+        renderExecutiveSummary({
+          score: results.governance?.score.withAcceptances.score ?? results.validationReport.scoreBreakdown.overall,
+          grade: results.governance?.score.withAcceptances.grade ?? results.validationReport.scoreBreakdown.grade,
+          proofOfRecovery: results.proofOfRecovery ?? null,
+          services: results.servicePosture?.services ?? [],
+          scenarioAnalysis: results.scenarioAnalysis ?? null,
+          scenariosCovered: results.scenarioAnalysis?.summary.covered ?? 0,
+          scenariosTotal: results.scenarioAnalysis?.summary.total ?? 0,
+          drDebt: currentDebt,
+          drDebtChange: calculateDebtChangePercent(currentDebt, postureMemory.previousSnapshot?.totalDebt),
+          trend: resolveExecutiveTrendFromSnapshots(
+            postureMemory.currentSnapshot?.globalScore,
+            postureMemory.previousSnapshot?.globalScore,
+          ),
+          nextAction: topRecommendations[0] ?? null,
         }),
       );
       if (topRecommendations.length > 0) {

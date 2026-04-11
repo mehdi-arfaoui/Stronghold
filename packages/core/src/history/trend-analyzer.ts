@@ -30,6 +30,8 @@ export function analyzeTrend(
       global: {
         direction: 'stable',
         scoreTrend: [],
+        proofOfRecoveryTrend: [],
+        observedCoverageTrend: [],
         findingTrend: [],
         scenarioCoverageTrend: [],
       },
@@ -43,6 +45,14 @@ export function analyzeTrend(
   }
 
   const scoreTrend = orderedSnapshots.map((snapshot) => point(snapshot.timestamp, snapshot.globalScore));
+  const proofOfRecoveryTrend = orderedSnapshots.flatMap((snapshot) =>
+    typeof snapshot.proofOfRecovery === 'number'
+      ? [point(snapshot.timestamp, snapshot.proofOfRecovery)]
+      : [],
+  );
+  const observedCoverageTrend = orderedSnapshots.map((snapshot) =>
+    point(snapshot.timestamp, snapshot.observedCoverage),
+  );
   const findingTrend = orderedSnapshots.map((snapshot) => point(snapshot.timestamp, snapshot.totalFindings));
   const scenarioCoverageTrend = orderedSnapshots.map((snapshot) =>
     point(snapshot.timestamp, scenarioCoveragePercent(snapshot)),
@@ -61,6 +71,8 @@ export function analyzeTrend(
       global: {
         direction: 'stable',
         scoreTrend,
+        proofOfRecoveryTrend,
+        observedCoverageTrend,
         findingTrend,
         scenarioCoverageTrend,
       },
@@ -80,6 +92,8 @@ export function analyzeTrend(
     global: {
       direction: resolveTrendDirection(scoreTrend),
       scoreTrend,
+      proofOfRecoveryTrend,
+      observedCoverageTrend,
       findingTrend,
       scenarioCoverageTrend,
     },

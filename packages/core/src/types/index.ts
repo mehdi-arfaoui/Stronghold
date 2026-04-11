@@ -75,6 +75,7 @@ export {
   type ApiScanSummary,
   type ApiListScansResult,
   type ApiScanData,
+  type ApiValidationReportResponse,
   type ApiValidationSummary,
   type ApiEvidenceListResponse,
   type ApiAddEvidenceInput,

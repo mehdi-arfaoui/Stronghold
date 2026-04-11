@@ -182,7 +182,8 @@
         "engine": "postgres",
         "multiAz": false,
         "backupRetentionPeriod": 7,
-        "readReplicaDBInstanceIdentifiers": []
+        "readReplicaDBInstanceIdentifiers": [],
+        "criticality": "critical"
       }
     },
     {
@@ -259,7 +260,8 @@
         "bucketName": "user-uploads-bucket",
         "versioningStatus": "Enabled",
         "hasCrossRegionReplication": false,
-        "replicationRules": []
+        "replicationRules": [],
+        "criticality": "critical"
       }
     },
     {
@@ -278,7 +280,8 @@
         "bucketName": "artifacts-bucket",
         "versioningStatus": "Enabled",
         "hasCrossRegionReplication": false,
-        "replicationRules": []
+        "replicationRules": [],
+        "criticality": "critical"
       }
     },
     {

@@ -54,6 +54,7 @@ export {
   type ApiScanSummary,
   type ApiListScansResult,
   type ApiScanData,
+  type ApiValidationReportResponse,
   type ApiValidationSummary,
   type ApiEvidenceListResponse,
   type ApiAddEvidenceInput,
@@ -539,3 +540,10 @@ export {
   type TrendPoint,
   type TrackedFinding,
 } from './history/index.js';
+
+export {
+  calculateProofOfRecovery,
+  type CalculateProofOfRecoveryInput,
+  type ProofOfRecoveryResult,
+  type ProofOfRecoveryServiceResult,
+} from './scoring/index.js';

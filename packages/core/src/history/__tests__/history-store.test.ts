@@ -144,6 +144,8 @@ function createSnapshot(id: string, timestamp: string) {
     timestamp,
     globalScore: 68,
     globalGrade: 'C',
+    proofOfRecovery: 33,
+    observedCoverage: 67,
     totalResources: 42,
     totalFindings: 5,
     findingsBySeverity: {

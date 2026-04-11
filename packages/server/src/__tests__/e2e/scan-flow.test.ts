@@ -134,6 +134,7 @@ describe('Scan Flow E2E', () => {
 
     expect(response.status).toBe(200);
     expect(Array.isArray(response.body.nodes)).toBe(true);
+    expect(response.body.proofOfRecovery).toBeDefined();
   });
 
   it('GET /api/health returns status ok', async () => {

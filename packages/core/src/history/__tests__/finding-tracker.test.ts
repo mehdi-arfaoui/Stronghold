@@ -161,6 +161,8 @@ function createSnapshot(id: string, timestamp: string, findingIds: readonly stri
     timestamp,
     globalScore: 68,
     globalGrade: 'C',
+    proofOfRecovery: 0,
+    observedCoverage: 50,
     totalResources: 42,
     totalFindings: findingIds.length,
     findingsBySeverity: {

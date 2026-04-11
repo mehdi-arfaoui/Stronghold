@@ -39,8 +39,20 @@ describe('demo infrastructure', () => {
   it('startup score stays in the expected range', async () => {
     const results = await createDemoResults('startup');
 
-    expect(results.validationReport.score).toBeGreaterThanOrEqual(40);
+    expect(results.validationReport.score).toBeGreaterThanOrEqual(35);
     expect(results.validationReport.score).toBeLessThanOrEqual(70);
+  });
+
+  it('startup marks critical demo services so proof-of-recovery shows 0% tested', async () => {
+    const results = await createDemoResults('startup');
+    const criticalServices =
+      results.proofOfRecovery?.perService
+        .filter((service) => service.criticality === 'critical')
+        .map((service) => service.serviceId)
+        .sort() ?? [];
+
+    expect(criticalServices).toEqual(['database', 'storage']);
+    expect(results.proofOfRecovery?.proofOfRecovery).toBe(0);
   });
 
   it('enterprise score stays in the expected range', async () => {

@@ -10,6 +10,7 @@ import {
   applyEvidenceFreshness,
   applyDebtToSnapshot,
   buildScanSnapshot,
+  calculateProofOfRecovery,
   checkFreshness,
   collectGovernanceAuditEvents,
   collectTrackedFindings,
@@ -43,6 +44,7 @@ import {
   type ApiScenariosResponse,
   type ApiServiceHistoryResponse,
   type ApiServicesResponse,
+  type ApiValidationReportResponse,
   type DRCategory,
   type DRPlan,
   type DRPlanValidationReport,
@@ -147,10 +149,15 @@ export class ScanService {
       storedEvidence.length > 0
         ? mergeEvidenceIntoValidationReport(data.validationReport, storedEvidence)
         : data.validationReport;
+    const proofOfRecovery = calculateProofOfRecovery({
+      validationReport,
+      servicePosture,
+    });
 
     return {
       ...data,
       validationReport,
+      proofOfRecovery,
       ...(servicePosture ? { servicePosture } : {}),
       ...(governance ? { governance } : {}),
       ...(scenarioAnalysis ? { scenarioAnalysis } : {}),
@@ -450,9 +457,20 @@ export class ScanService {
     scanId: string,
     format: 'json' | 'markdown',
     filters: ValidationReportFilters = {},
-  ): Promise<string | ValidationReport> {
+  ): Promise<string | ApiValidationReportResponse> {
     const report = await this.getValidationReport(scanId, filters);
-    return format === 'markdown' ? formatValidationReport(report) : report;
+    if (format === 'markdown') {
+      return formatValidationReport(report);
+    }
+
+    const scanData = await this.getScanData(scanId);
+    return {
+      ...report,
+      proofOfRecovery: calculateProofOfRecovery({
+        validationReport: scanData.validationReport,
+        servicePosture: scanData.servicePosture ?? null,
+      }),
+    };
   }
 
   public async generatePlan(scanId: string, format: 'yaml' | 'json'): Promise<{

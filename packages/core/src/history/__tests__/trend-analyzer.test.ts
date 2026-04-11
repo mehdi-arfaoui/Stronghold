@@ -36,6 +36,21 @@ describe('analyzeTrend', () => {
     expect(trend.global.direction).toBe('stable');
   });
 
+  it('includes proof-of-recovery datapoints in the global trend', () => {
+    const trend = analyzeTrend(
+      [
+        snapshot('2026-04-01', 60, { proofOfRecovery: 0, observedCoverage: 40 }),
+        snapshot('2026-04-08', 68, { proofOfRecovery: 33, observedCoverage: 55 }),
+        snapshot('2026-04-15', 75, { proofOfRecovery: 67, observedCoverage: 70 }),
+      ],
+      [],
+      currentDebt(100),
+    );
+
+    expect(trend.global.proofOfRecoveryTrend.map((point) => point.value)).toEqual([0, 33, 67]);
+    expect(trend.global.observedCoverageTrend.map((point) => point.value)).toEqual([40, 55, 70]);
+  });
+
   it('generates highlights for notable scan changes', () => {
     const snapshots = [
       snapshot('2026-04-01', 75, { covered: 3, expired: 0, totalDebt: 400, findingIds: ['rule-a::node-1'] }),
@@ -91,6 +106,8 @@ function snapshot(
   overrides: {
     readonly covered?: number;
     readonly expired?: number;
+    readonly proofOfRecovery?: number | null;
+    readonly observedCoverage?: number;
     readonly totalDebt?: number;
     readonly findingIds?: readonly string[];
   } = {},
@@ -100,6 +117,8 @@ function snapshot(
     timestamp: `${date}T00:00:00.000Z`,
     globalScore: score,
     globalGrade: score >= 75 ? 'B' : score >= 60 ? 'C' : 'D',
+    proofOfRecovery: overrides.proofOfRecovery ?? 33,
+    observedCoverage: overrides.observedCoverage ?? 60,
     totalResources: 42,
     totalFindings: overrides.findingIds?.length ?? 2,
     findingsBySeverity: { critical: 1, high: 1, medium: 0, low: 0 },

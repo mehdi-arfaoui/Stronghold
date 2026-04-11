@@ -24,12 +24,16 @@ export function getStartupDemoPipelineInput(): DemoPipelineInput {
     elb('prod-api-alb', region, ['eu-west-1a', 'eu-west-1b']),
     ec2('prod-api-1', region, zones[0], 'startup-api', 'startup-asg'),
     ec2('prod-api-2', region, zones[1], 'startup-api', 'startup-asg'),
-    rds('prod-db-primary', region, { multiAz: false, readReplicaDBInstanceIdentifiers: [] }),
+    rds('prod-db-primary', region, {
+      multiAz: false,
+      readReplicaDBInstanceIdentifiers: [],
+      criticality: 'critical',
+    }),
     auroraCluster('analytics-cluster', region, zones, 7, true),
     auroraInstance('analytics-writer', region, zones[0], true),
     auroraInstance('analytics-reader', region, zones[1], false),
-    s3Bucket('user-uploads-bucket', region, true, false),
-    s3Bucket('artifacts-bucket', region, true, false),
+    s3Bucket('user-uploads-bucket', region, true, false, 'critical'),
+    s3Bucket('artifacts-bucket', region, true, false, 'critical'),
     lambda('thumbnail-generator', region, true),
     sqs('image-jobs', region, true),
     elasticache('session-cache', region, true),
@@ -214,6 +218,7 @@ function s3Bucket(
   region: string,
   versioning: boolean,
   replication: boolean,
+  criticality?: 'critical' | 'high' | 'medium' | 'low',
 ): InfraNode {
   return createNode({
     id: `arn:aws:s3:::${name}`,
@@ -228,6 +233,7 @@ function s3Bucket(
       versioningStatus: versioning ? 'Enabled' : 'Disabled',
       hasCrossRegionReplication: replication,
       replicationRules: replication ? [{ status: 'Enabled' }] : [],
+      ...(criticality ? { criticality } : {}),
     },
   });
 }
