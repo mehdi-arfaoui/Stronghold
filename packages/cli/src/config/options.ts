@@ -1,44 +1,44 @@
-import { ConfigurationError } from '../errors/cli-error.js';
-import type { Command } from 'commander';
-import type { GraphOverrideCommandOptions } from './graph-overrides.js';
+import { ConfigurationError } from "../errors/cli-error.js";
+import type { Command } from "commander";
+import type { GraphOverrideCommandOptions } from "./graph-overrides.js";
 
 export const SUPPORTED_SERVICES = [
-  'ec2',
-  'rds',
-  'aurora',
-  's3',
-  'lambda',
-  'dynamodb',
-  'elasticache',
-  'sqs',
-  'sns',
-  'elb',
-  'eks',
-  'efs',
-  'vpc',
-  'route53',
-  'backup',
-  'cloudwatch',
+  "ec2",
+  "rds",
+  "aurora",
+  "s3",
+  "lambda",
+  "dynamodb",
+  "elasticache",
+  "sqs",
+  "sns",
+  "elb",
+  "eks",
+  "efs",
+  "vpc",
+  "route53",
+  "backup",
+  "cloudwatch",
 ] as const;
 
 export type SupportedService = (typeof SUPPORTED_SERVICES)[number];
 
-export const DEFAULT_PROVIDER = 'aws';
-export const DEFAULT_SCAN_OUTPUT = 'summary';
+export const DEFAULT_PROVIDER = "aws";
+export const DEFAULT_SCAN_OUTPUT = "summary";
 export const DEFAULT_SCAN_CONCURRENCY = 5;
 export const DEFAULT_SCANNER_TIMEOUT_SECONDS = 60;
-export const DEFAULT_REPORT_FORMAT = 'terminal';
-export const DEFAULT_PLAN_FORMAT = 'yaml';
-export const DEFAULT_DEMO_SCENARIO = 'startup';
-export const DEFAULT_DEMO_OUTPUT = 'summary';
-export const DEFAULT_DRIFT_OUTPUT = 'terminal';
+export const DEFAULT_REPORT_FORMAT = "terminal";
+export const DEFAULT_PLAN_FORMAT = "yaml";
+export const DEFAULT_DEMO_SCENARIO = "startup";
+export const DEFAULT_DEMO_OUTPUT = "summary";
+export const DEFAULT_DRIFT_OUTPUT = "terminal";
 export const DEFAULT_HISTORY_LIMIT = 50;
 
-export type ScanOutputFormat = 'summary' | 'json' | 'silent';
-export type ReportOutputFormat = 'terminal' | 'markdown' | 'json';
-export type PlanOutputFormat = 'yaml' | 'json';
-export type DemoScenario = 'startup' | 'enterprise' | 'minimal';
-export type DriftOutputFormat = 'terminal' | 'json';
+export type ScanOutputFormat = "summary" | "json" | "silent";
+export type ReportOutputFormat = "terminal" | "markdown" | "json";
+export type PlanOutputFormat = "yaml" | "json";
+export type DemoScenario = "startup" | "enterprise" | "minimal";
+export type DriftOutputFormat = "terminal" | "json";
 
 export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly provider: string;
@@ -80,6 +80,12 @@ export interface ReportCommandOptions extends GraphOverrideCommandOptions {
   readonly verbose: boolean;
 }
 
+export interface GraphCommandOptions {
+  readonly output?: string;
+  readonly open: boolean;
+  readonly scenario?: string;
+}
+
 export interface HistoryCommandOptions {
   readonly service?: string;
   readonly limit?: number;
@@ -119,19 +125,19 @@ export interface DriftCheckCommandOptions extends GraphOverrideCommandOptions {
 
 export interface DemoCommandOptions {
   readonly scenario: DemoScenario;
-  readonly output: Exclude<ScanOutputFormat, 'silent'>;
+  readonly output: Exclude<ScanOutputFormat, "silent">;
   readonly verbose: boolean;
 }
 
 export interface IamPolicyCommandOptions {
-  readonly format: 'json' | 'terraform';
+  readonly format: "json" | "terraform";
   readonly services?: readonly SupportedService[];
   readonly verbose: boolean;
 }
 
 export function parseCommaSeparatedList(value: string): readonly string[] {
   return value
-    .split(',')
+    .split(",")
     .map((entry) => entry.trim())
     .filter((entry) => entry.length > 0);
 }
@@ -141,29 +147,31 @@ export function parseRegionOption(value: string): readonly string[] {
 }
 
 export function parseServiceOption(value: string): readonly SupportedService[] {
-  const services = parseCommaSeparatedList(value).map((entry) => entry.toLowerCase());
+  const services = parseCommaSeparatedList(value).map((entry) =>
+    entry.toLowerCase(),
+  );
   const invalid = services.filter((entry) => !isSupportedService(entry));
   if (invalid.length > 0) {
-    throw new ConfigurationError(`Unsupported services: ${invalid.join(', ')}`);
+    throw new ConfigurationError(`Unsupported services: ${invalid.join(", ")}`);
   }
 
   return services as readonly SupportedService[];
 }
 
 export function parseConcurrencyOption(value: string): number {
-  return parseBoundedInteger(value, 1, 16, '--concurrency');
+  return parseBoundedInteger(value, 1, 16, "--concurrency");
 }
 
 export function parseScannerTimeoutOption(value: string): number {
-  return parseBoundedInteger(value, 10, 300, '--scanner-timeout');
+  return parseBoundedInteger(value, 10, 300, "--scanner-timeout");
 }
 
 export function parseFailThresholdOption(value: string): number {
-  return parseBoundedInteger(value, 0, 100, '--fail-threshold');
+  return parseBoundedInteger(value, 0, 100, "--fail-threshold");
 }
 
 export function parseHistoryLimitOption(value: string): number {
-  return parseBoundedInteger(value, 1, 50, '--limit');
+  return parseBoundedInteger(value, 1, 50, "--limit");
 }
 
 export function isSupportedService(value: string): value is SupportedService {
@@ -176,7 +184,7 @@ export function ensureVpcIncluded(
   if (!services || services.length === 0) {
     return services;
   }
-  return services.includes('vpc') ? services : [...services, 'vpc'];
+  return services.includes("vpc") ? services : [...services, "vpc"];
 }
 
 export function getCommandOptions<TOptions extends object>(
@@ -193,7 +201,9 @@ function parseBoundedInteger(
 ): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < min || parsed > max) {
-    throw new ConfigurationError(`${optionName} must be an integer between ${min} and ${max}.`);
+    throw new ConfigurationError(
+      `${optionName} must be an integer between ${min} and ${max}.`,
+    );
   }
   return parsed;
 }

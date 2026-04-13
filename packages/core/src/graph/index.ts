@@ -1,6 +1,16 @@
 /** Barrel exports for the graph engine module. */
 
 export type { GraphInstance } from './graph-instance.js';
+export type {
+  GraphVisualData,
+  GraphVisualSource,
+  VisualEdge,
+  VisualNode,
+  VisualNodeFinding,
+  VisualScenario,
+  VisualService,
+} from './graph-visual-types.js';
+export type { RenderGraphHtmlOptions } from './graph-html-renderer-types.js';
 
 export {
   cloneGraph,
@@ -73,3 +83,6 @@ export {
 } from './graph-scenario-propagation.js';
 
 export { type GenerateBiaOptions, generateBIA } from './bia-engine.js';
+
+export { buildGraphVisualData } from './graph-visual.js';
+export { renderGraphHtml } from './graph-html-renderer.js';

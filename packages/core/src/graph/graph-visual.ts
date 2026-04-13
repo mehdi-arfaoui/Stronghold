@@ -1,0 +1,453 @@
+import dagre from 'dagre';
+
+import { gradeForScore } from '../validation/index.js';
+import { calculateProofOfRecovery } from '../scoring/proof-of-recovery.js';
+import { classifyResourceRole, normalizeEdgeType } from '../services/service-utils.js';
+import type { InfraNodeAttrs, Severity, ScanResult } from '../types/infrastructure.js';
+import type { ValidationStatus, WeightedValidationResult } from '../validation/validation-types.js';
+import type {
+  GraphVisualData,
+  GraphVisualSource,
+  VisualNode,
+  VisualNodeFinding,
+  VisualScenario,
+  VisualService,
+} from './graph-visual-types.js';
+
+const NODE_WIDTH = 200;
+const NODE_HEIGHT = 68;
+const SERVICE_PADDING = 30;
+const DEFAULT_SCAN_DATE = '1970-01-01T00:00:00.000Z';
+const EXCLUDED_VISUAL_EDGE_TYPES = new Set(['contains', 'member_of', 'secured_by']);
+
+const SEVERITY_RANK: Readonly<Record<Severity, number>> = {
+  critical: 4,
+  high: 3,
+  medium: 2,
+  low: 1,
+};
+
+const FINDING_STATUSES = new Set<ValidationStatus>(['fail', 'warn', 'error']);
+
+const SOURCE_TYPE_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ['cloudwatch_alarm', 'cloudwatch'],
+  ['route53_hosted_zone', 'route53'],
+  ['route53_record', 'route53'],
+  ['backup_plan', 'backup'],
+  ['aurora_cluster', 'aurora'],
+  ['aurora_instance', 'aurora'],
+  ['elasticache', 'elasticache'],
+  ['replicationgroup', 'elasticache'],
+  ['lambda', 'lambda'],
+  ['s3_bucket', 's3'],
+  ['dynamodb', 'dynamodb'],
+  ['efs_mount_target', 'efs'],
+  ['efs_filesystem', 'efs'],
+  ['efs', 'efs'],
+  ['elb', 'elb'],
+  ['loadbalancer', 'elb'],
+  ['rds', 'rds'],
+  ['ec2', 'ec2'],
+  ['asg', 'asg'],
+  ['sqs', 'sqs'],
+  ['sns', 'sns'],
+  ['subnet', 'subnet'],
+  ['vpc', 'vpc'],
+  ['dns', 'dns'],
+];
+
+export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource): GraphVisualData {
+  const input = scanResult as GraphVisualSource;
+  const visualEdges = filterVisualEdges(input.edges);
+  const proof =
+    input.proofOfRecovery ??
+    (input.validationReport
+      ? calculateProofOfRecovery({
+          validationReport: input.validationReport,
+          servicePosture: input.servicePosture,
+        })
+      : null);
+  const nodeFindings = buildNodeFindings(input);
+  const nodeRecommendations = buildNodeRecommendations(input);
+  const serviceEntries = input.servicePosture?.services ?? [];
+  const nodeToService = new Map(
+    serviceEntries.flatMap((entry) =>
+      entry.service.resources.map((resource) => [resource.nodeId, entry] as const),
+    ),
+  );
+  const layout = buildLayout(input.nodes, visualEdges);
+
+  const nodes = input.nodes
+    .map((node) => {
+      const position = layout.get(node.id);
+      const serviceEntry = nodeToService.get(node.id);
+      const findings = nodeFindings.get(node.id) ?? [];
+
+      return {
+        id: node.id,
+        label: resolveNodeLabel(node),
+        type: resolveNodeType(node),
+        serviceId: serviceEntry?.service.id ?? null,
+        serviceName: serviceEntry?.service.name ?? null,
+        criticality: resolveNodeCriticality(node, serviceEntry?.service.criticality ?? null),
+        drScore: calculateNodeScore(input.validationReport?.results, node.id),
+        role: classifyResourceRole(node),
+        region: node.region ?? 'global',
+        az: node.availabilityZone ?? null,
+        x: position?.x ?? 0,
+        y: position?.y ?? 0,
+        findingCount: findings.length,
+        worstSeverity: resolveWorstSeverity(findings.map((finding) => finding.severity)),
+        findings,
+        recommendations: nodeRecommendations.get(node.id) ?? [],
+      } satisfies VisualNode;
+    })
+    .sort(
+      (left, right) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id),
+    );
+
+  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
+
+  const services = serviceEntries
+    .flatMap((entry) => {
+      const nodeIds = entry.service.resources
+        .map((resource) => resource.nodeId)
+        .filter((nodeId) => nodeById.has(nodeId))
+        .sort((left, right) => left.localeCompare(right));
+      if (nodeIds.length === 0) {
+        return [];
+      }
+
+      const bounds = calculateServiceBounds(nodeIds, nodeById);
+      return [
+        {
+          id: entry.service.id,
+          name: entry.service.name,
+          score: entry.score.score,
+          grade: entry.score.grade,
+          criticality: entry.service.criticality,
+          findingCount: countFindings(entry.score.findingsCount),
+          worstSeverity: resolveWorstSeverityFromCounts(entry.score.findingsCount),
+          nodeIds,
+          ...bounds,
+        } satisfies VisualService,
+      ];
+    })
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+
+  const edges = visualEdges.map((edge) => ({
+    source: edge.source,
+    target: edge.target,
+    label: normalizeEdgeType(edge.type),
+    provenance: edge.provenance ?? 'aws-api',
+  }));
+
+  const globalScore =
+    input.governance?.score.withAcceptances.score ??
+    input.validationReport?.scoreBreakdown.overall ??
+    0;
+  const globalGrade =
+    input.governance?.score.withAcceptances.grade ??
+    input.validationReport?.scoreBreakdown.grade ??
+    gradeForScore(globalScore);
+
+  return {
+    nodes,
+    edges,
+    services,
+    globalScore,
+    globalGrade,
+    proofOfRecovery: proof?.proofOfRecovery ?? null,
+    observedCoverage: proof?.observedCoverage ?? 0,
+    scanDate: resolveScanDate(input),
+    scenarios: buildVisualScenarios(input),
+  };
+}
+
+function buildLayout(
+  nodes: readonly InfraNodeAttrs[],
+  edges: ReadonlyArray<{ readonly source: string; readonly target: string }>,
+): ReadonlyMap<string, { readonly x: number; readonly y: number }> {
+  const graph = new dagre.graphlib.Graph();
+  graph.setDefaultEdgeLabel(() => ({}));
+  graph.setGraph({
+    rankdir: 'LR',
+    ranksep: 90,
+    nodesep: 35,
+    marginx: 30,
+    marginy: 30,
+  });
+
+  nodes.forEach((node) => {
+    graph.setNode(node.id, {
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    });
+  });
+  edges.forEach((edge) => {
+    if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
+      graph.setEdge(edge.source, edge.target);
+    }
+  });
+  dagre.layout(graph);
+
+  return new Map(
+    nodes.map((node) => {
+      const position = graph.node(node.id) as
+        | { readonly x: number; readonly y: number }
+        | undefined;
+      return [
+        node.id,
+        {
+          x: position?.x ?? 0,
+          y: position?.y ?? 0,
+        },
+      ] as const;
+    }),
+  );
+}
+
+function filterVisualEdges<T extends { readonly type: string }>(
+  edges: readonly T[],
+): readonly T[] {
+  return edges.filter((edge) => !EXCLUDED_VISUAL_EDGE_TYPES.has(normalizeEdgeType(edge.type)));
+}
+
+function buildNodeFindings(
+  input: GraphVisualSource,
+): ReadonlyMap<string, readonly VisualNodeFinding[]> {
+  const findings = new Map<string, VisualNodeFinding[]>();
+  input.validationReport?.results.forEach((result) => {
+    if (!FINDING_STATUSES.has(result.status)) {
+      return;
+    }
+
+    const current = findings.get(result.nodeId) ?? [];
+    current.push({
+      ruleId: result.ruleId,
+      severity: result.severity,
+      status: result.status,
+      message: result.message,
+      remediation: result.remediation ?? null,
+    });
+    findings.set(result.nodeId, current);
+  });
+
+  findings.forEach((items, nodeId) => {
+    findings.set(
+      nodeId,
+      items
+        .slice()
+        .sort(
+          (left, right) =>
+            SEVERITY_RANK[right.severity] - SEVERITY_RANK[left.severity] ||
+            left.ruleId.localeCompare(right.ruleId),
+        ),
+    );
+  });
+
+  return findings;
+}
+
+function buildNodeRecommendations(
+  input: GraphVisualSource,
+): ReadonlyMap<string, readonly string[]> {
+  const recommendations = input.servicePosture?.recommendations ?? [];
+  const grouped = new Map<string, string[]>();
+
+  recommendations.forEach((recommendation) => {
+    const current = grouped.get(recommendation.targetNode) ?? [];
+    if (!current.includes(recommendation.title)) {
+      current.push(recommendation.title);
+      grouped.set(recommendation.targetNode, current);
+    }
+  });
+
+  return grouped;
+}
+
+function calculateServiceBounds(
+  nodeIds: readonly string[],
+  nodeById: ReadonlyMap<string, VisualNode>,
+): Pick<VisualService, 'x' | 'y' | 'width' | 'height'> {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+
+  nodeIds.forEach((nodeId) => {
+    const node = nodeById.get(nodeId);
+    if (!node) {
+      return;
+    }
+
+    minX = Math.min(minX, node.x - NODE_WIDTH / 2);
+    minY = Math.min(minY, node.y - NODE_HEIGHT / 2);
+    maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
+    maxY = Math.max(maxY, node.y + NODE_HEIGHT / 2);
+  });
+
+  return {
+    x: Math.max(0, minX - SERVICE_PADDING),
+    y: Math.max(0, minY - SERVICE_PADDING),
+    width: maxX - minX + SERVICE_PADDING * 2,
+    height: maxY - minY + SERVICE_PADDING * 2,
+  };
+}
+
+function buildVisualScenarios(input: GraphVisualSource): readonly VisualScenario[] {
+  return (input.scenarioAnalysis?.scenarios ?? [])
+    .map((scenario) => {
+      const directNodeIds = (scenario.impact?.directlyAffected ?? [])
+        .map((item) => item.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      const cascadeNodeIds = (scenario.impact?.cascadeAffected ?? [])
+        .map((item) => item.nodeId)
+        .sort((left, right) => left.localeCompare(right));
+      const affectedNodeIds = Array.from(new Set([...directNodeIds, ...cascadeNodeIds])).sort(
+        (left, right) => left.localeCompare(right),
+      );
+      const serviceImpact = scenario.impact?.serviceImpact ?? [];
+
+      return {
+        id: scenario.id,
+        name: scenario.name,
+        type: scenario.type,
+        verdict: scenario.coverage?.verdict ?? 'unknown',
+        affectedNodeIds,
+        directlyAffectedNodeIds: directNodeIds,
+        cascadeNodeIds,
+        downServices: serviceImpact
+          .filter((impact) => impact.status === 'down')
+          .map((impact) => impact.serviceName)
+          .sort((left, right) => left.localeCompare(right)),
+        degradedServices: serviceImpact
+          .filter((impact) => impact.status === 'degraded')
+          .map((impact) => impact.serviceName)
+          .sort((left, right) => left.localeCompare(right)),
+        summary: scenario.coverage?.summary ?? null,
+      } satisfies VisualScenario;
+    })
+    .sort((left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id));
+}
+
+function calculateNodeScore(
+  results: readonly WeightedValidationResult[] | undefined,
+  nodeId: string,
+): number | null {
+  const relevant = (results ?? []).filter(
+    (result) => result.nodeId === nodeId && result.status !== 'skip',
+  );
+  if (relevant.length === 0) {
+    return null;
+  }
+
+  const earned = relevant.reduce((sum, result) => {
+    if (result.status === 'pass') {
+      return sum + 1;
+    }
+    if (result.status === 'warn') {
+      return sum + 0.5;
+    }
+    return sum;
+  }, 0);
+
+  return Math.round((earned / relevant.length) * 100);
+}
+
+function resolveNodeLabel(node: InfraNodeAttrs): string {
+  return node.displayName ?? node.businessName ?? node.name;
+}
+
+function resolveNodeType(node: InfraNodeAttrs): string {
+  const metadataValue =
+    typeof node.metadata.sourceType === 'string'
+      ? node.metadata.sourceType
+      : typeof node.metadata.resourceType === 'string'
+        ? node.metadata.resourceType
+        : node.type;
+  const normalized = metadataValue.trim().toLowerCase();
+
+  for (const [needle, alias] of SOURCE_TYPE_ALIASES) {
+    if (normalized.includes(needle)) {
+      return alias;
+    }
+  }
+
+  return normalized.replace(/[\s-]+/g, '_');
+}
+
+function resolveNodeCriticality(node: InfraNodeAttrs, serviceCriticality: string | null): string {
+  const explicit = node.metadata.criticality;
+  if (
+    explicit === 'critical' ||
+    explicit === 'high' ||
+    explicit === 'medium' ||
+    explicit === 'low'
+  ) {
+    return explicit;
+  }
+
+  const score =
+    typeof node.criticalityScore === 'number'
+      ? node.criticalityScore
+      : typeof node.metadata.criticalityScore === 'number'
+        ? node.metadata.criticalityScore
+        : null;
+  if (typeof score === 'number') {
+    if (score >= 80) return 'critical';
+    if (score >= 60) return 'high';
+    if (score >= 40) return 'medium';
+    return 'low';
+  }
+
+  return serviceCriticality ?? 'low';
+}
+
+function resolveWorstSeverity(values: readonly (Severity | null | undefined)[]): Severity | null {
+  const ranked = values
+    .filter(
+      (value): value is Severity =>
+        value === 'critical' || value === 'high' || value === 'medium' || value === 'low',
+    )
+    .sort((left, right) => SEVERITY_RANK[right] - SEVERITY_RANK[left]);
+  return ranked[0] ?? null;
+}
+
+function resolveWorstSeverityFromCounts(counts: {
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+}): Severity | null {
+  if (counts.critical > 0) return 'critical';
+  if (counts.high > 0) return 'high';
+  if (counts.medium > 0) return 'medium';
+  if (counts.low > 0) return 'low';
+  return null;
+}
+
+function countFindings(counts: {
+  readonly critical: number;
+  readonly high: number;
+  readonly medium: number;
+  readonly low: number;
+}): number {
+  return counts.critical + counts.high + counts.medium + counts.low;
+}
+
+function resolveScanDate(input: GraphVisualSource): string {
+  if (typeof input.timestamp === 'string' && input.timestamp.length > 0) {
+    return input.timestamp;
+  }
+  if (input.scannedAt instanceof Date && Number.isFinite(input.scannedAt.getTime())) {
+    return input.scannedAt.toISOString();
+  }
+  if (
+    typeof input.validationReport?.timestamp === 'string' &&
+    input.validationReport.timestamp.length > 0
+  ) {
+    return input.validationReport.timestamp;
+  }
+  return DEFAULT_SCAN_DATE;
+}

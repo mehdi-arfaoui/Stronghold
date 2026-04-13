@@ -23,11 +23,11 @@ Indicative timing:
 
 Three demo scenarios are available:
 
-| Scenario | Resources | Typical Score | Use Case |
-| --- | --- | --- | --- |
-| `startup` (default) | 24 | `52/100` | Typical startup with obvious DR gaps |
-| `enterprise` | 66 | `83/100` | Mature setup with redundancy and replication |
-| `minimal` | 8 | `5/100` | Intentionally weak baseline for testing |
+| Scenario            | Resources | Typical Score | Use Case                                     |
+| ------------------- | --------- | ------------- | -------------------------------------------- |
+| `startup` (default) | 24        | `52/100`      | Typical startup with obvious DR gaps         |
+| `enterprise`        | 66        | `83/100`      | Mature setup with redundancy and replication |
+| `minimal`           | 8         | `5/100`       | Intentionally weak baseline for testing      |
 
 ```bash
 npx @stronghold-dr/cli demo --scenario enterprise
@@ -242,7 +242,30 @@ Built-in scenarios include AZ failure, region failure, single points of failure,
 
 Scenario coverage is included in the scan summary and in `stronghold status`.
 
-## 10. Track Posture Over Time
+## 10. Visualize the Dependency Graph
+
+Export an interactive graph of your infrastructure:
+
+```bash
+npx @stronghold-dr/cli graph
+```
+
+This generates a standalone HTML file and opens it in your browser.
+The graph shows services, dependencies, and DR posture at a glance.
+
+Use scenario mode to see what happens when a component fails:
+
+```bash
+npx @stronghold-dr/cli graph --scenario az-failure-eu-west-1a
+```
+
+Use `--redact` before sharing:
+
+```bash
+npx @stronghold-dr/cli graph --redact --no-open --output dr-graph.html
+```
+
+## 11. Track Posture Over Time
 
 Stronghold keeps a local history of scan snapshots:
 
@@ -256,7 +279,7 @@ npx @stronghold-dr/cli history --service payment
 
 The `stronghold status` command shows posture trend, DR debt, and highlights such as expired evidence, uncovered scenarios, or recurrent findings.
 
-## 11. Set Up Governance
+## 12. Set Up Governance
 
 For teams that need ownership tracking, risk acceptance, and policy enforcement:
 

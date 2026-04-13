@@ -38,29 +38,29 @@ stronghold <command>
 
 ## Commands
 
-| Intent | Commands |
-| --- | --- |
-| Discover | `demo`, `scan`, `init`, `iam-policy`, `services detect`, `services list`, `overrides init`, `overrides validate` |
-| Assess | `status`, `report`, `scenarios`, `scenarios list`, `scenarios show <id>`, `services show <name>` |
-| Plan | `plan generate`, `plan runbook`, `plan validate` |
-| Track | `drift check`, `history` |
-| Govern | `evidence add`, `evidence list`, `evidence show <id>`, `governance`, `governance init`, `governance accept`, `governance validate` |
+| Intent   | Commands                                                                                                                           |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Discover | `demo`, `scan`, `init`, `iam-policy`, `services detect`, `services list`, `overrides init`, `overrides validate`                   |
+| Assess   | `status`, `report`, `graph`, `scenarios`, `scenarios list`, `scenarios show <id>`, `services show <name>`                          |
+| Plan     | `plan generate`, `plan runbook`, `plan validate`                                                                                   |
+| Track    | `drift check`, `history`                                                                                                           |
+| Govern   | `evidence add`, `evidence list`, `evidence show <id>`, `governance`, `governance init`, `governance accept`, `governance validate` |
 
 Run `stronghold --help` or `stronghold <command> --help` for all options.
 
 ## Key Options
 
-| Flag | Description |
-| --- | --- |
-| `--region <regions>` | AWS region(s) to scan |
-| `--all-regions` | Scan all enabled regions |
-| `--encrypt` | Encrypt scan artifacts and generated files at rest |
-| `--redact` | Mask infrastructure identifiers in output |
-| `--verbose` | Show detailed scan and retry logs |
-| `--profile <profile>` | AWS named profile |
-| `--role-arn <arn>` | Assume an IAM role for scanning |
-| `--output json` | JSON output for `scan` and `demo` |
-| `--format json` | JSON output for `report`, `plan`, and `drift check` |
+| Flag                  | Description                                         |
+| --------------------- | --------------------------------------------------- |
+| `--region <regions>`  | AWS region(s) to scan                               |
+| `--all-regions`       | Scan all enabled regions                            |
+| `--encrypt`           | Encrypt scan artifacts and generated files at rest  |
+| `--redact`            | Mask infrastructure identifiers in output           |
+| `--verbose`           | Show detailed scan and retry logs                   |
+| `--profile <profile>` | AWS named profile                                   |
+| `--role-arn <arn>`    | Assume an IAM role for scanning                     |
+| `--output json`       | JSON output for `scan` and `demo`                   |
+| `--format json`       | JSON output for `report`, `plan`, and `drift check` |
 
 ## Requirements
 

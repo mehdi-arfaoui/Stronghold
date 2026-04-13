@@ -143,13 +143,18 @@ export {
   type MetadataProvider,
 } from './providers/index.js';
 
-export {
-  getStartupDemoPipelineInput,
-  type DemoPipelineInput,
-} from './demo/startup-demo.js';
+export { getStartupDemoPipelineInput, type DemoPipelineInput } from './demo/startup-demo.js';
 
 export {
   type GraphInstance,
+  type GraphVisualData,
+  type GraphVisualSource,
+  type RenderGraphHtmlOptions,
+  type VisualEdge,
+  type VisualNode,
+  type VisualNodeFinding,
+  type VisualScenario,
+  type VisualService,
   cloneGraph,
   getDependencies,
   getDependents,
@@ -185,6 +190,8 @@ export {
   DEFAULT_RESOLVER,
   analyzeFullGraph,
   generateLandingZoneRecommendations,
+  buildGraphVisualData,
+  renderGraphHtml,
   SCENARIO_TEMPLATES,
   GRAPH_SCENARIO_TEMPLATES,
   applyScenario,
@@ -471,11 +478,7 @@ export {
   isEncryptedPayload,
 } from './encryption/index.js';
 
-export {
-  redact,
-  redactObject,
-  type RedactionOptions,
-} from './redaction/index.js';
+export { redact, redactObject, type RedactionOptions } from './redaction/index.js';
 
 export {
   generateRecommendations,

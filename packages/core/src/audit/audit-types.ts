@@ -1,6 +1,7 @@
 export type AuditAction =
   | 'scan'
   | 'report'
+  | 'graph_export'
   | 'plan_generate'
   | 'plan_validate'
   | 'drift_check'

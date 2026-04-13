@@ -1,39 +1,50 @@
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-import { Command } from 'commander';
+import { Command } from "commander";
 
-import { CliError } from './errors/cli-error.js';
-import { writeError } from './output/io.js';
-import { registerDemoCommand } from './commands/demo.js';
-import { registerDriftCommand } from './commands/drift.js';
-import { registerEvidenceCommand } from './commands/evidence.js';
-import { registerGovernanceCommand } from './commands/governance.js';
-import { registerHistoryCommand } from './commands/history.js';
-import { registerIamPolicyCommand } from './commands/iam-policy.js';
-import { registerInitCommand } from './commands/init.js';
-import { registerPlanCommand } from './commands/plan.js';
-import { registerReportCommand } from './commands/report.js';
-import { registerScanCommand } from './commands/scan.js';
-import { registerOverridesCommand } from './commands/overrides.js';
-import { registerScenariosCommand } from './commands/scenarios.js';
-import { registerServicesCommand } from './commands/services.js';
-import { registerStatusCommand } from './commands/status.js';
+import { CliError } from "./errors/cli-error.js";
+import { writeError } from "./output/io.js";
+import { registerDemoCommand } from "./commands/demo.js";
+import { registerDriftCommand } from "./commands/drift.js";
+import { registerEvidenceCommand } from "./commands/evidence.js";
+import { registerGraphCommand } from "./commands/graph.js";
+import { registerGovernanceCommand } from "./commands/governance.js";
+import { registerHistoryCommand } from "./commands/history.js";
+import { registerIamPolicyCommand } from "./commands/iam-policy.js";
+import { registerInitCommand } from "./commands/init.js";
+import { registerPlanCommand } from "./commands/plan.js";
+import { registerReportCommand } from "./commands/report.js";
+import { registerScanCommand } from "./commands/scan.js";
+import { registerOverridesCommand } from "./commands/overrides.js";
+import { registerScenariosCommand } from "./commands/scenarios.js";
+import { registerServicesCommand } from "./commands/services.js";
+import { registerStatusCommand } from "./commands/status.js";
 
 export function createProgram(): Command {
   const program = new Command();
   program
-    .name('stronghold')
-    .description('Open-source disaster recovery automation for cloud infrastructure')
-    .version('1.0.0')
-    .option('--encrypt', 'Encrypt sensitive files written by Stronghold', false)
-    .option('--passphrase <string>', 'Passphrase used to encrypt or decrypt files')
-    .option('--redact', 'Redact sensitive identifiers from generated output', false)
-    .option('--no-redact', 'Disable output redaction');
+    .name("stronghold")
+    .description(
+      "Open-source disaster recovery automation for cloud infrastructure",
+    )
+    .version("1.0.0")
+    .option("--encrypt", "Encrypt sensitive files written by Stronghold", false)
+    .option(
+      "--passphrase <string>",
+      "Passphrase used to encrypt or decrypt files",
+    )
+    .option(
+      "--redact",
+      "Redact sensitive identifiers from generated output",
+      false,
+    )
+    .option("--no-redact", "Disable output redaction");
 
   registerInitCommand(program);
   registerScanCommand(program);
   registerReportCommand(program);
+  registerGraphCommand(program);
   registerPlanCommand(program);
   registerDriftCommand(program);
   registerEvidenceCommand(program);
