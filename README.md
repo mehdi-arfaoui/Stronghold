@@ -97,6 +97,18 @@ Next action
 3. Regenerate and validate the payment runbook
 ```
 
+## The Reality Gap
+
+Your compliance tools say 56% protected. Stronghold proves 0% recoverable.
+
+```bash
+$ stronghold status
+
+Reality Gap  56 pts  claimed 56% protected → 0% proven recoverable
+```
+
+Run `stronghold explain <service>` to see exactly why.
+
 ## Quick start
 
 Try the built-in demo first:
@@ -217,7 +229,8 @@ See [docs/security.md](docs/security.md) for the security model and deployment g
 | Intent | Commands |
 | --- | --- |
 | Discover | `scan`, `init`, `iam-policy`, `services detect`, `services list` |
-| Assess | `status`, `report`, `scenarios`, `services show <id>` |
+| Assess | `status`, `report`, `explain <service>`, `scenarios`, `services show <id>` |
+| Visualize | `graph` |
 | Plan | `plan generate`, `plan runbook`, `plan validate` |
 | Track | `drift check`, `history` |
 | Govern | `evidence add`, `evidence list`, `evidence show <id>`, `governance init`, `governance accept`, `governance validate`, `overrides init`, `overrides validate` |
