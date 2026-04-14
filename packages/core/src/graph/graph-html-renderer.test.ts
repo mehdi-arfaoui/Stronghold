@@ -38,6 +38,8 @@ describe('renderGraphHtml', () => {
     expect(html).toContain('<rect');
     expect(html).toContain('<path');
     expect(html).toContain('service-cluster');
+    expect(html).toContain('service-badge');
+    expect(html).toContain('edge-label-bg');
     expect(html).toContain('<g class="node-icon"');
     expect(html).toContain(`${visual.globalScore}/100`);
   });

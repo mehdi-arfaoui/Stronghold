@@ -115,10 +115,12 @@ function buildStyles(): string {
     '#graph{width:100%;height:100%;display:block;cursor:grab;user-select:none}',
     '#graph.is-dragging{cursor:grabbing}',
     '.service-cluster rect{stroke-width:1.5}',
-    '.service-label{font-size:13px;font-weight:600}',
-    '.service-meta{font-size:11px;fill:var(--muted)}',
+    '.service-label{font-size:12.5px;font-weight:600}',
+    '.service-badge rect{fill:rgba(15,23,42,.78);stroke:rgba(148,163,184,.26);stroke-width:1}',
+    '.service-badge text{fill:var(--text-soft);font-size:9.5px;font-weight:600;text-anchor:middle;dominant-baseline:middle}',
     '.graph-edge path{fill:none;stroke-width:2;opacity:.6;transition:opacity .15s ease,stroke-width .15s ease}',
-    '.graph-edge text{fill:var(--muted);font-size:10px;pointer-events:none}',
+    '.graph-edge text{fill:var(--text-soft);font-size:10px;pointer-events:none;text-anchor:middle;dominant-baseline:middle}',
+    '.graph-edge .edge-label-bg{fill:rgba(15,17,23,.92);stroke:rgba(148,163,184,.2);stroke-width:1;rx:8;ry:8}',
     '.graph-edge.provenance-aws-api path{stroke:rgba(203,213,225,.7)}',
     '.graph-edge.provenance-inferred path{stroke:rgba(148,163,184,.6);stroke-dasharray:6 6;opacity:.4}',
     '.graph-edge.provenance-manual path{stroke:var(--manual);stroke-dasharray:10 6;opacity:.85}',
@@ -205,23 +207,23 @@ function renderServices(services: readonly VisualService[]): string {
       const palette = clusterPalette(service.grade);
       const gradeColor = gradeAccent(service.grade);
       const scoreColor = gradeAccentMuted(service.grade);
-      return `<g class="service-cluster" data-service-id="${escapeAttribute(service.id)}"><rect x="${service.x}" y="${service.y}" width="${service.width}" height="${service.height}" rx="12" ry="12" fill="${palette.fill}" stroke="${palette.stroke}"></rect><text class="service-label" x="${service.x + 10}" y="${service.y + 21}"><tspan fill="#e2e8f0">${escapeHtml(`${service.name} `)}</tspan><tspan fill="${gradeColor}">${escapeHtml(service.grade)}</tspan><tspan fill="${scoreColor}">${escapeHtml(` ${service.score}/100`)}</tspan></text><text class="service-meta" x="${service.x + 10}" y="${service.y + 38}">${escapeHtml(`${service.findingCount} findings - ${service.criticality}`)}</text></g>`;
+      const badgeWidth = 72;
+      const badgeHeight = 18;
+      const badgeX = service.x + service.width - badgeWidth - 10;
+      const badgeY = service.y + 5;
+      const labelLimit = Math.max(9, Math.floor((service.width - badgeWidth - 42) / 6.8));
+      const findingLabel = service.findingCount === 1 ? '1 finding' : `${service.findingCount} findings`;
+      return `<g class="service-cluster" data-service-id="${escapeAttribute(service.id)}"><rect x="${service.x}" y="${service.y}" width="${service.width}" height="${service.height}" rx="12" ry="12" fill="${palette.fill}" stroke="${palette.stroke}"></rect><text class="service-label" x="${service.x + 10}" y="${service.y + 17}"><tspan fill="#e2e8f0">${escapeHtml(`${truncate(service.name, labelLimit)} `)}</tspan><tspan fill="${gradeColor}">${escapeHtml(service.grade)}</tspan><tspan fill="${scoreColor}">${escapeHtml(` ${service.score}/100`)}</tspan></text><g class="service-badge" transform="translate(${badgeX} ${badgeY})"><rect x="0" y="0" width="${badgeWidth}" height="${badgeHeight}" rx="9" ry="9"></rect><text x="${badgeWidth / 2}" y="${badgeHeight / 2 + 0.5}">${escapeHtml(findingLabel)}</text></g></g>`;
     })
     .join('');
 }
 
 function renderEdges(nodes: readonly VisualNode[], edges: readonly VisualEdge[]): string {
-  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
-  return edges
-    .map((edge, index) => {
-      const source = nodeById.get(edge.source);
-      const target = nodeById.get(edge.target);
-      if (!source || !target) {
-        return '';
-      }
-
-      const midpoint = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 - 10 };
-      return `<g class="graph-edge provenance-${escapeAttribute(edge.provenance)}" data-edge-id="edge-${index}" data-source="${escapeAttribute(edge.source)}" data-target="${escapeAttribute(edge.target)}"><path d="${createEdgePath(source, target)}" marker-end="url(#arrow-${escapeAttribute(edge.provenance)})"></path><text x="${midpoint.x}" y="${midpoint.y}">${escapeHtml(edge.label)}</text></g>`;
+  return buildEdgeRenderModels(nodes, edges)
+    .map((edge) => {
+      const labelWidth = estimateEdgeLabelWidth(edge.label);
+      const labelHeight = 18;
+      return `<g class="graph-edge provenance-${escapeAttribute(edge.provenance)}" data-edge-id="${escapeAttribute(edge.id)}" data-source="${escapeAttribute(edge.source)}" data-target="${escapeAttribute(edge.target)}"><path d="${edge.path}" marker-end="url(#arrow-${escapeAttribute(edge.provenance)})"></path><rect class="edge-label-bg" x="${edge.labelX - labelWidth / 2}" y="${edge.labelY - labelHeight / 2}" width="${labelWidth}" height="${labelHeight}" rx="8" ry="8"></rect><text x="${edge.labelX}" y="${edge.labelY + 0.5}">${escapeHtml(edge.label)}</text></g>`;
     })
     .join('');
 }
@@ -282,6 +284,145 @@ function createEdgePath(source: VisualNode, target: VisualNode): string {
   const endX = target.x - NODE_WIDTH / 2;
   const curve = Math.max(48, Math.abs(endX - startX) * 0.35);
   return `M ${startX} ${source.y} C ${startX + curve} ${source.y}, ${endX - curve} ${target.y}, ${endX} ${target.y}`;
+}
+
+function buildEdgeRenderModels(
+  nodes: readonly VisualNode[],
+  edges: readonly VisualEdge[],
+): ReadonlyArray<{
+  readonly id: string;
+  readonly source: string;
+  readonly target: string;
+  readonly provenance: VisualEdge['provenance'];
+  readonly label: string;
+  readonly path: string;
+  readonly labelX: number;
+  readonly labelY: number;
+}> {
+  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
+  const grouped = new Map<
+    string,
+    Array<{ readonly edge: VisualEdge; readonly index: number; readonly source: VisualNode; readonly target: VisualNode }>
+  >();
+
+  edges.forEach((edge, index) => {
+    const source = nodeById.get(edge.source);
+    const target = nodeById.get(edge.target);
+    if (!source || !target) {
+      return;
+    }
+
+    const groupKey = edgeGroupKey(source, target);
+    const current = grouped.get(groupKey) ?? [];
+    current.push({ edge, index, source, target });
+    grouped.set(groupKey, current);
+  });
+
+  const models = Array.from(grouped.values()).flatMap((group) => {
+    const offsets = centeredOffsets(group.length, 22);
+    return group.map(({ edge, index, source, target }, groupIndex) => {
+      const startX = source.x + NODE_WIDTH / 2;
+      const endX = target.x - NODE_WIDTH / 2;
+      const midpoint = { x: (source.x + target.x) / 2, y: (source.y + target.y) / 2 - 10 };
+      const vectorX = endX - startX;
+      const vectorY = target.y - source.y;
+      const length = Math.hypot(vectorX, vectorY) || 1;
+      const normalX = -vectorY / length;
+      const normalY = vectorX / length;
+      const distance = offsets[groupIndex] ?? 0;
+
+      return {
+        id: `edge-${index}`,
+        source: edge.source,
+        target: edge.target,
+        provenance: edge.provenance,
+        label: edge.label,
+        path: createEdgePath(source, target),
+        labelX: midpoint.x + normalX * distance,
+        labelY: midpoint.y + normalY * distance,
+      };
+    });
+  });
+
+  return resolveEdgeLabelCollisions(models);
+}
+
+function edgeGroupKey(source: VisualNode, target: VisualNode): string {
+  if (source.serviceId && source.serviceId === target.serviceId) {
+    return `service:${source.serviceId}`;
+  }
+
+  const left = source.serviceId ?? source.id;
+  const right = target.serviceId ?? target.id;
+  return left.localeCompare(right) <= 0 ? `${left}::${right}` : `${right}::${left}`;
+}
+
+function centeredOffsets(count: number, step: number): readonly number[] {
+  if (count <= 1) {
+    return [0];
+  }
+
+  return Array.from({ length: count }, (_value, index) => (index - (count - 1) / 2) * step);
+}
+
+function resolveEdgeLabelCollisions<
+  T extends { readonly label: string; readonly labelX: number; readonly labelY: number },
+>(models: readonly T[]): readonly T[] {
+  const placed: Array<{ readonly left: number; readonly right: number; readonly top: number; readonly bottom: number }> = [];
+  const resolved: T[] = [];
+  const gap = 6;
+  const labelHeight = 18;
+
+  models
+    .slice()
+    .sort((left, right) => left.labelX - right.labelX || left.labelY - right.labelY)
+    .forEach((model) => {
+      const width = estimateEdgeLabelWidth(model.label);
+      let labelY = model.labelY;
+      let box = createLabelBox(model.labelX, labelY, width, labelHeight);
+      let didMove = true;
+
+      while (didMove) {
+        didMove = false;
+
+        for (const previous of placed) {
+          if (
+            Math.min(box.right, previous.right) > Math.max(box.left, previous.left) &&
+            Math.min(box.bottom, previous.bottom) > Math.max(box.top, previous.top)
+          ) {
+            labelY = previous.bottom + gap + labelHeight / 2;
+            box = createLabelBox(model.labelX, labelY, width, labelHeight);
+            didMove = true;
+          }
+        }
+      }
+
+      resolved.push({
+        ...model,
+        labelY,
+      });
+      placed.push(box);
+    });
+
+  return resolved;
+}
+
+function createLabelBox(centerX: number, centerY: number, width: number, height: number): {
+  readonly left: number;
+  readonly right: number;
+  readonly top: number;
+  readonly bottom: number;
+} {
+  return {
+    left: centerX - width / 2,
+    right: centerX + width / 2,
+    top: centerY - height / 2,
+    bottom: centerY + height / 2,
+  };
+}
+
+function estimateEdgeLabelWidth(label: string): number {
+  return Math.max(54, Math.min(110, label.length * 6.4 + 18));
 }
 
 function clusterPalette(grade: string): { readonly fill: string; readonly stroke: string } {

@@ -64,6 +64,45 @@ describe('buildGraphVisualData', () => {
     });
   });
 
+  it('packs service bounds so they do not overlap and keeps compact header room above nodes', async () => {
+    const visual = buildGraphVisualData(await createStartupVisualSource());
+
+    visual.services.forEach((service) => {
+      const nodeTops = service.nodeIds
+        .map((nodeId) => visual.nodes.find((node) => node.id === nodeId))
+        .filter((node): node is (typeof visual.nodes)[number] => node !== undefined)
+        .map((node) => node.y - 34);
+      const firstNodeTop = Math.min(...nodeTops);
+
+      expect(firstNodeTop - service.y).toBeGreaterThanOrEqual(24);
+    });
+
+    for (let index = 0; index < visual.services.length; index += 1) {
+      const left = visual.services[index];
+      if (!left) {
+        continue;
+      }
+
+      for (let compareIndex = index + 1; compareIndex < visual.services.length; compareIndex += 1) {
+        const right = visual.services[compareIndex];
+        if (!right) {
+          continue;
+        }
+
+        const overlapX = Math.max(
+          0,
+          Math.min(left.x + left.width, right.x + right.width) - Math.max(left.x, right.x),
+        );
+        const overlapY = Math.max(
+          0,
+          Math.min(left.y + left.height, right.y + right.height) - Math.max(left.y, right.y),
+        );
+
+        expect(overlapX === 0 || overlapY === 0).toBe(true);
+      }
+    }
+  });
+
   it('leaves unassigned resources without a service id', () => {
     const visual = buildGraphVisualData({
       provider: 'aws',

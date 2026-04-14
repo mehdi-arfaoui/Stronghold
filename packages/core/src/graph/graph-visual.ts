@@ -16,7 +16,10 @@ import type {
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 68;
-const SERVICE_PADDING = 30;
+const SERVICE_SIDE_PADDING = 16;
+const SERVICE_BOTTOM_PADDING = 12;
+const SERVICE_TOP_PADDING = 26;
+const SERVICE_LANE_GAP = 18;
 const DEFAULT_SCAN_DATE = '1970-01-01T00:00:00.000Z';
 const EXCLUDED_VISUAL_EDGE_TYPES = new Set(['contains', 'member_of', 'secured_by']);
 
@@ -75,7 +78,7 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
       entry.service.resources.map((resource) => [resource.nodeId, entry] as const),
     ),
   );
-  const layout = buildLayout(input.nodes, visualEdges);
+  const layout = packServiceLanes(buildLayout(input.nodes, visualEdges), serviceEntries);
 
   const nodes = input.nodes
     .map((node) => {
@@ -270,29 +273,167 @@ function calculateServiceBounds(
   nodeIds: readonly string[],
   nodeById: ReadonlyMap<string, VisualNode>,
 ): Pick<VisualService, 'x' | 'y' | 'width' | 'height'> {
+  return calculateBoundsForNodeIds(
+    nodeIds,
+    (nodeId) => {
+      const node = nodeById.get(nodeId);
+      return node ? { x: node.x, y: node.y } : null;
+    },
+  );
+}
+
+function calculateBoundsForNodeIds(
+  nodeIds: readonly string[],
+  getPosition: (nodeId: string) => { readonly x: number; readonly y: number } | null,
+): Pick<VisualService, 'x' | 'y' | 'width' | 'height'> {
   let minX = Number.POSITIVE_INFINITY;
   let minY = Number.POSITIVE_INFINITY;
   let maxX = Number.NEGATIVE_INFINITY;
   let maxY = Number.NEGATIVE_INFINITY;
 
   nodeIds.forEach((nodeId) => {
-    const node = nodeById.get(nodeId);
-    if (!node) {
+    const position = getPosition(nodeId);
+    if (!position) {
       return;
     }
 
-    minX = Math.min(minX, node.x - NODE_WIDTH / 2);
-    minY = Math.min(minY, node.y - NODE_HEIGHT / 2);
-    maxX = Math.max(maxX, node.x + NODE_WIDTH / 2);
-    maxY = Math.max(maxY, node.y + NODE_HEIGHT / 2);
+    minX = Math.min(minX, position.x - NODE_WIDTH / 2);
+    minY = Math.min(minY, position.y - NODE_HEIGHT / 2);
+    maxX = Math.max(maxX, position.x + NODE_WIDTH / 2);
+    maxY = Math.max(maxY, position.y + NODE_HEIGHT / 2);
   });
 
   return {
-    x: Math.max(0, minX - SERVICE_PADDING),
-    y: Math.max(0, minY - SERVICE_PADDING),
-    width: maxX - minX + SERVICE_PADDING * 2,
-    height: maxY - minY + SERVICE_PADDING * 2,
+    x: minX - SERVICE_SIDE_PADDING,
+    y: minY - SERVICE_TOP_PADDING,
+    width: maxX - minX + SERVICE_SIDE_PADDING * 2,
+    height: maxY - minY + SERVICE_TOP_PADDING + SERVICE_BOTTOM_PADDING,
   };
+}
+
+function packServiceLanes(
+  layout: ReadonlyMap<string, { readonly x: number; readonly y: number }>,
+  serviceEntries: NonNullable<GraphVisualSource['servicePosture']>['services'],
+): ReadonlyMap<string, { readonly x: number; readonly y: number }> {
+  const services = serviceEntries
+    .flatMap((entry) => {
+      const nodeIds = entry.service.resources
+        .map((resource) => resource.nodeId)
+        .filter((nodeId) => layout.has(nodeId));
+      if (nodeIds.length === 0) {
+        return [];
+      }
+
+      return [
+        {
+          id: entry.service.id,
+          nodeIds,
+          bounds: calculateBoundsForNodeIds(nodeIds, (nodeId) => layout.get(nodeId) ?? null),
+        },
+      ];
+    })
+    .sort(
+      (left, right) =>
+        left.bounds.x - right.bounds.x || left.bounds.y - right.bounds.y || left.id.localeCompare(right.id),
+    );
+
+  if (services.length === 0) {
+    return layout;
+  }
+
+  const adjusted = new Map(layout);
+  const placed: Array<{ readonly bounds: Pick<VisualService, 'x' | 'y' | 'width' | 'height'> }> = [];
+
+  services.forEach((service) => {
+    let shiftedBounds = service.bounds;
+    let didShift = true;
+
+    while (didShift) {
+      didShift = false;
+
+      for (const previous of placed) {
+        if (
+          rangesOverlap(
+            shiftedBounds.x,
+            shiftedBounds.x + shiftedBounds.width,
+            previous.bounds.x,
+            previous.bounds.x + previous.bounds.width,
+          ) &&
+          rangesOverlap(
+            shiftedBounds.y,
+            shiftedBounds.y + shiftedBounds.height,
+            previous.bounds.y,
+            previous.bounds.y + previous.bounds.height,
+          )
+        ) {
+          shiftedBounds = {
+            ...shiftedBounds,
+            y: previous.bounds.y + previous.bounds.height + SERVICE_LANE_GAP,
+          };
+          didShift = true;
+        }
+      }
+    }
+
+    const deltaY = shiftedBounds.y - service.bounds.y;
+    if (deltaY !== 0) {
+      service.nodeIds.forEach((nodeId) => {
+        const position = adjusted.get(nodeId);
+        if (!position) {
+          return;
+        }
+
+        adjusted.set(nodeId, {
+          x: position.x,
+          y: position.y + deltaY,
+        });
+      });
+    }
+
+    placed.push({ bounds: shiftedBounds });
+  });
+
+  return normalizeLayoutOrigin(adjusted, services);
+}
+
+function rangesOverlap(startA: number, endA: number, startB: number, endB: number): boolean {
+  return Math.min(endA, endB) > Math.max(startA, startB);
+}
+
+function normalizeLayoutOrigin(
+  layout: ReadonlyMap<string, { readonly x: number; readonly y: number }>,
+  services: ReadonlyArray<{
+    readonly nodeIds: readonly string[];
+    readonly bounds: Pick<VisualService, 'x' | 'y' | 'width' | 'height'>;
+  }>,
+): ReadonlyMap<string, { readonly x: number; readonly y: number }> {
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+
+  layout.forEach((position) => {
+    minX = Math.min(minX, position.x - NODE_WIDTH / 2);
+    minY = Math.min(minY, position.y - NODE_HEIGHT / 2);
+  });
+  services.forEach((service) => {
+    minX = Math.min(minX, service.bounds.x);
+    minY = Math.min(minY, service.bounds.y);
+  });
+
+  const shiftX = minX < 0 ? -minX : 0;
+  const shiftY = minY < 0 ? -minY : 0;
+  if (shiftX === 0 && shiftY === 0) {
+    return layout;
+  }
+
+  return new Map(
+    Array.from(layout.entries(), ([nodeId, position]) => [
+      nodeId,
+      {
+        x: position.x + shiftX,
+        y: position.y + shiftY,
+      },
+    ]),
+  );
 }
 
 function buildVisualScenarios(input: GraphVisualSource): readonly VisualScenario[] {
