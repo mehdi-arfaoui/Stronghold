@@ -99,7 +99,7 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
       entry.service.resources.map((resource) => [resource.nodeId, entry] as const),
     ),
   );
-  const layout = packServiceLanes(buildLayout(input.nodes, visualEdges), serviceEntries);
+  const layout = packServiceLanes(buildLayout(input.nodes, visualEdges, serviceEntries), serviceEntries);
 
   const nodes = input.nodes
     .map((node) => {
@@ -213,29 +213,45 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
 function buildLayout(
   nodes: readonly InfraNodeAttrs[],
   edges: ReadonlyArray<{ readonly source: string; readonly target: string }>,
+  serviceEntries?: NonNullable<GraphVisualSource['servicePosture']>['services'],
 ): ReadonlyMap<string, { readonly x: number; readonly y: number }> {
-  const graph = new dagre.graphlib.Graph();
-  graph.setDefaultEdgeLabel(() => ({}));
-  graph.setGraph({
-    rankdir: 'LR',
-    ranksep: 90,
-    nodesep: 35,
-    marginx: 30,
-    marginy: 30,
-  });
+  	const graph = new dagre.graphlib.Graph({ compound: true });
+	graph.setDefaultEdgeLabel(() => ({}));
+	graph.setGraph({
+  		rankdir: 'LR',
+ 		 ranksep: 90,
+  		nodesep: 35,
+ 		 marginx: 30,
+  		marginy: 30,
+	});
 
-  nodes.forEach((node) => {
-    graph.setNode(node.id, {
-      width: NODE_WIDTH,
-      height: NODE_HEIGHT,
-    });
-  });
-  edges.forEach((edge) => {
-    if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
-      graph.setEdge(edge.source, edge.target);
+// Register service clusters as compound parents so dagre groups co-located nodes
+  if (serviceEntries) {
+    for (const entry of serviceEntries) {
+      const clusterId = `cluster_${entry.service.id}`;
+      graph.setNode(clusterId, {});
+      for (const resource of entry.service.resources) {
+        if (nodes.some((n) => n.id === resource.nodeId)) {
+          graph.setParent(resource.nodeId, clusterId);
+        }
+      }
     }
+  }
+
+nodes.forEach((node) => {
+  graph.setNode(node.id, {
+    width: NODE_WIDTH,
+    height: NODE_HEIGHT,
   });
-  dagre.layout(graph);
+});
+
+edges.forEach((edge) => {
+  if (graph.hasNode(edge.source) && graph.hasNode(edge.target)) {
+    graph.setEdge(edge.source, edge.target);
+  }
+});
+
+dagre.layout(graph);
 
   return new Map(
     nodes.map((node) => {

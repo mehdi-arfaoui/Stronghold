@@ -24,7 +24,9 @@
       content="Stronghold scans your AWS infrastructure and tells you which critical services cannot actually recover, with proof."
     >
     <link rel="canonical" href="https://stronghold.software">
-    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="icon" href="./logo.png" type="image/png">
+    <link rel="shortcut icon" href="./logo.png" type="image/png">
+    <link rel="apple-touch-icon" href="./logo.png">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
       rel="preload"
@@ -155,11 +157,21 @@
       }
 
       .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
         font-family: "JetBrains Mono", "Fira Code", monospace;
         font-size: 1rem;
         font-weight: 700;
         letter-spacing: 0.04em;
         text-transform: uppercase;
+      }
+
+      .brand-logo {
+        width: 28px;
+        height: 28px;
+        flex-shrink: 0;
+        object-fit: contain;
       }
 
       .nav-links,
@@ -608,7 +620,10 @@
     <header class="site-header" id="top">
       <div class="container">
         <nav class="site-nav" aria-label="Primary">
-          <a class="brand" href="#top">Stronghold</a>
+          <a class="brand" href="#top">
+            <img class="brand-logo" src="./logo.png" alt="" aria-hidden="true">
+            <span>Stronghold</span>
+          </a>
           <div class="nav-links">
             <a href="https://github.com/mehdi-arfaoui/Stronghold" target="_blank" rel="noopener noreferrer">GitHub</a>
             <span aria-hidden="true">&middot;</span>
@@ -670,10 +685,8 @@
             <div class="hero-note">First run downloads ~30MB. No AWS credentials needed.</div>
           </div>
           <div class="hero-visual">
-            <!-- Replace the placeholder below with:
-            <img src="assets/graph-hero.webp" alt="Stronghold graph screenshot with scenario mode enabled">
-            -->
-            <div class="hero-placeholder">Graph screenshot &mdash; replace with actual image</div>
+            <img src="assets/graph-hero.webp" alt="Stronghold DR Graph — Reality Gap analysis" 
+                style="width:100%;max-width:1100px;border-radius:12px;border:1px solid rgba(255,255,255,0.08);">
           </div>
         </section>
       </div>
@@ -696,9 +709,9 @@
               <h2>What Stronghold finds</h2>
               <div class="contrast-rule" aria-hidden="true"></div>
               <ul class="contrast-list">
-                <li class="contrast-danger"><span>Score: 45/100 (F)</span></li>
-                <li class="contrast-danger"><span>0/13 scenarios covered</span></li>
-                <li class="contrast-warning"><span>Runbook references stale resources</span></li>
+                <li class="contrast-danger"><span>Reality Gap: 56 points</span></li>
+                <li class="contrast-warning"><span>Claimed 56% protected</span></li>
+                <li><span>Proven 0% recoverable</span></li>
               </ul>
             </article>
             <article class="contrast-column">
@@ -770,7 +783,7 @@
           </div>
         </div>
       </section>
-      <section class="section" id="summary">
+      <section class="section" id="summary" hidden>
         <div class="container">
           <div class="summary-shell">
             <div class="terminal" role="img" aria-label="Stronghold status terminal output">
@@ -786,17 +799,84 @@
 
 Stronghold DR Intelligence
 
-Score  45/100 (<span class="terminal-d">D</span>)       Proof-of-Recovery  0% tested
+Reality Gap  56 pts  claimed 56% protected → 0% proven recoverable
+Score  39/100 (<span class="terminal-f">F</span>)       Proof-of-Recovery  0% tested · 100% observed
 Services  14 detected   Scenarios  0/13 covered
-DR Debt  680 (+12%)     Trend  stable
 
 Worst exposed
-  &#10007; database   <span class="terminal-f">F</span>  19/100  no tested restore path
-  &#10007; storage    <span class="terminal-f">F</span>  26/100  no cross-region replication
-  &#10007; dns        <span class="terminal-f">F</span>   0/100  single point of failure
+  &#10007; database   <span class="terminal-f">F</span>  19/100  no tested restore path · stale runbook
+  &#10007; storage    <span class="terminal-f">F</span>  26/100  no cross-region replication · stale runbook
+  &#10007; dns        <span class="terminal-f">F</span>   0/100  no failover configured · stale runbook
 
-Next action  Attach prod-db-primary to AWS Backup
+Next action  Enable S3 replication for "artifacts-bucket" [SAFE · +6 points]
              <span class="terminal-safe">[SAFE &middot; +4 points]</span></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="status-showcase">
+        <div class="container">
+          <div class="summary-shell">
+            <div class="terminal" role="img" aria-label="Stronghold status terminal output">
+              <div class="terminal-header">
+                <div class="terminal-dots" aria-hidden="true">
+                  <span class="terminal-dot" style="background:#ef4444"></span>
+                  <span class="terminal-dot" style="background:#f59e0b"></span>
+                  <span class="terminal-dot" style="background:#22c55e"></span>
+                </div>
+                <span>Terminal</span>
+              </div>
+              <pre class="terminal-body">$ stronghold status
+
+Stronghold DR Intelligence
+
+Reality Gap  56 pts  claimed 56% protected &rarr; 0% proven recoverable
+Score  39/100 (<span class="terminal-f">F</span>)          Proof-of-Recovery  0% tested &middot; 100% observed
+Services  14 detected      Scenarios  0/13 covered
+
+Worst exposed
+  &#10007; dns        <span class="terminal-f">F</span>    0/100   no failover configured &middot; stale runbook
+  &#10007; database   <span class="terminal-f">F</span>   19/100   no tested restore path &middot; stale runbook
+  &#10007; storage    <span class="terminal-f">F</span>   26/100   no cross-region replication &middot; stale runbook
+
+Next action  Enable S3 replication for "artifacts-bucket" <span class="terminal-safe">[SAFE &middot; +6 points]</span></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section section-contrast" id="see-why">
+        <div class="container">
+          <h2 class="section-title">See why</h2>
+          <div class="summary-shell">
+            <div class="terminal" role="img" aria-label="Stronghold explain database terminal output">
+              <div class="terminal-header">
+                <div class="terminal-dots" aria-hidden="true">
+                  <span class="terminal-dot" style="background:#ef4444"></span>
+                  <span class="terminal-dot" style="background:#f59e0b"></span>
+                  <span class="terminal-dot" style="background:#22c55e"></span>
+                </div>
+                <span>Terminal</span>
+              </div>
+              <pre class="terminal-body">$ stronghold explain database
+
+database - <span class="terminal-f">F</span> 19/100
+Reality Gap: claimed 29% protected -&gt; proven 0% recoverable -&gt; gap 29 pts
+
+Reasoning
+
+1. database consists of 1 resource.
+   prod-db-primary (DATABASE, datastore)
+
+2. prod-db-primary is the most connected dependency in database.
+   2 direct dependents and blast radius 8.
+
+3. &#10007; prod-db-primary No AWS Backup plan covers this resource.
+   Attach the resource to an AWS Backup plan.
+
+4. &#10007; No tested recovery evidence is recorded for this service.
+   No passing recovery rule has current tested evidence.</pre>
             </div>
           </div>
         </div>
@@ -807,9 +887,9 @@ Next action  Attach prod-db-primary to AWS Backup
           <div class="credibility">
             <span>TypeScript strict</span>
             <span aria-hidden="true">&middot;</span>
-            <span>654 tests</span>
+            <span>724 tests</span>
             <span aria-hidden="true">&middot;</span>
-            <span>81% core coverage</span>
+            <span>82.6% core coverage</span>
             <span aria-hidden="true">&middot;</span>
             <span>39 DR rules</span>
             <span aria-hidden="true">&middot;</span>
