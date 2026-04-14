@@ -30,6 +30,7 @@ export function analyzeTrend(
       global: {
         direction: 'stable',
         scoreTrend: [],
+        realityGapTrend: [],
         proofOfRecoveryTrend: [],
         observedCoverageTrend: [],
         findingTrend: [],
@@ -45,6 +46,9 @@ export function analyzeTrend(
   }
 
   const scoreTrend = orderedSnapshots.map((snapshot) => point(snapshot.timestamp, snapshot.globalScore));
+  const realityGapTrend = orderedSnapshots.flatMap((snapshot) =>
+    typeof snapshot.realityGap === 'number' ? [point(snapshot.timestamp, snapshot.realityGap)] : [],
+  );
   const proofOfRecoveryTrend = orderedSnapshots.flatMap((snapshot) =>
     typeof snapshot.proofOfRecovery === 'number'
       ? [point(snapshot.timestamp, snapshot.proofOfRecovery)]
@@ -71,6 +75,7 @@ export function analyzeTrend(
       global: {
         direction: 'stable',
         scoreTrend,
+        realityGapTrend,
         proofOfRecoveryTrend,
         observedCoverageTrend,
         findingTrend,
@@ -92,6 +97,7 @@ export function analyzeTrend(
     global: {
       direction: resolveTrendDirection(scoreTrend),
       scoreTrend,
+      realityGapTrend,
       proofOfRecoveryTrend,
       observedCoverageTrend,
       findingTrend,

@@ -77,7 +77,13 @@ export interface ReportCommandOptions extends GraphOverrideCommandOptions {
   readonly showPassed: boolean;
   readonly showResolved: boolean;
   readonly explainScore: boolean;
+  readonly reasoning: boolean;
   readonly verbose: boolean;
+}
+
+export interface ExplainCommandOptions {
+  readonly verbose: boolean;
+  readonly json: boolean;
 }
 
 export interface GraphCommandOptions {

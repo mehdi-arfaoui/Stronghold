@@ -344,6 +344,9 @@ function createSnapshot(overrides: Partial<ScanSnapshot>): ScanSnapshot {
     globalScore: overrides.globalScore ?? 68,
     globalGrade: overrides.globalGrade ?? 'C',
     proofOfRecovery: overrides.proofOfRecovery ?? 33,
+    claimedProtection: overrides.claimedProtection ?? 82,
+    provenRecoverability: overrides.provenRecoverability ?? 33,
+    realityGap: overrides.realityGap ?? 49,
     observedCoverage: overrides.observedCoverage ?? 60,
     totalResources: overrides.totalResources ?? 142,
     totalFindings: overrides.totalFindings ?? 12,
@@ -395,6 +398,7 @@ function createTrend(
     global: {
       direction,
       scoreTrend: [],
+      realityGapTrend: [],
       proofOfRecoveryTrend: [],
       observedCoverageTrend: [],
       findingTrend: [],

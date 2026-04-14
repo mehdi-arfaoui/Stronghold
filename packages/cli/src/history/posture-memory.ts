@@ -62,6 +62,7 @@ export async function updateLocalPostureMemory(
       governance: results.governance,
       scenarioAnalysis: results.scenarioAnalysis,
       evidenceSummary,
+      realityGap: results.realityGap,
       scanDurationMs: results.scanMetadata?.totalDurationMs,
       scannerSuccessCount: results.scanMetadata?.successfulScanners,
       scannerFailureCount: results.scanMetadata?.failedScanners,

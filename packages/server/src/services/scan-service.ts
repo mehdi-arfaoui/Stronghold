@@ -9,11 +9,14 @@ import {
   applyScenarioImpactToServicePosture,
   applyEvidenceFreshness,
   applyDebtToSnapshot,
+  buildReasoningChain,
   buildScanSnapshot,
+  calculateRealityGap,
   calculateProofOfRecovery,
   checkFreshness,
   collectGovernanceAuditEvents,
   collectTrackedFindings,
+  condenseReasoningChain,
   EVIDENCE_CONFIDENCE,
   calculateServiceDebt,
   deserializeDRPlan,
@@ -43,6 +46,7 @@ import {
   type ApiScenarioDetailResponse,
   type ApiScenariosResponse,
   type ApiServiceHistoryResponse,
+  type ApiServiceReasoningResponse,
   type ApiServicesResponse,
   type ApiValidationReportResponse,
   type DRCategory,
@@ -59,6 +63,8 @@ import {
   type ServiceDebt,
   type ValidationReport,
   type ValidationSeverity,
+  type RealityGapResult,
+  type ReasoningScanResult,
 } from '@stronghold-dr/core';
 import type { Logger } from '@stronghold-dr/core';
 
@@ -134,15 +140,16 @@ export class ScanService {
   }
 
   public async getScanData(scanId: string) {
-    await this.requireCompletedScan(scanId);
+    const scan = await this.requireCompletedScan(scanId);
     const data = await this.infrastructureRepository.getScanData(scanId);
     if (!data) {
       throw new ServerError('Scan data not found', { code: 'SCAN_NOT_FOUND', status: 404 });
     }
-    const [servicePosture, scenarioAnalysis, governance] = await Promise.all([
+    const [servicePosture, scenarioAnalysis, governance, drpPlan] = await Promise.all([
       this.serviceDetectionService.getPersistedServicePosture(scanId),
       this.getPersistedScenarioAnalysis(scanId),
       this.getPersistedGovernance(scanId),
+      this.getPersistedDrPlan(scanId),
     ]);
     const storedEvidence = await this.getStoredEvidence(scanId, this.buildServiceLookup(servicePosture));
     const validationReport =
@@ -153,11 +160,22 @@ export class ScanService {
       validationReport,
       servicePosture,
     });
+    const realityGap = calculateRealityGap({
+      nodes: data.nodes,
+      validationReport,
+      servicePosture,
+      scenarioAnalysis,
+      drpPlan,
+    });
 
     return {
+      timestamp: scan.updatedAt.toISOString(),
+      provider: scan.provider,
       ...data,
       validationReport,
       proofOfRecovery,
+      realityGap,
+      ...(drpPlan ? { drpPlan } : {}),
       ...(servicePosture ? { servicePosture } : {}),
       ...(governance ? { governance } : {}),
       ...(scenarioAnalysis ? { scenarioAnalysis } : {}),
@@ -170,7 +188,9 @@ export class ScanService {
 
   public async getLatestServices() {
     const services = await this.serviceDetectionService.getLatestServices();
-    return this.enrichServicesResponseWithEvidence(services);
+    return this.enrichServicesResponseWithReasoning(
+      await this.enrichServicesResponseWithEvidence(services),
+    );
   }
 
   public async getServiceDetail(serviceId: string) {
@@ -186,15 +206,57 @@ export class ScanService {
         recommendations: [],
       },
     });
+    const enriched = await this.enrichServicesResponseWithReasoning(services);
     return {
       ...detail,
-      service: services.services[0] ?? detail.service,
+      service: enriched.services[0] ?? detail.service,
     };
   }
 
   public async redetectLatestServices() {
     const services = await this.serviceDetectionService.redetectLatestServices();
-    return this.enrichServicesResponseWithEvidence(services);
+    return this.enrichServicesResponseWithReasoning(
+      await this.enrichServicesResponseWithEvidence(services),
+    );
+  }
+
+  public async getServiceReasoning(serviceId: string): Promise<ApiServiceReasoningResponse> {
+    const latestScan = await this.getLatestCompletedScanRequired();
+    const currentScan = await this.getScanData(latestScan.id);
+    if (!currentScan.servicePosture) {
+      throw new ServerError('Service posture not found for latest scan', {
+        code: 'SCAN_NOT_FOUND',
+        status: 404,
+      });
+    }
+
+    const normalizedQuery = serviceId.trim().toLowerCase();
+    const service =
+      currentScan.servicePosture.services.find((entry) => entry.service.id.toLowerCase() === normalizedQuery) ??
+      currentScan.servicePosture.services.find(
+        (entry) => entry.service.name.toLowerCase() === normalizedQuery,
+      );
+    if (!service) {
+      throw new ServerError('Service not found', {
+        code: 'SCAN_NOT_FOUND',
+        status: 404,
+      });
+    }
+
+    const previousScan = await this.loadPreviousReasoningScan(latestScan.id);
+    const chain = buildReasoningChain(
+      service.service.id,
+      this.toReasoningScanResult(currentScan),
+      previousScan,
+      await this.getLatestFindingLifecycles(),
+      currentScan.realityGap ?? this.resolveRealityGap(currentScan),
+    );
+
+    return {
+      scanId: latestScan.id,
+      generatedAt: latestScan.updatedAt.toISOString(),
+      chain,
+    };
   }
 
   public async listHistory(options: { readonly limit: number }): Promise<ApiHistoryResponse> {
@@ -470,6 +532,7 @@ export class ScanService {
         validationReport: scanData.validationReport,
         servicePosture: scanData.servicePosture ?? null,
       }),
+      realityGap: scanData.realityGap ?? this.resolveRealityGap(scanData),
     };
   }
 
@@ -544,6 +607,20 @@ export class ScanService {
     return report ? (report.content as GovernanceState) : null;
   }
 
+  public async getPersistedDrPlan(scanId: string): Promise<DRPlan | null> {
+    const plan = await this.scanRepository.getLatestDRPlan(scanId);
+    if (!plan) {
+      return null;
+    }
+
+    const parsed = deserializeDRPlan(plan.content);
+    if (!parsed.ok) {
+      return null;
+    }
+
+    return parsed.value;
+  }
+
   public async getLatestGovernance(): Promise<ApiGovernanceResponse> {
     const latestScan = await this.scanRepository.getLatestCompletedScanSummary();
     if (!latestScan) {
@@ -588,6 +665,7 @@ export class ScanService {
     readonly servicePosture: ServicePosture;
     readonly governance?: GovernanceState | null;
     readonly scenarioAnalysis: ScenarioAnalysis;
+    readonly realityGap: RealityGapResult;
     readonly regions: readonly string[];
     readonly totalResources: number;
   }): Promise<void> {
@@ -605,6 +683,7 @@ export class ScanService {
       servicePosture: params.servicePosture,
       ...(params.governance ? { governance: params.governance } : {}),
       scenarioAnalysis: params.scenarioAnalysis,
+      realityGap: params.realityGap,
     });
     const lifecycleStore = new InMemoryFindingLifecycleStore(
       await this.getLatestFindingLifecycles(),
@@ -707,6 +786,60 @@ export class ScanService {
       });
     }
     return latestScan;
+  }
+
+  private async loadPreviousReasoningScan(
+    currentScanId: string,
+  ): Promise<ReasoningScanResult | null> {
+    const previousScan = await this.scanRepository.getPreviousCompletedScanSummary(currentScanId);
+    if (!previousScan) {
+      return null;
+    }
+
+    const previousData = await this.getScanData(previousScan.id);
+    if (!previousData.servicePosture) {
+      return null;
+    }
+
+    return this.toReasoningScanResult(previousData);
+  }
+
+  private async enrichServicesResponseWithReasoning(
+    response: ApiServicesResponse,
+  ): Promise<ApiServicesResponse> {
+    const scanData = await this.getScanData(response.scanId);
+    if (!scanData.servicePosture) {
+      return response;
+    }
+
+    const realityGap = scanData.realityGap ?? this.resolveRealityGap(scanData);
+    const previousScan = await this.loadPreviousReasoningScan(response.scanId);
+    const lifecycles = await this.getLatestFindingLifecycles();
+
+    return {
+      ...response,
+      services: response.services.map((service) => {
+        const chain = buildReasoningChain(
+          service.service.id,
+          this.toReasoningScanResult(scanData),
+          previousScan,
+          lifecycles,
+          realityGap,
+        );
+
+        return {
+          ...service,
+          realityGap:
+            realityGap.perService.find((entry) => entry.serviceId === service.service.id) ?? null,
+          reasoning: {
+            bullets: condenseReasoningChain(chain, 4),
+            insights: chain.insights.map((insight) => insight.summary),
+            conclusion: chain.conclusion,
+            nextAction: chain.nextAction,
+          },
+        };
+      }),
+    };
   }
 
   private async getCombinedEvidence(scanId: string): Promise<readonly Evidence[]> {
@@ -971,6 +1104,13 @@ export class ScanService {
             policyViolations: policyOutcome?.violations ?? [],
           }
         : null;
+      const realityGap = calculateRealityGap({
+        nodes: execution.artifacts.nodes,
+        validationReport: execution.artifacts.validationReport,
+        servicePosture: finalPosture,
+        scenarioAnalysis,
+        drpPlan: execution.artifacts.drPlan,
+      });
       await this.serviceDetectionService.saveServicePosture(
         scanId,
         finalPosture,
@@ -1020,6 +1160,7 @@ export class ScanService {
         servicePosture: finalPosture,
         governance: governanceState,
         scenarioAnalysis,
+        realityGap,
         regions: params.regions,
         totalResources: execution.artifacts.nodes.length,
       });
@@ -1085,6 +1226,56 @@ export class ScanService {
         edges,
         timestamp,
       }),
+    };
+  }
+
+  private resolveRealityGap(scanData: {
+    readonly nodes: readonly InfraNode[];
+    readonly validationReport: ValidationReport;
+    readonly servicePosture?: ServicePosture;
+    readonly scenarioAnalysis?: ScenarioAnalysis | null;
+    readonly drpPlan?: DRPlan | null;
+    readonly realityGap?: RealityGapResult;
+  }): RealityGapResult {
+    return (
+      scanData.realityGap ??
+      calculateRealityGap({
+        nodes: scanData.nodes,
+        validationReport: scanData.validationReport,
+        servicePosture: scanData.servicePosture,
+        scenarioAnalysis: scanData.scenarioAnalysis,
+        drpPlan: scanData.drpPlan,
+      })
+    );
+  }
+
+  private toReasoningScanResult(scanData: {
+    readonly timestamp?: string;
+    readonly nodes: readonly InfraNode[];
+    readonly edges: ReadonlyArray<core.ScanEdge>;
+    readonly provider: string;
+    readonly validationReport: ValidationReport;
+    readonly servicePosture?: ServicePosture;
+    readonly scenarioAnalysis?: ScenarioAnalysis | null;
+    readonly drpPlan?: DRPlan | null;
+    readonly governance?: GovernanceState | null;
+  }): ReasoningScanResult {
+    if (!scanData.servicePosture) {
+      throw new Error('Service posture is unavailable for reasoning.');
+    }
+
+    return {
+      ...scanData,
+      timestamp: scanData.timestamp,
+      provider: scanData.provider,
+      nodes: [...scanData.nodes],
+      edges: [...scanData.edges],
+      scannedAt: scanData.timestamp ? new Date(scanData.timestamp) : new Date(0),
+      validationReport: scanData.validationReport,
+      servicePosture: scanData.servicePosture,
+      scenarioAnalysis: scanData.scenarioAnalysis,
+      drpPlan: scanData.drpPlan,
+      governance: scanData.governance,
     };
   }
 

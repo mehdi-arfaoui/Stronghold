@@ -8,7 +8,8 @@ import type {
 import type { GovernanceScoreComparison, RiskAcceptance } from '../governance/risk-acceptance.js';
 import type { PolicyViolation } from '../governance/policy-types.js';
 import type { FindingLifecycle, PostureTrend, ScanSnapshot, ServiceTrend } from '../history/index.js';
-import type { ProofOfRecoveryResult } from '../scoring/index.js';
+import type { ProofOfRecoveryResult, RealityGapResult, RealityGapServiceDetail } from '../scoring/index.js';
+import type { ReasoningChain } from '../reasoning/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
 import type { Scenario, ScenarioCoverageSummary } from '../scenarios/scenario-types.js';
@@ -66,6 +67,7 @@ export interface ApiScanData {
   readonly analysis: SerializedGraphAnalysis;
   readonly validationReport: ValidationReport;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
+  readonly realityGap?: RealityGapResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: {
     readonly riskAcceptances: readonly RiskAcceptance[];
@@ -82,6 +84,7 @@ export interface ApiScanData {
 
 export interface ApiValidationReportResponse extends ValidationReport {
   readonly proofOfRecovery: ProofOfRecoveryResult | null;
+  readonly realityGap: RealityGapResult | null;
 }
 
 export interface ApiValidationSummary {
@@ -102,6 +105,15 @@ export interface ApiServiceSummary {
   readonly score: ServiceScore;
   readonly contextualFindings: readonly ContextualFinding[];
   readonly recommendations: readonly ServiceRecommendationProjection[];
+  readonly realityGap?: RealityGapServiceDetail | null;
+  readonly reasoning?:
+    | {
+        readonly bullets: readonly string[];
+        readonly insights: readonly string[];
+        readonly conclusion: string;
+        readonly nextAction: string | null;
+      }
+    | null;
 }
 
 export interface ApiServicesResponse {
@@ -121,6 +133,12 @@ export interface ApiServiceDetailResponse {
   readonly generatedAt: string;
   readonly service: ApiServiceSummary;
   readonly unassignedResourceCount: number;
+}
+
+export interface ApiServiceReasoningResponse {
+  readonly scanId: string;
+  readonly generatedAt: string;
+  readonly chain: ReasoningChain;
 }
 
 export interface ApiGovernanceOwnershipSummary {

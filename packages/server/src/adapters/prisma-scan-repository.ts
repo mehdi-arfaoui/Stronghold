@@ -361,6 +361,18 @@ export class PrismaScanRepository {
     return scan ? toSummary(scan) : null;
   }
 
+  public async getPreviousCompletedScanSummary(excludeScanId: string): Promise<ScanSummary | null> {
+    const scan = await this.prisma.scan.findFirst({
+      where: {
+        status: 'COMPLETED',
+        NOT: { id: excludeScanId },
+      },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    });
+
+    return scan ? toSummary(scan) : null;
+  }
+
   public async getLatestScan(provider: string): Promise<ScanRecord | null> {
     const scan = await this.prisma.scan.findFirst({
       where: {

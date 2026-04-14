@@ -1,4 +1,8 @@
 import type { GovernanceState } from '../governance/risk-acceptance.js';
+import type { FindingLifecycle } from '../history/finding-lifecycle-types.js';
+import type { DRPlan } from '../drp/drp-types.js';
+import type { RealityGapResult } from '../scoring/reality-gap-types.js';
+import type { ReasoningScanResult } from '../reasoning/reasoning-types.js';
 import type { ProofOfRecoveryResult } from '../scoring/proof-of-recovery-types.js';
 import type {
   Scenario,
@@ -55,9 +59,16 @@ export interface VisualService {
   readonly score: number;
   readonly grade: Grade;
   readonly criticality: string;
+  readonly claimedProtection: number;
+  readonly provenRecoverability: number;
+  readonly realityGap: number;
   readonly findingCount: number;
   readonly worstSeverity: Severity | null;
   readonly nodeIds: readonly string[];
+  readonly reasoning: readonly string[];
+  readonly insights: readonly string[];
+  readonly conclusion: string;
+  readonly nextAction: string | null;
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -83,6 +94,9 @@ export interface GraphVisualData {
   readonly services: readonly VisualService[];
   readonly globalScore: number;
   readonly globalGrade: Grade;
+  readonly claimedProtection: number;
+  readonly provenRecoverability: number | null;
+  readonly realityGap: number | null;
   readonly proofOfRecovery: number | null;
   readonly observedCoverage: number;
   readonly scanDate: string;
@@ -97,8 +111,12 @@ export interface GraphVisualSource {
   readonly timestamp?: string;
   readonly validationReport?: ValidationReport;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
+  readonly realityGap?: RealityGapResult;
+  readonly drpPlan?: DRPlan | null;
   readonly servicePosture?: ServicePosture;
   readonly governance?: Pick<GovernanceState, 'score'> | null;
+  readonly previousScanResult?: ReasoningScanResult | null;
+  readonly findingLifecycles?: readonly FindingLifecycle[] | null;
   readonly scenarioAnalysis?:
     | ScenarioAnalysis
     | {

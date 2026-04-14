@@ -242,6 +242,18 @@ Built-in scenarios include AZ failure, region failure, single points of failure,
 
 Scenario coverage is included in the scan summary and in `stronghold status`.
 
+## Understand Why a Service Is at Risk
+
+Get the full reasoning chain for any service:
+
+```bash
+npx @stronghold-dr/cli explain payment
+```
+
+Stronghold shows the service reality gap, step-by-step reasoning for its
+score, and graph insights such as cascade failure risk, dependency drift,
+and recovery path erosion.
+
 ## 10. Visualize the Dependency Graph
 
 Export an interactive graph of your infrastructure:

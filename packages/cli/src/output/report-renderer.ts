@@ -1,7 +1,10 @@
 import {
+  buildReasoningChain,
   buildFindingKey,
   checkFreshness,
+  condenseReasoningChain,
   EVIDENCE_CONFIDENCE,
+  calculateRealityGap,
   summarizeEvidenceMaturity,
   type FindingLifecycle,
   type ContextualFinding,
@@ -14,6 +17,8 @@ import {
   type ValidationReportWithEvidence,
   type ValidationSeverity,
   type WeightedValidationResult,
+  type RealityGapResult,
+  type ReasoningScanResult,
 } from '@stronghold-dr/core';
 
 import type { ScanResults } from '../storage/file-store.js';
@@ -41,6 +46,8 @@ export interface ReportRenderOptions {
   readonly explainScore?: boolean;
   readonly findingLifecycles?: ReadonlyMap<string, FindingLifecycle>;
   readonly resolvedLifecycles?: readonly FindingLifecycle[];
+  readonly reasoning?: boolean;
+  readonly previousScan?: ScanResults | null;
 }
 
 const CATEGORY_LABELS: Readonly<Record<DRCategory, string>> = {
@@ -226,6 +233,7 @@ export function renderTerminalServiceReport(
     `Critical services: ${scan.servicePosture.services.filter((service) => service.score.criticality === 'critical').length}`,
   );
   appendEvidenceMaturitySection(lines, scan.validationReport);
+  appendServiceAnalysisSection(lines, scan, options);
 
   for (const service of sortServiceEntries(scan.servicePosture.services)) {
     lines.push('');
@@ -340,6 +348,7 @@ export function renderMarkdownServiceReport(
   lines.push(`- Services detected: ${scan.servicePosture.services.length}`);
   lines.push('');
   appendMarkdownEvidenceMaturity(lines, scan.validationReport);
+  appendMarkdownServiceAnalysisSection(lines, scan, options);
 
   for (const service of sortServiceEntries(scan.servicePosture.services)) {
     lines.push('');
@@ -436,6 +445,8 @@ export function buildServiceReportJson(
   filters: ReportRenderOptions,
 ): Record<string, unknown> {
   const posture = scan.servicePosture;
+  const realityGap = resolveRealityGap(scan);
+  const serviceAnalysis = buildServiceAnalysis(scan, filters);
 
   return {
     ...scan.validationReport,
@@ -446,10 +457,13 @@ export function buildServiceReportJson(
       serviceCount: posture?.services.length ?? 0,
       unassignedResources: posture?.unassigned.resourceCount ?? scan.nodes.length,
     },
+    realityGap,
+    serviceAnalysis,
     services:
       posture?.services.map((service) => ({
         ...service,
         contextualFindings: filterContextualFindings(service.contextualFindings, filters),
+        realityGap: realityGap.perService.find((entry) => entry.serviceId === service.service.id) ?? null,
       })) ?? [],
     unassigned: posture
       ? {
@@ -482,6 +496,131 @@ export function buildServiceReportJson(
     scenarios: scan.scenarioAnalysis?.scenarios ?? [],
     defaultScenarioIds: scan.scenarioAnalysis?.defaultScenarioIds ?? [],
     scenarioCoverage: scan.scenarioAnalysis?.summary ?? null,
+  };
+}
+
+function appendServiceAnalysisSection(
+  lines: string[],
+  scan: ScanResults,
+  options: ReportRenderOptions,
+): void {
+  const serviceAnalysis = buildServiceAnalysis(scan, options);
+  if (options.reasoning === false || serviceAnalysis.length === 0) {
+    return;
+  }
+
+  lines.push('');
+  lines.push(theme.section('Service Analysis (Worst 3)'));
+  serviceAnalysis.forEach((entry) => {
+    lines.push(`${entry.serviceName} (${entry.grade} ${entry.score}/100 | gap ${entry.realityGap} pts)`);
+    entry.bullets.forEach((bullet) => {
+      lines.push(`- ${bullet}`);
+    });
+    lines.push(
+      `Next: ${entry.nextAction ?? 'No recommendation available'}${entry.risk ? ` [${entry.risk.toUpperCase()}]` : ''}`,
+    );
+    lines.push('');
+  });
+}
+
+function appendMarkdownServiceAnalysisSection(
+  lines: string[],
+  scan: ScanResults,
+  options: ReportRenderOptions,
+): void {
+  const serviceAnalysis = buildServiceAnalysis(scan, options);
+  if (options.reasoning === false || serviceAnalysis.length === 0) {
+    return;
+  }
+
+  lines.push('## Service Analysis (Worst 3)');
+  lines.push('');
+  serviceAnalysis.forEach((entry) => {
+    lines.push(`### ${entry.serviceName} (${entry.grade} ${entry.score}/100 | gap ${entry.realityGap} pts)`);
+    lines.push('');
+    entry.bullets.forEach((bullet) => {
+      lines.push(`- ${bullet}`);
+    });
+    lines.push(`- Next: ${entry.nextAction ?? 'No recommendation available'}${entry.risk ? ` [${entry.risk.toUpperCase()}]` : ''}`);
+    lines.push('');
+  });
+}
+
+function buildServiceAnalysis(
+  scan: ScanResults,
+  options: ReportRenderOptions,
+): ReadonlyArray<{
+  readonly serviceId: string;
+  readonly serviceName: string;
+  readonly score: number;
+  readonly grade: string;
+  readonly realityGap: number;
+  readonly bullets: readonly string[];
+  readonly nextAction: string | null;
+  readonly risk: string | null;
+}> {
+  if (!scan.servicePosture || options.reasoning === false) {
+    return [];
+  }
+
+  const realityGap = resolveRealityGap(scan);
+  const lifecycles = Array.from(options.findingLifecycles?.values() ?? []);
+  const candidates = scan.servicePosture.services
+    .filter((service) => service.score.grade !== 'A' && service.score.grade !== 'B')
+    .slice()
+    .sort(
+      (left, right) =>
+        left.score.score - right.score.score ||
+        left.service.id.localeCompare(right.service.id),
+    )
+    .slice(0, 3);
+
+  return candidates.map((service) => {
+    const chain = buildReasoningChain(
+      service.service.id,
+      toReasoningScanResult(scan),
+      options.previousScan ? toReasoningScanResult(options.previousScan) : null,
+      lifecycles,
+      realityGap,
+    );
+
+    return {
+      serviceId: service.service.id,
+      serviceName: service.service.name,
+      score: chain.score,
+      grade: chain.grade,
+      realityGap: chain.realityGap,
+      bullets: condenseReasoningChain(chain, 4),
+      nextAction: chain.nextAction,
+      risk: service.recommendations[0]?.risk ?? null,
+    };
+  });
+}
+
+function resolveRealityGap(scan: ScanResults): RealityGapResult {
+  return (
+    scan.realityGap ??
+    calculateRealityGap({
+      nodes: scan.nodes,
+      validationReport: scan.validationReport,
+      servicePosture: scan.servicePosture,
+      scenarioAnalysis: scan.scenarioAnalysis,
+      drpPlan: scan.drpPlan,
+    })
+  );
+}
+
+function toReasoningScanResult(scan: ScanResults): ReasoningScanResult {
+  if (!scan.servicePosture) {
+    throw new Error('Service posture is unavailable for reasoning.');
+  }
+
+  return {
+    ...scan,
+    servicePosture: scan.servicePosture,
+    nodes: [...scan.nodes],
+    edges: [...scan.edges],
+    scannedAt: new Date(scan.timestamp),
   };
 }
 

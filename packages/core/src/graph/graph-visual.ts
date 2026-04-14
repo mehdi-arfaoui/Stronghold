@@ -1,7 +1,10 @@
 import dagre from 'dagre';
 
 import { gradeForScore } from '../validation/index.js';
+import { buildReasoningChain } from '../reasoning/reasoning-engine.js';
+import type { ReasoningScanResult } from '../reasoning/reasoning-types.js';
 import { calculateProofOfRecovery } from '../scoring/proof-of-recovery.js';
+import { calculateRealityGap } from '../scoring/reality-gap.js';
 import { classifyResourceRole, normalizeEdgeType } from '../services/service-utils.js';
 import type { InfraNodeAttrs, Severity, ScanResult } from '../types/infrastructure.js';
 import type { ValidationStatus, WeightedValidationResult } from '../validation/validation-types.js';
@@ -16,9 +19,11 @@ import type {
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 68;
-const SERVICE_SIDE_PADDING = 16;
-const SERVICE_BOTTOM_PADDING = 12;
-const SERVICE_TOP_PADDING = 26;
+const SERVICE_SIDE_PADDING = 20;
+const SERVICE_VERTICAL_PADDING = 20;
+const SERVICE_LABEL_PADDING_TOP = 28;
+const SERVICE_TOP_PADDING = SERVICE_VERTICAL_PADDING + SERVICE_LABEL_PADDING_TOP;
+const SERVICE_BOTTOM_PADDING = SERVICE_VERTICAL_PADDING;
 const SERVICE_LANE_GAP = 18;
 const DEFAULT_SCAN_DATE = '1970-01-01T00:00:00.000Z';
 const EXCLUDED_VISUAL_EDGE_TYPES = new Set(['contains', 'member_of', 'secured_by']);
@@ -70,6 +75,22 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
           servicePosture: input.servicePosture,
         })
       : null);
+  const realityGap =
+    input.realityGap ??
+    (input.validationReport
+      ? calculateRealityGap({
+          nodes: input.nodes,
+          validationReport: input.validationReport,
+          servicePosture: input.servicePosture,
+          scenarioAnalysis: input.scenarioAnalysis,
+          drpPlan: input.drpPlan,
+        })
+      : {
+          claimedProtection: 0,
+          provenRecoverability: null,
+          realityGap: null,
+          perService: [],
+        });
   const nodeFindings = buildNodeFindings(input);
   const nodeRecommendations = buildNodeRecommendations(input);
   const serviceEntries = input.servicePosture?.services ?? [];
@@ -122,6 +143,18 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
       }
 
       const bounds = calculateServiceBounds(nodeIds, nodeById);
+      const serviceRealityGap =
+        realityGap.perService.find((detail) => detail.serviceId === entry.service.id) ?? null;
+      const chain =
+        input.validationReport && input.servicePosture
+          ? buildReasoningChain(
+              entry.service.id,
+              toReasoningScanResult(input),
+              input.previousScanResult ?? null,
+              input.findingLifecycles ?? null,
+              realityGap,
+            )
+          : null;
       return [
         {
           id: entry.service.id,
@@ -129,9 +162,16 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
           score: entry.score.score,
           grade: entry.score.grade,
           criticality: entry.service.criticality,
+          claimedProtection: serviceRealityGap?.claimedProtection ?? 0,
+          provenRecoverability: serviceRealityGap?.provenRecoverability ?? 0,
+          realityGap: serviceRealityGap?.realityGap ?? 0,
           findingCount: countFindings(entry.score.findingsCount),
           worstSeverity: resolveWorstSeverityFromCounts(entry.score.findingsCount),
           nodeIds,
+          reasoning: chain ? condenseChain(chain, 4) : [],
+          insights: chain ? chain.insights.map((insight) => insight.summary) : [],
+          conclusion: chain?.conclusion ?? '',
+          nextAction: chain?.nextAction ?? null,
           ...bounds,
         } satisfies VisualService,
       ];
@@ -160,6 +200,9 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
     services,
     globalScore,
     globalGrade,
+    claimedProtection: realityGap.claimedProtection,
+    provenRecoverability: realityGap.provenRecoverability,
+    realityGap: realityGap.realityGap,
     proofOfRecovery: proof?.proofOfRecovery ?? null,
     observedCoverage: proof?.observedCoverage ?? 0,
     scanDate: resolveScanDate(input),
@@ -303,11 +346,17 @@ function calculateBoundsForNodeIds(
     maxY = Math.max(maxY, position.y + NODE_HEIGHT / 2);
   });
 
+  const contentWidth = maxX - minX;
+  const contentHeight = maxY - minY;
+
   return {
     x: minX - SERVICE_SIDE_PADDING,
     y: minY - SERVICE_TOP_PADDING,
-    width: maxX - minX + SERVICE_SIDE_PADDING * 2,
-    height: maxY - minY + SERVICE_TOP_PADDING + SERVICE_BOTTOM_PADDING,
+    width: Math.max(contentWidth + SERVICE_SIDE_PADDING * 2, NODE_WIDTH + SERVICE_SIDE_PADDING * 2),
+    height: Math.max(
+      contentHeight + SERVICE_TOP_PADDING + SERVICE_BOTTOM_PADDING,
+      NODE_HEIGHT + SERVICE_TOP_PADDING + SERVICE_BOTTOM_PADDING,
+    ),
   };
 }
 
@@ -575,6 +624,35 @@ function countFindings(counts: {
   readonly low: number;
 }): number {
   return counts.critical + counts.high + counts.medium + counts.low;
+}
+
+function condenseChain(
+  chain: ReturnType<typeof buildReasoningChain>,
+  maxItems: number,
+): readonly string[] {
+  return [
+    ...chain.steps
+      .filter((step) => step.type !== 'service_composition' && step.type !== 'critical_dependency')
+      .map((step) => step.summary),
+    ...chain.insights.map((insight) => `${insight.type.replace(/_/g, ' ').toUpperCase()}: ${insight.summary}`),
+  ]
+    .slice(0, maxItems);
+}
+
+function toReasoningScanResult(input: GraphVisualSource): ReasoningScanResult {
+  if (!input.validationReport || !input.servicePosture) {
+    throw new Error('Reasoning requires validation and service posture data.');
+  }
+
+  return {
+    ...input,
+    nodes: [...input.nodes],
+    edges: [...input.edges],
+    validationReport: input.validationReport,
+    servicePosture: input.servicePosture,
+    governance: null,
+    scannedAt: new Date(resolveScanDate(input)),
+  };
 }
 
 function resolveScanDate(input: GraphVisualSource): string {

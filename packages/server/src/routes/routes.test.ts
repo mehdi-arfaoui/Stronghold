@@ -116,6 +116,24 @@ function createTestApp(options?: {
       },
       unassignedResourceCount: 0,
     }),
+    getServiceReasoning: vi.fn().mockResolvedValue({
+      scanId: VALID_UUID,
+      generatedAt: '2026-03-27T15:00:00.000Z',
+      chain: {
+        serviceId: 'payment',
+        serviceName: 'Payment',
+        score: 34,
+        grade: 'D',
+        criticality: 'critical',
+        claimedProtection: 87,
+        provenRecoverability: 0,
+        realityGap: 87,
+        steps: [],
+        insights: [],
+        conclusion: 'Payment is not recoverable.',
+        nextAction: 'Attach backup policy',
+      },
+    }),
     listScenarios: vi.fn().mockResolvedValue({
       scanId: VALID_UUID,
       generatedAt: '2026-03-27T15:00:00.000Z',
@@ -177,6 +195,7 @@ function createTestApp(options?: {
         global: {
           direction: 'stable',
           scoreTrend: [],
+          realityGapTrend: [],
           proofOfRecoveryTrend: [],
           observedCoverageTrend: [],
           findingTrend: [],
@@ -428,6 +447,16 @@ describe('server routes', () => {
     expect(response.body.service.service.id).toBe('payment');
   });
 
+  it('GET /api/services/:id/reasoning returns the reasoning chain for a service', async () => {
+    const app = createTestApp();
+
+    const response = await request(app).get('/api/services/payment/reasoning');
+
+    expect(response.status).toBe(200);
+    expect(response.body.chain.serviceId).toBe('payment');
+    expect(response.body.chain.realityGap).toBe(87);
+  });
+
   it('GET /api/governance returns the latest governance payload', async () => {
     const app = createTestApp();
 
@@ -547,6 +576,7 @@ describe('server routes', () => {
             global: {
               direction: 'degrading',
               scoreTrend: [],
+              realityGapTrend: [],
               proofOfRecoveryTrend: [],
               observedCoverageTrend: [],
               findingTrend: [],

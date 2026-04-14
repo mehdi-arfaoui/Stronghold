@@ -42,6 +42,9 @@ describe('renderGraphHtml', () => {
     expect(html).toContain('edge-label-bg');
     expect(html).toContain('<g class="node-icon"');
     expect(html).toContain(`${visual.globalScore}/100`);
+    expect(html).toContain('Reality Gap');
+    expect(html).toContain('id="gap-strip"');
+    expect(html).toContain('id="gap-claimed-marker"');
   });
 
   it('includes the scenario selector options', async () => {
@@ -71,6 +74,15 @@ describe('renderGraphHtml', () => {
     const html = renderGraphHtml(await createStartupVisualData());
 
     expect(html).not.toMatch(/[\u{1F300}-\u{1FAFF}]/u);
+  });
+
+  it('includes service reasoning and graph insight data for the sidebar', async () => {
+    const html = renderGraphHtml(await createStartupVisualData());
+
+    expect(html).toContain('Select a node to inspect its service, reality gap, findings, and recovery posture.');
+    expect(html).toContain('<h3>Reality Gap</h3>');
+    expect(html).toContain('<h3>Reasoning</h3>');
+    expect(html).toContain('<h3>Graph Insights</h3>');
   });
 
   it('keeps the startup demo export under 200KB', async () => {
@@ -164,9 +176,16 @@ function createArnVisualData(): GraphVisualData {
         score: 42,
         grade: 'D',
         criticality: 'critical',
+        claimedProtection: 87,
+        provenRecoverability: 0,
+        realityGap: 87,
         findingCount: 1,
         worstSeverity: 'critical',
         nodeIds: ['arn:aws:rds:eu-west-1:123456789012:db:payments-primary'],
+        reasoning: ['Critical datastore has no tested recovery evidence.'],
+        insights: ['CASCADE FAILURE: payments-primary impacts downstream services.'],
+        conclusion: 'Payments is not recoverable. Reality gap: 87 points.',
+        nextAction: 'Attach payments-primary to AWS Backup [SAFE]',
         x: 100,
         y: 90,
         width: 320,
@@ -175,6 +194,9 @@ function createArnVisualData(): GraphVisualData {
     ],
     globalScore: 42,
     globalGrade: 'D',
+    claimedProtection: 87,
+    provenRecoverability: 0,
+    realityGap: 87,
     proofOfRecovery: 0,
     observedCoverage: 73,
     scanDate: FIXED_TIMESTAMP,

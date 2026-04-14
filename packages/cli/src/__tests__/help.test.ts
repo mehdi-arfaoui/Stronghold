@@ -20,6 +20,7 @@ describe("CLI help output", () => {
     expect(help).toContain("init");
     expect(help).toContain("scan");
     expect(help).toContain("report");
+    expect(help).toContain("explain");
     expect(help).toContain("graph");
     expect(help).toContain("plan");
     expect(help).toContain("drift");
@@ -65,6 +66,7 @@ describe("CLI help output", () => {
     expect(help).toContain("--show-passed");
     expect(help).toContain("--show-resolved");
     expect(help).toContain("--explain-score");
+    expect(help).toContain("--no-reasoning");
   });
 });
 

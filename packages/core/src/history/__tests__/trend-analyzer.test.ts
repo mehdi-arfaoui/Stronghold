@@ -39,14 +39,15 @@ describe('analyzeTrend', () => {
   it('includes proof-of-recovery datapoints in the global trend', () => {
     const trend = analyzeTrend(
       [
-        snapshot('2026-04-01', 60, { proofOfRecovery: 0, observedCoverage: 40 }),
-        snapshot('2026-04-08', 68, { proofOfRecovery: 33, observedCoverage: 55 }),
-        snapshot('2026-04-15', 75, { proofOfRecovery: 67, observedCoverage: 70 }),
+        snapshot('2026-04-01', 60, { proofOfRecovery: 0, observedCoverage: 40, realityGap: 80 }),
+        snapshot('2026-04-08', 68, { proofOfRecovery: 33, observedCoverage: 55, realityGap: 42 }),
+        snapshot('2026-04-15', 75, { proofOfRecovery: 67, observedCoverage: 70, realityGap: 8 }),
       ],
       [],
       currentDebt(100),
     );
 
+    expect(trend.global.realityGapTrend.map((point) => point.value)).toEqual([80, 42, 8]);
     expect(trend.global.proofOfRecoveryTrend.map((point) => point.value)).toEqual([0, 33, 67]);
     expect(trend.global.observedCoverageTrend.map((point) => point.value)).toEqual([40, 55, 70]);
   });
@@ -107,6 +108,7 @@ function snapshot(
     readonly covered?: number;
     readonly expired?: number;
     readonly proofOfRecovery?: number | null;
+    readonly realityGap?: number | null;
     readonly observedCoverage?: number;
     readonly totalDebt?: number;
     readonly findingIds?: readonly string[];
@@ -118,6 +120,9 @@ function snapshot(
     globalScore: score,
     globalGrade: score >= 75 ? 'B' : score >= 60 ? 'C' : 'D',
     proofOfRecovery: overrides.proofOfRecovery ?? 33,
+    claimedProtection: 80,
+    provenRecoverability: overrides.proofOfRecovery ?? 33,
+    realityGap: overrides.realityGap ?? 47,
     observedCoverage: overrides.observedCoverage ?? 60,
     totalResources: 42,
     totalFindings: overrides.findingIds?.length ?? 2,

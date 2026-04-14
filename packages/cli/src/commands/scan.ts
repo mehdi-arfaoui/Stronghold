@@ -261,6 +261,7 @@ export function registerScanCommand(program: Command): void {
                 execution.results.governance?.score.withAcceptances.grade ??
                 execution.results.validationReport.scoreBreakdown.grade,
               proofOfRecovery: execution.results.proofOfRecovery ?? null,
+              realityGap: execution.results.realityGap ?? null,
               services: execution.results.servicePosture?.services ?? [],
               scenarioAnalysis: execution.results.scenarioAnalysis ?? null,
               scenariosCovered: execution.results.scenarioAnalysis?.summary.covered ?? 0,

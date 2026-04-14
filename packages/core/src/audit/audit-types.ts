@@ -11,6 +11,7 @@ export type AuditAction =
   | 'evidence_add'
   | 'evidence_list'
   | 'evidence_show'
+  | 'explain'
   | 'services_detect'
   | 'services_list'
   | 'services_show'

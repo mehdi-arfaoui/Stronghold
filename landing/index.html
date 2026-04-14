@@ -1,1342 +1,971 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Stronghold — Open-Source Disaster Recovery Automation</title>
-  <meta name="description" content="The first open-source DR automation platform. Scan your AWS infrastructure, map dependencies, generate executable recovery runbooks. Free, read-only, zero telemetry.">
-  <meta name="theme-color" content="#0a0a0a">
-  <meta property="og:title" content="Stronghold — Open-Source DR Automation">
-  <meta property="og:description" content="Scan your AWS infrastructure. Generate executable recovery runbooks. Free and open-source.">
-  <meta property="og:image" content="https://stronghold.software/og-image.png">
-  <meta property="og:url" content="https://stronghold.software">
-  <meta property="og:type" content="website">
-  <meta name="twitter:card" content="summary_large_image">
-  <link rel="canonical" href="https://stronghold.software">
-  <link rel="icon" href="./favicon.svg" type="image/svg+xml">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #0a0a0a;
-      --surface: #141414;
-      --surface-strong: #191919;
-      --border: #262626;
-      --border-soft: rgba(255, 255, 255, 0.06);
-      --text: #e5e5e5;
-      --muted: #a3a3a3;
-      --dim: #737373;
-      --accent-primary: #06b6d4;
-      --accent-secondary: #8b5cf6;
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-      --radius: 18px;
-      --container: 1100px;
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-      scroll-padding-top: 90px;
-    }
-
-    body {
-      margin: 0;
-      min-width: 320px;
-      font-family: "Inter", sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at 10% 0%, rgba(6, 182, 212, 0.09), transparent 32%),
-        radial-gradient(circle at 85% 14%, rgba(139, 92, 246, 0.08), transparent 26%),
-        var(--bg);
-      line-height: 1.65;
-      position: relative;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: 0;
-      pointer-events: none;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px);
-      background-size: 48px 48px;
-      mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.35), transparent 82%);
-      opacity: 0.32;
-    }
-
-    a {
-      color: inherit;
-      text-decoration: none;
-    }
-
-    img {
-      display: block;
-      max-width: 100%;
-    }
-
-    code,
-    pre {
-      font-family: "JetBrains Mono", monospace;
-    }
-
-    .container {
-      width: min(var(--container), calc(100% - 48px));
-      margin: 0 auto;
-    }
-
-    .site-header {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      border-bottom: 1px solid rgba(38, 38, 38, 0.9);
-      background: rgba(10, 10, 10, 0.92);
-    }
-
-    .header-inner {
-      min-height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 24px;
-    }
-
-    .logo {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      font-weight: 800;
-      letter-spacing: -0.04em;
-      font-size: 1.15rem;
-    }
-
-    .logo-image {
-      width: auto;
-      flex: none;
-    }
-
-    .site-header .logo-image {
-      height: 40px;
-    }
-
-    .footer .logo-image {
-      height: 32px;
-    }
-
-    .nav {
-      display: flex;
-      align-items: center;
-      gap: 20px;
-      color: var(--muted);
-      font-size: 0.96rem;
-    }
-
-    .nav a {
-      transition: color 160ms ease;
-    }
-
-    .nav a:hover,
-    .nav a:focus-visible {
-      color: var(--text);
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: minmax(0, 1.02fr) minmax(420px, 0.98fr);
-      gap: 48px;
-      padding: 80px 0 64px;
-      align-items: start;
-    }
-
-    .eyebrow {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid rgba(6, 182, 212, 0.2);
-      background: rgba(6, 182, 212, 0.08);
-      color: var(--accent-primary);
-      font-size: 0.88rem;
-      font-weight: 600;
-      letter-spacing: 0.01em;
-    }
-
-    h1 {
-      margin: 18px 0 18px;
-      max-width: 14ch;
-      font-size: clamp(2.7rem, 5vw, 4.8rem);
-      line-height: 1.02;
-      letter-spacing: -0.06em;
-    }
-
-    .hero-subtitle {
-      margin: 0 0 16px;
-      font-size: clamp(1.2rem, 1.6vw, 1.45rem);
-      color: var(--text);
-      letter-spacing: -0.03em;
-      font-weight: 600;
-    }
-
-    .hero-subtitle strong {
-      color: var(--accent-primary);
-    }
-
-    .hero-copy p {
-      margin: 0;
-      max-width: 62ch;
-      color: var(--muted);
-      font-size: 1.03rem;
-    }
-
-    .button-row {
-      margin-top: 28px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 10px;
-      padding: 14px 18px;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      font-weight: 700;
-      transition:
-        transform 160ms ease,
-        border-color 160ms ease,
-        background-color 160ms ease,
-        color 160ms ease;
-      will-change: transform;
-    }
-
-    .btn:hover,
-    .btn:focus-visible {
-      transform: translateY(-1px);
-    }
-
-    .btn-primary {
-      color: #04222a;
-      background: var(--accent-primary);
-      border-color: rgba(6, 182, 212, 0.48);
-    }
-
-    .btn-secondary {
-      color: var(--text);
-      background: rgba(20, 20, 20, 0.95);
-      border-color: rgba(255, 255, 255, 0.08);
-    }
-
-    .hero-meta {
-      margin-top: 20px;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px 18px;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .hero-meta span {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    .hero-panel,
-    .card,
-    .comparison-shell,
-    .quickstart-shell,
-    .architecture-shell,
-    .demo-shell {
-      background: linear-gradient(180deg, rgba(24, 24, 24, 0.96), rgba(20, 20, 20, 0.96));
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
-    }
-
-    .hero-panel {
-      padding: 20px;
-    }
-
-    .section {
-      padding: 64px 0;
-      border-top: 1px solid rgba(38, 38, 38, 0.85);
-    }
-
-    .section-header {
-      margin-bottom: 28px;
-      max-width: 720px;
-    }
-
-    .section-header p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 1rem;
-    }
-
-    .section-kicker {
-      margin: 0 0 8px;
-      color: var(--accent-primary);
-      font-size: 0.88rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    h2 {
-      margin: 0 0 12px;
-      font-size: clamp(2rem, 3.2vw, 3rem);
-      line-height: 1.08;
-      letter-spacing: -0.05em;
-    }
-
-    .card-grid-3,
-    .feature-grid,
-    .architecture-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 20px;
-    }
-
-    .quickstart-grid,
-    .demo-grid {
-      display: grid;
-      grid-template-columns: minmax(0, 1.1fr) minmax(300px, 0.9fr);
-      gap: 24px;
-      align-items: start;
-    }
-
-    .card {
-      padding: 22px;
-      position: relative;
-      overflow: hidden;
-    }
-
-    .card::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      border-radius: inherit;
-      background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent 35%);
-      pointer-events: none;
-    }
-
-    .card h3 {
-      margin: 0 0 10px;
-      font-size: 1.08rem;
-      line-height: 1.25;
-      letter-spacing: -0.03em;
-    }
-
-    .card p {
-      margin: 0;
-      color: var(--muted);
-      font-size: 0.97rem;
-    }
-
-    .card-icon {
-      margin-bottom: 16px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.04);
-      font-size: 1.05rem;
-    }
-    .problem-card h3 {
-      margin-bottom: 16px;
-    }
-
-    .problem-block {
-      padding-top: 14px;
-      border-top: 1px solid var(--border-soft);
-      margin-top: 14px;
-    }
-
-    .problem-block:first-of-type {
-      padding-top: 0;
-      border-top: 0;
-      margin-top: 0;
-    }
-
-    .problem-label {
-      margin: 0 0 6px;
-      color: var(--dim);
-      font-size: 0.76rem;
-      font-weight: 700;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-    }
-
-    .problem-quote,
-    .problem-fact,
-    .problem-impact {
-      margin: 0;
-      font-size: 0.98rem;
-      line-height: 1.55;
-    }
-
-    .problem-quote {
-      color: var(--text);
-    }
-
-    .problem-impact {
-      color: #f4f4f5;
-      font-weight: 600;
-    }
-
-    .feature-card {
-      min-height: 210px;
-    }
-
-    .feature-card p + p {
-      margin-top: 10px;
-    }
-
-    .section-note {
-      margin-top: 14px;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .demo-shell,
-    .quickstart-shell,
-    .architecture-shell,
-    .comparison-shell {
-      padding: 20px;
-    }
-
-    .demo-caption {
-      margin-top: 18px;
-      display: flex;
-      justify-content: space-between;
-      gap: 16px;
-      align-items: center;
-      flex-wrap: wrap;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .demo-caption a,
-    .footer-links a {
-      color: var(--text);
-    }
-
-    .terminal {
-      background: #1a1a1a;
-      border-radius: 12px;
-      border: 1px solid #333;
-      overflow: hidden;
-      font-family: "JetBrains Mono", monospace;
-      font-size: 14px;
-      line-height: 1.6;
-    }
-
-    .terminal-header {
-      background: #2a2a2a;
-      padding: 8px 12px;
-      display: flex;
-      gap: 6px;
-      align-items: center;
-    }
-
-    .terminal-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-    }
-
-    .terminal-dot.red { background: #ef4444; }
-    .terminal-dot.yellow { background: #f59e0b; }
-    .terminal-dot.green { background: #10b981; }
-
-    .terminal-title {
-      margin-left: 10px;
-      color: #9ca3af;
-      font-size: 12px;
-      letter-spacing: 0.03em;
-    }
-
-    .terminal-body {
-      padding: 16px 20px;
-      color: #e5e5e5;
-    }
-
-    .terminal-body pre {
-      margin: 0;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-
-    .terminal-body .command { color: #06b6d4; }
-    .terminal-body .success { color: #10b981; }
-    .terminal-body .error { color: #ef4444; }
-    .terminal-body .warning { color: #f59e0b; }
-    .terminal-body .secondary { color: #8b5cf6; }
-    .terminal-body .dim { color: #737373; }
-
-    .terminal-large .terminal-body {
-      min-height: 410px;
-      font-size: 13.5px;
-    }
-
-    .demo-image {
-      width: 100%;
-      border-radius: 12px;
-      border: 1px solid var(--border);
-      background: #101010;
-    }
-
-    .table-scroll {
-      overflow-x: auto;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: #101010;
-    }
-
-    table {
-      width: 100%;
-      min-width: 980px;
-      border-collapse: collapse;
-    }
-
-    thead th {
-      padding: 16px;
-      text-align: left;
-      color: var(--muted);
-      font-size: 0.78rem;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      border-bottom: 1px solid var(--border);
-      background: #111111;
-    }
-
-    tbody td {
-      padding: 16px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      vertical-align: top;
-      color: var(--text);
-      font-size: 0.96rem;
-    }
-
-    tbody tr:last-child td {
-      border-bottom: 0;
-    }
-
-    .feature-col {
-      width: 23%;
-      color: #f5f5f5;
-      font-weight: 600;
-    }
-
-    .stronghold-col {
-      background: rgba(255, 255, 255, 0.03);
-      box-shadow: inset 1px 0 0 rgba(255, 255, 255, 0.04), inset -1px 0 0 rgba(255, 255, 255, 0.04);
-    }
-
-    .status-yes {
-      color: var(--success);
-      font-weight: 700;
-    }
-
-    .status-no {
-      color: var(--danger);
-      font-weight: 700;
-    }
-
-    .status-partial {
-      color: var(--warning);
-      font-weight: 700;
-    }
-
-    .quickstart-panel,
-    .trust-card,
-    .architecture-card {
-      padding: 22px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: rgba(16, 16, 16, 0.88);
-    }
-    .trust-card {
-      display: grid;
-      gap: 18px;
-    }
-
-    .trust-card h3,
-    .architecture-card h3 {
-      margin: 0;
-      font-size: 1.08rem;
-      letter-spacing: -0.03em;
-    }
-
-    .trust-card p,
-    .architecture-card p {
-      margin: 0;
-      color: var(--muted);
-    }
-
-    .trust-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      width: fit-content;
-      border-radius: 12px;
-      border: 1px solid rgba(16, 185, 129, 0.18);
-      background: rgba(16, 185, 129, 0.08);
-      color: #d1fae5;
-      font-weight: 600;
-    }
-
-    .mini-list {
-      display: grid;
-      gap: 12px;
-    }
-
-    .mini-list div {
-      padding: 12px 14px;
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .mini-list strong {
-      display: block;
-      margin-bottom: 4px;
-      color: var(--text);
-      font-size: 0.95rem;
-    }
-
-    .architecture-grid {
-      grid-template-columns: minmax(0, 0.92fr) minmax(0, 1.08fr);
-    }
-
-    .architecture-points {
-      display: grid;
-      gap: 12px;
-    }
-
-    .architecture-point {
-      padding: 14px 16px;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: rgba(255, 255, 255, 0.02);
-    }
-
-    .architecture-point strong {
-      display: block;
-      margin-bottom: 4px;
-      font-size: 0.96rem;
-    }
-
-    .ascii-diagram {
-      margin: 0;
-      padding: 18px;
-      overflow-x: auto;
-      border-radius: 14px;
-      border: 1px solid var(--border);
-      background: #101010;
-      color: #d4d4d8;
-      font-size: 12.5px;
-      line-height: 1.55;
-    }
-
-    .footer {
-      border-top: 1px solid rgba(38, 38, 38, 0.85);
-      padding: 28px 0 56px;
-    }
-
-    .footer-inner {
-      display: flex;
-      justify-content: space-between;
-      gap: 18px;
-      flex-wrap: wrap;
-      align-items: center;
-    }
-
-    .footer-copy {
-      display: grid;
-      gap: 4px;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .footer-links {
-      display: flex;
-      gap: 16px;
-      flex-wrap: wrap;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-
-    .footer-links a:hover,
-    .footer-links a:focus-visible,
-    .demo-caption a:hover,
-    .demo-caption a:focus-visible {
-      color: var(--accent-primary);
-    }
-
-    @media (max-width: 1024px) {
-      .hero,
-      .demo-grid,
-      .quickstart-grid,
-      .architecture-grid {
-        grid-template-columns: 1fr;
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Stronghold | Open-Source Disaster Recovery Intelligence</title>
+    <meta
+      name="description"
+      content="Stronghold scans your AWS infrastructure and tells you which critical services cannot actually recover, with proof."
+    >
+    <meta name="theme-color" content="#0a0b0f">
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="Stronghold | Open-Source Disaster Recovery Intelligence">
+    <meta
+      property="og:description"
+      content="Your disaster recovery plan is probably dead. See for yourself."
+    >
+    <meta property="og:url" content="https://stronghold.software">
+    <meta property="og:image" content="https://stronghold.software/og-image.png">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Stronghold | Open-Source Disaster Recovery Intelligence">
+    <meta
+      name="twitter:description"
+      content="Stronghold scans your AWS infrastructure and tells you which critical services cannot actually recover, with proof."
+    >
+    <link rel="canonical" href="https://stronghold.software">
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+      rel="preload"
+      href="https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    >
+    <link
+      rel="preload"
+      href="https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    >
+    <style>
+      @font-face {
+        font-family: "Inter";
+        font-style: normal;
+        font-weight: 100 900;
+        font-display: swap;
+        src: url("https://fonts.gstatic.com/s/inter/v20/UcC73FwrK3iLTeHuS_nVMrMxCp50SjIa1ZL7.woff2")
+          format("woff2");
       }
 
-      .feature-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      @font-face {
+        font-family: "JetBrains Mono";
+        font-style: normal;
+        font-weight: 100 800;
+        font-display: swap;
+        src: url("https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbv2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKwBNntkaToggR7BYRbKPxDcwg.woff2")
+          format("woff2");
       }
 
-      .card-grid-3 {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+      :root {
+        color-scheme: dark;
+        --bg: #0a0b0f;
+        --bg-soft: #0d0e14;
+        --border: rgba(255, 255, 255, 0.06);
+        --text: #f1f5f9;
+        --muted: #94a3b8;
+        --dim: #64748b;
+        --accent: #60a5fa;
+        --success: #22c55e;
+        --warning: #f59e0b;
+        --danger: #ef4444;
+        --shadow: 0 26px 70px rgba(0, 0, 0, 0.42);
+        --container: 1180px;
       }
 
-      .hero {
-        padding-top: 56px;
+      * {
+        box-sizing: border-box;
       }
-    }
 
-    @media (max-width: 767px) {
       html {
-        scroll-padding-top: 90px;
+        scroll-behavior: smooth;
+      }
+
+      body {
+        margin: 0;
+        min-width: 320px;
+        font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+        background:
+          radial-gradient(circle at top left, rgba(34, 197, 94, 0.06), transparent 28%),
+          radial-gradient(circle at top right, rgba(239, 68, 68, 0.05), transparent 24%),
+          var(--bg);
+      }
+
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background-image:
+          linear-gradient(rgba(148, 163, 184, 0.04) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(148, 163, 184, 0.04) 1px, transparent 1px);
+        background-size: 44px 44px;
+        mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.4), transparent 80%);
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      button {
+        font: inherit;
+      }
+
+      img,
+      svg {
+        display: block;
+      }
+
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
       }
 
       .container {
-        width: min(var(--container), calc(100% - 28px));
+        width: min(var(--container), calc(100% - 48px));
+        margin: 0 auto;
+      }
+
+      .site-header,
+      .site-footer {
+        background: var(--bg);
       }
 
       .site-header {
-        position: static;
+        padding: 28px 0 44px;
       }
 
-      .header-inner {
-        min-height: 64px;
+      .site-nav {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 24px;
+        margin-bottom: 60px;
       }
 
-      .nav {
-        display: none;
+      .brand {
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 1rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+
+      .nav-links,
+      .footer-links {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        color: var(--muted);
+        font-size: 0.95rem;
+      }
+
+      .nav-links a,
+      .footer-links a {
+        transition: color 140ms ease;
+      }
+
+      .nav-links a:hover,
+      .footer-links a:hover {
+        color: var(--text);
       }
 
       .hero {
-        gap: 28px;
-        padding: 36px 0 48px;
+        display: grid;
+        grid-template-columns: minmax(0, 4fr) minmax(0, 6fr);
+        align-items: center;
+        gap: 48px;
       }
 
-      h1 {
-        max-width: 100%;
-        font-size: clamp(2.25rem, 10vw, 3.35rem);
+      .hero-copy {
+        max-width: 580px;
       }
 
-      .button-row,
-      .hero-meta,
-      .demo-caption,
-      .footer-inner {
-        flex-direction: column;
-        align-items: stretch;
+      .hero h1,
+      .section-title,
+      .footer-title {
+        margin: 0;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-weight: 700;
+        letter-spacing: -0.04em;
       }
 
-      .btn {
+      .hero h1 {
+        font-size: 48px;
+        line-height: 1.15;
+      }
+
+      .hero-dead {
+        color: var(--danger);
+      }
+
+      .hero-copy p {
+        margin: 24px 0 0;
+        max-width: 580px;
+        font-size: 18px;
+        line-height: 1.7;
+        color: var(--muted);
+      }
+
+      .hero-actions,
+      .footer-actions {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-top: 32px;
+      }
+
+      .copy-cta {
+        display: inline-flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        min-height: 54px;
+        padding: 0 18px;
+        border: 1px solid #334155;
+        border-radius: 8px;
+        background: #1e293b;
+        color: var(--text);
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 0.95rem;
+        line-height: 1.4;
+        cursor: pointer;
+        transition:
+          transform 140ms ease,
+          border-color 140ms ease,
+          background-color 140ms ease;
+      }
+
+      .copy-cta:hover {
+        transform: translateY(-1px);
+        border-color: #475569;
+        background: #182333;
+      }
+
+      .copy-cta:focus-visible,
+      .hero-link:focus-visible,
+      .nav-links a:focus-visible,
+      .footer-links a:focus-visible,
+      .brand:focus-visible {
+        outline: 2px solid var(--accent);
+        outline-offset: 3px;
+      }
+
+      .copy-command {
+        white-space: nowrap;
+      }
+
+      .copy-icon {
+        width: 18px;
+        height: 18px;
+        color: #cbd5e1;
+      }
+
+      .copy-icon-check {
+        display: none;
+        color: var(--success);
+      }
+
+      .copy-cta[data-copied="true"] {
+        border-color: rgba(34, 197, 94, 0.5);
+        background: rgba(15, 23, 42, 0.92);
+      }
+
+      .copy-cta[data-copied="true"] .copy-icon-clipboard {
+        display: none;
+      }
+
+      .copy-cta[data-copied="true"] .copy-icon-check {
+        display: block;
+      }
+
+      .hero-link {
+        color: var(--accent);
+        font-size: 1rem;
+        font-weight: 600;
+        transition: color 140ms ease;
+      }
+
+      .hero-link:hover {
+        color: #93c5fd;
+      }
+
+      .hero-note {
+        margin-top: 14px;
+        font-size: 13px;
+        color: var(--dim);
+      }
+
+      .hero-placeholder {
+        display: grid;
+        place-items: center;
         width: 100%;
-      }
-
-      .card-grid-3,
-      .feature-grid {
-        grid-template-columns: 1fr;
+        aspect-ratio: 16 / 9;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+        background: #161822;
+        box-shadow: var(--shadow);
+        color: #cbd5e1;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 0.95rem;
+        text-align: center;
+        padding: 24px;
       }
 
       .section {
-        padding: 48px 0;
+        padding: 88px 0;
+        position: relative;
+      }
+
+      .section-contrast {
+        background: #0d0e14;
+        border-top: 1px solid var(--border);
+      }
+
+      .contrast-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 28px;
+      }
+
+      .contrast-column,
+      .feature-card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+      }
+
+      .contrast-column {
+        padding: 28px;
+        background: rgba(10, 11, 15, 0.38);
+      }
+
+      .contrast-column h2,
+      .feature-card h3 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 600;
+      }
+
+      .contrast-rule {
+        width: 100%;
+        height: 1px;
+        margin: 14px 0 18px;
+        background: var(--border);
+      }
+
+      .contrast-list {
+        display: grid;
+        gap: 16px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+
+      .contrast-list li {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        line-height: 1.6;
+      }
+
+      .contrast-success {
+        color: var(--success);
+      }
+
+      .contrast-danger {
+        color: #fb7185;
+      }
+
+      .contrast-warning {
+        color: #fdba74;
+      }
+
+      .section-title {
+        font-size: 28px;
+        margin-bottom: 28px;
+      }
+
+      .features-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .feature-card {
+        padding: 24px;
+        background: linear-gradient(180deg, rgba(17, 19, 26, 0.95), rgba(10, 11, 15, 0.95));
+      }
+
+      .feature-card p {
+        margin: 12px 0 0;
+        font-size: 14px;
+        line-height: 1.65;
+        color: var(--muted);
+      }
+
+      .feature-icon {
+        width: 20px;
+        height: 20px;
+        margin-bottom: 16px;
+        color: #dbe4f0;
+      }
+
+      .summary-shell {
+        max-width: 700px;
+        margin: 0 auto;
+      }
+
+      .terminal {
+        overflow: hidden;
+        border: 1px solid #1e293b;
+        border-radius: 10px;
+        background: #0f1117;
+        box-shadow: var(--shadow);
+      }
+
+      .terminal-header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 14px 18px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: var(--muted);
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 13px;
+      }
+
+      .terminal-dots {
+        display: flex;
+        gap: 8px;
+      }
+
+      .terminal-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
       }
 
       .terminal-body {
-        padding: 14px 16px;
+        margin: 0;
+        padding: 26px 24px 28px;
+        overflow-x: auto;
+        color: #e2e8f0;
+        font-family: "JetBrains Mono", "Fira Code", monospace;
+        font-size: 14px;
+        line-height: 1.65;
       }
 
-      .terminal-large .terminal-body {
-        min-height: 0;
-        font-size: 12.5px;
+      .terminal-d {
+        color: var(--warning);
       }
 
-      .comparison-shell,
-      .demo-shell,
-      .quickstart-shell,
-      .architecture-shell {
-        padding: 14px;
-      }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      html {
-        scroll-behavior: auto;
+      .terminal-f {
+        color: var(--danger);
       }
 
-      .btn {
-        transition: none;
+      .terminal-safe {
+        color: var(--success);
       }
-    }
-  </style>
-</head>
-<body>
-  <header class="site-header">
-    <div class="container header-inner">
-      <a class="logo" href="#top" aria-label="Stronghold home">
-        <img class="logo-image" src="logo.png" alt="">
-        <span>Stronghold</span>
-      </a>
-      <nav class="nav" aria-label="Primary">
-        <a href="#problem">Problem</a>
-        <a href="#features">What It Does</a>
-        <a href="#comparison">Comparison</a>
-        <a href="#quickstart">Quick Start</a>
-        <a href="#architecture">Architecture</a>
-      </nav>
-    </div>
-  </header>
 
-  <main id="top">
-    <section class="container hero">
-      <div class="hero-copy">
-        <div class="eyebrow">Open-source DR automation for AWS infrastructure</div>
-        <h1>The first open-source disaster recovery automation platform for cloud infrastructure.</h1>
-        <p class="hero-subtitle"><strong>Your disaster recovery plan is dead.</strong> Stronghold makes it alive.</p>
-        <p>Scan real infrastructure. Map dependencies. Generate DRP-as-Code. Export executable runbooks. Detect drift before the incident forces you to.</p>
-        <div class="button-row">
-          <a class="btn btn-primary" href="https://github.com/mehdi-arfaoui/stronghold" data-link="githubUrl" target="_blank" rel="noreferrer">View on GitHub →</a>
-          <a class="btn btn-secondary" href="https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/getting-started.md" data-link="docsUrl" target="_blank" rel="noreferrer">Read the Docs</a>
-        </div>
-        <div class="hero-meta" aria-label="Key properties">
-          <span>AGPL-3.0</span>
-          <span>Read-only by design</span>
-          <span>Zero telemetry</span>
-          <span>16 AWS services scanned</span>
-        </div>
-      </div>
+      .credibility {
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+        text-align: center;
+        font-size: 14px;
+        color: var(--dim);
+      }
 
-      <div class="hero-panel">
-        <div class="terminal" aria-label="Stronghold CLI demo">
-          <div class="terminal-header">
-            <span class="terminal-dot red"></span>
-            <span class="terminal-dot yellow"></span>
-            <span class="terminal-dot green"></span>
-            <span class="terminal-title">stronghold-demo</span>
-          </div>
-          <div class="terminal-body">
-<pre><span class="command" data-cli-line="demo">$ npx @stronghold-dr/cli demo</span>
+      .credibility-strong {
+        color: var(--text);
+      }
 
-<span class="success">✅ Scan complete — eu-west-1</span>
+      .site-footer {
+        border-top: 1px solid var(--border);
+        padding: 72px 0 80px;
+      }
 
-   Resources discovered:  47
-   Dependencies mapped:   83
-   Services identified:   11
+      .footer-wrap {
+        max-width: 760px;
+        margin: 0 auto;
+        text-align: center;
+      }
 
-   DR Posture Score:      62/100 (Grade: C)
+      .footer-title {
+        font-size: 28px;
+        line-height: 1.35;
+      }
 
-   <span class="error">❌ Top critical issues:</span>
-      1. backup_plan_exists — prod-db-primary
-         No backup plan. 8 services depend on this resource.
-      2. route53_health_check_configured — api-failover
-         Health check was never configured.
-      3. replica_exists — auth-db-replica
-         Recovery plan assumes a replica that is gone.
+      .footer-actions {
+        justify-content: center;
+        margin-top: 28px;
+      }
 
-   <span class="warning">2 critical · 1 high · 3 warnings</span></pre>
-          </div>
-        </div>
-      </div>
-    </section>
+      .footer-links {
+        justify-content: center;
+        margin-top: 28px;
+        color: var(--accent);
+        font-size: 14px;
+      }
 
-    <section id="problem" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">The Problem</p>
-          <h2>Most DR plans are fiction</h2>
-          <p>Your disaster recovery plan lives in a 50-page Word document. It was accurate the day it was written. That was 6 months ago. Since then: 14 infrastructure changes. 3 new services. 1 removed replica. Your plan does not know about any of it.</p>
-        </div>
+      .footer-links a:hover {
+        color: #93c5fd;
+      }
 
-        <div class="card-grid-3">
-          <article class="card problem-card">
-            <div class="card-icon" aria-hidden="true">📄</div>
-            <h3>Replica failover that no longer exists</h3>
-            <div class="problem-block">
-              <p class="problem-label">The Plan Says</p>
-              <p class="problem-quote">"Failover to replica"</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">Reality</p>
-              <p class="problem-fact">Replica was removed 3 months ago.</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">The Consequence</p>
-              <p class="problem-impact">45 min of downtime instead of 2.</p>
-            </div>
-          </article>
+      .footer-meta {
+        margin-top: 22px;
+        font-size: 13px;
+        color: #475569;
+      }
 
-          <article class="card problem-card">
-            <div class="card-icon" aria-hidden="true">☁️</div>
-            <h3>Backup assumptions that drifted silently</h3>
-            <div class="problem-block">
-              <p class="problem-label">The Plan Says</p>
-              <p class="problem-quote">"Restore from backup"</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">Reality</p>
-              <p class="problem-fact">Backup retention was reduced to 1 day.</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">The Consequence</p>
-              <p class="problem-impact">72 hours of data loss instead of 1.</p>
-            </div>
-          </article>
-
-          <article class="card problem-card">
-            <div class="card-icon" aria-hidden="true">💥</div>
-            <h3>Failover procedures that were never wired</h3>
-            <div class="problem-block">
-              <p class="problem-label">The Plan Says</p>
-              <p class="problem-quote">"Route53 failover"</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">Reality</p>
-              <p class="problem-fact">Health check was never configured.</p>
-            </div>
-            <div class="problem-block">
-              <p class="problem-label">The Consequence</p>
-              <p class="problem-impact">Manual DNS change at 3 AM.</p>
-            </div>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="features" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">What Stronghold Does</p>
-          <h2>One scan. Full DR visibility.</h2>
-          <p>Stronghold inspects the infrastructure you actually run, not the one your DR document still imagines. The output is versionable, reviewable, and blunt about unknowns.</p>
-        </div>
-
-        <div class="feature-grid">
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">🔍</div>
-            <h3>Auto-Discovery</h3>
-            <p>Scans 16 AWS services. Maps every dependency. Finds single points of failure before they become incident timeline trivia.</p>
-          </article>
-
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">📊</div>
-            <h3>DR Posture Score</h3>
-            <p>Weighted score across 6 DR categories. Transparent methodology with an explicit disclaimer when the data is incomplete.</p>
-          </article>
-
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">📋</div>
-            <h3>DRP-as-Code</h3>
-            <p>Generates a YAML DR plan you can version in Git. Includes topological recovery order, strategies, and infrastructure-backed context.</p>
-          </article>
-
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">⚡</div>
-            <h3>Honest RTO/RPO</h3>
-            <p>Documents what AWS confirms. Says <code>requires testing</code> when no reliable estimate exists instead of inventing precision.</p>
-          </article>
-
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">🔧</div>
-            <h3>Executable Runbooks</h3>
-            <p>Outputs real AWS CLI commands with your actual resource IDs. Copy-paste recovery steps, verification commands, and recovery order.</p>
-          </article>
-
-          <article class="card feature-card">
-            <div class="card-icon" aria-hidden="true">🔄</div>
-            <h3>Drift Detection</h3>
-            <p>Detects when DR posture degrades. Marks DRP assumptions stale when infrastructure changes invalidate the last known plan.</p>
-          </article>
-        </div>
-      </div>
-    </section>
-    <section id="demo" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">Demo</p>
-          <h2>See it in action</h2>
-          <p>Static capture of the CLI report flow. The page can swap this fallback for a lazy-loaded demo GIF later without changing the layout.</p>
-        </div>
-
-        <div class="demo-shell">
-          <div class="demo-grid">
-            <div id="demo-media">
-              <div class="terminal terminal-large" aria-label="Stronghold report output">
-                <div class="terminal-header">
-                  <span class="terminal-dot red"></span>
-                  <span class="terminal-dot yellow"></span>
-                  <span class="terminal-dot green"></span>
-                  <span class="terminal-title">stronghold-report</span>
-                </div>
-                <div class="terminal-body">
-<pre><span class="command" data-cli-line="report">$ npx @stronghold-dr/cli report</span>
-
-<span class="secondary">## DR Posture Score</span>
-Score: 62/100 (Grade: C)
-
-<span class="secondary">## Score by Category</span>
-Backup        40/100  [####------]
-Redundancy    55/100  [#####-----]
-Failover      58/100  [######----]
-Detection     71/100  [#######---]
-Recovery      66/100  [######----]
-Replication   82/100  [########--]
-
-<span class="secondary">## Critical Failures</span>
-<span class="error">critical</span> backup_plan_exists — prod-db-primary
-No AWS Backup coverage found for this resource.
-Impact: 8 services depend directly on this resource.
-
-<span class="secondary">## Methodology</span>
-Weighted score across backup, redundancy, failover,
-detection, recovery, and replication.
-<span class="warning">Unknowns stay unknown. Some RTO/RPO estimates require testing.</span></pre>
-                </div>
-              </div>
-            </div>
-
-            <aside class="trust-card">
-              <div class="trust-badge">🔒 Read-only. Zero telemetry.</div>
-              <div>
-                <h3>Zero install friction</h3>
-                <p>Try the sample infrastructure without AWS credentials, then point the same CLI at a real account when you are ready.</p>
-              </div>
-              <div class="mini-list">
-                <div>
-                  <strong>Demo mode</strong>
-                  Built-in sample topology. No cloud credentials needed.
-                </div>
-                <div>
-                  <strong>Real scans</strong>
-                  Uses cloud metadata only. Does not mutate infrastructure.
-                </div>
-                <div>
-                  <strong>Fast by default</strong>
-                  No large media is required. A demo GIF can be plugged in later without changing the page structure.
-                </div>
-              </div>
-            </aside>
-          </div>
-
-          <div class="demo-caption">
-            <span>Try it yourself: <code data-cli-inline="demo">npx @stronghold-dr/cli demo</code></span>
-            <a href="https://github.com/mehdi-arfaoui/stronghold" data-link="githubUrl" target="_blank" rel="noreferrer">View the repository →</a>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="comparison" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">Comparison</p>
-          <h2>How Stronghold compares</h2>
-          <p>The table below mirrors the current README comparison. Stronghold stands out on DRP-as-Code, dependency visibility, and drift detection rather than backup orchestration alone.</p>
-        </div>
-
-        <div class="comparison-shell">
-          <div class="table-scroll" role="region" aria-label="Stronghold comparison table" tabindex="0">
-            <table>
-              <thead>
-                <tr>
-                  <th>Feature</th>
-                  <th class="stronghold-col">Stronghold</th>
-                  <th>Velero</th>
-                  <th>AWS Resilience Hub</th>
-                  <th>Zerto</th>
-                  <th>CloudEndure</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td class="feature-col">Open-source</td>
-                  <td class="stronghold-col"><span class="status-yes">✅ AGPL-3.0</span></td>
-                  <td><span class="status-yes">✅ Apache-2.0</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Auto-discovery</td>
-                  <td class="stronghold-col"><span class="status-yes">✅ 16 services</span></td>
-                  <td><span class="status-no">❌ K8s only</span></td>
-                  <td><span class="status-yes">✅ AWS only</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Dependency graph</td>
-                  <td class="stronghold-col"><span class="status-yes">✅</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-partial">Partial</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">DRP-as-Code (YAML)</td>
-                  <td class="stronghold-col"><span class="status-yes">✅</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Blast radius analysis</td>
-                  <td class="stronghold-col"><span class="status-yes">✅</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Drift detection</td>
-                  <td class="stronghold-col"><span class="status-yes">✅</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-partial">Partial</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Honest RTO</td>
-                  <td class="stronghold-col"><span class="status-yes">✅</span></td>
-                  <td>N/A</td>
-                  <td><span class="status-partial">Partial</span></td>
-                  <td><span class="status-no">❌</span></td>
-                  <td><span class="status-no">❌</span></td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Multi-cloud</td>
-                  <td class="stronghold-col">AWS (Azure planned)</td>
-                  <td>K8s</td>
-                  <td>AWS only</td>
-                  <td>Multi</td>
-                  <td>AWS only</td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Self-hosted</td>
-                  <td class="stronghold-col"><span class="status-yes">✅ Docker</span></td>
-                  <td><span class="status-yes">✅</span></td>
-                  <td>N/A</td>
-                  <td><span class="status-no">❌</span></td>
-                  <td>N/A</td>
-                </tr>
-                <tr>
-                  <td class="feature-col">Cost</td>
-                  <td class="stronghold-col">Free</td>
-                  <td>Free</td>
-                  <td>AWS pricing</td>
-                  <td>$$$$$</td>
-                  <td>AWS pricing</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    </section>
-    <section id="quickstart" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">Quick Start</p>
-          <h2>Get started in 10 seconds</h2>
-          <p>Run the demo locally, then scan your own environment. The commands stay simple, the output stays local, and the first useful signal arrives quickly.</p>
-        </div>
-
-        <div class="quickstart-shell">
-          <div class="quickstart-grid">
-            <div class="quickstart-panel">
-              <div class="terminal" aria-label="Stronghold quick start commands">
-                <div class="terminal-header">
-                  <span class="terminal-dot red"></span>
-                  <span class="terminal-dot yellow"></span>
-                  <span class="terminal-dot green"></span>
-                  <span class="terminal-title">quick-start</span>
-                </div>
-                <div class="terminal-body">
-<pre><span class="dim"># Try without AWS credentials</span>
-<span class="command" data-cli-line="demo">$ npx @stronghold-dr/cli demo</span>
-
-<span class="dim"># Scan your real infrastructure</span>
-<span class="command" data-cli-line="scan">$ npx @stronghold-dr/cli scan --region eu-west-1</span>
-<span class="command" data-cli-line="report">$ npx @stronghold-dr/cli report</span>
-<span class="command" data-cli-line="runbook">$ npx @stronghold-dr/cli plan runbook &gt; recovery.yaml</span></pre>
-                </div>
-              </div>
-            </div>
-
-            <aside class="trust-card">
-              <div class="trust-badge">🔒 Your data stays on your machine.</div>
-              <div>
-                <h3>Read-only. Zero telemetry.</h3>
-                <p>Stronghold inspects metadata using read-only APIs. It does not modify infrastructure, upload inventory, or hide uncertainty behind synthetic scores.</p>
-              </div>
-              <div class="button-row">
-                <a class="btn btn-primary" href="https://github.com/mehdi-arfaoui/stronghold" data-link="githubUrl" target="_blank" rel="noreferrer">View on GitHub</a>
-                <a class="btn btn-secondary" href="https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/getting-started.md" data-link="docsUrl" target="_blank" rel="noreferrer">Read the Documentation</a>
-              </div>
-            </aside>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="architecture" class="section">
-      <div class="container">
-        <div class="section-header">
-          <p class="section-kicker">Architecture</p>
-          <h2>Built for reliability</h2>
-          <p>Stronghold is not just a CLI wrapper around cloud APIs. The repo is structured so the recovery logic stays deterministic, testable, and reusable across CLI, server, and web surfaces.</p>
-        </div>
-
-        <div class="architecture-shell">
-          <div class="architecture-grid">
-            <div class="architecture-card">
-              <h3>What matters operationally</h3>
-              <div class="architecture-points">
-                <div class="architecture-point">
-                  <strong>TypeScript strict</strong>
-                  Core, CLI, server, and web packages all enforce strict TypeScript configs.
-                </div>
-                <div class="architecture-point">
-                  <strong>Ports and adapters</strong>
-                  Domain logic lives in <code>@stronghold-dr/core</code>; CLI and web layers orchestrate it without owning recovery rules.
-                </div>
-                <div class="architecture-point">
-                  <strong>Pure core package</strong>
-                  <code>packages/core</code> holds graph analysis, validation, DRP generation, and drift detection with minimal framework coupling.
-                </div>
-                <div class="architecture-point">
-                  <strong>Self-hostable</strong>
-                  The full platform runs with Docker Compose when teams need API plus web UI instead of CLI only.
-                </div>
-                <div class="architecture-point">
-                  <strong>AGPL-3.0</strong>
-                  Open-source, modifiable, and self-hostable without feature gating.
-                </div>
-              </div>
-            </div>
-
-            <div class="architecture-card">
-              <h3>Monorepo shape</h3>
-<pre class="ascii-diagram">┌──────────────────────────────────────────────────────┐
-│                    Entry Points                      │
-│        CLI            Server            Web UI       │
-├──────────────────────────────────────────────────────┤
-│                  @stronghold-dr/core                 │
-│                                                      │
-│  Discovery -> Enrichment -> Graph -> Analysis       │
-│                           -> Validation -> DRP      │
-│                           -> Runbook -> Drift       │
-├──────────────────────────────────────────────────────┤
-│                   Ports & Adapters                   │
-│   File store      Prisma/PostgreSQL      Logger      │
-└──────────────────────────────────────────────────────┘</pre>
-              <p class="section-note">Packages: <code>packages/core</code>, <code>packages/cli</code>, <code>packages/server</code>, <code>packages/web</code>.</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <footer class="footer">
-    <div class="container footer-inner">
-      <div class="footer-copy">
-        <div class="logo">
-          <img class="logo-image" src="logo.png" alt="">
-          <span>Stronghold</span>
-        </div>
-        <span>Open-source disaster recovery automation.</span>
-        <span>© 2026 Stronghold</span>
-      </div>
-      <div class="footer-links">
-        <a href="https://github.com/mehdi-arfaoui/stronghold/blob/main/LICENSE" target="_blank" rel="noreferrer">AGPL-3.0</a>
-        <a href="https://github.com/mehdi-arfaoui/stronghold" data-link="githubUrl" target="_blank" rel="noreferrer">GitHub</a>
-        <a href="https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/getting-started.md" data-link="docsUrl" target="_blank" rel="noreferrer">Documentation</a>
-        <a href="https://www.npmjs.com/package/@stronghold-dr/cli" data-link="npmUrl" target="_blank" rel="noreferrer">npm</a>
-      </div>
-    </div>
-  </footer>
-
-  <script>
-    (function () {
-      var defaults = {
-        githubUrl: "https://github.com/mehdi-arfaoui/stronghold",
-        docsUrl: "https://github.com/mehdi-arfaoui/stronghold/blob/main/docs/getting-started.md",
-        npmUrl: "https://www.npmjs.com/package/@stronghold-dr/cli",
-        cliPackage: "@stronghold-dr/cli",
-        demoGifUrl: "",
-        demoGifAlt: "Stronghold CLI demo"
-      };
-
-      var config = Object.assign({}, defaults, window.STRONGHOLD_CONFIG || {});
-
-      document.querySelectorAll("[data-link]").forEach(function (element) {
-        var key = element.getAttribute("data-link");
-        if (!key || !config[key]) {
-          return;
+      @media (max-width: 1023px) {
+        .site-header {
+          padding-bottom: 24px;
         }
-        element.setAttribute("href", config[key]);
-      });
 
-      var cliCommands = {
-        demo: "$ npx " + config.cliPackage + " demo",
-        scan: "$ npx " + config.cliPackage + " scan --region eu-west-1",
-        report: "$ npx " + config.cliPackage + " report",
-        runbook: "$ npx " + config.cliPackage + " plan runbook > recovery.yaml"
-      };
-
-      var cliInline = {
-        demo: "npx " + config.cliPackage + " demo"
-      };
-
-      document.querySelectorAll("[data-cli-line]").forEach(function (element) {
-        var key = element.getAttribute("data-cli-line");
-        if (!key || !cliCommands[key]) {
-          return;
+        .hero {
+          grid-template-columns: 1fr;
+          gap: 32px;
         }
-        element.textContent = cliCommands[key];
-      });
 
-      document.querySelectorAll("[data-cli-inline]").forEach(function (element) {
-        var key = element.getAttribute("data-cli-inline");
-        if (!key || !cliInline[key]) {
-          return;
+        .hero-copy {
+          max-width: none;
         }
-        element.textContent = cliInline[key];
-      });
 
-      var demoMedia = document.getElementById("demo-media");
-      if (demoMedia && config.demoGifUrl) {
-        var image = document.createElement("img");
-        image.src = config.demoGifUrl;
-        image.alt = config.demoGifAlt || defaults.demoGifAlt;
-        image.loading = "lazy";
-        image.decoding = "async";
-        image.width = 1100;
-        image.height = 620;
-        image.className = "demo-image";
-        demoMedia.replaceChildren(image);
+        .contrast-grid {
+          grid-template-columns: 1fr;
+        }
       }
-    }());
-  </script>
-</body>
+
+      @media (max-width: 639px) {
+        .container {
+          width: min(var(--container), calc(100% - 24px));
+        }
+
+        .site-nav {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 14px;
+          margin-bottom: 40px;
+        }
+
+        .hero h1 {
+          font-size: 32px;
+        }
+
+        .hero-copy p {
+          font-size: 16px;
+        }
+
+        .hero-actions,
+        .footer-actions {
+          flex-direction: column;
+          align-items: stretch;
+        }
+
+        .copy-cta,
+        .hero-link {
+          width: 100%;
+          justify-content: center;
+        }
+
+        .features-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .section {
+          padding: 64px 0;
+        }
+
+        .terminal-body {
+          padding: 22px 18px 24px;
+          font-size: 13px;
+        }
+
+        .footer-title,
+        .section-title {
+          font-size: 24px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="sr-only" id="copy-status" aria-live="polite"></div>
+    <header class="site-header" id="top">
+      <div class="container">
+        <nav class="site-nav" aria-label="Primary">
+          <a class="brand" href="#top">Stronghold</a>
+          <div class="nav-links">
+            <a href="https://github.com/mehdi-arfaoui/Stronghold" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <span aria-hidden="true">&middot;</span>
+            <a href="https://www.npmjs.com/package/@stronghold-dr/cli" target="_blank" rel="noopener noreferrer">npm</a>
+            <span aria-hidden="true">&middot;</span>
+            <a href="https://github.com/mehdi-arfaoui/Stronghold#documentation" target="_blank" rel="noopener noreferrer">Docs</a>
+          </div>
+        </nav>
+        <section class="hero" aria-labelledby="hero-title">
+          <div class="hero-copy">
+            <h1 id="hero-title">
+              Your disaster recovery plan is probably <span class="hero-dead">dead</span>.<br>
+              See for yourself.
+            </h1>
+            <p>
+              Stronghold scans your AWS infrastructure and tells you which critical services can't actually recover
+              &mdash; with proof.
+            </p>
+            <div class="hero-actions">
+              <button class="copy-cta" type="button" data-copy="npx @stronghold-dr/cli demo" aria-label="Copy demo command">
+                <span class="copy-command">npx @stronghold-dr/cli demo</span>
+                <span aria-hidden="true">
+                  <svg class="copy-icon copy-icon-clipboard" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M9 4H7.8C6.81 4 6 4.81 6 5.8V19.2C6 20.19 6.81 21 7.8 21H18.2C19.19 21 20 20.19 20 19.2V5.8C20 4.81 19.19 4 18.2 4H17"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                    <path
+                      d="M9.6 6H16.4C17.06 6 17.6 5.46 17.6 4.8V3.2C17.6 2.54 17.06 2 16.4 2H9.6C8.94 2 8.4 2.54 8.4 3.2V4.8C8.4 5.46 8.94 6 9.6 6Z"
+                      stroke="currentColor"
+                      stroke-width="1.7"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                  <svg class="copy-icon copy-icon-check" viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M5 12.5L9.2 16.5L19 6.5"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+              <a
+                class="hero-link"
+                href="https://github.com/mehdi-arfaoui/Stronghold"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                View on GitHub &rarr;
+              </a>
+            </div>
+            <div class="hero-note">First run downloads ~30MB. No AWS credentials needed.</div>
+          </div>
+          <div class="hero-visual">
+            <!-- Replace the placeholder below with:
+            <img src="assets/graph-hero.webp" alt="Stronghold graph screenshot with scenario mode enabled">
+            -->
+            <div class="hero-placeholder">Graph screenshot &mdash; replace with actual image</div>
+          </div>
+        </section>
+      </div>
+    </header>
+
+    <main>
+      <section class="section section-contrast" id="contrast">
+        <div class="container">
+          <div class="contrast-grid">
+            <article class="contrast-column">
+              <h2>What your console shows</h2>
+              <div class="contrast-rule" aria-hidden="true"></div>
+              <ul class="contrast-list">
+                <li class="contrast-success"><span aria-hidden="true">&#10003;</span><span>Backups configured</span></li>
+                <li class="contrast-success"><span aria-hidden="true">&#10003;</span><span>Read replicas active</span></li>
+                <li class="contrast-success"><span aria-hidden="true">&#10003;</span><span>All checks passing</span></li>
+              </ul>
+            </article>
+            <article class="contrast-column">
+              <h2>What Stronghold finds</h2>
+              <div class="contrast-rule" aria-hidden="true"></div>
+              <ul class="contrast-list">
+                <li class="contrast-danger"><span>Score: 45/100 (F)</span></li>
+                <li class="contrast-danger"><span>0/13 scenarios covered</span></li>
+                <li class="contrast-warning"><span>Runbook references stale resources</span></li>
+              </ul>
+            </article>
+            <article class="contrast-column">
+              <h2>What you actually need</h2>
+              <div class="contrast-rule" aria-hidden="true"></div>
+              <ul class="contrast-list">
+                <li><span>Proof-of-Recovery: 0%</span></li>
+                <li><span>3 services not recoverable</span></li>
+                <li><span>DR debt growing for 45 days</span></li>
+              </ul>
+            </article>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="what-stronghold-does">
+        <div class="container">
+          <h2 class="section-title">What Stronghold does</h2>
+          <div class="features-grid">
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M11 5a6 6 0 1 0 3.87 10.58L19 19.71" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M11 8.5V11l1.8 1.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <h3>What do we have?</h3>
+              <p>Service-level mapping from CloudFormation, tags, and topology &mdash; not just resource inventory.</p>
+            </article>
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 17.5L9 12.5L13 15.5L20 8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M14.5 8.5H20V14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="4" cy="17.5" r="1.6" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="9" cy="12.5" r="1.6" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="13" cy="15.5" r="1.6" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="20" cy="8.5" r="1.6" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <h3>What breaks if this fails?</h3>
+              <p>Dependency graph with blast radius analysis and SPOF detection.</p>
+            </article>
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M12 3L18.5 5.6V11.3C18.5 15.06 15.92 18.47 12 19.5C8.08 18.47 5.5 15.06 5.5 11.3V5.6L12 3Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
+                <path d="M9.5 11.8L11.3 13.6L14.9 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <h3>Can we still recover?</h3>
+              <p>Scenario coverage analysis for AZ failure, region failure, SPOF failure, data corruption.</p>
+            </article>
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M5 7.5H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M5 12H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M5 16.5H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <circle cx="8" cy="7.5" r="1.5" fill="currentColor"/>
+                <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+                <circle cx="16" cy="16.5" r="1.5" fill="currentColor"/>
+              </svg>
+              <h3>What's the proof?</h3>
+              <p>Evidence maturity tracking. "Config observed" &#8800; "recovery tested."</p>
+            </article>
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M4 18H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M6 15.5L10 11.5L13 13.5L18 8.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M15.5 8.5H18V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <h3>Is it getting better?</h3>
+              <p>Posture history, DR debt tracking, and trend analysis across scans.</p>
+            </article>
+          </div>
+        </div>
+      </section>
+      <section class="section" id="summary">
+        <div class="container">
+          <div class="summary-shell">
+            <div class="terminal" role="img" aria-label="Stronghold status terminal output">
+              <div class="terminal-header">
+                <div class="terminal-dots" aria-hidden="true">
+                  <span class="terminal-dot" style="background:#ef4444"></span>
+                  <span class="terminal-dot" style="background:#f59e0b"></span>
+                  <span class="terminal-dot" style="background:#22c55e"></span>
+                </div>
+                <span>Terminal</span>
+              </div>
+              <pre class="terminal-body">$ stronghold status
+
+Stronghold DR Intelligence
+
+Score  45/100 (<span class="terminal-d">D</span>)       Proof-of-Recovery  0% tested
+Services  14 detected   Scenarios  0/13 covered
+DR Debt  680 (+12%)     Trend  stable
+
+Worst exposed
+  &#10007; database   <span class="terminal-f">F</span>  19/100  no tested restore path
+  &#10007; storage    <span class="terminal-f">F</span>  26/100  no cross-region replication
+  &#10007; dns        <span class="terminal-f">F</span>   0/100  single point of failure
+
+Next action  Attach prod-db-primary to AWS Backup
+             <span class="terminal-safe">[SAFE &middot; +4 points]</span></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" aria-label="Credibility">
+        <div class="container">
+          <div class="credibility">
+            <span>TypeScript strict</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>654 tests</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>81% core coverage</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>39 DR rules</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>16 AWS services</span>
+            <span aria-hidden="true">&middot;</span>
+            <span>AGPL-3.0</span>
+            <span aria-hidden="true">&middot;</span>
+            <span class="credibility-strong">Zero telemetry</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer" id="try">
+      <div class="container">
+        <div class="footer-wrap">
+          <h2 class="footer-title">Try it now &mdash; no signup, no credentials, no telemetry.</h2>
+          <div class="footer-actions">
+            <button class="copy-cta" type="button" data-copy="npx @stronghold-dr/cli demo" aria-label="Copy demo command">
+              <span class="copy-command">npx @stronghold-dr/cli demo</span>
+              <span aria-hidden="true">
+                <svg class="copy-icon copy-icon-clipboard" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M9 4H7.8C6.81 4 6 4.81 6 5.8V19.2C6 20.19 6.81 21 7.8 21H18.2C19.19 21 20 20.19 20 19.2V5.8C20 4.81 19.19 4 18.2 4H17"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                  <path
+                    d="M9.6 6H16.4C17.06 6 17.6 5.46 17.6 4.8V3.2C17.6 2.54 17.06 2 16.4 2H9.6C8.94 2 8.4 2.54 8.4 3.2V4.8C8.4 5.46 8.94 6 9.6 6Z"
+                    stroke="currentColor"
+                    stroke-width="1.7"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+                <svg class="copy-icon copy-icon-check" viewBox="0 0 24 24" fill="none">
+                  <path
+                    d="M5 12.5L9.2 16.5L19 6.5"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+            </button>
+          </div>
+          <div class="footer-links">
+            <a href="https://github.com/mehdi-arfaoui/Stronghold" target="_blank" rel="noopener noreferrer">GitHub</a>
+            <span aria-hidden="true">&middot;</span>
+            <a href="https://www.npmjs.com/package/@stronghold-dr/cli" target="_blank" rel="noopener noreferrer">npm</a>
+            <span aria-hidden="true">&middot;</span>
+            <a href="https://github.com/mehdi-arfaoui/Stronghold#documentation" target="_blank" rel="noopener noreferrer">Documentation</a>
+          </div>
+          <div class="footer-meta">Made by Mehdi Arfaoui &middot; AGPL-3.0</div>
+        </div>
+      </div>
+    </footer>
+
+    <script>
+      (function () {
+        var buttons = Array.prototype.slice.call(document.querySelectorAll(".copy-cta"));
+        var status = document.getElementById("copy-status");
+
+        function copyText(value) {
+          if (navigator.clipboard && window.isSecureContext) {
+            return navigator.clipboard.writeText(value).then(function () {
+              return true;
+            }).catch(function () {
+              return false;
+            });
+          }
+
+          var field = document.createElement("textarea");
+          field.value = value;
+          field.setAttribute("readonly", "");
+          field.style.position = "absolute";
+          field.style.left = "-9999px";
+          document.body.appendChild(field);
+          field.select();
+
+          var copied = false;
+
+          try {
+            copied = document.execCommand("copy");
+          } catch (error) {
+            copied = false;
+          }
+
+          document.body.removeChild(field);
+          return Promise.resolve(copied);
+        }
+
+        function setCopied(command, copied) {
+          buttons.forEach(function (button) {
+            if (button.getAttribute("data-copy") !== command) {
+              return;
+            }
+
+            button.setAttribute("data-copied", copied ? "true" : "false");
+
+            if (button._copyTimer) {
+              window.clearTimeout(button._copyTimer);
+            }
+
+            if (copied) {
+              button._copyTimer = window.setTimeout(function () {
+                button.setAttribute("data-copied", "false");
+              }, 1800);
+            }
+          });
+        }
+
+        buttons.forEach(function (button) {
+          button.addEventListener("click", function () {
+            var command = button.getAttribute("data-copy") || "";
+
+            copyText(command).then(function (copied) {
+              if (!copied) {
+                return;
+              }
+
+              setCopied(command, true);
+
+              if (status) {
+                status.textContent = "Command copied to clipboard.";
+              }
+            });
+          });
+        });
+
+        Array.prototype.slice.call(document.querySelectorAll('a[href^="#"]')).forEach(function (link) {
+          link.addEventListener("click", function (event) {
+            var targetId = link.getAttribute("href");
+
+            if (!targetId || targetId === "#") {
+              return;
+            }
+
+            var target = document.querySelector(targetId);
+
+            if (!target) {
+              return;
+            }
+
+            event.preventDefault();
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+
+            if (window.history && window.history.replaceState) {
+              window.history.replaceState(null, "", targetId);
+            }
+          });
+        });
+      }());
+    </script>
+  </body>
 </html>

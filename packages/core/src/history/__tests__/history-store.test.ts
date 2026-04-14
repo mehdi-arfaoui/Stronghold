@@ -11,6 +11,7 @@ import { buildServicePosture } from '../../services/index.js';
 import { getStartupDemoPipelineInput } from '../../demo/startup-demo.js';
 import { analyzeFullGraph, cloneGraph } from '../../graph/index.js';
 import { generateDRPlan } from '../../drp/index.js';
+import { calculateRealityGap } from '../../scoring/index.js';
 import { allValidationRules, runValidation } from '../../validation/index.js';
 import { FileHistoryStore, buildScanSnapshot } from '../index.js';
 
@@ -145,6 +146,9 @@ function createSnapshot(id: string, timestamp: string) {
     globalScore: 68,
     globalGrade: 'C',
     proofOfRecovery: 33,
+    claimedProtection: 72,
+    provenRecoverability: 33,
+    realityGap: 39,
     observedCoverage: 67,
     totalResources: 42,
     totalFindings: 5,
@@ -220,6 +224,13 @@ async function createRealisticSnapshot(governance?: GovernanceState) {
     drp: drpPlan,
     evidence: [],
   });
+  const realityGap = calculateRealityGap({
+    nodes: demo.nodes,
+    validationReport,
+    servicePosture,
+    scenarioAnalysis,
+    drpPlan,
+  });
 
   return buildScanSnapshot({
     scanId: 'scan-demo',
@@ -230,6 +241,7 @@ async function createRealisticSnapshot(governance?: GovernanceState) {
     servicePosture,
     ...(governance ? { governance } : {}),
     scenarioAnalysis,
+    realityGap,
     scanDurationMs: 14_200,
     scannerSuccessCount: 8,
     scannerFailureCount: 1,

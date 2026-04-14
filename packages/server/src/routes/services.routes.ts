@@ -54,6 +54,27 @@ export function createServicesRoutes(
     }),
   );
 
+  router.get(
+    '/services/:id/reasoning',
+    asyncHandler(async (request, response) => {
+      const audit = new RequestAuditSession(auditLogger, logger, 'services_show', {
+        outputFormat: 'json',
+      });
+      await audit.start();
+
+      try {
+        const reasoning = await scanService.getServiceReasoning(
+          getSingleValue(request.params.id) ?? '',
+        );
+        response.json(reasoning);
+        await audit.finish({ status: 'success' });
+      } catch (error) {
+        await audit.fail(error);
+        throw error;
+      }
+    }),
+  );
+
   router.post(
     '/services/detect',
     asyncHandler(async (_request, response) => {

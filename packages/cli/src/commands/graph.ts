@@ -7,6 +7,7 @@ import {
   buildGraphVisualData,
   redact,
   renderGraphHtml,
+  type ReasoningScanResult,
   type GraphVisualSource,
   type GraphVisualData,
 } from "@stronghold-dr/core";
@@ -24,6 +25,8 @@ import {
   loadScanResultsWithEncryption,
   writeTextFile,
 } from "../storage/secure-file-store.js";
+import { rebuildScanResults } from "../pipeline/rebuild-scan.js";
+import { loadLocalPostureMemory } from "../history/posture-memory.js";
 import {
   resolvePreferredScanPath,
   resolveStrongholdPaths,
@@ -71,7 +74,25 @@ export function registerGraphCommand(program: Command): void {
         const scan = await loadScanResultsWithEncryption(scanPath, {
           passphrase: options.passphrase,
         });
-        const visual = buildGraphVisualData(scan as GraphVisualSource);
+        const effectiveScan = await rebuildScanResults(scan);
+        const baselinePath = resolveExistingScanPath(
+          paths.baselineEncryptedScanPath,
+          paths.baselineScanPath,
+        );
+        const baselineScan = baselinePath
+          ? await loadScanResultsWithEncryption(baselinePath, {
+              passphrase: options.passphrase,
+            }).catch(() => null)
+          : null;
+        const effectivePreviousScan = baselineScan ? await rebuildScanResults(baselineScan) : null;
+        const postureMemory = await loadLocalPostureMemory(effectiveScan, paths);
+        const visual = buildGraphVisualData({
+          ...(effectiveScan as GraphVisualSource),
+          previousScanResult: effectivePreviousScan
+            ? toReasoningScanResult(effectivePreviousScan)
+            : null,
+          findingLifecycles: postureMemory.allLifecycles,
+        });
         const redacted = options.redact ? redactGraphVisualData(visual) : null;
         const outputVisual = redacted?.data ?? visual;
         const html = renderGraphHtml(outputVisual, {
@@ -113,6 +134,30 @@ export function registerGraphCommand(program: Command): void {
         throw error;
       }
     });
+}
+
+function resolveExistingScanPath(encryptedPath: string, plainPath: string): string | null {
+  if (!fs.existsSync(encryptedPath) && !fs.existsSync(plainPath)) {
+    return null;
+  }
+
+  return resolvePreferredScanPath(encryptedPath, plainPath);
+}
+
+function toReasoningScanResult(
+  scan: Awaited<ReturnType<typeof rebuildScanResults>>,
+): ReasoningScanResult {
+  if (!scan.servicePosture) {
+    throw new Error("Service posture is unavailable for graph reasoning.");
+  }
+
+  return {
+    ...scan,
+    servicePosture: scan.servicePosture,
+    nodes: [...scan.nodes],
+    edges: [...scan.edges],
+    scannedAt: new Date(scan.timestamp),
+  };
 }
 
 function redactGraphVisualData(data: GraphVisualData): {
@@ -216,6 +261,16 @@ function redactGraphVisualData(data: GraphVisualData): {
         nodeIds: service.nodeIds.map(
           (nodeId) => nodeIdMap.get(nodeId) ?? nodeId,
         ),
+        reasoning: service.reasoning.map((bullet) =>
+          redactKnownIdentifiers(bullet, replacements),
+        ),
+        insights: service.insights.map((bullet) =>
+          redactKnownIdentifiers(bullet, replacements),
+        ),
+        conclusion: redactKnownIdentifiers(service.conclusion, replacements),
+        nextAction: service.nextAction
+          ? redactKnownIdentifiers(service.nextAction, replacements)
+          : null,
       })),
       scenarios: data.scenarios.map((scenario, index) => ({
         ...scenario,

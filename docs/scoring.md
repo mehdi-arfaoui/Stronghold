@@ -216,6 +216,28 @@ configuration in place but no proof it works.
 
 Proof-of-recovery is tracked in scan history and included in trend analysis.
 
+## Reality Gap
+
+The reality gap measures the distance between what configuration checks
+report and what Stronghold can actually prove.
+
+```text
+claimed_protection = (passing + warning) / (passing + warning + failing) x 100
+proven_recoverability = fully_proven_services / critical_services x 100
+reality_gap = claimed_protection - proven_recoverability
+```
+
+A service is "fully proven recoverable" when it meets all of:
+
+- at least one passing rule has non-expired `tested` evidence
+- all critical scenarios for the service are `covered` or `partially_covered`
+- the service runbook is valid with no stale resource references
+- the service has no unmitigated SPOF with blast radius greater than `2`
+
+The claimed protection value is intentionally unweighted. It represents
+the naive number a config-only tool would report. The reality gap shows
+how much of that claim is unsupported by tested recovery proof.
+
 ## Transparency in Reports
 
 Each validation result includes the raw score inputs:

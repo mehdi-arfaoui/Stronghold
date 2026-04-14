@@ -19,6 +19,14 @@ export function renderGraphHtml(
   const dataJson = serializeInlineJson(data);
   const coverage = `${data.scenarios.filter((scenario) => scenario.verdict === 'covered').length}/${data.scenarios.length} covered`;
   const showWarning = data.nodes.some((node) => node.id.includes('arn:aws:'));
+  const realityGapLabel =
+    data.realityGap === null ? 'N/A' : data.realityGap === 0 ? '0 pts' : `${data.realityGap} pts`;
+  const realityGapNote =
+    data.provenRecoverability === null
+      ? 'no services detected'
+      : data.realityGap === 0
+        ? 'No gap - DR posture is fully proven'
+        : `claimed ${data.claimedProtection}% -> ${data.provenRecoverability}% proven`;
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -30,11 +38,12 @@ export function renderGraphHtml(
 </head>
 <body>
   <div id="header">
+    <div class="stat"><div class="stat-label">Reality Gap</div><div class="stat-value">${formatRealityGapValue(realityGapLabel, data.realityGap)}</div><div class="stat-note">${escapeHtml(realityGapNote)}</div></div>
     <div class="stat"><div class="stat-label">Posture Score</div><div class="stat-value"><span>${data.globalScore}/100</span><span class="grade ${gradeClass(data.globalGrade)}">${escapeHtml(data.globalGrade)}</span></div><div class="stat-note">Stronghold DR posture as of ${escapeHtml(formatDate(data.scanDate))}</div></div>
     <div class="stat"><div class="stat-label">Proof Of Recovery</div><div class="stat-value">${formatPercent(data.proofOfRecovery)} tested</div><div class="stat-note">${data.observedCoverage}% observed coverage</div></div>
     <div class="stat"><div class="stat-label">Scenario Coverage</div><div class="stat-value">${escapeHtml(coverage)}</div><div class="stat-note">${data.scenarios.length} built-in scenarios available</div></div>
-    <div class="stat"><div class="stat-label">Graph Footprint</div><div class="stat-value">${data.nodes.length} nodes</div><div class="stat-note">${data.edges.length} dependencies across ${data.services.length} services</div></div>
   </div>
+  ${renderGapBar(data)}
   ${showWarning ? '<div id="warning">WARNING: This graph contains infrastructure identifiers. Use --redact for sharing.</div>' : ''}
   <div id="main">
     <section id="graph-panel">
@@ -78,7 +87,7 @@ export function renderGraphHtml(
     </section>
     <aside id="sidebar">
       <div id="sidebar-head"><h2>Node Details</h2></div>
-      <div id="sidebar-body">Select a node to inspect its service, findings, and recovery posture.</div>
+      <div id="sidebar-body">Select a node to inspect its service, reality gap, findings, and recovery posture.</div>
     </aside>
   </div>
   <script id="graph-data" type="application/json">${dataJson}</script>
@@ -87,12 +96,41 @@ export function renderGraphHtml(
 </html>`;
 }
 
+function renderGapBar(data: GraphVisualData): string {
+  if (data.provenRecoverability === null || data.realityGap === null) {
+    return '<div id="gap-strip" class="is-empty"><div id="gap-bar-head"><span>Reality gap visual</span><strong>N/A</strong></div></div>';
+  }
+
+  const provenWidth = clampPercent(data.provenRecoverability);
+  const claimedWidth = clampPercent(data.claimedProtection);
+  const gapWidth = clampPercent(Math.max(0, claimedWidth - provenWidth));
+  const unclaimedWidth = Math.max(0, 100 - claimedWidth);
+
+  return `<div id="gap-strip"><div id="gap-bar-head"><span><strong>${provenWidth}%</strong> proven</span><span>claimed ${claimedWidth}%</span></div><div id="gap-bar-wrap"><div class="gap-segment gap-proven" style="width:${provenWidth}%"></div><div class="gap-segment gap-gap" style="width:${gapWidth}%"></div><div class="gap-segment gap-unclaimed" style="width:${unclaimedWidth}%"></div><div id="gap-claimed-marker" style="left:${claimedWidth}%"></div><div id="gap-claimed-label" style="left:${claimedWidth}%">${claimedWidth}% claimed</div></div></div>`;
+}
+
+function formatRealityGapValue(value: string, gap: number | null): string {
+  if (gap === null) {
+    return `<span>${escapeHtml(value)}</span>`;
+  }
+  if (gap === 0) {
+    return `<span style="color:#22c55e">${escapeHtml(value)}</span>`;
+  }
+  if (gap > 50) {
+    return `<span style="color:#ef4444">${escapeHtml(value)}</span>`;
+  }
+  if (gap >= 20) {
+    return `<span style="color:#eab308">${escapeHtml(value)}</span>`;
+  }
+  return `<span style="color:#22c55e">${escapeHtml(value)}</span>`;
+}
+
 function buildStyles(): string {
   return [
     ':root{color-scheme:dark;--bg:#0f1117;--sidebar:#161822;--line:rgba(148,163,184,.16);--line-strong:rgba(255,255,255,.08);--text:#f8fafc;--text-soft:#e2e8f0;--muted:#94a3b8;--critical:#ef4444;--high:#f97316;--medium:#eab308;--low:#22c55e;--gray:#6b7280;--manual:#f4a340}',
     '*{box-sizing:border-box}',
     'html,body{margin:0;min-height:100%;background:#0f1117;color:var(--text);font-family:"Segoe UI","Helvetica Neue",sans-serif}',
-    'body{display:grid;grid-template-rows:auto auto 1fr}',
+    'body{display:grid;grid-template-rows:auto auto auto 1fr}',
     '#header{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;padding:20px 22px 16px;background:#0f1117;border-bottom:1px solid var(--line-strong);position:sticky;top:0;z-index:10}',
     '.stat{padding:14px 16px;border:1px solid var(--line);border-radius:18px;background:rgba(255,255,255,.025)}',
     '.stat-label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)}',
@@ -103,6 +141,17 @@ function buildStyles(): string {
     '.grade-c{background:rgba(234,179,8,.18);border:1px solid rgba(234,179,8,.45)}',
     '.grade-d{background:rgba(249,115,22,.18);border:1px solid rgba(249,115,22,.45)}',
     '.grade-f{background:rgba(239,68,68,.2);border:1px solid rgba(239,68,68,.45)}',
+    '#gap-strip{padding:0 22px 16px;background:#0f1117}',
+    '#gap-strip.is-empty{padding-top:6px}',
+    '#gap-bar-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-size:12px;color:var(--muted)}',
+    '#gap-bar-head strong{color:var(--text)}',
+    '#gap-bar-wrap{position:relative;height:18px;border-radius:999px;background:rgba(148,163,184,.14);overflow:hidden;border:1px solid var(--line)}',
+    '.gap-segment{height:100%;float:left}',
+    '.gap-proven{background:linear-gradient(90deg,rgba(34,197,94,.85),rgba(34,197,94,.65))}',
+    '.gap-gap{background:linear-gradient(90deg,rgba(239,68,68,.9),rgba(239,68,68,.7))}',
+    '.gap-unclaimed{background:rgba(148,163,184,.14)}',
+    '#gap-claimed-marker{position:absolute;top:-4px;bottom:-4px;width:2px;background:#f8fafc;opacity:.9}',
+    '#gap-claimed-label{position:absolute;top:-24px;transform:translateX(-50%);font-size:11px;color:var(--text-soft);white-space:nowrap}',
     '#warning{margin:0 22px 16px;padding:12px 14px;border-radius:16px;border:1px solid rgba(234,179,8,.45);background:rgba(234,179,8,.16);color:#fde68a;font-size:14px}',
     '#main{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:16px;padding:0 22px 22px;min-height:0}',
     '#graph-panel{border:1px solid var(--line);border-radius:24px;background:#0f1117;overflow:hidden}',
@@ -148,6 +197,8 @@ function buildStyles(): string {
     '.section h3{margin:0 0 8px;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--text)}',
     '.card{padding:10px 12px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--line);margin-bottom:10px}',
     '.card:last-child{margin-bottom:0}',
+    '.bullet-list{margin:0;padding-left:18px;color:var(--text)}',
+    '.bullet-list li{margin-bottom:6px}',
     '.pill-wrap{display:flex;flex-wrap:wrap;gap:8px}',
     '.pill{display:inline-flex;align-items:center;padding:6px 10px;border-radius:999px;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);font-size:12px}',
     'details#legend{position:absolute;right:16px;bottom:16px;width:250px;border-radius:18px;border:1px solid var(--line);background:rgba(15,17,23,.92);overflow:hidden}',
@@ -174,6 +225,7 @@ function buildClientScript(initialScenarioId: string | null): string {
     "const nodeEls = Array.from(document.querySelectorAll('.graph-node'));",
     "const edgeEls = Array.from(document.querySelectorAll('.graph-edge'));",
     "const nodeMap = new Map(DATA.nodes.map((node) => [node.id, node]));",
+    "const serviceMap = new Map(DATA.services.map((service) => [service.id, service]));",
     "const scenarioMap = new Map(DATA.scenarios.map((scenario) => [scenario.id, scenario]));",
     "const state = { hoveredNodeId: null, selectedNodeId: null, scenarioId: null, dragging: false, scale: 1, x: 0, y: 0, dragPoint: null };",
     "function esc(value){return String(value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;')}",
@@ -182,7 +234,7 @@ function buildClientScript(initialScenarioId: string | null): string {
     "function clamp(value,min,max){return Math.min(max,Math.max(min,value))}",
     "function pointFromClient(clientX,clientY){const point=svg.createSVGPoint();point.x=clientX;point.y=clientY;const matrix=svg.getScreenCTM();return matrix?point.matrixTransform(matrix.inverse()):{x:0,y:0}}",
     "function activeNodeId(){return state.hoveredNodeId || state.selectedNodeId}",
-    "function renderSidebar(){const node = state.selectedNodeId ? nodeMap.get(state.selectedNodeId) : null; const scenario = state.scenarioId ? scenarioMap.get(state.scenarioId) : null; if(node){const findings = (node.findings || []).slice(0,6).map((finding) => '<div class=\"card\"><strong>' + esc(finding.ruleId) + '</strong><br>' + esc(finding.severity.toUpperCase()) + ' - ' + esc(finding.message) + (finding.remediation ? '<br><span style=\"color:var(--muted)\">' + esc(finding.remediation) + '</span>' : '') + '</div>').join('') || '<div class=\"card\">No active findings on this node.</div>'; const recs = (node.recommendations || []).slice(0,6).map((title) => '<div class=\"card\">' + esc(title) + '</div>').join('') || '<div class=\"card\">No recommendations scoped to this node.</div>'; sidebar.innerHTML = '<div class=\"section\">' + '<div class=\"detail\"><div class=\"detail-key\">Resource</div><div class=\"detail-value\">' + esc(node.label) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Type</div><div class=\"detail-value\">' + esc(node.type) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Service</div><div class=\"detail-value\">' + esc(node.serviceName || 'Unassigned') + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Region</div><div class=\"detail-value\">' + esc(node.region + (node.az ? ' - ' + node.az : '')) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Severity</div><div class=\"detail-value\">' + esc((node.worstSeverity || 'none').toUpperCase()) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">DR Score</div><div class=\"detail-value\">' + esc(node.drScore === null ? 'n/a' : node.drScore + '/100') + '</div></div>' + '</div><div class=\"section\"><h3>Findings</h3>' + findings + '</div><div class=\"section\"><h3>Recommendations</h3>' + recs + '</div>'; return;} if(scenario){const down = scenario.downServices.length ? scenario.downServices.map((name) => '<span class=\"pill\">' + esc(name) + '</span>').join('') : '<span class=\"pill\">None</span>'; const degraded = scenario.degradedServices.length ? scenario.degradedServices.map((name) => '<span class=\"pill\">' + esc(name) + '</span>').join('') : '<span class=\"pill\">None</span>'; sidebar.innerHTML = '<div class=\"section\">' + '<div class=\"detail\"><div class=\"detail-key\">Scenario</div><div class=\"detail-value\">' + esc(scenario.name) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Type</div><div class=\"detail-value\">' + esc(scenario.type) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Coverage</div><div class=\"detail-value\">' + esc(String(scenario.verdict).replace(/_/g,' ')) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Affected</div><div class=\"detail-value\">' + scenario.affectedNodeIds.length + ' nodes</div></div>' + '</div><div class=\"section\"><h3>Services Down</h3><div class=\"pill-wrap\">' + down + '</div></div><div class=\"section\"><h3>Services Degraded</h3><div class=\"pill-wrap\">' + degraded + '</div></div><div class=\"section\"><h3>Summary</h3><div class=\"detail-value\">' + esc(scenario.summary || 'No additional coverage summary available.') + '</div></div>'; return;} sidebar.textContent = 'Select a node to inspect its service, findings, and recovery posture.';}",
+    "function renderSidebar(){const node = state.selectedNodeId ? nodeMap.get(state.selectedNodeId) : null; const scenario = state.scenarioId ? scenarioMap.get(state.scenarioId) : null; if(node){const service = node.serviceId ? serviceMap.get(node.serviceId) : null; const findings = (node.findings || []).slice(0,6).map((finding) => '<div class=\"card\"><strong>' + esc(finding.ruleId) + '</strong><br>' + esc(finding.severity.toUpperCase()) + ' - ' + esc(finding.message) + (finding.remediation ? '<br><span style=\"color:var(--muted)\">' + esc(finding.remediation) + '</span>' : '') + '</div>').join('') || '<div class=\"card\">No active findings on this node.</div>'; const recs = (node.recommendations || []).slice(0,6).map((title) => '<div class=\"card\">' + esc(title) + '</div>').join('') || '<div class=\"card\">No recommendations scoped to this node.</div>'; const reasoning = service && service.reasoning.length ? '<div class=\"section\"><h3>Reasoning</h3><ul class=\"bullet-list\">' + service.reasoning.map((bullet) => '<li>' + esc(bullet) + '</li>').join('') + '</ul></div>' : ''; const insights = service && service.insights.length ? '<div class=\"section\"><h3>Graph Insights</h3><ul class=\"bullet-list\">' + service.insights.map((bullet) => '<li>' + esc(bullet) + '</li>').join('') + '</ul></div>' : ''; const reality = service ? '<div class=\"section\"><h3>Reality Gap</h3><div class=\"detail\"><div class=\"detail-key\">Gap</div><div class=\"detail-value\">' + esc(service.realityGap + ' pts') + '</div></div><div class=\"detail\"><div class=\"detail-key\">Claimed</div><div class=\"detail-value\">' + esc(service.claimedProtection + '% protected') + '</div></div><div class=\"detail\"><div class=\"detail-key\">Proven</div><div class=\"detail-value\">' + esc(service.provenRecoverability + '% recoverable') + '</div></div></div>' : ''; const nextAction = service && service.nextAction ? '<div class=\"section\"><h3>Next Action</h3><div class=\"card\">' + esc(service.nextAction) + '</div></div>' : ''; sidebar.innerHTML = '<div class=\"section\">' + '<div class=\"detail\"><div class=\"detail-key\">Resource</div><div class=\"detail-value\">' + esc(node.label) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Type</div><div class=\"detail-value\">' + esc(node.type) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Service</div><div class=\"detail-value\">' + esc(node.serviceName || 'Unassigned') + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Region</div><div class=\"detail-value\">' + esc(node.region + (node.az ? ' - ' + node.az : '')) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Severity</div><div class=\"detail-value\">' + esc((node.worstSeverity || 'none').toUpperCase()) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">DR Score</div><div class=\"detail-value\">' + esc(node.drScore === null ? 'n/a' : node.drScore + '/100') + '</div></div>' + '</div>' + reality + reasoning + insights + nextAction + '<div class=\"section\"><h3>Findings</h3>' + findings + '</div><div class=\"section\"><h3>Recommendations</h3>' + recs + '</div>'; return;} if(scenario){const down = scenario.downServices.length ? scenario.downServices.map((name) => '<span class=\"pill\">' + esc(name) + '</span>').join('') : '<span class=\"pill\">None</span>'; const degraded = scenario.degradedServices.length ? scenario.degradedServices.map((name) => '<span class=\"pill\">' + esc(name) + '</span>').join('') : '<span class=\"pill\">None</span>'; sidebar.innerHTML = '<div class=\"section\">' + '<div class=\"detail\"><div class=\"detail-key\">Scenario</div><div class=\"detail-value\">' + esc(scenario.name) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Type</div><div class=\"detail-value\">' + esc(scenario.type) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Coverage</div><div class=\"detail-value\">' + esc(String(scenario.verdict).replace(/_/g,' ')) + '</div></div>' + '<div class=\"detail\"><div class=\"detail-key\">Affected</div><div class=\"detail-value\">' + scenario.affectedNodeIds.length + ' nodes</div></div>' + '</div><div class=\"section\"><h3>Services Down</h3><div class=\"pill-wrap\">' + down + '</div></div><div class=\"section\"><h3>Services Degraded</h3><div class=\"pill-wrap\">' + degraded + '</div></div><div class=\"section\"><h3>Summary</h3><div class=\"detail-value\">' + esc(scenario.summary || 'No additional coverage summary available.') + '</div></div>'; return;} sidebar.textContent = 'Select a node to inspect its service, reality gap, findings, and recovery posture.';}",
     "function refresh(){const focus = activeNodeId(); const scenario = state.scenarioId ? scenarioMap.get(state.scenarioId) : null; const direct = new Set(scenario ? scenario.directlyAffectedNodeIds : []); const cascade = new Set(scenario ? scenario.cascadeNodeIds : []); const affected = new Set(scenario ? scenario.affectedNodeIds : []); nodeEls.forEach((el) => { const id = el.getAttribute('data-node-id'); el.classList.toggle('is-selected', Boolean(id && id === state.selectedNodeId)); el.classList.toggle('is-direct', Boolean(id && direct.has(id))); el.classList.toggle('is-cascade', Boolean(id && cascade.has(id))); el.classList.toggle('is-dimmed', Boolean(scenario && id && !affected.has(id))); }); edgeEls.forEach((el) => { const source = el.getAttribute('data-source'); const target = el.getAttribute('data-target'); const related = focus && (source === focus || target === focus); const scenarioRelated = Boolean(scenario && source && target && affected.has(source) && affected.has(target)); el.classList.toggle('is-active', Boolean(related || scenarioRelated)); el.classList.toggle('is-dimmed', Boolean(scenario ? !scenarioRelated && !related : focus ? !related : false)); }); renderSidebar();}",
     "nodeEls.forEach((el) => { el.addEventListener('mouseenter', () => { state.hoveredNodeId = el.getAttribute('data-node-id'); const node = nodeMap.get(state.hoveredNodeId); if(node){tooltip.innerHTML = '<strong>' + esc(node.label) + '</strong><br>' + esc(node.type) + ' - ' + esc(node.region) + '<br>' + node.findingCount + ' findings - ' + esc((node.worstSeverity || 'none').toUpperCase()); tooltip.style.opacity = '1'} refresh(); }); el.addEventListener('mousemove', (event) => { tooltip.style.transform = 'translate(' + (event.clientX + 18) + 'px,' + (event.clientY + 18) + 'px)' }); el.addEventListener('mouseleave', () => { state.hoveredNodeId = null; tooltip.style.opacity = '0'; tooltip.style.transform = 'translate(-9999px,-9999px)'; refresh() }); el.addEventListener('click', () => { state.selectedNodeId = el.getAttribute('data-node-id'); refresh() }); });",
     "svg.addEventListener('mousedown', (event) => { if(event.target.closest('.graph-node')) return; state.dragging = true; state.dragPoint = pointFromClient(event.clientX,event.clientY); svg.classList.add('is-dragging') });",
@@ -528,6 +580,14 @@ function formatDate(value: string): string {
 
 function formatPercent(value: number | null): string {
   return `${value ?? 0}%`;
+}
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function serializeInlineJson(value: unknown): string {

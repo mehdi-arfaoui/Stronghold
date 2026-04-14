@@ -7,6 +7,7 @@ import {
   applyRiskAcceptancesToServicePosture,
   buildServicePosture,
   calculateProofOfRecovery,
+  calculateRealityGap,
   generateDRPlan,
   generateRecommendations,
   loadGovernanceConfig,
@@ -137,6 +138,13 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     validationReport,
     servicePosture: finalPosture,
   });
+  const realityGap = calculateRealityGap({
+    nodes: analyzedNodes,
+    validationReport,
+    servicePosture: finalPosture,
+    scenarioAnalysis,
+    drpPlan,
+  });
   const governanceState = governance
     ? {
         riskAcceptances: riskAcceptanceOutcome?.governance.riskAcceptances ?? [],
@@ -167,6 +175,7 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     validationReport,
     drpPlan,
     proofOfRecovery,
+    realityGap,
     servicePosture: finalPosture,
     ...(governanceState ? { governance: governanceState } : {}),
     scenarioAnalysis,

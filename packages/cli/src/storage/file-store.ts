@@ -10,6 +10,7 @@ import type {
   GraphAnalysisReport,
   InfraNode,
   ProofOfRecoveryResult,
+  RealityGapResult,
   RegionalRisk,
   ScenarioAnalysis,
   ServicePosture,
@@ -64,6 +65,7 @@ export interface ScanResults {
   readonly validationReport: ValidationReport;
   readonly drpPlan: DRPlan;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
+  readonly realityGap?: RealityGapResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: GovernanceState;
   readonly scenarioAnalysis?: ScenarioAnalysis;
@@ -150,6 +152,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
   const proofOfRecovery = isRecord(value.proofOfRecovery)
     ? (value.proofOfRecovery as unknown as ProofOfRecoveryResult)
     : null;
+  const realityGap = isRecord(value.realityGap)
+    ? (value.realityGap as unknown as RealityGapResult)
+    : null;
   const servicePosture = isRecord(value.servicePosture)
     ? (value.servicePosture as unknown as ServicePosture)
     : null;
@@ -174,6 +179,7 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     validationReport,
     drpPlan,
     ...(proofOfRecovery ? { proofOfRecovery } : {}),
+    ...(realityGap ? { realityGap } : {}),
     ...(servicePosture ? { servicePosture } : {}),
     ...(governance ? { governance } : {}),
     ...(scenarioAnalysis ? { scenarioAnalysis } : {}),

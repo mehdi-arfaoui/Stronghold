@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { Command } from 'commander';
 import {
   redactObject,
@@ -44,6 +46,7 @@ export function registerReportCommand(program: Command): void {
     .option('--show-passed', 'Include passing controls with their evidence', false)
     .option('--show-resolved', 'Include findings resolved since the previous scan', false)
     .option('--explain-score', 'Show score decomposition and evidence maturity', false)
+    .option('--no-reasoning', 'Hide the condensed reasoning section for the worst services')
     .option('--verbose', 'Show detailed logs', false),
   ).action(async (_: ReportCommandOptions, command: Command) => {
       const options = getCommandOptions<ReportCommandOptions>(command);
@@ -56,6 +59,7 @@ export function registerReportCommand(program: Command): void {
         '--show-passed': options.showPassed,
         '--show-resolved': options.showResolved,
         '--explain-score': options.explainScore,
+        '--no-reasoning': options.reasoning === false,
         '--no-overrides': options.useOverrides === false,
         '--overrides': options.useOverrides !== false,
       });
@@ -81,6 +85,10 @@ export function registerReportCommand(program: Command): void {
         const resolvedOverrides = resolveGraphOverrides(options);
         resolvedOverrides.warnings.forEach((warning) => writeError(warning));
         const effectiveScan = await rebuildScanResults(scan, resolvedOverrides.overrides);
+        const previousScan = await loadOptionalBaselineScan(paths, options.passphrase);
+        const effectivePreviousScan = previousScan
+          ? await rebuildScanResults(previousScan, resolvedOverrides.overrides)
+          : null;
         const postureMemory = await loadLocalPostureMemory(effectiveScan, paths);
         if (postureMemory.warning) {
           writeError(postureMemory.warning);
@@ -103,6 +111,8 @@ export function registerReportCommand(program: Command): void {
           ...(options.showPassed ? { showPassed: true } : {}),
           ...(options.showResolved ? { showResolved: true } : {}),
           ...(options.explainScore ? { explainScore: true } : {}),
+          reasoning: options.reasoning,
+          previousScan: effectivePreviousScan,
           findingLifecycles: new Map(
             allLifecycles.map((lifecycle) => [lifecycle.findingKey, lifecycle] as const),
           ),
@@ -183,6 +193,24 @@ export function registerReportCommand(program: Command): void {
         throw error;
       }
     });
+}
+
+async function loadOptionalBaselineScan(
+  paths: ReturnType<typeof resolveStrongholdPaths>,
+  passphrase: string | undefined,
+) {
+  if (!fs.existsSync(paths.baselineEncryptedScanPath) && !fs.existsSync(paths.baselineScanPath)) {
+    return null;
+  }
+
+  try {
+    return await loadScanResultsWithEncryption(
+      resolvePreferredScanPath(paths.baselineEncryptedScanPath, paths.baselineScanPath),
+      { passphrase },
+    );
+  } catch {
+    return null;
+  }
 }
 
 function selectResolvedSincePrevious(

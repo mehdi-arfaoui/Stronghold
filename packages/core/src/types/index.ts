@@ -86,6 +86,7 @@ export {
   type ApiServiceSummary,
   type ApiServicesResponse,
   type ApiServiceDetailResponse,
+  type ApiServiceReasoningResponse,
   type ApiGovernanceOwnershipSummary,
   type ApiGovernancePolicySummary,
   type ApiGovernanceResponse,

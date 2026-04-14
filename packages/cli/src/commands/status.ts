@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import {
+  calculateRealityGap,
   calculateProofOfRecovery,
   FileEvidenceStore,
   checkFreshness,
@@ -93,6 +94,13 @@ export function renderStatusSnapshot(
     validationReport: scan.validationReport,
     servicePosture: scan.servicePosture,
   });
+  const realityGap = scan.realityGap ?? calculateRealityGap({
+    nodes: scan.nodes,
+    validationReport: scan.validationReport,
+    servicePosture: scan.servicePosture,
+    scenarioAnalysis: scan.scenarioAnalysis,
+    drpPlan: scan.drpPlan,
+  });
   const currentDebt =
     postureMemory?.currentSnapshot?.totalDebt ??
     postureMemory?.currentDebt.reduce((sum, service) => sum + service.totalDebt, 0) ??
@@ -101,6 +109,7 @@ export function renderStatusSnapshot(
     score: displayedScore.score,
     grade: displayedScore.grade,
     proofOfRecovery,
+    realityGap,
     services: scan.servicePosture?.services ?? [],
     scenarioAnalysis: scan.scenarioAnalysis ?? null,
     scenariosCovered: scan.scenarioAnalysis?.summary.covered ?? 0,

@@ -65,6 +65,7 @@ export {
   type ApiServiceSummary,
   type ApiServicesResponse,
   type ApiServiceDetailResponse,
+  type ApiServiceReasoningResponse,
   type ApiGovernanceOwnershipSummary,
   type ApiGovernancePolicySummary,
   type ApiGovernanceResponse,
@@ -546,7 +547,29 @@ export {
 
 export {
   calculateProofOfRecovery,
+  calculateRealityGap,
   type CalculateProofOfRecoveryInput,
+  type CalculateRealityGapInput,
   type ProofOfRecoveryResult,
   type ProofOfRecoveryServiceResult,
+  type RealityGapReason,
+  type RealityGapResult,
+  type RealityGapServiceDetail,
 } from './scoring/index.js';
+
+export {
+  buildReasoningChain,
+  condenseReasoningChain,
+  detectCascadeFailure,
+  detectRecoveryPathErosion,
+  detectRiskAcceptanceInvalidation,
+  detectSilentDependencyDrift,
+  generateConclusion,
+  type BuildReasoningChainInput,
+  type GraphInsight,
+  type GraphInsightType,
+  type ReasoningChain,
+  type ReasoningScanResult,
+  type ReasoningStep,
+  type ReasoningStepType,
+} from './reasoning/index.js';

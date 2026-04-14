@@ -2,6 +2,7 @@ import chalk from 'chalk';
 
 import type {
   ProofOfRecoveryResult,
+  RealityGapResult,
   Recommendation,
   ScenarioAnalysis,
   ServicePostureService,
@@ -18,6 +19,7 @@ export interface ExecutiveSummaryOptions {
   readonly score: number;
   readonly grade: string;
   readonly proofOfRecovery: ProofOfRecoveryResult | null | undefined;
+  readonly realityGap: RealityGapResult | null | undefined;
   readonly services: readonly ServicePostureService[];
   readonly scenarioAnalysis?: ScenarioAnalysis | null;
   readonly scenariosCovered: number;
@@ -68,7 +70,9 @@ export function resolveExecutiveTrendFromSnapshots(
 export function renderExecutiveSummary(options: ExecutiveSummaryOptions): string {
   const lines = [`  ${chalk.bold('Stronghold DR Intelligence')}`, ''];
   const proofValue = formatProofOfRecovery(options.proofOfRecovery);
+  const gapValue = formatRealityGap(options.realityGap, options.services.length);
 
+  lines.push(renderWideMetric('Reality Gap', gapValue.rendered, gapValue.noteRendered));
   lines.push(
     renderMetricRow(
       metricColumn(
@@ -303,6 +307,39 @@ function formatProofOfRecovery(
   };
 }
 
+function formatRealityGap(
+  realityGap: RealityGapResult | null | undefined,
+  serviceCount: number,
+): {
+  readonly plain: string;
+  readonly rendered: string;
+  readonly notePlain: string;
+  readonly noteRendered: string;
+} {
+  if (!realityGap || realityGap.provenRecoverability === null || serviceCount === 0) {
+    return {
+      plain: 'N/A',
+      rendered: chalk.gray('N/A'),
+      notePlain: 'no services detected',
+      noteRendered: chalk.gray('no services detected'),
+    };
+  }
+
+  const gap = realityGap.realityGap ?? Math.max(0, realityGap.claimedProtection - realityGap.provenRecoverability);
+  const renderedGap = colorRealityGap(`${gap} pts`, gap);
+  const note =
+    gap === 0
+      ? 'No gap - DR posture is fully proven'
+      : `claimed ${realityGap.claimedProtection}% protected -> ${realityGap.provenRecoverability}% proven recoverable`;
+
+  return {
+    plain: `${gap} pts`,
+    rendered: renderedGap,
+    notePlain: note,
+    noteRendered: gap === 0 ? chalk.green(note) : chalk.gray(note),
+  };
+}
+
 function formatDebt(drDebt: number, change: number | null): string {
   const roundedDebt = Math.round(drDebt);
   if (roundedDebt === 0) {
@@ -327,6 +364,10 @@ function renderMetricRow(
   right: MetricColumn,
 ): string {
   return `  ${padMetric(left, COLUMN_WIDTH)}  ${right.rendered}`;
+}
+
+function renderWideMetric(label: string, value: string, note: string): string {
+  return `  ${chalk.dim(label)}  ${value}  ${note}`;
 }
 
 function padMetric(column: MetricColumn, width: number): string {
@@ -374,6 +415,19 @@ function colorTrend(
     return chalk.gray(value);
   }
   return chalk.yellow(value);
+}
+
+function colorRealityGap(value: string, gap: number): string {
+  if (gap === 0) {
+    return chalk.green(value);
+  }
+  if (gap > 50) {
+    return chalk.red(value);
+  }
+  if (gap >= 20) {
+    return chalk.yellow(value);
+  }
+  return chalk.green(value);
 }
 
 function truncateText(value: string, maxLength: number): string {

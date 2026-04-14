@@ -20,6 +20,7 @@ describe('Report Flow E2E', () => {
     expect(response.status).toBe(200);
     expect(response.body.scoreBreakdown.overall).toBeTypeOf('number');
     expect(response.body.proofOfRecovery).toBeDefined();
+    expect(response.body.realityGap).toBeDefined();
     expect(response.body.proofOfRecovery.observedCoverage).toBeTypeOf('number');
     expect(Array.isArray(response.body.results)).toBe(true);
   });

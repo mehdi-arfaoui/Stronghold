@@ -103,6 +103,20 @@ describe('buildGraphVisualData', () => {
     }
   });
 
+  it('keeps single-node service clusters materially smaller than multi-node clusters', () => {
+    const visual = buildGraphVisualData(createServiceClusterSizingSource());
+    const service11 = visual.services.find((service) => service.id === 'service-11');
+    const service12 = visual.services.find((service) => service.id === 'service-12');
+
+    expect(service11).toBeDefined();
+    expect(service12).toBeDefined();
+    expect(service11?.width).toBe(240);
+    expect(service11?.height).toBe(136);
+    expect(service12?.width).toBeGreaterThan(service11?.width ?? 0);
+    expect(service12?.height).toBeGreaterThan(service11?.height ?? 0);
+    expect((service12?.width ?? 0) / (service11?.width ?? 1)).toBeGreaterThanOrEqual(1.5);
+  });
+
   it('leaves unassigned resources without a service id', () => {
     const visual = buildGraphVisualData({
       provider: 'aws',
@@ -262,5 +276,125 @@ function createNode(id: string, name: string, type: string): InfraNode {
     availabilityZone: null,
     tags: {},
     metadata: {},
+  };
+}
+
+function createServiceClusterSizingSource(): GraphVisualSource {
+  const nodes = [
+    createNode('service-11-db', 'service-11-db', 'DATABASE'),
+    createNode('service-12-api', 'service-12-api', 'VM'),
+    createNode('service-12-worker', 'service-12-worker', 'VM'),
+    createNode('service-12-db', 'service-12-db', 'DATABASE'),
+  ];
+  const edges: readonly ScanEdge[] = [
+    { source: 'service-12-api', target: 'service-12-db', type: 'DEPENDS_ON', provenance: 'aws-api' },
+    { source: 'service-12-worker', target: 'service-12-db', type: 'DEPENDS_ON', provenance: 'aws-api' },
+  ];
+
+  return {
+    provider: 'aws',
+    nodes,
+    edges,
+    scannedAt: new Date(FIXED_TIMESTAMP),
+    servicePosture: {
+      detection: {
+        services: [
+          createServiceDefinition('service-11', ['service-11-db'], 'Service 11'),
+          createServiceDefinition('service-12', ['service-12-api', 'service-12-worker', 'service-12-db'], 'Service 12'),
+        ],
+        unassignedResources: [],
+        detectionSummary: {
+          cloudformation: 0,
+          tag: 0,
+          topology: 0,
+          manual: 2,
+          totalResources: 4,
+          assignedResources: 4,
+          unassignedResources: 0,
+        },
+      },
+      scoring: {
+        services: [],
+        unassigned: null,
+      },
+      contextualFindings: [],
+      recommendations: [],
+      services: [
+        createServicePostureEntry('service-11', 'Service 11', ['service-11-db'], 52, 'D'),
+        createServicePostureEntry(
+          'service-12',
+          'Service 12',
+          ['service-12-api', 'service-12-worker', 'service-12-db'],
+          85,
+          'B',
+        ),
+      ],
+      unassigned: {
+        score: null,
+        resourceCount: 0,
+        contextualFindings: [],
+        recommendations: [],
+      },
+    },
+  };
+}
+
+function createServiceDefinition(
+  id: string,
+  nodeIds: readonly string[],
+  name: string,
+) {
+  return {
+    id,
+    name,
+    criticality: 'high' as const,
+    detectionSource: {
+      type: 'manual' as const,
+      file: '.stronghold/services.yml',
+      confidence: 1.0 as const,
+    },
+    resources: nodeIds.map((nodeId) => ({
+      nodeId,
+      role: nodeId.endsWith('db') ? ('datastore' as const) : ('compute' as const),
+      detectionSource: {
+        type: 'manual' as const,
+        file: '.stronghold/services.yml',
+        confidence: 1.0 as const,
+      },
+    })),
+    metadata: {},
+  };
+}
+
+function createServicePostureEntry(
+  id: string,
+  name: string,
+  nodeIds: readonly string[],
+  score: number,
+  grade: 'A' | 'B' | 'C' | 'D' | 'F',
+) {
+  const service = createServiceDefinition(id, nodeIds, name);
+
+  return {
+    service,
+    score: {
+      serviceId: id,
+      serviceName: name,
+      resourceCount: nodeIds.length,
+      criticality: service.criticality,
+      detectionSource: service.detectionSource,
+      score,
+      grade,
+      findingsCount: {
+        critical: 0,
+        high: grade === 'D' ? 1 : 0,
+        medium: 0,
+        low: 0,
+      },
+      findings: [],
+      coverageGaps: [],
+    },
+    contextualFindings: [],
+    recommendations: [],
   };
 }

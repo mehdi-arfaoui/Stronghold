@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   ProofOfRecoveryResult,
+  RealityGapResult,
   Recommendation,
   ScenarioAnalysis,
   ServicePostureService,
@@ -34,6 +35,12 @@ describe('renderExecutiveSummary', () => {
         createServiceEntry('dns', 'F', 0, 'redundancy', 'route53_failover_configured', 'Single target only.'),
         createServiceEntry('cache', 'D', 39, 'failover', 'failover_missing', 'Failover path is missing.'),
       ],
+      realityGap: createRealityGap(87, 0, [
+        { serviceId: 'database', criticality: 'critical' },
+        { serviceId: 'storage', criticality: 'high' },
+        { serviceId: 'dns', criticality: 'high' },
+        { serviceId: 'cache', criticality: 'medium' },
+      ]),
       scenarioAnalysis: createScenarioAnalysis(),
       scenariosCovered: 0,
       scenariosTotal: 13,
@@ -44,6 +51,8 @@ describe('renderExecutiveSummary', () => {
     });
 
     expect(rendered).toContain('Stronghold DR Intelligence');
+    expect(rendered).toContain('Reality Gap');
+    expect(rendered).toContain('claimed 87% protected -> 0% proven recoverable');
     expect(rendered).toContain('Worst exposed');
     expect(rendered.match(/✗/g)).toHaveLength(3);
     expect(rendered).not.toMatch(/[╔╗╚╝║═]/);
@@ -59,6 +68,12 @@ describe('renderExecutiveSummary', () => {
         observedCoverage: 0,
         perService: [],
       },
+      realityGap: {
+        claimedProtection: 0,
+        provenRecoverability: null,
+        realityGap: null,
+        perService: [],
+      },
       services: [],
       scenariosCovered: 0,
       scenariosTotal: 0,
@@ -69,6 +84,7 @@ describe('renderExecutiveSummary', () => {
     });
 
     expect(rendered).toContain('N/A tested');
+    expect(rendered).toContain('no services detected');
     expect(rendered).toContain("No services detected - run 'stronghold services detect'");
     expect(rendered).not.toContain('Worst exposed');
   });
@@ -80,6 +96,10 @@ describe('renderExecutiveSummary', () => {
       proofOfRecovery: createProofOfRecovery([
         { serviceId: 'payment', criticality: 'critical', hasTestedEvidence: true, totalRuleCount: 2 },
         { serviceId: 'api', criticality: 'high', hasTestedEvidence: true, totalRuleCount: 2 },
+      ]),
+      realityGap: createRealityGap(100, 100, [
+        { serviceId: 'payment', criticality: 'critical' },
+        { serviceId: 'api', criticality: 'high' },
       ]),
       services: [
         createServiceEntry('payment', 'A', 96, 'backup', 'backup_plan_exists', 'Healthy'),
@@ -94,6 +114,7 @@ describe('renderExecutiveSummary', () => {
     });
 
     expect(rendered).toContain('All services healthy');
+    expect(rendered).toContain('No gap - DR posture is fully proven');
     expect(rendered).not.toContain('Worst exposed');
   });
 
@@ -104,6 +125,7 @@ describe('renderExecutiveSummary', () => {
       proofOfRecovery: createProofOfRecovery([
         { serviceId: 'database', criticality: 'critical', hasTestedEvidence: false, totalRuleCount: 3 },
       ]),
+      realityGap: createRealityGap(87, 0, [{ serviceId: 'database', criticality: 'critical' }]),
       services: [createServiceEntry('database', 'D', 45, 'backup', 'backup_plan_exists', 'Automated backups are not configured.')],
       scenariosCovered: 0,
       scenariosTotal: 3,
@@ -194,6 +216,32 @@ function createProofOfRecovery(
       hasObservedEvidence: !service.hasTestedEvidence && service.totalRuleCount > 0,
       testedRuleCount: service.hasTestedEvidence ? 1 : 0,
       totalRuleCount: service.totalRuleCount,
+    })),
+  };
+}
+
+function createRealityGap(
+  claimedProtection: number,
+  provenRecoverability: number | null,
+  services: ReadonlyArray<{
+    readonly serviceId: string;
+    readonly criticality: RealityGapResult['perService'][number]['criticality'];
+  }>,
+): RealityGapResult {
+  return {
+    claimedProtection,
+    provenRecoverability,
+    realityGap:
+      provenRecoverability === null ? null : Math.max(0, claimedProtection - provenRecoverability),
+    perService: services.map((service) => ({
+      serviceId: service.serviceId,
+      serviceName: service.serviceId,
+      criticality: service.criticality,
+      claimedProtection,
+      provenRecoverability: provenRecoverability ?? 0,
+      realityGap:
+        provenRecoverability === null ? claimedProtection : Math.max(0, claimedProtection - provenRecoverability),
+      gaps: [],
     })),
   };
 }
