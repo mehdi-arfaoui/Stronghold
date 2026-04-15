@@ -8,7 +8,13 @@ import type {
 import type { GovernanceScoreComparison, RiskAcceptance } from '../governance/risk-acceptance.js';
 import type { PolicyViolation } from '../governance/policy-types.js';
 import type { FindingLifecycle, PostureTrend, ScanSnapshot, ServiceTrend } from '../history/index.js';
-import type { ProofOfRecoveryResult, RealityGapResult, RealityGapServiceDetail } from '../scoring/index.js';
+import type {
+  FullChainResult,
+  ProofOfRecoveryResult,
+  RealityGapResult,
+  RealityGapServiceDetail,
+  RecoveryChain,
+} from '../scoring/index.js';
 import type { ReasoningChain } from '../reasoning/index.js';
 import type { ValidationReport, ValidationSeverity } from '../validation/validation-types.js';
 import type { InfraNodeAttrs, ScanEdge } from './infrastructure.js';
@@ -68,6 +74,7 @@ export interface ApiScanData {
   readonly validationReport: ValidationReport;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
   readonly realityGap?: RealityGapResult;
+  readonly fullChainCoverage?: FullChainResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: {
     readonly riskAcceptances: readonly RiskAcceptance[];
@@ -106,6 +113,7 @@ export interface ApiServiceSummary {
   readonly contextualFindings: readonly ContextualFinding[];
   readonly recommendations: readonly ServiceRecommendationProjection[];
   readonly realityGap?: RealityGapServiceDetail | null;
+  readonly recoveryChain?: RecoveryChain | null;
   readonly reasoning?:
     | {
         readonly bullets: readonly string[];

@@ -156,6 +156,7 @@ function toReasoningScanResult(
     servicePosture: scan.servicePosture,
     nodes: [...scan.nodes],
     edges: [...scan.edges],
+    fullChainCoverage: scan.fullChainCoverage ?? null,
     scannedAt: new Date(scan.timestamp),
   };
 }
@@ -185,15 +186,6 @@ function redactGraphVisualData(data: GraphVisualData): {
         [service.id, `service-${String(index + 1).padStart(2, "0")}`] as const,
     ),
   );
-  const serviceNameMap = new Map(
-    data.services.map(
-      (service, index) =>
-        [
-          service.name,
-          `Service ${String(index + 1).padStart(2, "0")}`,
-        ] as const,
-    ),
-  );
   const scenarioIdMap = new Map(
     data.scenarios.map(
       (scenario, index) =>
@@ -203,20 +195,10 @@ function redactGraphVisualData(data: GraphVisualData): {
         ] as const,
     ),
   );
-  const scenarioNameMap = new Map(
-    data.scenarios.map(
-      (scenario, index) =>
-        [
-          scenario.name,
-          `Scenario ${String(index + 1).padStart(2, "0")}`,
-        ] as const,
-    ),
-  );
   const replacements = buildReplacementEntries(
     nodeIdMap,
     nodeLabelMap,
     serviceIdMap,
-    serviceNameMap,
   );
 
   return {
@@ -235,7 +217,7 @@ function redactGraphVisualData(data: GraphVisualData): {
           ? (serviceIdMap.get(node.serviceId) ?? null)
           : null,
         serviceName: node.serviceName
-          ? (serviceNameMap.get(node.serviceName) ?? null)
+          ? node.serviceName
           : null,
         findings: node.findings.map((finding) => ({
           ...finding,
@@ -257,7 +239,7 @@ function redactGraphVisualData(data: GraphVisualData): {
       services: data.services.map((service) => ({
         ...service,
         id: serviceIdMap.get(service.id) ?? service.id,
-        name: serviceNameMap.get(service.name) ?? service.name,
+        name: service.name,
         nodeIds: service.nodeIds.map(
           (nodeId) => nodeIdMap.get(nodeId) ?? nodeId,
         ),
@@ -271,15 +253,23 @@ function redactGraphVisualData(data: GraphVisualData): {
         nextAction: service.nextAction
           ? redactKnownIdentifiers(service.nextAction, replacements)
           : null,
+        recoveryChain: service.recoveryChain
+          ? {
+              ...service.recoveryChain,
+              steps: service.recoveryChain.steps.map((step) => ({
+                ...step,
+                resourceName: redactKnownIdentifiers(step.resourceName, replacements),
+                statusReason: redactKnownIdentifiers(step.statusReason, replacements),
+              })),
+            }
+          : null,
       })),
       scenarios: data.scenarios.map((scenario, index) => ({
         ...scenario,
         id:
           scenarioIdMap.get(scenario.id) ??
           `scenario-${String(index + 1).padStart(2, "0")}`,
-        name:
-          scenarioNameMap.get(scenario.name) ??
-          `Scenario ${String(index + 1).padStart(2, "0")}`,
+        name: scenario.name,
         affectedNodeIds: scenario.affectedNodeIds.map(
           (nodeId) => nodeIdMap.get(nodeId) ?? nodeId,
         ),
@@ -290,14 +280,10 @@ function redactGraphVisualData(data: GraphVisualData): {
           (nodeId) => nodeIdMap.get(nodeId) ?? nodeId,
         ),
         downServices: scenario.downServices.map(
-          (name) =>
-            serviceNameMap.get(name) ??
-            redactKnownIdentifiers(name, replacements),
+          (name) => name,
         ),
         degradedServices: scenario.degradedServices.map(
-          (name) =>
-            serviceNameMap.get(name) ??
-            redactKnownIdentifiers(name, replacements),
+          (name) => name,
         ),
         summary: scenario.summary
           ? redactKnownIdentifiers(scenario.summary, replacements)

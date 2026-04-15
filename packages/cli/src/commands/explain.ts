@@ -141,6 +141,11 @@ function renderReasoningChain(chain: ReasoningChain, verbose: boolean): string {
     });
   }
 
+  if (chain.recoveryChain) {
+    lines.push(...renderRecoveryChainSection(chain.recoveryChain));
+    lines.push('');
+  }
+
   lines.push(`  ${chalk.bold('Conclusion')}`);
   lines.push(`  ${chain.conclusion}`);
   lines.push('');
@@ -182,7 +187,7 @@ function formatStepSummary(
 }
 
 function formatInsightHeader(type: string, severity: 'critical' | 'high' | 'medium'): string {
-  const label = `▸ ${type.replace(/_/g, ' ').toUpperCase()} -`;
+  const label = `> ${type.replace(/_/g, ' ').toUpperCase()} -`;
   return severity === 'critical' || severity === 'high'
     ? chalk.bold(chalk.red(label))
     : chalk.bold(chalk.yellow(label));
@@ -237,6 +242,65 @@ function toReasoningScanResult(
     servicePosture: scan.servicePosture,
     nodes: [...scan.nodes],
     edges: [...scan.edges],
+    fullChainCoverage: scan.fullChainCoverage ?? null,
     scannedAt: new Date(scan.timestamp),
   };
+}
+
+function renderRecoveryChainSection(
+  chain: NonNullable<ReasoningChain['recoveryChain']>,
+): readonly string[] {
+  const lines = [
+    `  ${chalk.bold(`Recovery Chain (${chain.provenSteps}/${chain.totalSteps} proven · weighted ${chain.weightedCoverage}%)`)}`,
+    '',
+  ];
+
+  chain.steps.forEach((step) => {
+    const symbol = formatRecoveryStepSymbol(step.status);
+    const status = formatRecoveryStepStatus(step.status);
+    const action = step.recoveryAction.trim().length > 0 ? ` ${step.recoveryAction}` : '';
+    lines.push(
+      `  Step ${String(step.position).padEnd(2)} ${symbol}  ${step.resourceName}${action}  ${status} ${chalk.gray(`(${formatRecoveryReason(step.statusReason)})`)}`,
+    );
+  });
+
+  lines.push('');
+  lines.push(`  ${chalk.gray(`⚠ ${chain.disclaimer}`)}`);
+
+  return lines;
+}
+
+function formatRecoveryStepSymbol(
+  status: NonNullable<ReasoningChain['recoveryChain']>['steps'][number]['status'],
+): string {
+  if (status === 'proven') {
+    return chalk.green('✓');
+  }
+  if (status === 'blocked') {
+    return chalk.red('✗');
+  }
+  if (status === 'observed') {
+    return chalk.yellow('~');
+  }
+  return chalk.gray('?');
+}
+
+function formatRecoveryStepStatus(
+  status: NonNullable<ReasoningChain['recoveryChain']>['steps'][number]['status'],
+): string {
+  const label = status.toUpperCase();
+  if (status === 'proven') {
+    return chalk.green(label);
+  }
+  if (status === 'blocked') {
+    return chalk.red(label);
+  }
+  if (status === 'observed') {
+    return chalk.yellow(label);
+  }
+  return chalk.gray(label);
+}
+
+function formatRecoveryReason(reason: string): string {
+  return reason.length > 0 ? `${reason[0]?.toLowerCase() ?? ''}${reason.slice(1)}` : reason;
 }

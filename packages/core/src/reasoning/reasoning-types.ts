@@ -2,6 +2,7 @@ import type { DRPlan } from '../drp/drp-types.js';
 import type { FindingLifecycle } from '../history/finding-lifecycle-types.js';
 import type { GovernanceState } from '../governance/risk-acceptance.js';
 import type { RealityGapResult } from '../scoring/reality-gap-types.js';
+import type { FullChainResult, RecoveryChain } from '../scoring/recovery-chain-types.js';
 import type { ScenarioAnalysis } from '../scenarios/scenario-types.js';
 import type { ServicePosture } from '../services/index.js';
 import type { ScanEdge, ScanResult } from '../types/infrastructure.js';
@@ -14,6 +15,7 @@ export interface ReasoningScanResult extends ScanResult {
   readonly scenarioAnalysis?: ScenarioAnalysis | null;
   readonly drpPlan?: DRPlan | null;
   readonly governance?: GovernanceState | null;
+  readonly fullChainCoverage?: FullChainResult | null;
   readonly edges: ScanEdge[];
 }
 
@@ -28,6 +30,7 @@ export interface ReasoningChain {
   readonly realityGap: number;
   readonly steps: readonly ReasoningStep[];
   readonly insights: readonly GraphInsight[];
+  readonly recoveryChain: RecoveryChain | null;
   readonly conclusion: string;
   readonly nextAction: string | null;
 }

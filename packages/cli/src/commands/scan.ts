@@ -260,6 +260,7 @@ export function registerScanCommand(program: Command): void {
               grade:
                 execution.results.governance?.score.withAcceptances.grade ??
                 execution.results.validationReport.scoreBreakdown.grade,
+              fullChainCoverage: execution.results.fullChainCoverage ?? null,
               proofOfRecovery: execution.results.proofOfRecovery ?? null,
               realityGap: execution.results.realityGap ?? null,
               services: execution.results.servicePosture?.services ?? [],

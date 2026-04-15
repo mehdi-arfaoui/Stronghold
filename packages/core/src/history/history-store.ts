@@ -123,6 +123,8 @@ export function buildScanSnapshot(input: BuildScanSnapshotInput): ScanSnapshot {
     globalScore: input.validationReport.scoreBreakdown.overall,
     globalGrade: input.validationReport.scoreBreakdown.grade,
     proofOfRecovery: proofOfRecovery.proofOfRecovery,
+    globalWeightedCoverage: input.fullChainCoverage?.globalWeightedCoverage ?? 0,
+    globalUnweightedCoverage: input.fullChainCoverage?.globalUnweightedCoverage ?? 0,
     claimedProtection: input.realityGap?.claimedProtection ?? 0,
     provenRecoverability: input.realityGap?.provenRecoverability ?? null,
     realityGap: input.realityGap?.realityGap ?? null,
@@ -252,8 +254,16 @@ function validateScanSnapshot(value: unknown, filePath: string): ScanSnapshot {
       value.proofOfRecovery === null
         ? null
         : typeof value.proofOfRecovery === 'number'
-          ? readNumber(value.proofOfRecovery, filePath, 'proofOfRecovery')
+        ? readNumber(value.proofOfRecovery, filePath, 'proofOfRecovery')
           : null,
+    globalWeightedCoverage:
+      typeof value.globalWeightedCoverage === 'number'
+        ? readNumber(value.globalWeightedCoverage, filePath, 'globalWeightedCoverage')
+        : 0,
+    globalUnweightedCoverage:
+      typeof value.globalUnweightedCoverage === 'number'
+        ? readNumber(value.globalUnweightedCoverage, filePath, 'globalUnweightedCoverage')
+        : 0,
     claimedProtection:
       typeof value.claimedProtection === 'number'
         ? readNumber(value.claimedProtection, filePath, 'claimedProtection')

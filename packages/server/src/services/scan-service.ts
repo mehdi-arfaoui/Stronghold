@@ -11,6 +11,7 @@ import {
   applyDebtToSnapshot,
   buildReasoningChain,
   buildScanSnapshot,
+  calculateFullChainCoverage,
   calculateRealityGap,
   calculateProofOfRecovery,
   checkFreshness,
@@ -63,6 +64,7 @@ import {
   type ServiceDebt,
   type ValidationReport,
   type ValidationSeverity,
+  type FullChainResult,
   type RealityGapResult,
   type ReasoningScanResult,
 } from '@stronghold-dr/core';
@@ -167,6 +169,17 @@ export class ScanService {
       scenarioAnalysis,
       drpPlan,
     });
+    const fullChainCoverage =
+      servicePosture
+        ? calculateFullChainCoverage({
+            nodes: data.nodes,
+            edges: data.edges,
+            validationReport,
+            servicePosture,
+            drpPlan,
+            evidenceRecords: storedEvidence,
+          })
+        : null;
 
     return {
       timestamp: scan.updatedAt.toISOString(),
@@ -175,6 +188,7 @@ export class ScanService {
       validationReport,
       proofOfRecovery,
       realityGap,
+      ...(fullChainCoverage ? { fullChainCoverage } : {}),
       ...(drpPlan ? { drpPlan } : {}),
       ...(servicePosture ? { servicePosture } : {}),
       ...(governance ? { governance } : {}),
@@ -666,6 +680,7 @@ export class ScanService {
     readonly governance?: GovernanceState | null;
     readonly scenarioAnalysis: ScenarioAnalysis;
     readonly realityGap: RealityGapResult;
+    readonly fullChainCoverage: FullChainResult | null;
     readonly regions: readonly string[];
     readonly totalResources: number;
   }): Promise<void> {
@@ -684,6 +699,7 @@ export class ScanService {
       ...(params.governance ? { governance: params.governance } : {}),
       scenarioAnalysis: params.scenarioAnalysis,
       realityGap: params.realityGap,
+      fullChainCoverage: params.fullChainCoverage,
     });
     const lifecycleStore = new InMemoryFindingLifecycleStore(
       await this.getLatestFindingLifecycles(),
@@ -813,6 +829,7 @@ export class ScanService {
     }
 
     const realityGap = scanData.realityGap ?? this.resolveRealityGap(scanData);
+    const fullChainCoverage = scanData.fullChainCoverage ?? this.resolveFullChainCoverage(scanData);
     const previousScan = await this.loadPreviousReasoningScan(response.scanId);
     const lifecycles = await this.getLatestFindingLifecycles();
 
@@ -831,6 +848,8 @@ export class ScanService {
           ...service,
           realityGap:
             realityGap.perService.find((entry) => entry.serviceId === service.service.id) ?? null,
+          recoveryChain:
+            fullChainCoverage?.chains.find((entry) => entry.serviceId === service.service.id) ?? null,
           reasoning: {
             bullets: condenseReasoningChain(chain, 4),
             insights: chain.insights.map((insight) => insight.summary),
@@ -1111,6 +1130,14 @@ export class ScanService {
         scenarioAnalysis,
         drpPlan: execution.artifacts.drPlan,
       });
+      const fullChainCoverage = calculateFullChainCoverage({
+        nodes: execution.artifacts.nodes,
+        edges: execution.artifacts.edges,
+        validationReport: execution.artifacts.validationReport,
+        servicePosture: finalPosture,
+        drpPlan: execution.artifacts.drPlan,
+        evidenceRecords: null,
+      });
       await this.serviceDetectionService.saveServicePosture(
         scanId,
         finalPosture,
@@ -1161,6 +1188,7 @@ export class ScanService {
         governance: governanceState,
         scenarioAnalysis,
         realityGap,
+        fullChainCoverage,
         regions: params.regions,
         totalResources: execution.artifacts.nodes.length,
       });
@@ -1249,6 +1277,31 @@ export class ScanService {
     );
   }
 
+  private resolveFullChainCoverage(scanData: {
+    readonly nodes: readonly InfraNode[];
+    readonly edges: ReadonlyArray<core.ScanEdge>;
+    readonly validationReport: ValidationReport;
+    readonly servicePosture?: ServicePosture;
+    readonly drpPlan?: DRPlan | null;
+    readonly fullChainCoverage?: FullChainResult | null;
+  }): FullChainResult | null {
+    if (!scanData.servicePosture) {
+      return null;
+    }
+
+    return (
+      scanData.fullChainCoverage ??
+      calculateFullChainCoverage({
+        nodes: scanData.nodes,
+        edges: scanData.edges,
+        validationReport: scanData.validationReport,
+        servicePosture: scanData.servicePosture,
+        drpPlan: scanData.drpPlan ?? null,
+        evidenceRecords: null,
+      })
+    );
+  }
+
   private toReasoningScanResult(scanData: {
     readonly timestamp?: string;
     readonly nodes: readonly InfraNode[];
@@ -1259,6 +1312,7 @@ export class ScanService {
     readonly scenarioAnalysis?: ScenarioAnalysis | null;
     readonly drpPlan?: DRPlan | null;
     readonly governance?: GovernanceState | null;
+    readonly fullChainCoverage?: FullChainResult | null;
   }): ReasoningScanResult {
     if (!scanData.servicePosture) {
       throw new Error('Service posture is unavailable for reasoning.');
@@ -1276,6 +1330,7 @@ export class ScanService {
       scenarioAnalysis: scanData.scenarioAnalysis,
       drpPlan: scanData.drpPlan,
       governance: scanData.governance,
+      fullChainCoverage: scanData.fullChainCoverage ?? null,
     };
   }
 

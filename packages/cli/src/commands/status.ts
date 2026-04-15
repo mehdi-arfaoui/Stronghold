@@ -108,6 +108,7 @@ export function renderStatusSnapshot(
   const executiveSummary = renderExecutiveSummary({
     score: displayedScore.score,
     grade: displayedScore.grade,
+    fullChainCoverage: scan.fullChainCoverage ?? null,
     proofOfRecovery,
     realityGap,
     services: scan.servicePosture?.services ?? [],

@@ -118,6 +118,7 @@ export function registerDemoCommand(program: Command): void {
         renderExecutiveSummary({
           score: results.governance?.score.withAcceptances.score ?? results.validationReport.scoreBreakdown.overall,
           grade: results.governance?.score.withAcceptances.grade ?? results.validationReport.scoreBreakdown.grade,
+          fullChainCoverage: results.fullChainCoverage ?? null,
           proofOfRecovery: results.proofOfRecovery ?? null,
           realityGap: results.realityGap ?? null,
           services: results.servicePosture?.services ?? [],

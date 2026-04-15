@@ -43,6 +43,7 @@ describe('renderGraphHtml', () => {
     expect(html).toContain('<g class="node-icon"');
     expect(html).toContain(`${visual.globalScore}/100`);
     expect(html).toContain('Reality Gap');
+    expect(html).toContain('Recovery Chain');
     expect(html).toContain('id="gap-strip"');
     expect(html).toContain('id="gap-claimed-marker"');
   });
@@ -81,6 +82,7 @@ describe('renderGraphHtml', () => {
 
     expect(html).toContain('Select a node to inspect its service, reality gap, findings, and recovery posture.');
     expect(html).toContain('<h3>Reality Gap</h3>');
+    expect(html).toContain('<h3>Recovery Chain</h3>');
     expect(html).toContain('<h3>Reasoning</h3>');
     expect(html).toContain('<h3>Graph Insights</h3>');
   });
@@ -186,6 +188,18 @@ function createArnVisualData(): GraphVisualData {
         insights: ['CASCADE FAILURE: payments-primary impacts downstream services.'],
         conclusion: 'Payments is not recoverable. Reality gap: 87 points.',
         nextAction: 'Attach payments-primary to AWS Backup [SAFE]',
+        recoveryChain: {
+          totalSteps: 1,
+          provenSteps: 0,
+          weightedCoverage: 0,
+          steps: [
+            {
+              resourceName: 'payments-primary',
+              status: 'blocked',
+              statusReason: 'No tested restore path',
+            },
+          ],
+        },
         x: 100,
         y: 90,
         width: 320,
@@ -199,6 +213,12 @@ function createArnVisualData(): GraphVisualData {
     realityGap: 87,
     proofOfRecovery: 0,
     observedCoverage: 73,
+    recoveryChain: {
+      totalSteps: 1,
+      provenSteps: 0,
+      weightedCoverage: 0,
+      unweightedCoverage: 0,
+    },
     scanDate: FIXED_TIMESTAMP,
     scenarios: [],
   };

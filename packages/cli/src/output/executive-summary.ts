@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 
 import type {
+  FullChainResult,
   ProofOfRecoveryResult,
   RealityGapResult,
   Recommendation,
@@ -18,6 +19,7 @@ const HEALTHY_GRADES = new Set(['A', 'B']);
 export interface ExecutiveSummaryOptions {
   readonly score: number;
   readonly grade: string;
+  readonly fullChainCoverage: FullChainResult | null | undefined;
   readonly proofOfRecovery: ProofOfRecoveryResult | null | undefined;
   readonly realityGap: RealityGapResult | null | undefined;
   readonly services: readonly ServicePostureService[];
@@ -69,7 +71,10 @@ export function resolveExecutiveTrendFromSnapshots(
 
 export function renderExecutiveSummary(options: ExecutiveSummaryOptions): string {
   const lines = [`  ${chalk.bold('Stronghold DR Intelligence')}`, ''];
-  const proofValue = formatProofOfRecovery(options.proofOfRecovery);
+  const recoveryChainValue = formatRecoveryChainSummary(
+    options.fullChainCoverage,
+    options.proofOfRecovery,
+  );
   const gapValue = formatRealityGap(options.realityGap, options.services.length);
 
   lines.push(renderWideMetric('Reality Gap', gapValue.rendered, gapValue.noteRendered));
@@ -80,11 +85,7 @@ export function renderExecutiveSummary(options: ExecutiveSummaryOptions): string
         `${options.score}/100 (${options.grade})`,
         colorScore(`${options.score}/100 (${options.grade})`, options.grade),
       ),
-      metricColumn(
-        'Proof-of-Recovery',
-        proofValue.plain,
-        proofValue.rendered,
-      ),
+      metricColumn('Recovery Chain', recoveryChainValue.plain, recoveryChainValue.rendered),
     ),
   );
   lines.push(
@@ -115,7 +116,7 @@ export function renderExecutiveSummary(options: ExecutiveSummaryOptions): string
   }
 
   lines.push('');
-  lines.push(`  ${chalk.gray('─'.repeat(SEPARATOR_LENGTH))}`);
+  lines.push(`  ${chalk.gray('-'.repeat(SEPARATOR_LENGTH))}`);
 
   return lines.join('\n');
 }
@@ -223,7 +224,7 @@ function joinReason(baseReason: string, suffixes: readonly string[]): string {
 
   let combined = baseReason;
   suffixes.forEach((suffix) => {
-    const candidate = `${combined} · ${suffix}`;
+    const candidate = `${combined} | ${suffix}`;
     if (candidate.length <= MAX_REASON_LENGTH) {
       combined = candidate;
     }
@@ -276,7 +277,7 @@ function formatRecommendationBadge(
     Math.abs(recommendation.impact.scoreDelta) === 1 ? 'point' : 'points'
   }`;
 
-  return `[${coloredRisk} · ${points}]`;
+  return `[${coloredRisk} | ${points}]`;
 }
 
 function formatRecommendationBadgePlain(
@@ -287,12 +288,24 @@ function formatRecommendationBadgePlain(
     Math.abs(recommendation.impact.scoreDelta) === 1 ? 'point' : 'points'
   }`;
 
-  return `[${riskLabel} · ${points}]`;
+  return `[${riskLabel} | ${points}]`;
 }
 
-function formatProofOfRecovery(
+function formatRecoveryChainSummary(
+  fullChainCoverage: FullChainResult | null | undefined,
   proof: ProofOfRecoveryResult | null | undefined,
 ): { readonly plain: string; readonly rendered: string } {
+  if (fullChainCoverage) {
+    const totalSteps = fullChainCoverage.chains.reduce((sum, chain) => sum + chain.totalSteps, 0);
+    const provenSteps = fullChainCoverage.chains.reduce((sum, chain) => sum + chain.provenSteps, 0);
+    const label = `${provenSteps}/${totalSteps} steps proven (${fullChainCoverage.globalWeightedCoverage}% weighted)`;
+
+    return {
+      plain: label,
+      rendered: colorProof(label, fullChainCoverage.globalWeightedCoverage),
+    };
+  }
+
   const tested = proof?.proofOfRecovery;
   const observed = proof?.observedCoverage ?? 0;
   const testedPlain = tested === null || tested === undefined ? 'N/A tested' : `${tested}% tested`;
@@ -302,8 +315,8 @@ function formatProofOfRecovery(
       : colorProof(`${tested}% tested`, tested);
 
   return {
-    plain: `${testedPlain} · ${observed}% observed`,
-    rendered: `${testedRendered} ${chalk.gray('·')} ${observed}% observed`,
+    plain: `N/A (${testedPlain} / ${observed}% observed)`,
+    rendered: `${chalk.gray('N/A')} ${chalk.gray('(')}${testedRendered} ${chalk.gray('/')} ${observed}% observed${chalk.gray(')')}`,
   };
 }
 

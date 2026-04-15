@@ -547,14 +547,23 @@ export {
 
 export {
   calculateProofOfRecovery,
+  calculateFullChainCoverage,
   calculateRealityGap,
   type CalculateProofOfRecoveryInput,
+  type CalculateFullChainCoverageInput,
+  type EvidenceRecord,
+  type FullChainResult,
   type CalculateRealityGapInput,
   type ProofOfRecoveryResult,
   type ProofOfRecoveryServiceResult,
   type RealityGapReason,
   type RealityGapResult,
   type RealityGapServiceDetail,
+  type RecoveryChain,
+  type RecoveryStep,
+  type RecoveryStepRole,
+  type RecoveryStepStatus,
+  RECOVERY_CHAIN_DISCLAIMER,
 } from './scoring/index.js';
 
 export {

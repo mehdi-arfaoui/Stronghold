@@ -43,7 +43,7 @@ describe('demo infrastructure', () => {
     expect(results.validationReport.score).toBeLessThanOrEqual(70);
   });
 
-  it('startup marks critical demo services so proof-of-recovery shows 0% tested', async () => {
+  it('startup marks critical demo services so the recovery chain starts with zero proven steps', async () => {
     const results = await createDemoResults('startup');
     const criticalServices =
       results.proofOfRecovery?.perService
@@ -53,6 +53,8 @@ describe('demo infrastructure', () => {
 
     expect(criticalServices).toEqual(['database', 'storage']);
     expect(results.proofOfRecovery?.proofOfRecovery).toBe(0);
+    expect(results.fullChainCoverage?.globalWeightedCoverage).toBe(0);
+    expect(results.fullChainCoverage?.chains.some((chain) => chain.totalSteps > 0)).toBe(true);
   });
 
   it('enterprise score stays in the expected range', async () => {

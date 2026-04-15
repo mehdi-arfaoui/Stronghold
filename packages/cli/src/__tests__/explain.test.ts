@@ -30,8 +30,10 @@ describe('explain command', () => {
     const output = writes.join('');
     expect(output).toContain('Reality Gap:');
     expect(output).toContain('Reasoning');
+    expect(output).toContain('Recovery Chain');
     expect(output).toContain('Conclusion');
     expect(output.indexOf('Reality Gap:')).toBeLessThan(output.indexOf('Reasoning'));
+    expect(output.indexOf('Recovery Chain')).toBeLessThan(output.indexOf('Conclusion'));
   });
 
   it('supports --verbose and shows confidence/source metadata', async () => {
@@ -60,6 +62,8 @@ describe('explain command', () => {
     const parsed = JSON.parse(writes.join(''));
     expect(parsed.chain.serviceId).toBe(serviceId);
     expect(Array.isArray(parsed.chain.insights)).toBe(true);
+    expect(parsed.chain.recoveryChain).not.toBeNull();
+    expect(Array.isArray(parsed.chain.recoveryChain.steps)).toBe(true);
   });
 
   it('supports --redact and masks infrastructure identifiers', async () => {

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
+  FullChainResult,
   ProofOfRecoveryResult,
   RealityGapResult,
   Recommendation,
@@ -23,6 +24,11 @@ describe('renderExecutiveSummary', () => {
     const rendered = renderExecutiveSummary({
       score: 45,
       grade: 'D',
+      fullChainCoverage: createFullChainCoverage([
+        { serviceId: 'database', totalSteps: 2, provenSteps: 0, weightedCoverage: 0 },
+        { serviceId: 'storage', totalSteps: 1, provenSteps: 0, weightedCoverage: 0 },
+        { serviceId: 'dns', totalSteps: 1, provenSteps: 0, weightedCoverage: 0 },
+      ]),
       proofOfRecovery: createProofOfRecovery([
         { serviceId: 'database', criticality: 'critical', hasTestedEvidence: false, totalRuleCount: 3 },
         { serviceId: 'storage', criticality: 'high', hasTestedEvidence: false, totalRuleCount: 2 },
@@ -53,6 +59,8 @@ describe('renderExecutiveSummary', () => {
     expect(rendered).toContain('Stronghold DR Intelligence');
     expect(rendered).toContain('Reality Gap');
     expect(rendered).toContain('claimed 87% protected -> 0% proven recoverable');
+    expect(rendered).toContain('Recovery Chain');
+    expect(rendered).toContain('0/4 steps proven (0% weighted)');
     expect(rendered).toContain('Worst exposed');
     expect(rendered.match(/✗/g)).toHaveLength(3);
     expect(rendered).not.toMatch(/[╔╗╚╝║═]/);
@@ -62,6 +70,7 @@ describe('renderExecutiveSummary', () => {
     const rendered = renderExecutiveSummary({
       score: 0,
       grade: 'F',
+      fullChainCoverage: null,
       proofOfRecovery: {
         proofOfRecovery: null,
         proofOfRecoveryAll: null,
@@ -93,6 +102,10 @@ describe('renderExecutiveSummary', () => {
     const rendered = renderExecutiveSummary({
       score: 92,
       grade: 'A',
+      fullChainCoverage: createFullChainCoverage([
+        { serviceId: 'payment', totalSteps: 2, provenSteps: 2, weightedCoverage: 100 },
+        { serviceId: 'api', totalSteps: 2, provenSteps: 2, weightedCoverage: 100 },
+      ]),
       proofOfRecovery: createProofOfRecovery([
         { serviceId: 'payment', criticality: 'critical', hasTestedEvidence: true, totalRuleCount: 2 },
         { serviceId: 'api', criticality: 'high', hasTestedEvidence: true, totalRuleCount: 2 },
@@ -122,6 +135,7 @@ describe('renderExecutiveSummary', () => {
     const rendered = renderExecutiveSummary({
       score: 45,
       grade: 'D',
+      fullChainCoverage: null,
       proofOfRecovery: createProofOfRecovery([
         { serviceId: 'database', criticality: 'critical', hasTestedEvidence: false, totalRuleCount: 3 },
       ]),
@@ -165,7 +179,7 @@ describe('executive summary integration', () => {
       rendered.indexOf('DR Posture -'),
     );
     expect(rendered).toContain('Score:');
-    expect(rendered).toContain('Run \'stronghold scan\' to refresh.');
+    expect(rendered).toContain("Run 'stronghold scan' to refresh.");
   });
 
   it('demo command prints the executive summary before recommendations', async () => {
@@ -181,10 +195,49 @@ describe('executive summary integration', () => {
 
     const output = writes.join('');
     expect(output).toContain('Stronghold DR Intelligence');
-    expect(output).toContain('0% tested');
+    expect(output).toMatch(/Recovery Chain\s+0\/\d+ steps proven \(0% weighted\)/);
     expect(output.indexOf('Stronghold DR Intelligence')).toBeLessThan(output.indexOf('Top Recommendations'));
   });
 });
+
+function createFullChainCoverage(
+  chains: ReadonlyArray<{
+    readonly serviceId: string;
+    readonly totalSteps: number;
+    readonly provenSteps: number;
+    readonly weightedCoverage: number;
+  }>,
+): FullChainResult {
+  const normalizedChains = chains.map((chain) => ({
+    serviceId: chain.serviceId,
+    serviceName: chain.serviceId,
+    totalSteps: chain.totalSteps,
+    provenSteps: chain.provenSteps,
+    observedSteps: Math.max(0, chain.totalSteps - chain.provenSteps),
+    blockedSteps: 0,
+    unknownSteps: 0,
+    weightedCoverage: chain.weightedCoverage,
+    unweightedCoverage: chain.totalSteps === 0 ? 0 : Math.round((chain.provenSteps / chain.totalSteps) * 100),
+    steps: [],
+    disclaimer:
+      'This assessment covers AWS-visible infrastructure only. External dependencies, application-level logic, and human coordination are not modeled.',
+  }));
+
+  const totalSteps = normalizedChains.reduce((sum, chain) => sum + chain.totalSteps, 0);
+  const provenSteps = normalizedChains.reduce((sum, chain) => sum + chain.provenSteps, 0);
+  const weightedNumerator = normalizedChains.reduce(
+    (sum, chain) => sum + chain.weightedCoverage * chain.totalSteps,
+    0,
+  );
+
+  return {
+    chains: normalizedChains,
+    servicesWithBlockedSteps: 0,
+    servicesFullyProven: normalizedChains.filter((chain) => chain.weightedCoverage === 100).length,
+    globalUnweightedCoverage: totalSteps === 0 ? 0 : Math.round((provenSteps / totalSteps) * 100),
+    globalWeightedCoverage: totalSteps === 0 ? 0 : Math.round(weightedNumerator / totalSteps),
+  };
+}
 
 function createProofOfRecovery(
   services: ReadonlyArray<{

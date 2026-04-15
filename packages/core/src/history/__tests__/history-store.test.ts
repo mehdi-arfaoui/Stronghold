@@ -11,7 +11,7 @@ import { buildServicePosture } from '../../services/index.js';
 import { getStartupDemoPipelineInput } from '../../demo/startup-demo.js';
 import { analyzeFullGraph, cloneGraph } from '../../graph/index.js';
 import { generateDRPlan } from '../../drp/index.js';
-import { calculateRealityGap } from '../../scoring/index.js';
+import { calculateFullChainCoverage, calculateRealityGap } from '../../scoring/index.js';
 import { allValidationRules, runValidation } from '../../validation/index.js';
 import { FileHistoryStore, buildScanSnapshot } from '../index.js';
 
@@ -137,6 +137,15 @@ describe('FileHistoryStore', () => {
       policyViolations: 1,
     });
   });
+
+  it('stores full-chain aggregate coverage without storing detailed steps', async () => {
+    const snapshot = await createRealisticSnapshot();
+    const serialized = JSON.stringify(snapshot);
+
+    expect(snapshot.globalWeightedCoverage).toBeGreaterThanOrEqual(0);
+    expect(snapshot.globalUnweightedCoverage).toBeGreaterThanOrEqual(0);
+    expect(serialized).not.toContain('"steps"');
+  });
 });
 
 function createSnapshot(id: string, timestamp: string) {
@@ -150,6 +159,8 @@ function createSnapshot(id: string, timestamp: string) {
     provenRecoverability: 33,
     realityGap: 39,
     observedCoverage: 67,
+    globalWeightedCoverage: 25,
+    globalUnweightedCoverage: 20,
     totalResources: 42,
     totalFindings: 5,
     findingsBySeverity: {
@@ -231,6 +242,14 @@ async function createRealisticSnapshot(governance?: GovernanceState) {
     scenarioAnalysis,
     drpPlan,
   });
+  const fullChainCoverage = calculateFullChainCoverage({
+    nodes: demo.nodes,
+    edges: demo.edges,
+    validationReport,
+    servicePosture,
+    drpPlan,
+    evidenceRecords: null,
+  });
 
   return buildScanSnapshot({
     scanId: 'scan-demo',
@@ -242,6 +261,7 @@ async function createRealisticSnapshot(governance?: GovernanceState) {
     ...(governance ? { governance } : {}),
     scenarioAnalysis,
     realityGap,
+    fullChainCoverage,
     scanDurationMs: 14_200,
     scannerSuccessCount: 8,
     scannerFailureCount: 1,

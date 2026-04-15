@@ -761,6 +761,15 @@
             </article>
             <article class="feature-card">
               <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                <path d="M10 14L7.5 16.5C6.12 17.88 3.88 17.88 2.5 16.5C1.12 15.12 1.12 12.88 2.5 11.5L5 9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M14 10L16.5 7.5C17.88 6.12 20.12 6.12 21.5 7.5C22.88 8.88 22.88 11.12 21.5 12.5L19 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8 16L16 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <h3>Is the full recovery path proven?</h3>
+              <p>Full-chain coverage traces every step of the recovery order and shows which links are proven, observed, or broken.</p>
+            </article>
+            <article class="feature-card">
+              <svg class="feature-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
                 <path d="M5 7.5H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 <path d="M5 12H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
                 <path d="M5 16.5H19" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
@@ -832,15 +841,8 @@ Next action  Enable S3 replication for "artifacts-bucket" [SAFE · +6 points]
 Stronghold DR Intelligence
 
 Reality Gap  56 pts  claimed 56% protected &rarr; 0% proven recoverable
-Score  39/100 (<span class="terminal-f">F</span>)          Proof-of-Recovery  0% tested &middot; 100% observed
-Services  14 detected      Scenarios  0/13 covered
-
-Worst exposed
-  &#10007; dns        <span class="terminal-f">F</span>    0/100   no failover configured &middot; stale runbook
-  &#10007; database   <span class="terminal-f">F</span>   19/100   no tested restore path &middot; stale runbook
-  &#10007; storage    <span class="terminal-f">F</span>   26/100   no cross-region replication &middot; stale runbook
-
-Next action  Enable S3 replication for "artifacts-bucket" <span class="terminal-safe">[SAFE &middot; +6 points]</span></pre>
+Score  39/100 (<span class="terminal-f">F</span>)          Recovery Chain  0/23 steps proven (0% weighted)
+Services  14 detected      Scenarios  0/13 covered</pre>
             </div>
           </div>
         </div>
@@ -887,7 +889,7 @@ Reasoning
           <div class="credibility">
             <span>TypeScript strict</span>
             <span aria-hidden="true">&middot;</span>
-            <span>724 tests</span>
+            <span>736 tests</span>
             <span aria-hidden="true">&middot;</span>
             <span>82.6% core coverage</span>
             <span aria-hidden="true">&middot;</span>

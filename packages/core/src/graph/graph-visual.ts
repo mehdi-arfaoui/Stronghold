@@ -3,6 +3,7 @@ import dagre from 'dagre';
 import { gradeForScore } from '../validation/index.js';
 import { buildReasoningChain } from '../reasoning/reasoning-engine.js';
 import type { ReasoningScanResult } from '../reasoning/reasoning-types.js';
+import { calculateFullChainCoverage } from '../scoring/recovery-chain.js';
 import { calculateProofOfRecovery } from '../scoring/proof-of-recovery.js';
 import { calculateRealityGap } from '../scoring/reality-gap.js';
 import { classifyResourceRole, normalizeEdgeType } from '../services/service-utils.js';
@@ -91,6 +92,18 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
           realityGap: null,
           perService: [],
         });
+  const fullChainCoverage =
+    input.fullChainCoverage ??
+    (input.validationReport && input.servicePosture
+      ? calculateFullChainCoverage({
+          nodes: input.nodes,
+          edges: input.edges,
+          validationReport: input.validationReport,
+          servicePosture: input.servicePosture,
+          drpPlan: input.drpPlan ?? null,
+          evidenceRecords: null,
+        })
+      : null);
   const nodeFindings = buildNodeFindings(input);
   const nodeRecommendations = buildNodeRecommendations(input);
   const serviceEntries = input.servicePosture?.services ?? [];
@@ -155,6 +168,8 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
               realityGap,
             )
           : null;
+      const serviceRecoveryChain =
+        fullChainCoverage?.chains.find((detail) => detail.serviceId === entry.service.id) ?? null;
       return [
         {
           id: entry.service.id,
@@ -172,6 +187,18 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
           insights: chain ? chain.insights.map((insight) => insight.summary) : [],
           conclusion: chain?.conclusion ?? '',
           nextAction: chain?.nextAction ?? null,
+          recoveryChain: serviceRecoveryChain
+            ? {
+                totalSteps: serviceRecoveryChain.totalSteps,
+                provenSteps: serviceRecoveryChain.provenSteps,
+                weightedCoverage: serviceRecoveryChain.weightedCoverage,
+                steps: serviceRecoveryChain.steps.map((step) => ({
+                  resourceName: step.resourceName,
+                  status: step.status,
+                  statusReason: step.statusReason,
+                })),
+              }
+            : null,
           ...bounds,
         } satisfies VisualService,
       ];
@@ -205,6 +232,14 @@ export function buildGraphVisualData(scanResult: ScanResult | GraphVisualSource)
     realityGap: realityGap.realityGap,
     proofOfRecovery: proof?.proofOfRecovery ?? null,
     observedCoverage: proof?.observedCoverage ?? 0,
+    recoveryChain: fullChainCoverage
+      ? {
+          totalSteps: fullChainCoverage.chains.reduce((sum, chain) => sum + chain.totalSteps, 0),
+          provenSteps: fullChainCoverage.chains.reduce((sum, chain) => sum + chain.provenSteps, 0),
+          weightedCoverage: fullChainCoverage.globalWeightedCoverage,
+          unweightedCoverage: fullChainCoverage.globalUnweightedCoverage,
+        }
+      : null,
     scanDate: resolveScanDate(input),
     scenarios: buildVisualScenarios(input),
   };
@@ -664,6 +699,7 @@ function toReasoningScanResult(input: GraphVisualSource): ReasoningScanResult {
     ...input,
     nodes: [...input.nodes],
     edges: [...input.edges],
+    fullChainCoverage: input.fullChainCoverage ?? null,
     validationReport: input.validationReport,
     servicePosture: input.servicePosture,
     governance: null,

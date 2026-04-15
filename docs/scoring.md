@@ -238,6 +238,33 @@ The claimed protection value is intentionally unweighted. It represents
 the naive number a config-only tool would report. The reality gap shows
 how much of that claim is unsupported by tested recovery proof.
 
+## Full-Chain Recovery Coverage
+
+Full-chain recovery coverage traces the complete recovery path for each
+service and evaluates every step individually.
+
+Each step in the chain corresponds to a resource in the service's recovery
+order. Steps are classified as:
+
+| Status | Meaning |
+| --- | --- |
+| `proven` | Passing DR rules with non-expired tested evidence |
+| `observed` | Passing DR rules but only observed/inferred evidence |
+| `blocked` | One or more critical DR rules failing |
+| `unknown` | No DR rules applicable to this resource type |
+
+Steps are weighted by resource role: datastore (4), compute (3),
+storage (2), network (1), other (1). Weighted coverage reflects that
+an unproven datastore is more critical than an unproven compute node.
+
+The recovery order follows the DRP topological sort when available.
+Without a DRP, Stronghold uses a default order: datastores first,
+then compute, then network and other resources.
+
+This assessment covers AWS-visible infrastructure only. External
+dependencies, application-level recovery logic, and human coordination
+are not modeled.
+
 ## Transparency in Reports
 
 Each validation result includes the raw score inputs:

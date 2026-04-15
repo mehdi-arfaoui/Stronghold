@@ -1,7 +1,7 @@
 import type { EvidenceMaturitySummary, Grade, ValidationReport } from '../validation/index.js';
 import type { ScenarioAnalysis } from '../scenarios/index.js';
 import type { GovernanceState } from '../governance/index.js';
-import type { RealityGapResult } from '../scoring/index.js';
+import type { FullChainResult, RealityGapResult } from '../scoring/index.js';
 import type { ServicePosture } from '../services/index.js';
 
 export interface ServiceSnapshot {
@@ -21,6 +21,8 @@ export interface ScanSnapshot {
   readonly globalScore: number;
   readonly globalGrade: string;
   readonly proofOfRecovery: number | null;
+  readonly globalWeightedCoverage: number;
+  readonly globalUnweightedCoverage: number;
   readonly claimedProtection: number;
   readonly provenRecoverability: number | null;
   readonly realityGap: number | null;
@@ -61,6 +63,7 @@ export interface BuildScanSnapshotInput {
   readonly scenarioAnalysis?: ScenarioAnalysis | null;
   readonly evidenceSummary?: EvidenceMaturitySummary | null;
   readonly realityGap?: RealityGapResult | null;
+  readonly fullChainCoverage?: FullChainResult | null;
   readonly scanDurationMs?: number;
   readonly scannerSuccessCount?: number;
   readonly scannerFailureCount?: number;

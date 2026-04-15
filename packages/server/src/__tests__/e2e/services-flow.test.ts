@@ -33,5 +33,7 @@ describe('Services Flow E2E', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.service.service.id).toBe(serviceId);
+    expect(response.body.service.recoveryChain).not.toBeNull();
+    expect(Array.isArray(response.body.service.recoveryChain.steps)).toBe(true);
   });
 });

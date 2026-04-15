@@ -43,6 +43,8 @@ describe('buildGraphVisualData', () => {
     expect(visual.edges.length).toBeLessThan(source.edges.length);
     expect(visual.services.length).toBeGreaterThan(0);
     expect(visual.scenarios.length).toBeGreaterThan(0);
+    expect(visual.recoveryChain).not.toBeNull();
+    expect(visual.services.some((service) => service.recoveryChain !== null)).toBe(true);
     expect(visual.edges.some((edge) => ['contains', 'member_of', 'secured_by'].includes(edge.label))).toBe(false);
   });
 

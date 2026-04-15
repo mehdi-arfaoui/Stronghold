@@ -1,6 +1,7 @@
 import type { GovernanceState } from '../governance/risk-acceptance.js';
 import type { FindingLifecycle } from '../history/finding-lifecycle-types.js';
 import type { DRPlan } from '../drp/drp-types.js';
+import type { FullChainResult, RecoveryStepStatus } from '../scoring/recovery-chain-types.js';
 import type { RealityGapResult } from '../scoring/reality-gap-types.js';
 import type { ReasoningScanResult } from '../reasoning/reasoning-types.js';
 import type { ProofOfRecoveryResult } from '../scoring/proof-of-recovery-types.js';
@@ -69,6 +70,16 @@ export interface VisualService {
   readonly insights: readonly string[];
   readonly conclusion: string;
   readonly nextAction: string | null;
+  readonly recoveryChain: {
+    readonly totalSteps: number;
+    readonly provenSteps: number;
+    readonly weightedCoverage: number;
+    readonly steps: ReadonlyArray<{
+      readonly resourceName: string;
+      readonly status: RecoveryStepStatus;
+      readonly statusReason: string;
+    }>;
+  } | null;
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -99,6 +110,12 @@ export interface GraphVisualData {
   readonly realityGap: number | null;
   readonly proofOfRecovery: number | null;
   readonly observedCoverage: number;
+  readonly recoveryChain: {
+    readonly totalSteps: number;
+    readonly provenSteps: number;
+    readonly weightedCoverage: number;
+    readonly unweightedCoverage: number;
+  } | null;
   readonly scanDate: string;
   readonly scenarios: readonly VisualScenario[];
 }
@@ -112,6 +129,7 @@ export interface GraphVisualSource {
   readonly validationReport?: ValidationReport;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
   readonly realityGap?: RealityGapResult;
+  readonly fullChainCoverage?: FullChainResult | null;
   readonly drpPlan?: DRPlan | null;
   readonly servicePosture?: ServicePosture;
   readonly governance?: Pick<GovernanceState, 'score'> | null;

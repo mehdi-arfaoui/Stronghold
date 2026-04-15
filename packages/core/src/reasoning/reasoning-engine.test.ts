@@ -29,6 +29,8 @@ describe('buildReasoningChain', () => {
     );
 
     expect(chain.steps.some((step) => step.type === 'positive')).toBe(true);
+    expect(chain.recoveryChain?.provenSteps).toBe(1);
+    expect(chain.recoveryChain?.totalSteps).toBe(1);
     expect(chain.conclusion).toContain('fully proven recoverable');
   });
 
@@ -61,6 +63,7 @@ describe('buildReasoningChain', () => {
 
     expect(chain.steps.some((step) => step.type === 'finding')).toBe(true);
     expect(chain.steps.some((step) => step.type === 'evidence_gap')).toBe(true);
+    expect(chain.recoveryChain?.blockedSteps).toBe(1);
     expect(chain.conclusion.length).toBeGreaterThan(0);
   });
 

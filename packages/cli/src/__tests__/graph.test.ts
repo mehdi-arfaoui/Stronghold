@@ -83,6 +83,47 @@ describe("graph command", () => {
     expect(contents).not.toContain("arn:aws:");
   });
 
+  it("keeps logical service names visible in redacted graphs", async () => {
+    const cwd = createTempDirectory("stronghold-graph-cli-");
+    process.chdir(cwd);
+    await stubAuditIdentity();
+    await saveDemoScan(cwd);
+
+    const programModule = await import("../index.js");
+    await programModule
+      .createProgram()
+      .parseAsync(["node", "stronghold", "graph", "--redact", "--no-open"]);
+
+    const contents = fs.readFileSync(
+      path.join(cwd, ".stronghold", "graph.html"),
+      "utf8",
+    );
+    expect(contents).toContain("frontend");
+    expect(contents).toContain("messaging");
+    expect(contents).toContain("shared-files");
+    expect(contents).not.toContain("Service 01");
+  });
+
+  it("keeps scenario names visible in redacted graphs", async () => {
+    const cwd = createTempDirectory("stronghold-graph-cli-");
+    process.chdir(cwd);
+    await stubAuditIdentity();
+    await saveDemoScan(cwd);
+
+    const programModule = await import("../index.js");
+    await programModule
+      .createProgram()
+      .parseAsync(["node", "stronghold", "graph", "--redact", "--no-open"]);
+
+    const contents = fs.readFileSync(
+      path.join(cwd, ".stronghold", "graph.html"),
+      "utf8",
+    );
+    expect(contents).toContain("Region failure - eu-west-1");
+    expect(contents).toContain("SPOF failure - prod-db-primary");
+    expect(contents).not.toContain("Scenario 01");
+  });
+
   it("supports a custom output path", async () => {
     const cwd = createTempDirectory("stronghold-graph-cli-");
     process.chdir(cwd);

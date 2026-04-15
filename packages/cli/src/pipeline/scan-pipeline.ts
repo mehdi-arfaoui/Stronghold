@@ -5,6 +5,7 @@ import {
   applyPoliciesToServicePosture,
   applyScenarioImpactToServicePosture,
   applyRiskAcceptancesToServicePosture,
+  calculateFullChainCoverage,
   buildServicePosture,
   calculateProofOfRecovery,
   calculateRealityGap,
@@ -145,6 +146,14 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     scenarioAnalysis,
     drpPlan,
   });
+  const fullChainCoverage = calculateFullChainCoverage({
+    nodes: analyzedNodes,
+    edges: analyzedEdges,
+    validationReport,
+    servicePosture: finalPosture,
+    drpPlan,
+    evidenceRecords: input.evidence ?? null,
+  });
   const governanceState = governance
     ? {
         riskAcceptances: riskAcceptanceOutcome?.governance.riskAcceptances ?? [],
@@ -176,6 +185,7 @@ export async function runScanPipeline(input: ScanPipelineInput): Promise<ScanRes
     drpPlan,
     proofOfRecovery,
     realityGap,
+    fullChainCoverage,
     servicePosture: finalPosture,
     ...(governanceState ? { governance: governanceState } : {}),
     scenarioAnalysis,

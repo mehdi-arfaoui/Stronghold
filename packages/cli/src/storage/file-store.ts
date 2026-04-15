@@ -6,6 +6,7 @@ import type {
   CircularDependency,
   DRPlan,
   EdgeProvenance,
+  FullChainResult,
   GovernanceState,
   GraphAnalysisReport,
   InfraNode,
@@ -66,6 +67,7 @@ export interface ScanResults {
   readonly drpPlan: DRPlan;
   readonly proofOfRecovery?: ProofOfRecoveryResult;
   readonly realityGap?: RealityGapResult;
+  readonly fullChainCoverage?: FullChainResult;
   readonly servicePosture?: ServicePosture;
   readonly governance?: GovernanceState;
   readonly scenarioAnalysis?: ScenarioAnalysis;
@@ -155,6 +157,9 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
   const realityGap = isRecord(value.realityGap)
     ? (value.realityGap as unknown as RealityGapResult)
     : null;
+  const fullChainCoverage = isRecord(value.fullChainCoverage)
+    ? (value.fullChainCoverage as unknown as FullChainResult)
+    : null;
   const servicePosture = isRecord(value.servicePosture)
     ? (value.servicePosture as unknown as ServicePosture)
     : null;
@@ -180,6 +185,7 @@ function validateScanResults(value: unknown, filePath: string): ScanResults {
     drpPlan,
     ...(proofOfRecovery ? { proofOfRecovery } : {}),
     ...(realityGap ? { realityGap } : {}),
+    ...(fullChainCoverage ? { fullChainCoverage } : {}),
     ...(servicePosture ? { servicePosture } : {}),
     ...(governance ? { governance } : {}),
     ...(scenarioAnalysis ? { scenarioAnalysis } : {}),

@@ -251,8 +251,9 @@ npx @stronghold-dr/cli explain payment
 ```
 
 Stronghold shows the service reality gap, step-by-step reasoning for its
-score, and graph insights such as cascade failure risk, dependency drift,
-and recovery path erosion.
+score, the ordered recovery chain with proven and blocked steps, and graph
+insights such as cascade failure risk, dependency drift, and recovery path
+erosion.
 
 ## 10. Visualize the Dependency Graph
 

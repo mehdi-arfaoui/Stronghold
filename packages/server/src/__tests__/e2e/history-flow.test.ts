@@ -31,6 +31,7 @@ describe('History Flow E2E', () => {
     expect(history.body.total).toBeGreaterThanOrEqual(1);
     expect(Array.isArray(history.body.snapshots)).toBe(true);
     expect(history.body.snapshots[0]?.proofOfRecovery).toBeDefined();
+    expect(history.body.snapshots[0]?.globalWeightedCoverage).toBeDefined();
 
     const trend = await request(context.app).get('/api/history/trend');
     expect(trend.status).toBe(200);
@@ -52,5 +53,6 @@ describe('History Flow E2E', () => {
     const reasoning = await request(context.app).get(`/api/services/${serviceId}/reasoning`);
     expect(reasoning.status).toBe(200);
     expect(reasoning.body.chain.serviceId).toBe(serviceId);
+    expect(reasoning.body.chain.recoveryChain).not.toBeNull();
   });
 });

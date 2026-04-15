@@ -1,4 +1,5 @@
 import type { FindingLifecycle } from '../history/finding-lifecycle-types.js';
+import { calculateFullChainCoverage } from '../scoring/recovery-chain.js';
 import type { RealityGapResult, RealityGapServiceDetail } from '../scoring/reality-gap-types.js';
 import type { GraphInsight, ReasoningChain, ReasoningScanResult } from './reasoning-types.js';
 import {
@@ -50,6 +51,20 @@ export function buildReasoningChain(
         left.type.localeCompare(right.type),
     );
   const steps = buildReasoningSteps(service, scanResult, realityGapService);
+  const recoveryChain =
+    scanResult.drpPlan
+      ? (
+          scanResult.fullChainCoverage ??
+          calculateFullChainCoverage({
+            nodes: scanResult.nodes,
+            edges: scanResult.edges,
+            validationReport: scanResult.validationReport,
+            servicePosture: scanResult.servicePosture,
+            drpPlan: scanResult.drpPlan,
+            evidenceRecords: null,
+          })
+        ).chains.find((chain) => chain.serviceId === service.service.id) ?? null
+      : null;
 
   return {
     serviceId: service.service.id,
@@ -62,6 +77,7 @@ export function buildReasoningChain(
     realityGap: realityGapService.realityGap,
     steps,
     insights,
+    recoveryChain,
     conclusion: generateConclusion(
       {
         serviceName: service.service.name,
