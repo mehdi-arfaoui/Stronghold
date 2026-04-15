@@ -97,6 +97,20 @@ Next action
 3. Regenerate and validate the payment runbook
 ```
 
+Recovery chain view:
+
+```text
+Recovery chain
+- Step 1: payment-db-primary (datastore) -> blocked
+- Step 2: payment-api (compute) -> observed
+- Step 3: payment-worker (compute) -> observed
+- Step 4: dns failover -> blocked
+
+Weighted chain coverage
+- 0/10 steps proven
+- recovery order blocked at the datastore layer
+```
+
 ## The Reality Gap
 
 Your compliance tools say 56% protected. Stronghold proves 0% recoverable.
@@ -234,6 +248,11 @@ See [docs/security.md](docs/security.md) for the security model and deployment g
 | Plan | `plan generate`, `plan runbook`, `plan validate` |
 | Track | `drift check`, `history` |
 | Govern | `evidence add`, `evidence list`, `evidence show <id>`, `governance init`, `governance accept`, `governance validate`, `overrides init`, `overrides validate` |
+
+| Command | Purpose |
+| --- | --- |
+| `stronghold explain <service>` | Reality gap reasoning with full recovery chain |
+| `stronghold graph` | Interactive HTML dependency graph with scenario mode |
 
 Run `stronghold --help` or `stronghold <command> --help` for options such as `--encrypt`, `--redact`, `--verbose`, `--account`, `--profile`, and `--role-arn`.
 
