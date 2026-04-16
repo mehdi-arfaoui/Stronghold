@@ -10,7 +10,11 @@ import {
 } from '@aws-sdk/client-dynamodb';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 export async function scanDynamoDbTables(
@@ -31,6 +35,7 @@ export async function scanDynamoDbTables(
   );
 
   const resources: DiscoveredResource[] = [];
+  const resolveAccountContext = createAccountContextResolver(options);
 
   for (const tableName of tableNames) {
     const details = await dynamodb.send(
@@ -57,18 +62,25 @@ export async function scanDynamoDbTables(
       : {};
     const displayName = getNameTag(tags) ?? table.TableName ?? tableName;
 
+    const accountContext = table.TableArn ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const tableArn =
+      table.TableArn ??
+      `arn:${resolvedAccount.partition}:dynamodb:${options.region}:${resolvedAccount.accountId}:table/${table.TableName ?? tableName}`;
+
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: table.TableArn ?? table.TableId ?? table.TableName ?? tableName,
+        arn: tableArn,
         name: displayName,
         kind: 'infra',
         type: 'DYNAMODB',
+        ...(accountContext ? { account: accountContext } : {}),
         tags,
         metadata: {
           region: options.region,
           tableName: table.TableName,
-          tableArn: table.TableArn,
+          tableArn,
           status: table.TableStatus,
           billingMode: table.BillingModeSummary?.BillingMode,
           itemCount: table.ItemCount,

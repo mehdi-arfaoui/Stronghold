@@ -129,6 +129,7 @@ function sanitizeStructuredRecord(record: Record<string, unknown>): void {
   if (isS3LikeRecord(record)) {
     applyStringField(record, 'name', (value) => sanitizeBucketName(value));
     applyStringField(record, 'id', (value) => sanitizeS3Identifier(value));
+    applyStringField(record, 'arn', (value) => sanitizeS3Identifier(value));
     applyStringField(record, 'externalId', (value) => sanitizeS3Identifier(value));
     applyStringField(record, 'bucketName', (value) => sanitizeBucketName(value));
     applyStringField(record, 'bucketArn', (value) => sanitizeArn(value));
@@ -393,14 +394,14 @@ function isS3LikeRecord(record: Record<string, unknown>): boolean {
   const metadata = isRecord(record.metadata) ? record.metadata : null;
   const recordType = readString(record.type);
   const sourceType = metadata ? readString(metadata.sourceType) : readString(record.sourceType);
-  const externalId = readString(record.externalId) ?? readString(record.id);
+  const resourceArn = readString(record.arn) ?? readString(record.externalId) ?? readString(record.id);
 
   return (
     recordType === 'OBJECT_STORAGE' ||
     sourceType === 'S3_BUCKET' ||
     typeof record.bucketName === 'string' ||
     typeof record.bucketArn === 'string' ||
-    externalId?.startsWith('arn:aws:s3:::') === true
+    resourceArn?.startsWith('arn:aws:s3:::') === true
   );
 }
 

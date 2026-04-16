@@ -12,7 +12,11 @@ import {
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { getNameTag, runAwsReadWithRetry, tagsArrayToMap } from '../tag-utils.js';
-import { buildResource, paginateAws } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 
 function parseBooleanAttribute(value: string | undefined): boolean | undefined {
   if (value === 'true') return true;
@@ -69,6 +73,7 @@ export async function scanLoadBalancers(
   const elb = createAwsClient(ElasticLoadBalancingV2Client, options);
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
+  const resolveAccountContext = createAccountContextResolver(options);
 
   const loadBalancers = await paginateAws(
     (marker) =>
@@ -155,23 +160,30 @@ export async function scanLoadBalancers(
       }
     }
 
+    const accountContext = loadBalancer.LoadBalancerArn ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const loadBalancerArn =
+      loadBalancer.LoadBalancerArn ??
+      `arn:${resolvedAccount.partition}:elasticloadbalancing:${options.region}:${resolvedAccount.accountId}:loadbalancer/${loadBalancer.LoadBalancerName ?? 'elb'}`;
+
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: loadBalancer.LoadBalancerArn ?? loadBalancer.LoadBalancerName ?? 'elb',
+        arn: loadBalancerArn,
         name: displayName,
         kind: 'infra',
         type: 'ELB',
         ip: loadBalancer.DNSName ?? null,
+        ...(accountContext ? { account: accountContext } : {}),
         tags,
         metadata: {
           scheme: loadBalancer.Scheme,
           type: loadBalancer.Type,
           region: options.region,
           dnsName: loadBalancer.DNSName,
-          loadBalancerArn: loadBalancer.LoadBalancerArn,
+          loadBalancerArn,
           loadBalancerName: loadBalancer.LoadBalancerName,
-          loadBalancerResourceName: extractLoadBalancerResourceName(loadBalancer.LoadBalancerArn),
+          loadBalancerResourceName: extractLoadBalancerResourceName(loadBalancerArn),
           vpcId: loadBalancer.VpcId,
           securityGroups: loadBalancer.SecurityGroups ?? undefined,
           availabilityZones,

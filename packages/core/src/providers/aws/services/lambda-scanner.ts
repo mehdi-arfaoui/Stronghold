@@ -11,7 +11,11 @@ import {
 } from '@aws-sdk/client-lambda';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 const LAMBDA_ENV_ARN_PATTERN = /arn:aws:[a-z0-9-]+:[a-z0-9-]*:\d{12}:[A-Za-z0-9\-_/.:]+/g;
@@ -77,6 +81,7 @@ export async function scanLambdaFunctions(
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
   const tagWarnings = new Set<string>();
+  const resolveAccountContext = createAccountContextResolver(options);
 
   const lambdas = await paginateAws(
     (marker) =>
@@ -86,7 +91,12 @@ export async function scanLambdaFunctions(
   );
 
   for (const fn of lambdas) {
-    const externalId = fn.FunctionArn ?? fn.FunctionName ?? 'lambda';
+    const fallbackFunctionName = fn.FunctionName ?? 'lambda';
+    const accountContext = fn.FunctionArn ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const functionArn =
+      fn.FunctionArn ??
+      `arn:${resolvedAccount.partition}:lambda:${options.region}:${resolvedAccount.accountId}:function:${fallbackFunctionName}`;
     let environmentReferences: LambdaEnvReference[] = [];
     let environmentVariableNames: string[] = [];
     let eventSourceMappings: Array<Record<string, unknown>> = [];
@@ -135,7 +145,7 @@ export async function scanLambdaFunctions(
       deadLetterConfig = deadLetterTargetArn ? { targetArn: deadLetterTargetArn } : undefined;
     } catch {
       warnings.push(
-        `Lambda details unavailable for ${fn.FunctionName ?? externalId} in ${options.region}.`,
+        `Lambda details unavailable for ${fn.FunctionName ?? fallbackFunctionName} in ${options.region}.`,
       );
     }
 
@@ -161,23 +171,24 @@ export async function scanLambdaFunctions(
       }));
     } catch {
       warnings.push(
-        `Lambda event source mappings unavailable for ${fn.FunctionName ?? externalId} in ${options.region}.`,
+        `Lambda event source mappings unavailable for ${fn.FunctionName ?? fallbackFunctionName} in ${options.region}.`,
       );
     }
 
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId,
+        arn: functionArn,
         name: displayName,
         kind: 'service',
         type: 'LAMBDA',
+        ...(accountContext ? { account: accountContext } : {}),
         tags,
         metadata: {
           runtime: fn.Runtime,
           handler: fn.Handler,
           functionName: fn.FunctionName,
-          functionArn: fn.FunctionArn,
+          functionArn,
           roleArn: functionRoleArn,
           region: options.region,
           vpcId,

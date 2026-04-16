@@ -1,15 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import type { DiscoveredResource } from '../../types/discovery.js';
+import {
+  createResource as createDiscoveredResource,
+  type DiscoveredResource,
+} from '../../types/discovery.js';
 import { EdgeType, type InfraNodeAttrs } from '../../types/infrastructure.js';
 import { transformToScanResult } from './graph-bridge.js';
 
+const TEST_ACCOUNT = {
+  accountId: '123456789012',
+  partition: 'aws',
+} as const;
+
 function createResource(
-  overrides: Partial<DiscoveredResource> &
-    Pick<DiscoveredResource, 'externalId' | 'type'>,
+  overrides: Partial<DiscoveredResource> & {
+    readonly externalId: string;
+    readonly type: string;
+  },
 ): DiscoveredResource {
-  return {
+  const arn = overrides.externalId.startsWith('arn:')
+    ? overrides.externalId
+    : toTestArn(overrides.type, overrides.externalId);
+
+  return createDiscoveredResource({
     source: 'aws',
-    externalId: overrides.externalId,
+    arn,
     name: overrides.name ?? overrides.externalId,
     kind: overrides.kind ?? 'infra',
     type: overrides.type,
@@ -18,8 +32,8 @@ function createResource(
     ip: overrides.ip ?? null,
     hostname: overrides.hostname ?? null,
     openPorts: overrides.openPorts ?? null,
-    ...overrides,
-  };
+    ...(arn.includes(':::') ? { account: TEST_ACCOUNT } : {}),
+  });
 }
 
 function findEdge(
@@ -28,15 +42,79 @@ function findEdge(
   target: string,
   type: string,
 ) {
+  const sourceId = findNodeId(result, source);
+  const targetId = findNodeId(result, target);
   return result.edges.find(
-    (edge) => edge.source === source && edge.target === target && edge.type === type,
+    (edge) => edge.source === sourceId && edge.target === targetId && edge.type === type,
   );
 }
 
 function findNode(result: ReturnType<typeof transformToScanResult>, nodeId: string): InfraNodeAttrs {
-  const node = result.nodes.find((entry) => entry.id === nodeId);
+  const resolvedId = findNodeId(result, nodeId);
+  const node = result.nodes.find((entry) => entry.id === resolvedId);
   expect(node).toBeDefined();
   return node!;
+}
+
+function findNodeId(result: ReturnType<typeof transformToScanResult>, value: string): string {
+  const exact = result.nodes.find((entry) => entry.id === value);
+  if (exact) return exact.id;
+
+  const byResourceId = result.nodes.find((entry) => entry.resourceId === value);
+  if (byResourceId) return byResourceId.id;
+
+  const byMetadata = result.nodes.find(
+    (entry) =>
+      entry.metadata.dbIdentifier === value ||
+      entry.metadata.dbClusterIdentifier === value ||
+      entry.metadata.dbInstanceIdentifier === value ||
+      entry.metadata.fileSystemId === value ||
+      entry.metadata.mountTargetId === value ||
+      entry.metadata.hostedZoneId === value,
+  );
+  if (byMetadata) return byMetadata.id;
+
+  if (value.startsWith('route53-record:')) {
+    const [, hostedZoneId = '', recordName = '', recordType = '', identifier = ''] = value.split(':');
+    const route53Record = result.nodes.find(
+      (entry) =>
+        entry.metadata.hostedZoneId === hostedZoneId &&
+        typeof entry.resourceId === 'string' &&
+        entry.resourceId.endsWith(`/${recordName}/${recordType}/${identifier}`),
+    );
+    if (route53Record) return route53Record.id;
+  }
+
+  return value;
+}
+
+function toTestArn(type: string, id: string): string {
+  switch (type) {
+    case 'RDS':
+      return `arn:aws:rds:eu-west-1:${TEST_ACCOUNT.accountId}:db:${id}`;
+    case 'AURORA_CLUSTER':
+      return `arn:aws:rds:eu-west-1:${TEST_ACCOUNT.accountId}:cluster:${id}`;
+    case 'AURORA_INSTANCE':
+      return `arn:aws:rds:eu-west-1:${TEST_ACCOUNT.accountId}:db:${id}`;
+    case 'EFS_FILESYSTEM':
+      return `arn:aws:elasticfilesystem:eu-west-1:${TEST_ACCOUNT.accountId}:file-system/${id}`;
+    case 'EFS_MOUNT_TARGET':
+      return `arn:aws:elasticfilesystem:eu-west-1:${TEST_ACCOUNT.accountId}:mount-target/${id}`;
+    case 'EC2':
+      return `arn:aws:ec2:eu-west-1:${TEST_ACCOUNT.accountId}:instance/${id}`;
+    case 'SECURITY_GROUP':
+      return `arn:aws:ec2:eu-west-1:${TEST_ACCOUNT.accountId}:security-group/${id}`;
+    case 'ROUTE53_HOSTED_ZONE':
+      return `arn:aws:route53:::hostedzone/${id}`;
+    case 'ROUTE53_RECORD':
+      return `arn:aws:route53:::recordset/Z123ZONE/api.example.com/A/simple`;
+    case 'BACKUP_PLAN':
+      return `arn:aws:backup:eu-west-1:${TEST_ACCOUNT.accountId}:backup-plan:${id}`;
+    case 'BACKUP_VAULT':
+      return `arn:aws:backup:eu-west-1:${TEST_ACCOUNT.accountId}:backup-vault:${id}`;
+    default:
+      return `arn:aws:ec2:eu-west-1:${TEST_ACCOUNT.accountId}:instance/${id}`;
+  }
 }
 
 describe('transformToScanResult', () => {

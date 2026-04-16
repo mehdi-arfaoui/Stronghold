@@ -10,7 +10,10 @@ import {
 import type { Dimension, MetricAlarm } from '@aws-sdk/client-cloudwatch';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 const MONITORED_DIMENSION_NAMES = new Set([
@@ -77,6 +80,7 @@ export async function scanCloudWatchAlarms(
   const tagWarnings = new Set<string>();
   const alarms = await listMetricAlarms(cloudwatch, options);
   const resources: DiscoveredResource[] = [];
+  const resolveAccountContext = createAccountContextResolver(options);
 
   for (const alarm of alarms) {
     const tags = alarm.AlarmArn
@@ -95,17 +99,23 @@ export async function scanCloudWatchAlarms(
         )
       : {};
     const displayName = getNameTag(tags) ?? alarm.AlarmName ?? 'alarm';
+    const accountContext = alarm.AlarmArn ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const alarmArn =
+      alarm.AlarmArn ??
+      `arn:${resolvedAccount.partition}:cloudwatch:${options.region}:${resolvedAccount.accountId}:alarm:${alarm.AlarmName ?? 'alarm'}`;
 
-    resources.push(buildResource({
+    resources.push(createResource({
       source: 'aws',
-      externalId: alarm.AlarmArn ?? `cloudwatch-alarm:${alarm.AlarmName ?? 'alarm'}`,
+      arn: alarmArn,
       name: displayName,
       kind: 'infra',
       type: 'CLOUDWATCH_ALARM',
+      ...(accountContext ? { account: accountContext } : {}),
       tags,
       metadata: {
         region: options.region,
-        alarmArn: alarm.AlarmArn,
+        alarmArn,
         alarmName: alarm.AlarmName,
         namespace: alarm.Namespace,
         metricName: alarm.MetricName,

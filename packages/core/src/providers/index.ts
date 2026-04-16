@@ -32,7 +32,6 @@ export {
   resolveAwsSourceCredentials,
   getCallerIdentity,
   paginateAws,
-  buildResource,
   processWithConcurrencyLimit,
   sleep,
   type AwsClientOptions,

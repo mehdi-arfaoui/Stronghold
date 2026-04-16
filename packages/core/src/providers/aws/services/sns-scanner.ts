@@ -11,7 +11,7 @@ import {
 } from '@aws-sdk/client-sns';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import { paginateAws, createResource } from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 export async function scanSnsTopics(
@@ -79,9 +79,9 @@ export async function scanSnsTopics(
     }
 
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: topic.TopicArn,
+        arn: topic.TopicArn,
         name: displayName,
         kind: 'infra',
         type: 'SNS_TOPIC',

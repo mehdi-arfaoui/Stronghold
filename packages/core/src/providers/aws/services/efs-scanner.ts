@@ -15,8 +15,13 @@ import {
   type MountTargetDescription,
 } from '@aws-sdk/client-efs';
 import type { DiscoveredResource } from '../../../types/discovery.js';
+import type { AccountContext } from '../../../identity/index.js';
 import { createEfsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource, paginateAws } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 interface ReplicationSummary {
@@ -41,6 +46,7 @@ function summarizeReplication(destination: Destination): ReplicationSummary | nu
 function buildFileSystemResource(
   fileSystem: FileSystemDescription,
   region: string,
+  accountContext: AccountContext,
   backupPolicy: BackupPolicy | null,
   replicationConfigurations: readonly ReplicationSummary[],
   mountTargets: readonly MountTargetDescription[],
@@ -48,17 +54,21 @@ function buildFileSystemResource(
 ): DiscoveredResource {
   const fileSystemId = fileSystem.FileSystemId ?? 'efs-filesystem';
   const name = getNameTag(tags) ?? fileSystem.Name ?? fileSystemId;
-  return buildResource({
+  const fileSystemArn =
+    fileSystem.FileSystemArn ??
+    `arn:${accountContext.partition}:elasticfilesystem:${region}:${accountContext.accountId}:file-system/${fileSystemId}`;
+  return createResource({
     source: 'aws',
-    externalId: fileSystemId,
+    arn: fileSystemArn,
     name,
     kind: 'infra',
     type: 'EFS_FILESYSTEM',
+    account: accountContext,
     tags,
     metadata: {
       region,
       fileSystemId,
-      fileSystemArn: fileSystem.FileSystemArn,
+      fileSystemArn,
       name,
       lifecycleState: fileSystem.LifeCycleState,
       performanceMode: fileSystem.PerformanceMode,
@@ -82,15 +92,17 @@ function buildFileSystemResource(
 function buildMountTargetResource(
   mountTarget: MountTargetDescription,
   region: string,
+  accountContext: AccountContext,
 ): DiscoveredResource {
   const mountTargetId = mountTarget.MountTargetId ?? 'efs-mount-target';
-  return buildResource({
+  return createResource({
     source: 'aws',
-    externalId: mountTargetId,
+    arn: `arn:${accountContext.partition}:elasticfilesystem:${region}:${accountContext.accountId}:mount-target/${mountTargetId}`,
     name: mountTargetId,
     kind: 'infra',
     type: 'EFS_MOUNT_TARGET',
     ip: mountTarget.IpAddress ?? null,
+    account: accountContext,
     metadata: {
       region,
       mountTargetId,
@@ -133,6 +145,7 @@ export async function scanEfsFileSystems(
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
   const tagWarnings = new Set<string>();
+  const accountContext = await createAccountContextResolver(options)();
   const fileSystems = await paginateAws(
     (marker) =>
       efs.send(new DescribeFileSystemsCommand({ Marker: marker }), getAwsCommandOptions(options)),
@@ -203,13 +216,18 @@ export async function scanEfsFileSystems(
       buildFileSystemResource(
         fileSystem,
         options.region,
+        accountContext,
         backupPolicy,
         replicationsBySource.get(fileSystemId) ?? [],
         mountTargets,
         tags,
       ),
     );
-    resources.push(...mountTargets.map((mountTarget) => buildMountTargetResource(mountTarget, options.region)));
+    resources.push(
+      ...mountTargets.map((mountTarget) =>
+        buildMountTargetResource(mountTarget, options.region, accountContext),
+      ),
+    );
   }
 
   return { resources, warnings };

@@ -206,6 +206,7 @@ function mapSourceToProvider(source: string): string {
 }
 
 function extractRegion(resource: DiscoveredResource): string | null {
+  if (resource.region) return resource.region;
   const meta = resource.metadata;
   if (meta?.region) return String(meta.region);
   if (meta?.location) return String(meta.location);
@@ -312,12 +313,12 @@ function resolveDisplayName(
   if (metadataName) return metadataName;
 
   if (sourceType.includes('topic')) {
-    const topicArn = readStringValue(metadata.topicArn) ?? resource.externalId;
+    const topicArn = readStringValue(metadata.topicArn) ?? resource.arn;
     const inferredTopic = topicArn.split(':').pop();
     if (inferredTopic) return inferredTopic;
   }
 
-  return resource.name || resource.externalId;
+  return resource.name || resource.resourceId || resource.arn;
 }
 
 function normalizeReference(value: string): string {
@@ -399,6 +400,7 @@ function buildReferenceIndex(nodes: readonly InfraNodeAttrs[]): ReadonlyMap<stri
   for (const node of nodes) {
     const references = new Set<string>();
     addReference(references, node.id);
+    addReference(references, readStringValue(node.resourceId));
     addReference(references, node.name);
     for (const reference of getMetadataReferences(node.metadata)) {
       addReference(references, reference);
@@ -471,7 +473,12 @@ export function transformToScanResult(
       providerName === 'aws' ? inferAwsServiceLabel(nodeType, resource.type, meta) : undefined;
 
     nodes.push({
-      id: resource.externalId,
+      id: resource.arn,
+      accountId: resource.account.accountId,
+      partition: resource.account.partition,
+      service: resource.service,
+      resourceType: resource.resourceType,
+      resourceId: resource.resourceId,
       name: displayName,
       type: nodeType,
       provider: providerName,
@@ -480,6 +487,12 @@ export function transformToScanResult(
       tags,
       metadata: {
         ...meta,
+        arn: resource.arn,
+        accountId: resource.account.accountId,
+        partition: resource.account.partition,
+        service: resource.service,
+        resourceType: resource.resourceType ?? undefined,
+        resourceId: resource.resourceId,
         source: resource.source,
         sourceType: resource.type,
         region: region ?? undefined,

@@ -42,7 +42,6 @@ export {
 export { transformToScanResult } from './graph-bridge.js';
 export {
   paginateAws,
-  buildResource,
   processInBatches,
   processWithConcurrencyLimit,
   sleep,

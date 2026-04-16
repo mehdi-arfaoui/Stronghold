@@ -6,12 +6,17 @@ import { AutoScalingClient, DescribeAutoScalingGroupsCommand } from '@aws-sdk/cl
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { getNameTag, tagsArrayToMap } from '../tag-utils.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 
 export async function scanAutoScalingGroups(
   options: AwsClientOptions,
 ): Promise<DiscoveredResource[]> {
   const asg = createAwsClient(AutoScalingClient, options);
+  const resolveAccountContext = createAccountContextResolver(options);
 
   const groups = await paginateAws(
     (nextToken) =>
@@ -23,19 +28,27 @@ export async function scanAutoScalingGroups(
     (response) => response.NextToken,
   );
 
-  return groups.map((group) => {
+  const resources: DiscoveredResource[] = [];
+
+  for (const group of groups) {
     const tags = tagsArrayToMap(group.Tags);
     const displayName = getNameTag(tags) ?? group.AutoScalingGroupName ?? 'asg';
+    const accountContext = group.AutoScalingGroupARN ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const groupArn =
+      group.AutoScalingGroupARN ??
+      `arn:${resolvedAccount.partition}:autoscaling:${options.region}:${resolvedAccount.accountId}:autoScalingGroup:autoScalingGroupName/${group.AutoScalingGroupName ?? 'asg'}`;
 
-    return buildResource({
+    resources.push(createResource({
       source: 'aws',
-      externalId: group.AutoScalingGroupARN ?? group.AutoScalingGroupName ?? 'asg',
+      arn: groupArn,
       name: displayName,
       kind: 'infra',
       type: 'ASG',
+      ...(accountContext ? { account: accountContext } : {}),
       tags,
       metadata: {
-        autoScalingGroupArn: group.AutoScalingGroupARN,
+        autoScalingGroupArn: groupArn,
         autoScalingGroupName: group.AutoScalingGroupName,
         minSize: group.MinSize,
         maxSize: group.MaxSize,
@@ -51,6 +64,8 @@ export async function scanAutoScalingGroups(
         displayName,
         ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
       },
-    });
-  });
+    }));
+  }
+
+  return resources;
 }

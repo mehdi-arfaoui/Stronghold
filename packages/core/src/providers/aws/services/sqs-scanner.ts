@@ -10,7 +10,7 @@ import {
 } from '@aws-sdk/client-sqs';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import { paginateAws, createResource } from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 function parseRedrivePolicy(rawPolicy: string | undefined): Record<string, unknown> | undefined {
@@ -73,9 +73,9 @@ export async function scanSqsQueues(
     const displayName = getNameTag(tags) ?? queueName;
 
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: queueArn,
+        arn: queueArn,
         name: displayName,
         kind: 'infra',
         type: 'SQS_QUEUE',

@@ -10,7 +10,10 @@ import {
 import type { ResourceRecordSet } from '@aws-sdk/client-route-53';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createRoute53Client, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 function normalizeDnsName(value: string | undefined): string | undefined {
@@ -34,10 +37,14 @@ function determineRoutingPolicy(record: ResourceRecordSet): string {
   return 'simple';
 }
 
-function createRoute53RecordId(record: ResourceRecordSet, hostedZoneId: string): string {
+function createRoute53RecordArn(
+  partition: string,
+  record: ResourceRecordSet,
+  hostedZoneId: string,
+): string {
   const name = normalizeDnsName(record.Name) ?? 'record';
   const identifier = record.SetIdentifier ?? record.Failover ?? determineRoutingPolicy(record);
-  return `route53-record:${hostedZoneId}:${name}:${record.Type}:${identifier}`;
+  return `arn:${partition}:route53:::recordset/${hostedZoneId}/${name}/${record.Type}/${identifier}`;
 }
 
 async function listRoute53RecordSets(
@@ -78,6 +85,7 @@ export async function scanRoute53HostedZones(
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
   const tagWarnings = new Set<string>();
+  const accountContext = await createAccountContextResolver(options)();
   let marker: string | undefined;
   let isTruncated = true;
 
@@ -109,12 +117,13 @@ export async function scanRoute53HostedZones(
       const displayName = getNameTag(tags) ?? zoneName;
 
       resources.push(
-        buildResource({
+        createResource({
           source: 'aws',
-          externalId: hostedZoneId,
+          arn: `arn:${accountContext.partition}:route53:::hostedzone/${hostedZoneId}`,
           name: displayName,
           kind: 'infra',
           type: 'ROUTE53_HOSTED_ZONE',
+          account: accountContext,
           tags,
           metadata: {
             region: 'global',
@@ -134,12 +143,13 @@ export async function scanRoute53HostedZones(
           const recordName = normalizeDnsName(record.Name) ?? 'record';
           const aliasTargetDnsName = normalizeDnsName(record.AliasTarget?.DNSName);
           resources.push(
-            buildResource({
+            createResource({
               source: 'aws',
-              externalId: createRoute53RecordId(record, hostedZoneId),
+              arn: createRoute53RecordArn(accountContext.partition, record, hostedZoneId),
               name: recordName,
               kind: 'infra',
               type: 'ROUTE53_RECORD',
+              account: accountContext,
               metadata: {
                 region: 'global',
                 hostedZoneId,

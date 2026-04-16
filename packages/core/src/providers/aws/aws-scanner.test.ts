@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createResource } from '../../types/discovery.js';
 import type { AwsClientOptions } from './aws-client-factory.js';
 import {
   buildAwsScanSummary,
@@ -12,6 +13,11 @@ const TEST_CLIENT_OPTIONS: AwsClientOptions = {
   region: 'eu-west-1',
   credentials: {},
 };
+
+const TEST_ACCOUNT = {
+  accountId: '123456789012',
+  partition: 'aws',
+} as const;
 
 function createScanner(
   name: string,
@@ -26,6 +32,22 @@ function createScanner(
 function wait(delayMs: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, delayMs);
+  });
+}
+
+function createTestResource(type: string, id: string) {
+  const arn =
+    type === 'EKS'
+      ? `arn:aws:eks:${TEST_CLIENT_OPTIONS.region}:${TEST_ACCOUNT.accountId}:cluster/${id}`
+      : `arn:aws:ec2:${TEST_CLIENT_OPTIONS.region}:${TEST_ACCOUNT.accountId}:instance/${id}`;
+
+  return createResource({
+    source: 'aws',
+    arn,
+    name: id,
+    kind: 'infra',
+    type,
+    account: TEST_ACCOUNT,
   });
 }
 
@@ -94,11 +116,11 @@ describe('scanAwsRegion', () => {
 
   it('keeps scanning when one scanner fails', async () => {
     const scanners = [
-      createScanner('EC2', async () => [{ source: 'aws', externalId: 'ec2-1', name: 'ec2-1', kind: 'infra', type: 'EC2' }]),
+      createScanner('EC2', async () => [createTestResource('EC2', 'ec2-1')]),
       createScanner('RDS', async () => {
         throw new Error('boom');
       }),
-      createScanner('EKS', async () => [{ source: 'aws', externalId: 'eks-1', name: 'eks-1', kind: 'infra', type: 'EKS' }]),
+      createScanner('EKS', async () => [createTestResource('EKS', 'eks-1')]),
     ];
 
     const result = await scanAwsRegion(TEST_CLIENT_OPTIONS, {
@@ -107,7 +129,7 @@ describe('scanAwsRegion', () => {
       scanners,
     });
 
-    expect(result.resources.map((resource) => resource.externalId)).toEqual(['ec2-1', 'eks-1']);
+    expect(result.resources.map((resource) => resource.resourceId)).toEqual(['ec2-1', 'eks-1']);
     expect(result.scannerResults.filter((scanner) => scanner.finalStatus === 'failed')).toHaveLength(1);
     expect(result.scannerResults.filter((scanner) => scanner.finalStatus === 'success')).toHaveLength(2);
   });
@@ -126,7 +148,7 @@ describe('scanAwsRegion', () => {
             error.name = 'ThrottlingException';
             throw error;
           }
-          return [{ source: 'aws', externalId: 'eks-1', name: 'eks-1', kind: 'infra', type: 'EKS' }];
+          return [createTestResource('EKS', 'eks-1')];
         }),
       ],
       onProgress: (progress) => {
@@ -209,7 +231,7 @@ describe('buildAwsScanSummary', () => {
         {
           region: 'eu-west-1',
           durationMs: 5_000,
-          resources: [{ source: 'aws', externalId: 'ec2-1', name: 'ec2-1', kind: 'infra', type: 'EC2' }],
+          resources: [createTestResource('EC2', 'ec2-1')],
           warnings: [],
           scannerResults: [
             {

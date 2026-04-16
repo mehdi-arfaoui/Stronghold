@@ -65,7 +65,11 @@ export type CriticalitySource = 'computed' | 'manual';
 /** Attributes stored on each graphology node. */
 export interface InfraNodeAttrs {
   readonly id: string;
-  readonly externalId?: string | null;
+  readonly accountId?: string | null;
+  readonly partition?: string | null;
+  readonly service?: string | null;
+  readonly resourceType?: string | null;
+  readonly resourceId?: string | null;
   readonly name: string;
   readonly businessName?: string | null;
   readonly displayName?: string;

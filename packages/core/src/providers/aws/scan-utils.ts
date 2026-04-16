@@ -2,7 +2,17 @@
  * Shared utilities for AWS service scanners.
  */
 
-import type { DiscoveredResource } from '../../types/discovery.js';
+import {
+  createAccountContext,
+  type AccountContext,
+} from '../../identity/index.js';
+import {
+  createResource as createDiscoveredResource,
+  type CreateResourceInput,
+  type DiscoveredResource,
+} from '../../types/discovery.js';
+import { getCallerIdentity } from './get-caller-identity.js';
+import type { AwsClientOptions } from './aws-client-factory.js';
 
 /** Paginates an AWS SDK call and concatenates items from every page. */
 export async function paginateAws<TResponse, TItem>(
@@ -23,16 +33,50 @@ export async function paginateAws<TResponse, TItem>(
   return allItems;
 }
 
-/** Builds a DiscoveredResource with sensible defaults. */
-export function buildResource(
-  input: Partial<DiscoveredResource> & { source: string; externalId: string },
-): DiscoveredResource {
-  return {
-    name: input.name || input.externalId,
-    kind: input.kind || 'infra',
-    type: input.type || 'CLOUD',
+/** Builds a DiscoveredResource with validated ARN-backed identity. */
+export function createResource(input: CreateResourceInput): DiscoveredResource {
+  return createDiscoveredResource({
+    name: input.name ?? input.arn,
+    kind: input.kind ?? 'infra',
     ...input,
-  } satisfies DiscoveredResource;
+  });
+}
+
+export function inferAwsPartition(region: string): string {
+  const normalized = region.trim().toLowerCase();
+  if (normalized.startsWith('cn-')) {
+    return 'aws-cn';
+  }
+  if (normalized.startsWith('us-gov-')) {
+    return 'aws-us-gov';
+  }
+  return 'aws';
+}
+
+export function createAccountContextResolver(
+  options: AwsClientOptions,
+): () => Promise<AccountContext> {
+  let accountContextPromise: Promise<AccountContext> | null = null;
+
+  return async () => {
+    if (!accountContextPromise) {
+      accountContextPromise = getCallerIdentity({
+        ...options.credentials,
+        region: options.region,
+      }).then((identity) => {
+        if (!identity) {
+          throw new Error(`Unable to resolve AWS account identity for region ${options.region}.`);
+        }
+
+        return createAccountContext({
+          accountId: identity.accountId,
+          partition: inferAwsPartition(options.region),
+        });
+      });
+    }
+
+    return accountContextPromise;
+  };
 }
 
 /** Process items in batches with a concurrency limit. */

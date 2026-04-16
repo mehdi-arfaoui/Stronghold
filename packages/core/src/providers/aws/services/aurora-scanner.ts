@@ -14,8 +14,13 @@ import {
   type GlobalCluster,
 } from '@aws-sdk/client-rds';
 import type { DiscoveredResource } from '../../../types/discovery.js';
+import type { AccountContext } from '../../../identity/index.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource, paginateAws } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 interface AuroraScannerConfig {
@@ -50,22 +55,27 @@ function resolveSubnetId(instance: DBInstance): string | undefined {
 function buildAuroraCluster(
   cluster: DBCluster,
   region: string,
+  accountContext: AccountContext,
   tags: Record<string, string>,
 ): DiscoveredResource {
   const clusterId = cluster.DBClusterIdentifier ?? 'aurora-cluster';
   const displayName = getNameTag(tags) ?? clusterId;
-  return buildResource({
+  const clusterArn =
+    cluster.DBClusterArn ??
+    `arn:${accountContext.partition}:rds:${region}:${accountContext.accountId}:cluster:${clusterId}`;
+  return createResource({
     source: 'aws',
-    externalId: clusterId,
+    arn: clusterArn,
     name: displayName,
     kind: 'infra',
     type: 'AURORA_CLUSTER',
     ip: cluster.Endpoint ?? null,
+    account: accountContext,
     tags,
     metadata: {
       region,
       dbClusterIdentifier: clusterId,
-      dbClusterArn: cluster.DBClusterArn,
+      dbClusterArn: clusterArn,
       engine: cluster.Engine,
       engineVersion: cluster.EngineVersion,
       clusterEndpoint: cluster.Endpoint,
@@ -109,22 +119,27 @@ function buildAuroraInstance(
   member: DBClusterMember | undefined,
   cluster: DBCluster,
   region: string,
+  accountContext: AccountContext,
   tags: Record<string, string>,
 ): DiscoveredResource {
   const instanceId = instance.DBInstanceIdentifier ?? 'aurora-instance';
   const displayName = getNameTag(tags) ?? instanceId;
-  return buildResource({
+  const instanceArn =
+    instance.DBInstanceArn ??
+    `arn:${accountContext.partition}:rds:${region}:${accountContext.accountId}:db:${instanceId}`;
+  return createResource({
     source: 'aws',
-    externalId: instanceId,
+    arn: instanceArn,
     name: displayName,
     kind: 'infra',
     type: 'AURORA_INSTANCE',
     ip: instance.Endpoint?.Address ?? null,
+    account: accountContext,
     tags,
     metadata: {
       region,
       dbInstanceIdentifier: instanceId,
-      dbInstanceArn: instance.DBInstanceArn,
+      dbInstanceArn: instanceArn,
       dbClusterIdentifier: cluster.DBClusterIdentifier,
       dbClusterArn: cluster.DBClusterArn,
       engine: instance.Engine ?? cluster.Engine,
@@ -152,21 +167,26 @@ function buildAuroraInstance(
 
 function buildAuroraGlobal(
   globalCluster: GlobalCluster,
+  accountContext: AccountContext,
   tags: Record<string, string>,
 ): DiscoveredResource {
   const globalClusterIdentifier = globalCluster.GlobalClusterIdentifier ?? 'aurora-global';
   const displayName = getNameTag(tags) ?? globalClusterIdentifier;
-  return buildResource({
+  const globalClusterArn =
+    globalCluster.GlobalClusterArn ??
+    `arn:${accountContext.partition}:rds::${accountContext.accountId}:global-cluster:${globalClusterIdentifier}`;
+  return createResource({
     source: 'aws',
-    externalId: globalClusterIdentifier,
+    arn: globalClusterArn,
     name: displayName,
     kind: 'infra',
     type: 'AURORA_GLOBAL',
+    account: accountContext,
     tags,
     metadata: {
       region: 'global',
       globalClusterIdentifier,
-      globalClusterArn: globalCluster.GlobalClusterArn,
+      globalClusterArn,
       globalClusterMembers: (globalCluster.GlobalClusterMembers ?? []).map((member) => ({
         DBClusterArn: member.DBClusterArn,
         IsWriter: member.IsWriter,
@@ -212,6 +232,7 @@ export async function scanAuroraClusters(
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
   const tagWarnings = new Set<string>();
+  const accountContext = await createAccountContextResolver(options)();
   const clusters = (
     await paginateAws(
       (marker) =>
@@ -237,7 +258,7 @@ export async function scanAuroraClusters(
           },
         )
       : {};
-    resources.push(buildAuroraCluster(cluster, options.region, clusterTags));
+    resources.push(buildAuroraCluster(cluster, options.region, accountContext, clusterTags));
 
     try {
       const membersById = new Map(
@@ -268,6 +289,7 @@ export async function scanAuroraClusters(
             membersById.get(instance.DBInstanceIdentifier ?? ''),
             cluster,
             options.region,
+            accountContext,
             instanceTags,
           ),
         );
@@ -306,7 +328,7 @@ export async function scanAuroraClusters(
               },
             )
           : {};
-        resources.push(buildAuroraGlobal(globalCluster, globalTags));
+        resources.push(buildAuroraGlobal(globalCluster, accountContext, globalTags));
       }
     } catch {
       warnings.push(`Aurora global cluster discovery unavailable in ${options.region}.`);

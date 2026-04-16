@@ -16,7 +16,11 @@ import {
 import type { BackupRule, ProtectedResource, RecoveryPointByBackupVault } from '@aws-sdk/client-backup';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource, paginateAws } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 interface ProtectedResourceSummary {
@@ -216,6 +220,7 @@ export async function scanBackupResources(
   const warnings: string[] = [];
   const resources: DiscoveredResource[] = [];
   const tagWarnings = new Set<string>();
+  const accountContext = await createAccountContextResolver(options)();
 
   const [backupPlans, protectedResourcesList, backupVaults] = await Promise.all([
     listBackupPlans(backup, options),
@@ -261,18 +266,22 @@ export async function scanBackupResources(
         )
       : {};
     const displayName = getNameTag(tags) ?? backupVault.BackupVaultName;
+    const backupVaultArn =
+      backupVault.BackupVaultArn ??
+      `arn:${accountContext.partition}:backup:${options.region}:${accountContext.accountId}:backup-vault:${backupVault.BackupVaultName}`;
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: backupVault.BackupVaultArn ?? backupVault.BackupVaultName,
+        arn: backupVaultArn,
         name: displayName,
         kind: 'infra',
         type: 'BACKUP_VAULT',
+        account: accountContext,
         tags,
         metadata: {
           region: options.region,
           backupVaultName: backupVault.BackupVaultName,
-          backupVaultArn: backupVault.BackupVaultArn,
+          backupVaultArn,
           creationDate: toIsoString(backupVault.CreationDate),
           recoveryPoints: recoveryPointsByVault.get(backupVault.BackupVaultName) ?? [],
           displayName,
@@ -332,19 +341,23 @@ export async function scanBackupResources(
         planDetails.BackupPlan?.BackupPlanName ??
         backupPlan.BackupPlanName ??
         backupPlanId;
+      const backupPlanArn =
+        backupPlan.BackupPlanArn ??
+        `arn:${accountContext.partition}:backup:${options.region}:${accountContext.accountId}:backup-plan:${backupPlanId}`;
 
       resources.push(
-        buildResource({
+        createResource({
           source: 'aws',
-          externalId: backupPlanId,
+          arn: backupPlanArn,
           name: displayName,
           kind: 'infra',
           type: 'BACKUP_PLAN',
+          account: accountContext,
           tags,
           metadata: {
             region: options.region,
             backupPlanId,
-            backupPlanArn: backupPlan.BackupPlanArn,
+            backupPlanArn,
             backupPlanName:
               planDetails.BackupPlan?.BackupPlanName ?? backupPlan.BackupPlanName ?? backupPlanId,
             rules: summarizeRules(planDetails.BackupPlan?.Rules),

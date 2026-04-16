@@ -10,7 +10,10 @@ import {
 } from '@aws-sdk/client-s3';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 function normalizeS3Region(locationConstraint: string | null | undefined): string {
@@ -29,6 +32,7 @@ export async function scanS3Buckets(
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
   const tagWarnings = new Set<string>();
+  const resolveAccountContext = createAccountContextResolver(options);
 
   const buckets = await s3.send(new ListBucketsCommand({}), getAwsCommandOptions(options));
 
@@ -63,18 +67,22 @@ export async function scanS3Buckets(
     );
     const displayName = getNameTag(tags) ?? bucketName;
 
+    const accountContext = await resolveAccountContext();
+    const bucketArn = `arn:${accountContext.partition}:s3:::${bucketName}`;
+
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: `arn:aws:s3:::${bucketName}`,
+        arn: bucketArn,
         name: displayName,
         kind: 'infra',
         type: 'S3_BUCKET',
+        account: accountContext,
         tags,
         metadata: {
           region: bucketRegion,
           bucketName,
-          bucketArn: `arn:aws:s3:::${bucketName}`,
+          bucketArn,
           creationDate: bucket.CreationDate?.toISOString(),
           displayName,
           ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),

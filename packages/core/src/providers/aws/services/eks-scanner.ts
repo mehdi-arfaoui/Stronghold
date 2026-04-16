@@ -12,7 +12,11 @@ import {
 } from '@aws-sdk/client-eks';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, normalizeTagMap } from '../tag-utils.js';
 
 export async function scanEksClusters(
@@ -22,6 +26,7 @@ export async function scanEksClusters(
   const resources: DiscoveredResource[] = [];
   const warnings: string[] = [];
   const tagWarnings = new Set<string>();
+  const resolveAccountContext = createAccountContextResolver(options);
 
   const clusterNames = await paginateAws(
     (nextToken) => eks.send(new ListClustersCommand({ nextToken }), getAwsCommandOptions(options)),
@@ -54,14 +59,20 @@ export async function scanEksClusters(
     const clusterTags =
       Object.keys(fetchedClusterTags).length > 0 ? fetchedClusterTags : normalizeTagMap(cluster.tags);
     const clusterDisplayName = getNameTag(clusterTags) ?? clusterName;
+    const clusterAccountContext = cluster.arn ? null : await resolveAccountContext();
+    const resolvedClusterAccount = clusterAccountContext ?? (await resolveAccountContext());
+    const clusterArn =
+      cluster.arn ??
+      `arn:${resolvedClusterAccount.partition}:eks:${options.region}:${resolvedClusterAccount.accountId}:cluster/${clusterName}`;
 
     resources.push(
-      buildResource({
+      createResource({
         source: 'aws',
-        externalId: cluster.arn ?? clusterName,
+        arn: clusterArn,
         name: clusterDisplayName,
         kind: 'infra',
         type: 'EKS',
+        ...(clusterAccountContext ? { account: clusterAccountContext } : {}),
         tags: clusterTags,
         metadata: {
           region: options.region,
@@ -73,7 +84,7 @@ export async function scanEksClusters(
           subnetIds: (cluster.resourcesVpcConfig?.subnetIds ?? []).filter(
             (subnetId): subnetId is string => Boolean(subnetId),
           ),
-          clusterArn: cluster.arn,
+          clusterArn,
           clusterName,
           displayName: clusterDisplayName,
           ...(Object.keys(clusterTags).length > 0 ? { awsTags: clusterTags } : {}),
@@ -94,19 +105,25 @@ export async function scanEksClusters(
       if (!nodeGroup) continue;
       const nodeGroupTags = normalizeTagMap(nodeGroup.tags);
       const nodeGroupDisplayName = getNameTag(nodeGroupTags) ?? `${clusterName}/${nodeGroupName}`;
+      const nodeGroupAccountContext = nodeGroup.nodegroupArn ? null : await resolveAccountContext();
+      const resolvedNodeGroupAccount = nodeGroupAccountContext ?? (await resolveAccountContext());
+      const nodeGroupArn =
+        nodeGroup.nodegroupArn ??
+        `arn:${resolvedNodeGroupAccount.partition}:eks:${options.region}:${resolvedNodeGroupAccount.accountId}:nodegroup/${clusterName}/${nodeGroupName}/unknown`;
 
       resources.push(
-        buildResource({
+        createResource({
           source: 'aws',
-          externalId: nodeGroup.nodegroupArn ?? `${clusterName}/${nodeGroupName}`,
+          arn: nodeGroupArn,
           name: nodeGroupDisplayName,
           kind: 'infra',
           type: 'EKS_NODEGROUP',
+          ...(nodeGroupAccountContext ? { account: nodeGroupAccountContext } : {}),
           tags: nodeGroupTags,
           metadata: {
             region: options.region,
             clusterName,
-            nodegroupArn: nodeGroup.nodegroupArn,
+            nodegroupArn: nodeGroupArn,
             nodegroupName: nodeGroupName,
             status: nodeGroup.status,
             capacityType: nodeGroup.capacityType,

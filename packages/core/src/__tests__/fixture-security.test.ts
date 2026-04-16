@@ -10,7 +10,7 @@ describe('fixture security', () => {
     const raw = {
       type: 'OBJECT_STORAGE',
       name: 'customer-data-archive',
-      externalId: 'arn:aws:s3:::customer-data-archive',
+      arn: 'arn:aws:s3:::customer-data-archive',
       metadata: {
         sourceType: 'S3_BUCKET',
         bucketName: 'customer-data-archive',
@@ -25,9 +25,9 @@ describe('fixture security', () => {
     const sanitized = sanitizeFixtureValue(raw);
 
     expect(sanitized.name).toMatch(/^sh-bucket-/);
-    expect(sanitized.externalId).toContain('arn:aws:s3:::sh-bucket-');
+    expect(sanitized.arn).toContain('arn:aws:s3:::sh-bucket-');
     expect(sanitized.metadata.bucketName).toBe(sanitized.name);
-    expect(sanitized.metadata.bucketArn).toBe(sanitized.externalId);
+    expect(sanitized.metadata.bucketArn).toBe(sanitized.arn);
     expect(sanitized.metadata.kmsKeyId).toContain('arn:aws:kms:eu-west-1:****9012:key/sh-kms-');
     expect(sanitized.metadata.contactEmail).toMatch(/^sh-user-[a-f0-9]+@example\.invalid$/);
     expect(sanitized.metadata.endpoint).toContain('https://sh-host-');

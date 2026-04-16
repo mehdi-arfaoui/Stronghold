@@ -9,10 +9,15 @@ import {
   ListTagsForResourceCommand,
 } from '@aws-sdk/client-elasticache';
 import type { DiscoveredResource } from '../../../types/discovery.js';
+import { createAccountContext } from '../../../identity/index.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { addWarningOnce, fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 import { getCallerIdentity } from '../get-caller-identity.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createResource,
+  inferAwsPartition,
+  paginateAws,
+} from '../scan-utils.js';
 
 export async function scanElastiCacheClusters(
   options: AwsClientOptions,
@@ -47,15 +52,22 @@ export async function scanElastiCacheClusters(
     (response) => response.Marker,
   );
 
-  let accountIdPromise: Promise<string | null> | null = null;
-  const resolveAccountId = async (): Promise<string | null> => {
-    if (!accountIdPromise) {
-      accountIdPromise = getCallerIdentity({
+  let accountContextPromise: Promise<ReturnType<typeof createAccountContext> | null> | null = null;
+  const resolveAccountContext = async (): Promise<ReturnType<typeof createAccountContext> | null> => {
+    if (!accountContextPromise) {
+      accountContextPromise = getCallerIdentity({
         ...options.credentials,
         region: options.region,
-      }).then((identity) => identity?.accountId ?? null);
+      }).then((identity) =>
+        identity
+          ? createAccountContext({
+              accountId: identity.accountId,
+              partition: inferAwsPartition(options.region),
+            })
+          : null,
+      );
     }
-    return accountIdPromise;
+    return accountContextPromise;
   };
 
   const resources: DiscoveredResource[] = [];
@@ -69,9 +81,9 @@ export async function scanElastiCacheClusters(
     const replicaCount = groupClusterCount > 0 ? Math.max(0, groupClusterCount - 1) : 0;
     let resourceArn = cluster.ARN;
     if (!resourceArn && clusterId) {
-      const accountId = await resolveAccountId();
-      if (accountId) {
-        resourceArn = `arn:aws:elasticache:${options.region}:${accountId}:cluster:${clusterId}`;
+      const accountContext = await resolveAccountContext();
+      if (accountContext) {
+        resourceArn = `arn:${accountContext.partition}:elasticache:${options.region}:${accountContext.accountId}:cluster:${clusterId}`;
       } else {
         addWarningOnce(
           warnings,
@@ -97,10 +109,19 @@ export async function scanElastiCacheClusters(
         )
       : {};
     const displayName = getNameTag(tags) ?? clusterId;
+    if (!resourceArn) {
+      addWarningOnce(
+        warnings,
+        tagWarnings,
+        `elasticache-skip-missing-arn:${options.region}:${clusterId}`,
+        `ElastiCache cluster ${clusterId} skipped in ${options.region} because no ARN could be derived.`,
+      );
+      continue;
+    }
 
-    resources.push(buildResource({
+    resources.push(createResource({
       source: 'aws',
-      externalId: cluster.ARN ?? clusterId,
+      arn: resourceArn,
       name: displayName,
       kind: 'infra',
       type: 'ELASTICACHE',

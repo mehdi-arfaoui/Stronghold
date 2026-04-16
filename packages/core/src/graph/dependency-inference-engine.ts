@@ -177,12 +177,9 @@ function buildNodeLookup(nodes: InfraNodeAttrs[]): NodeLookup {
       addToIndex(byArn, node.id, node);
     }
 
-    const externalId = readString(node.externalId);
-    if (externalId) {
-      byAnyId.set(externalId.toLowerCase(), node);
-      if (externalId.startsWith('arn:aws:')) {
-        addToIndex(byArn, externalId, node);
-      }
+    const resourceId = readString(node.resourceId);
+    if (resourceId) {
+      byAnyId.set(resourceId.toLowerCase(), node);
     }
 
     const queueArn = readString(metadata.queueArn);
@@ -317,7 +314,7 @@ function inferFromSecurityGroupChain(nodes: InfraNodeAttrs[], lookup: NodeLookup
 
   for (const sgNode of sgNodes) {
     const metadata = readRecord(sgNode.metadata) || {};
-    const sgId = (readString(sgNode.externalId) || sgNode.id).trim();
+    const sgId = (readString(sgNode.resourceId) || sgNode.id).trim();
     const destMembers = lookup.sgAttachments.get(toSgKey(sgId));
     if (!destMembers || destMembers.size === 0) continue;
 
@@ -1024,7 +1021,7 @@ function inferFromPatterns(nodes: InfraNodeAttrs[], existingEdges: ScanEdge[]): 
   for (const vpc of vpcs) {
     for (const subnet of subnets) {
       const subnetMeta = readRecord(subnet.metadata) || {};
-      const sameVpc = readString(subnetMeta.vpcId) === (readString(vpc.externalId) || vpc.id);
+      const sameVpc = readString(subnetMeta.vpcId) === (readString(vpc.resourceId) || vpc.id);
       if (!sameVpc) continue;
       if (existingEdgeSet.has(`${vpc.id}->${subnet.id}`)) continue;
       edges.push({
@@ -1039,10 +1036,10 @@ function inferFromPatterns(nodes: InfraNodeAttrs[], existingEdges: ScanEdge[]): 
   }
 
   for (const subnet of subnets) {
-    const subnetExternalId = readString(subnet.externalId) || subnet.id;
+    const subnetResourceId = readString(subnet.resourceId) || subnet.id;
     for (const vm of vms) {
       const vmMeta = readRecord(vm.metadata) || {};
-      const sameSubnet = readString(vmMeta.subnetId) === subnetExternalId;
+      const sameSubnet = readString(vmMeta.subnetId) === subnetResourceId;
       if (!sameSubnet) continue;
       if (existingEdgeSet.has(`${vm.id}->${subnet.id}`)) continue;
       edges.push({

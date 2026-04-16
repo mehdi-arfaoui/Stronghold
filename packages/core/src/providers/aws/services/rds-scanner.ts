@@ -9,7 +9,11 @@ import {
 } from '@aws-sdk/client-rds';
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
-import { paginateAws, buildResource } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+} from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
 
 function isAuroraEngine(engine: string | undefined): boolean {
@@ -31,6 +35,7 @@ export async function scanRdsInstances(
   );
 
   const resources: DiscoveredResource[] = [];
+  const resolveAccountContext = createAccountContextResolver(options);
 
   for (const db of dbInstances.filter((item) => !isAuroraEngine(item.Engine))) {
     const dbIdentifier = db.DBInstanceIdentifier ?? 'rds';
@@ -51,48 +56,55 @@ export async function scanRdsInstances(
       : {};
     const displayName = getNameTag(tags) ?? dbIdentifier;
 
+    const accountContext = db.DBInstanceArn ? null : await resolveAccountContext();
+    const resolvedAccount = accountContext ?? (await resolveAccountContext());
+    const dbArn =
+      db.DBInstanceArn ??
+      `arn:${resolvedAccount.partition}:rds:${options.region}:${resolvedAccount.accountId}:db:${dbIdentifier}`;
+
     resources.push(
-      buildResource({
-      source: 'aws',
-      externalId: dbIdentifier,
-      name: displayName,
-      kind: 'infra',
-      type: 'RDS',
-      ip: db.Endpoint?.Address ?? null,
-      tags,
-      metadata: {
-        dbIdentifier,
-        dbArn: db.DBInstanceArn,
-        engine: db.Engine,
-        dbInstanceClass: db.DBInstanceClass,
-        instanceClass: db.DBInstanceClass,
-        status: db.DBInstanceStatus,
-        region: options.region,
-        multiAz: Boolean(db.MultiAZ),
-        multi_az: Boolean(db.MultiAZ),
-        isMultiAZ: Boolean(db.MultiAZ),
-        backupRetentionPeriod: db.BackupRetentionPeriod ?? null,
-        backupRetentionDays: db.BackupRetentionPeriod ?? null,
-        readReplicaCount: db.ReadReplicaDBInstanceIdentifiers?.length ?? 0,
-        replicaCount: db.ReadReplicaDBInstanceIdentifiers?.length ?? 0,
-        readReplicaDBInstanceIdentifiers: (db.ReadReplicaDBInstanceIdentifiers ?? []).filter(
-          (identifier): identifier is string => Boolean(identifier),
-        ),
-        readReplicaSourceDBInstanceIdentifier: db.ReadReplicaSourceDBInstanceIdentifier ?? null,
-        storageEncrypted: Boolean(db.StorageEncrypted),
-        encrypted: Boolean(db.StorageEncrypted),
-        publiclyAccessible: db.PubliclyAccessible,
-        availabilityZone: db.AvailabilityZone,
-        endpointAddress: db.Endpoint?.Address,
-        endpointPort: db.Endpoint?.Port,
-        subnetId: db.DBSubnetGroup?.Subnets?.[0]?.SubnetIdentifier,
-        vpcId: db.DBSubnetGroup?.VpcId,
-        securityGroups: (db.VpcSecurityGroups ?? [])
-          .map((group) => group.VpcSecurityGroupId)
-          .filter((groupId): groupId is string => Boolean(groupId)),
-        displayName,
-        ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
-      },
+      createResource({
+        source: 'aws',
+        arn: dbArn,
+        name: displayName,
+        kind: 'infra',
+        type: 'RDS',
+        ip: db.Endpoint?.Address ?? null,
+        ...(accountContext ? { account: accountContext } : {}),
+        tags,
+        metadata: {
+          dbIdentifier,
+          dbArn,
+          engine: db.Engine,
+          dbInstanceClass: db.DBInstanceClass,
+          instanceClass: db.DBInstanceClass,
+          status: db.DBInstanceStatus,
+          region: options.region,
+          multiAz: Boolean(db.MultiAZ),
+          multi_az: Boolean(db.MultiAZ),
+          isMultiAZ: Boolean(db.MultiAZ),
+          backupRetentionPeriod: db.BackupRetentionPeriod ?? null,
+          backupRetentionDays: db.BackupRetentionPeriod ?? null,
+          readReplicaCount: db.ReadReplicaDBInstanceIdentifiers?.length ?? 0,
+          replicaCount: db.ReadReplicaDBInstanceIdentifiers?.length ?? 0,
+          readReplicaDBInstanceIdentifiers: (db.ReadReplicaDBInstanceIdentifiers ?? []).filter(
+            (identifier): identifier is string => Boolean(identifier),
+          ),
+          readReplicaSourceDBInstanceIdentifier: db.ReadReplicaSourceDBInstanceIdentifier ?? null,
+          storageEncrypted: Boolean(db.StorageEncrypted),
+          encrypted: Boolean(db.StorageEncrypted),
+          publiclyAccessible: db.PubliclyAccessible,
+          availabilityZone: db.AvailabilityZone,
+          endpointAddress: db.Endpoint?.Address,
+          endpointPort: db.Endpoint?.Port,
+          subnetId: db.DBSubnetGroup?.Subnets?.[0]?.SubnetIdentifier,
+          vpcId: db.DBSubnetGroup?.VpcId,
+          securityGroups: (db.VpcSecurityGroups ?? [])
+            .map((group) => group.VpcSecurityGroupId)
+            .filter((groupId): groupId is string => Boolean(groupId)),
+          displayName,
+          ...(Object.keys(tags).length > 0 ? { awsTags: tags } : {}),
+        },
       }),
     );
   }

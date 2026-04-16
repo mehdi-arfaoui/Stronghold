@@ -13,7 +13,12 @@ import {
 import type { DiscoveredResource } from '../../../types/discovery.js';
 import { createAwsClient, getAwsCommandOptions, type AwsClientOptions } from '../aws-client-factory.js';
 import { getNameTag, tagsArrayToMap } from '../tag-utils.js';
-import { paginateAws, buildResource, toBusinessTagMap } from '../scan-utils.js';
+import {
+  createAccountContextResolver,
+  createResource,
+  paginateAws,
+  toBusinessTagMap,
+} from '../scan-utils.js';
 
 /** Scans EC2 instances in a region. */
 export async function scanEc2Instances(
@@ -21,6 +26,7 @@ export async function scanEc2Instances(
 ): Promise<{ resources: DiscoveredResource[]; warnings: string[] }> {
   const ec2 = createAwsClient(EC2Client, options);
   const resources: DiscoveredResource[] = [];
+  const accountContext = await createAccountContextResolver(options)();
 
   const reservations = await paginateAws(
     (nextToken) =>
@@ -39,14 +45,15 @@ export async function scanEc2Instances(
       const nameFromTag = getNameTag(tags);
 
       resources.push(
-        buildResource({
+        createResource({
           source: 'aws',
-          externalId: instance.InstanceId ?? 'ec2',
+          arn: `arn:${accountContext.partition}:ec2:${options.region}:${accountContext.accountId}:instance/${instance.InstanceId ?? 'ec2'}`,
           name: nameFromTag ?? instance.InstanceId ?? 'ec2',
           kind: 'infra',
           type: 'EC2',
           ip: instance.PrivateIpAddress ?? null,
           hostname: instance.PrivateDnsName ?? null,
+          account: accountContext,
           tags,
           metadata: {
             state: instance.State?.Name,
@@ -75,6 +82,7 @@ export async function scanEc2Instances(
 /** Scans VPCs in a region. */
 export async function scanVpcs(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
+  const accountContext = await createAccountContextResolver(options)();
   const vpcs = await paginateAws(
     (nextToken) =>
       ec2.send(new DescribeVpcsCommand({ NextToken: nextToken }), getAwsCommandOptions(options)),
@@ -86,12 +94,13 @@ export async function scanVpcs(options: AwsClientOptions): Promise<DiscoveredRes
     const tags = tagsArrayToMap(vpc.Tags);
     const businessTags = toBusinessTagMap(tags);
     const vpcName = getNameTag(tags) ?? vpc.VpcId;
-    return buildResource({
+    return createResource({
       source: 'aws',
-      externalId: vpc.VpcId ?? 'vpc',
+      arn: `arn:${accountContext.partition}:ec2:${options.region}:${accountContext.accountId}:vpc/${vpc.VpcId ?? 'vpc'}`,
       name: vpcName ?? 'vpc',
       kind: 'infra',
       type: 'VPC',
+      account: accountContext,
       tags,
       metadata: {
         region: options.region,
@@ -110,6 +119,7 @@ export async function scanVpcs(options: AwsClientOptions): Promise<DiscoveredRes
 /** Scans subnets in a region. */
 export async function scanSubnets(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
+  const accountContext = await createAccountContextResolver(options)();
   const subnets = await paginateAws(
     (nextToken) =>
       ec2.send(
@@ -124,12 +134,13 @@ export async function scanSubnets(options: AwsClientOptions): Promise<Discovered
     const tags = tagsArrayToMap(subnet.Tags);
     const businessTags = toBusinessTagMap(tags);
     const subnetName = getNameTag(tags) ?? subnet.SubnetId;
-    return buildResource({
+    return createResource({
       source: 'aws',
-      externalId: subnet.SubnetId ?? 'subnet',
+      arn: `arn:${accountContext.partition}:ec2:${options.region}:${accountContext.accountId}:subnet/${subnet.SubnetId ?? 'subnet'}`,
       name: subnetName ?? 'subnet',
       kind: 'infra',
       type: 'SUBNET',
+      account: accountContext,
       tags,
       metadata: {
         region: options.region,
@@ -150,6 +161,7 @@ export async function scanSubnets(options: AwsClientOptions): Promise<Discovered
 /** Scans NAT gateways in a region. */
 export async function scanNatGateways(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
+  const accountContext = await createAccountContextResolver(options)();
   const natGateways = await paginateAws(
     (nextToken) =>
       ec2.send(
@@ -165,12 +177,13 @@ export async function scanNatGateways(options: AwsClientOptions): Promise<Discov
     const businessTags = toBusinessTagMap(tags);
     const displayName = getNameTag(tags) ?? natGateway.NatGatewayId ?? 'nat-gateway';
 
-    return buildResource({
+    return createResource({
       source: 'aws',
-      externalId: natGateway.NatGatewayId ?? 'nat-gateway',
+      arn: `arn:${accountContext.partition}:ec2:${options.region}:${accountContext.accountId}:natgateway/${natGateway.NatGatewayId ?? 'nat-gateway'}`,
       name: displayName,
       kind: 'infra',
       type: 'NAT_GATEWAY',
+      account: accountContext,
       tags,
       metadata: {
         region: options.region,
@@ -196,6 +209,7 @@ export async function scanNatGateways(options: AwsClientOptions): Promise<Discov
 /** Scans security groups in a region. */
 export async function scanSecurityGroups(options: AwsClientOptions): Promise<DiscoveredResource[]> {
   const ec2 = createAwsClient(EC2Client, options);
+  const accountContext = await createAccountContextResolver(options)();
   const securityGroups = await paginateAws(
     (nextToken) =>
       ec2.send(
@@ -211,12 +225,13 @@ export async function scanSecurityGroups(options: AwsClientOptions): Promise<Dis
     const businessTags = toBusinessTagMap(tags);
     const displayName = getNameTag(tags) ?? sg.GroupName ?? sg.GroupId ?? 'sg';
 
-    return buildResource({
+    return createResource({
       source: 'aws',
-      externalId: sg.GroupId ?? 'sg',
+      arn: `arn:${accountContext.partition}:ec2:${options.region}:${accountContext.accountId}:security-group/${sg.GroupId ?? 'sg'}`,
       name: displayName,
       kind: 'infra',
       type: 'SECURITY_GROUP',
+      account: accountContext,
       tags,
       metadata: {
         region: options.region,

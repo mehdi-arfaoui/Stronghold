@@ -20,16 +20,22 @@ import {
 } from './types.js';
 
 function resolveBucketName(node: {
-  externalId: string | null | undefined;
+  id: string;
+  resourceId: string | null | undefined;
   name: string;
   metadata: Record<string, unknown>;
 }): string | null {
   const fromMetadata = readString(node.metadata.bucketName);
   if (fromMetadata) return fromMetadata;
 
-  const fromExternalId = readString(node.externalId);
-  if (fromExternalId?.startsWith('arn:aws:s3:::')) {
-    const bucketName = fromExternalId.slice('arn:aws:s3:::'.length).trim();
+  const fromResourceId = readString(node.resourceId);
+  if (fromResourceId) {
+    return fromResourceId;
+  }
+
+  const fromArn = readString(node.id);
+  if (fromArn?.startsWith('arn:aws:s3:::')) {
+    const bucketName = fromArn.slice('arn:aws:s3:::'.length).trim();
     if (bucketName.length > 0) return bucketName;
   }
 
@@ -74,7 +80,8 @@ export const s3ReplicationEnricher: Enricher = {
     for (const node of nodes) {
       const metadata = getNodeMetadata(node);
       const bucketName = resolveBucketName({
-        externalId: node.externalId,
+        id: node.id,
+        resourceId: node.resourceId,
         name: node.name,
         metadata,
       });
