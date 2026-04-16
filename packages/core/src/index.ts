@@ -41,8 +41,10 @@ export {
   type LandingZoneItem,
   type LandingZoneReport,
   type ScenarioTemplate,
+  type CreateResourceInput,
   type DiscoveryResourceKind,
   type OpenPort,
+  type Resource,
   type DiscoveredResource,
   type DiscoveredFlow,
   type DiscoveryConnectorResult,
@@ -79,7 +81,21 @@ export {
   type ApiDriftEvent,
   type ApiDriftEventsResponse,
   type EncryptedPayload,
+  InvalidResourceError,
+  createResource,
 } from './types/index.js';
+
+export {
+  ArnParseError,
+  extractAccountId,
+  formatArn,
+  parseArn,
+  tryParseArn,
+  createAccountContext,
+  isValidAccountId,
+  type ParsedArn,
+  type AccountContext,
+} from './identity/index.js';
 
 export { type InfrastructureRepository } from './ports/infrastructure-repository.js';
 

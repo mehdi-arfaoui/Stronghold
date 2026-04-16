@@ -1,5 +1,7 @@
 /** Types for infrastructure discovery, scanned resources, and network flows. */
 
+import type { Resource as DiscoveredResource } from './resource.js';
+
 export type DiscoveryResourceKind = 'service' | 'infra';
 
 export interface OpenPort {
@@ -10,18 +12,16 @@ export interface OpenPort {
   readonly state?: string;
 }
 
-export interface DiscoveredResource {
-  readonly source: string;
-  readonly externalId: string;
-  name: string;
-  readonly kind: DiscoveryResourceKind;
-  readonly type: string;
-  readonly ip?: string | null;
-  readonly hostname?: string | null;
-  tags?: Record<string, string> | string[] | null;
-  metadata?: Record<string, unknown> | null;
-  readonly openPorts?: OpenPort[] | null;
-}
+export type {
+  CreateResourceInput,
+  Resource,
+  Resource as DiscoveredResource,
+} from './resource.js';
+
+export {
+  InvalidResourceError,
+  createResource,
+} from './resource.js';
 
 export interface DiscoveredFlow {
   readonly sourceIp?: string | null;

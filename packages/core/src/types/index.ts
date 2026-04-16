@@ -59,13 +59,17 @@ export {
 } from './cloud-service.js';
 
 export {
+  type CreateResourceInput,
   type DiscoveryResourceKind,
   type OpenPort,
+  type Resource,
   type DiscoveredResource,
   type DiscoveredFlow,
   type DiscoveryConnectorResult,
   type DiscoveryCloudCredentials,
   type DiscoveryCredentials,
+  InvalidResourceError,
+  createResource,
 } from './discovery.js';
 
 export {
