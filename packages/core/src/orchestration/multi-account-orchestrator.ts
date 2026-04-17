@@ -1,14 +1,12 @@
-import { MultiDirectedGraph } from 'graphology';
-
 import {
   AuthenticationError,
   CredentialExpiredError,
   NoAuthProviderAvailableError,
 } from '../auth/index.js';
-import type { GraphInstance } from '../graph/graph-instance.js';
 import {
   ConcurrencyLimiter,
 } from './concurrency-limiter.js';
+import { ScanResultMerger } from './scan-result-merger.js';
 import type {
   AccountScanError,
   AccountScanPhase,
@@ -62,6 +60,7 @@ export class MultiAccountOrchestrator {
   ): Promise<MultiAccountScanResult> {
     const startedAt = Date.now();
     const limiter = new ConcurrencyLimiter(this.maxConcurrency);
+    const merger = new ScanResultMerger();
 
     const settled = await limiter.all(
       targets.map((target) => async () => this.scanSingleTarget(target)),
@@ -89,7 +88,7 @@ export class MultiAccountOrchestrator {
       });
     });
 
-    const merged = mergeAccountResults(accounts);
+    const merged = merger.merge(accounts);
     return {
       accounts,
       mergedGraph: merged.mergedGraph,
@@ -183,80 +182,4 @@ async function runWithTimeout<TValue>(
       clearTimeout(timeoutHandle);
     }
   }
-}
-
-function mergeAccountResults(
-  results: readonly AccountScanResult[],
-): {
-  mergedGraph: GraphInstance;
-  mergedFindings: readonly AccountScanResult[number]['findings'][number][];
-  summary: MultiAccountSummary;
-} {
-  const mergedGraph = new MultiDirectedGraph<Record<string, unknown>, Record<string, unknown>>();
-  const resourcesByAccount = new Map<string, number>();
-  const findingsByAccount = new Map<string, number>();
-  const mergedFindings: AccountScanResult[number]['findings'][number][] = [];
-
-  for (const result of results) {
-    resourcesByAccount.set(result.account.accountId, result.resources.length);
-    findingsByAccount.set(result.account.accountId, result.findings.length);
-    mergedFindings.push(...result.findings);
-
-    result.graph.forEachNode((nodeId, attrs) => {
-      if (mergedGraph.hasNode(nodeId)) {
-        process.emitWarning(
-          `Duplicate ARN detected during multi-account merge: ${nodeId}. Keeping the first node.`,
-        );
-        return;
-      }
-
-      mergedGraph.addNode(nodeId, {
-        ...attrs,
-        accountId:
-          typeof attrs.accountId === 'string' && attrs.accountId.length > 0
-            ? attrs.accountId
-            : result.account.accountId,
-      });
-    });
-
-    result.graph.forEachEdge((edgeKey, attrs, source, target) => {
-      if (!mergedGraph.hasNode(source) || !mergedGraph.hasNode(target)) {
-        return;
-      }
-
-      const type =
-        typeof attrs.type === 'string' && attrs.type.length > 0
-          ? attrs.type
-          : 'DEPENDS_ON';
-      const mergedEdgeKey = `${source}->${target}:${type}:${String(edgeKey)}`;
-      if (mergedGraph.hasEdge(mergedEdgeKey)) {
-        return;
-      }
-
-      mergedGraph.addEdgeWithKey(mergedEdgeKey, source, target, { ...attrs });
-    });
-  }
-
-  return {
-    mergedGraph: mergedGraph as unknown as GraphInstance,
-    mergedFindings,
-    summary: {
-      totalAccounts: results.length,
-      successfulAccounts: results.length,
-      failedAccounts: 0,
-      totalResources: sumMapValues(resourcesByAccount),
-      resourcesByAccount,
-      totalFindings: sumMapValues(findingsByAccount),
-      findingsByAccount,
-      crossAccountEdges: 0,
-    },
-  };
-}
-
-function sumMapValues(values: ReadonlyMap<string, number>): number {
-  let total = 0;
-  for (const value of values.values()) {
-    total += value;
-  }
-  return total;
 }

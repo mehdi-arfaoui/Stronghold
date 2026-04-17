@@ -561,6 +561,26 @@ export {
 } from './config/index.js';
 
 export {
+  ConcurrencyLimiter,
+  MultiAccountOrchestrator,
+  ScanErrorCollector,
+  ScanExecutionError,
+  ScanResultMerger,
+  DEFAULT_ACCOUNT_SCAN_TIMEOUT_MS,
+  DEFAULT_MULTI_ACCOUNT_CONCURRENCY,
+  type SettledResult,
+  type AccountScanError,
+  type AccountScanPhase,
+  type AccountScanResult,
+  type AccountScanTarget,
+  type Finding,
+  type MultiAccountScanResult,
+  type MultiAccountSummary,
+  type ScanEngine,
+  type ScannerSkipReason,
+} from './orchestration/index.js';
+
+export {
   DEFAULT_HISTORY_RETENTION_LIMIT,
   FileHistoryStore,
   FileFindingLifecycleStore,
