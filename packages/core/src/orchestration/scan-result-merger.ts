@@ -9,7 +9,17 @@ type GraphRecord = Record<string, unknown>;
  * Merge N graphes single-account en un graphe unifié.
  */
 export class ScanResultMerger {
-  public merge(results: readonly AccountScanResult[]): {
+  public merge(
+    results: readonly AccountScanResult[],
+    options?: {
+      readonly onAfterMerge?: (result: {
+        readonly mergedGraph: GraphInstance;
+        readonly mergedFindings: readonly Finding[];
+        readonly summary: MultiAccountSummary;
+        readonly accountResults: readonly AccountScanResult[];
+      }) => void;
+    },
+  ): {
     mergedGraph: GraphInstance;
     mergedFindings: readonly Finding[];
     summary: MultiAccountSummary;
@@ -59,20 +69,28 @@ export class ScanResultMerger {
       });
     }
 
-    return {
+    const summary: MultiAccountSummary = {
+      totalAccounts: results.length,
+      successfulAccounts: results.length,
+      failedAccounts: 0,
+      totalResources: sumMapValues(resourcesByAccount),
+      resourcesByAccount,
+      totalFindings: sumMapValues(findingsByAccount),
+      findingsByAccount,
+      crossAccountEdges: 0,
+    };
+    const merged = {
       mergedGraph: mergedGraph as unknown as GraphInstance,
       mergedFindings,
-      summary: {
-        totalAccounts: results.length,
-        successfulAccounts: results.length,
-        failedAccounts: 0,
-        totalResources: sumMapValues(resourcesByAccount),
-        resourcesByAccount,
-        totalFindings: sumMapValues(findingsByAccount),
-        findingsByAccount,
-        crossAccountEdges: 0,
-      },
+      summary,
     };
+
+    options?.onAfterMerge?.({
+      ...merged,
+      accountResults: results,
+    });
+
+    return merged;
   }
 }
 

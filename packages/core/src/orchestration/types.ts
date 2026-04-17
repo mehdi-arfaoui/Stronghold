@@ -3,6 +3,7 @@ import type {
   NoAuthProviderAvailableError,
 } from '../auth/errors.js';
 import type { AuthenticationError, AuthProvider } from '../auth/index.js';
+import type { CrossAccountDetectionResult } from '../cross-account/types.js';
 import type { GraphInstance } from '../graph/graph-instance.js';
 import type { AccountContext } from '../identity/index.js';
 import type { Resource } from '../types/resource.js';
@@ -71,6 +72,7 @@ export interface MultiAccountScanResult {
   readonly accounts: readonly AccountScanResult[];
   readonly mergedGraph: GraphInstance;
   readonly mergedFindings: readonly Finding[];
+  readonly crossAccount: CrossAccountDetectionResult;
   readonly errors: readonly AccountScanError[];
   readonly totalDurationMs: number;
   readonly summary: MultiAccountSummary;

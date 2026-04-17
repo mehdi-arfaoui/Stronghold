@@ -4,6 +4,10 @@ import {
   NoAuthProviderAvailableError,
 } from '../auth/index.js';
 import {
+  CrossAccountDetector,
+  createEmptyCrossAccountDetectionResult,
+} from '../cross-account/index.js';
+import {
   ConcurrencyLimiter,
 } from './concurrency-limiter.js';
 import { ScanResultMerger } from './scan-result-merger.js';
@@ -28,6 +32,7 @@ import {
 export class MultiAccountOrchestrator {
   private readonly maxConcurrency: number;
   private readonly scanEngine: ScanEngine;
+  private readonly crossAccountDetector: CrossAccountDetector;
   private readonly onAccountStart?: (account: AccountScanTarget['account']) => void;
   private readonly onAccountComplete?: (
     account: AccountScanTarget['account'],
@@ -41,6 +46,7 @@ export class MultiAccountOrchestrator {
   public constructor(options: {
     maxConcurrency?: number;
     scanEngine: ScanEngine;
+    crossAccountDetector?: CrossAccountDetector;
     onAccountStart?: (account: AccountScanTarget['account']) => void;
     onAccountComplete?: (
       account: AccountScanTarget['account'],
@@ -50,6 +56,7 @@ export class MultiAccountOrchestrator {
   }) {
     this.maxConcurrency = options.maxConcurrency ?? DEFAULT_MULTI_ACCOUNT_CONCURRENCY;
     this.scanEngine = options.scanEngine;
+    this.crossAccountDetector = options.crossAccountDetector ?? new CrossAccountDetector();
     this.onAccountStart = options.onAccountStart;
     this.onAccountComplete = options.onAccountComplete;
     this.onAccountError = options.onAccountError;
@@ -89,13 +96,33 @@ export class MultiAccountOrchestrator {
     });
 
     const merged = merger.merge(accounts);
+    const totalDurationMs = Date.now() - startedAt;
+    const baseSummary = finalizeSummary(merged.summary, targets.length, errors.length);
+    const provisionalResult: MultiAccountScanResult = {
+      accounts,
+      mergedGraph: merged.mergedGraph,
+      mergedFindings: merged.mergedFindings,
+      crossAccount: createEmptyCrossAccountDetectionResult(),
+      errors,
+      totalDurationMs,
+      summary: baseSummary,
+    };
+    const crossAccount = this.crossAccountDetector.detect(
+      merged.mergedGraph,
+      provisionalResult,
+    );
+
     return {
       accounts,
       mergedGraph: merged.mergedGraph,
       mergedFindings: merged.mergedFindings,
+      crossAccount,
       errors,
-      totalDurationMs: Date.now() - startedAt,
-      summary: finalizeSummary(merged.summary, targets.length, errors.length),
+      totalDurationMs,
+      summary: {
+        ...baseSummary,
+        crossAccountEdges: crossAccount.summary.total,
+      },
     };
   }
 

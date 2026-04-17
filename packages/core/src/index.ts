@@ -247,6 +247,21 @@ export {
 } from './graph/index.js';
 
 export {
+  CrossAccountDetector,
+  createEmptyCrossAccountDetectionResult,
+  CROSS_ACCOUNT_DEPENDENCY_KINDS,
+  type SingleDetector,
+  type CrossAccountDependencyKind,
+  type CrossAccountDependencyDirection,
+  type CrossAccountDetectionResult,
+  type CrossAccountDetectionSummary,
+  type CrossAccountDrImpact,
+  type CrossAccountEdge,
+  type CrossAccountEdgeCompleteness,
+  type CrossAccountEdgeMetadata,
+} from './cross-account/index.js';
+
+export {
   type InfrastructureNode,
   type DriftSeverity,
   type DriftCategory,
