@@ -40,6 +40,7 @@ export enum EdgeType {
   RUNS_ON = 'RUNS_ON',
   CONNECTS_TO = 'CONNECTS_TO',
   DEPENDS_ON = 'DEPENDS_ON',
+  CROSS_ACCOUNT = 'cross_account',
   ROUTES_TO = 'ROUTES_TO',
   CONTAINS = 'CONTAINS',
   REPLICATES_TO = 'REPLICATES_TO',
@@ -116,6 +117,13 @@ export interface InfraEdgeAttrs {
   readonly metadata?: Record<string, unknown>;
   readonly provenance?: EdgeProvenance;
   readonly reason?: string;
+  readonly kind?: string;
+  readonly direction?: 'unidirectional' | 'bidirectional';
+  readonly drImpact?: 'critical' | 'degraded' | 'informational';
+  readonly completeness?: 'complete' | 'partial';
+  readonly sourceAccountId?: string;
+  readonly targetAccountId?: string;
+  readonly missingAccountId?: string;
 }
 
 /** Result of a cloud provider scan. */
