@@ -5,7 +5,9 @@ export interface StrongholdConfigDefaults {
   readonly regions?: readonly string[];
   readonly allRegions?: boolean;
   readonly concurrency?: number;
+  readonly accountConcurrency?: number;
   readonly scannerTimeout?: number;
+  readonly scanTimeoutMs?: number;
 }
 
 export interface StrongholdAccountConfig {
@@ -14,6 +16,7 @@ export interface StrongholdAccountConfig {
   readonly externalId?: string;
   readonly regions?: readonly string[];
   readonly allRegions?: boolean;
+  readonly scanTimeoutMs?: number;
 }
 
 export interface StrongholdAwsProfileAuthConfig {
@@ -47,6 +50,7 @@ export interface StrongholdAwsAccountConfig {
   readonly region?: string;
   readonly regions?: readonly string[];
   readonly allRegions?: boolean;
+  readonly scanTimeoutMs?: number;
   readonly auth?: StrongholdAwsAuthConfig;
 }
 
@@ -75,5 +79,7 @@ export interface ResolvedStrongholdAccount {
   readonly regions?: readonly string[];
   readonly allRegions?: boolean;
   readonly concurrency?: number;
+  readonly accountConcurrency?: number;
   readonly scannerTimeout?: number;
+  readonly scanTimeoutMs?: number;
 }

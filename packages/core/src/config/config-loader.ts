@@ -24,7 +24,9 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
 
 const KEY_ALIASES = new Map([
   ['all_regions', 'allRegions'],
+  ['account_concurrency', 'accountConcurrency'],
   ['scanner_timeout', 'scannerTimeout'],
+  ['scan_timeout_ms', 'scanTimeoutMs'],
   ['role_arn', 'roleArn'],
   ['external_id', 'externalId'],
   ['account_id', 'accountId'],
@@ -52,7 +54,9 @@ const CONFIG_SCHEMA = {
         },
         allRegions: { type: 'boolean' },
         concurrency: { type: 'integer', minimum: 1, maximum: 16 },
+        accountConcurrency: { type: 'integer', minimum: 1, maximum: 16 },
         scannerTimeout: { type: 'integer', minimum: 10, maximum: 300 },
+        scanTimeoutMs: { type: 'integer', minimum: 1_000 },
       },
     },
     accounts: {
@@ -69,6 +73,7 @@ const CONFIG_SCHEMA = {
             items: { type: 'string', minLength: 1 },
           },
           allRegions: { type: 'boolean' },
+          scanTimeoutMs: { type: 'integer', minimum: 1_000 },
         },
       },
     },
@@ -100,6 +105,7 @@ const CONFIG_SCHEMA = {
                 items: { type: 'string', minLength: 1 },
               },
               allRegions: { type: 'boolean' },
+              scanTimeoutMs: { type: 'integer', minimum: 1_000 },
               auth: {
                 oneOf: [
                   {

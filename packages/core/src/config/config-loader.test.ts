@@ -28,7 +28,9 @@ defaults:
     - us-east-1
   all_regions: false
   concurrency: 7
+  account_concurrency: 4
   scanner_timeout: 90
+  scan_timeout_ms: 900000
 accounts:
   production:
     profile: production
@@ -37,13 +39,16 @@ accounts:
     regions:
       - eu-west-1
     all_regions: false
+    scan_timeout_ms: 1200000
 `);
 
     expect(config.defaults).toEqual({
       regions: ['eu-west-1', 'us-east-1'],
       allRegions: false,
       concurrency: 7,
+      accountConcurrency: 4,
       scannerTimeout: 90,
+      scanTimeoutMs: 900000,
     });
     expect(config.accounts?.production).toEqual({
       profile: 'production',
@@ -51,6 +56,7 @@ accounts:
       externalId: 'ext-123',
       regions: ['eu-west-1'],
       allRegions: false,
+      scanTimeoutMs: 1200000,
     });
   });
 
@@ -90,6 +96,7 @@ aws:
   accounts:
     - account_id: "111122223333"
       alias: prod
+      scan_timeout_ms: 600000
       auth:
         kind: profile
         profile_name: prod-profile
@@ -111,6 +118,7 @@ aws:
           {
             accountId: '111122223333',
             alias: 'prod',
+            scanTimeoutMs: 600000,
             auth: {
               kind: 'profile',
               profileName: 'prod-profile',
