@@ -230,6 +230,52 @@ describe('MultiAccountOrchestrator', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.phase).toBe('scanning');
   });
+
+  it('adds cross-account edges to the merged graph after the account graphs are merged', async () => {
+    const targets = [
+      createTarget('111122223333', 'prod'),
+      createTarget('444455556666', 'shared'),
+    ];
+    const scanEngine: ScanEngine = {
+      scanAccount: vi.fn(async (target) => {
+        if (target.account.accountId === '111122223333') {
+          return createVpcPeeringAccountResult(target, {
+            includePeering: true,
+            localVpcId: 'vpc-a',
+            peerVpcId: 'vpc-b',
+            peerAccountId: '444455556666',
+          });
+        }
+
+        return createVpcPeeringAccountResult(target, {
+          includePeering: false,
+          localVpcId: 'vpc-b',
+          peerVpcId: 'vpc-a',
+          peerAccountId: '111122223333',
+        });
+      }),
+    };
+    const orchestrator = new MultiAccountOrchestrator({
+      maxConcurrency: 2,
+      scanEngine,
+    });
+
+    const result = await orchestrator.scan(targets);
+
+    expect(result.summary.crossAccountEdges).toBe(1);
+    expect(result.crossAccount.edges).toHaveLength(1);
+    expect(result.mergedGraph.size).toBe(1);
+
+    const edgeKey = result.mergedGraph.edges()[0];
+    expect(edgeKey).toBeDefined();
+    expect(result.mergedGraph.getEdgeAttributes(edgeKey ?? '')).toMatchObject({
+      type: 'cross_account',
+      kind: 'vpc_peering',
+      direction: 'bidirectional',
+      drImpact: 'critical',
+      completeness: 'complete',
+    });
+  });
 });
 
 function createTarget(
@@ -306,6 +352,77 @@ function createFinding(nodeId: string): WeightedValidationResult {
       blastRadiusWeight: 1,
       directDependentCount: 0,
     },
+  };
+}
+
+function createVpcPeeringAccountResult(
+  target: AccountScanTarget,
+  input: {
+    readonly includePeering: boolean;
+    readonly localVpcId: string;
+    readonly peerVpcId: string;
+    readonly peerAccountId: string;
+  },
+): AccountScanResult {
+  const region = target.regions[0] ?? 'eu-west-1';
+  const graph = new MultiDirectedGraph<Record<string, unknown>, Record<string, unknown>>();
+  const localVpcArn = `arn:aws:ec2:${region}:${target.account.accountId}:vpc/${input.localVpcId}`;
+
+  graph.addNode(localVpcArn, {
+    id: localVpcArn,
+    accountId: target.account.accountId,
+    name: input.localVpcId,
+    type: 'VPC',
+    provider: 'aws',
+    region,
+    tags: {},
+    metadata: {
+      sourceType: 'VPC',
+      vpcId: input.localVpcId,
+      region,
+    },
+  });
+
+  if (input.includePeering) {
+    const peeringArn = `arn:aws:ec2:${region}:${target.account.accountId}:vpc-peering-connection/pcx-1`;
+    graph.addNode(peeringArn, {
+      id: peeringArn,
+      accountId: target.account.accountId,
+      name: 'pcx-1',
+      type: 'NETWORK_DEVICE',
+      provider: 'aws',
+      region,
+      tags: {},
+      metadata: {
+        sourceType: 'VPC_PEERING_CONNECTION',
+        peeringConnectionId: 'pcx-1',
+        requesterOwnerId: target.account.accountId,
+        accepterOwnerId: input.peerAccountId,
+        requesterVpcId: input.localVpcId,
+        accepterVpcId: input.peerVpcId,
+        status: 'active',
+        routeTableIds: ['rtb-1'],
+        region,
+      },
+    });
+  }
+
+  const vpcResource = createResource({
+    arn: localVpcArn,
+    source: 'aws',
+    type: 'VPC',
+    name: input.localVpcId,
+  });
+
+  return {
+    account: target.account,
+    regions: target.regions,
+    resources: [vpcResource],
+    findings: [],
+    graph: graph as unknown as GraphInstance,
+    scanDurationMs: 100,
+    scannersExecuted: ['EC2'],
+    scannersSkipped: [],
   };
 }
 

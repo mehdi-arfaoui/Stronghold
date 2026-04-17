@@ -99,6 +99,28 @@ describe('ScanResultMerger', () => {
       accountId: '111122223333',
     });
   });
+
+  it('invokes the optional post-merge hook with the merged graph and inputs', () => {
+    const first = createAccountResult('111122223333', 'prod', [
+      'arn:aws:ec2:eu-west-1:111122223333:instance/i-1',
+    ]);
+    const second = createAccountResult('444455556666', 'staging', [
+      'arn:aws:ec2:eu-west-1:444455556666:instance/i-2',
+    ]);
+    let observedOrder = 0;
+    let observedAccounts = 0;
+
+    const merged = new ScanResultMerger().merge([first, second], {
+      onAfterMerge: (result) => {
+        observedOrder = result.mergedGraph.order;
+        observedAccounts = result.accountResults.length;
+      },
+    });
+
+    expect(merged.mergedGraph.order).toBe(2);
+    expect(observedOrder).toBe(2);
+    expect(observedAccounts).toBe(2);
+  });
 });
 
 function createAccountResult(
