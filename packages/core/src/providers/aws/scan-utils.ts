@@ -6,6 +6,7 @@ import {
   createAccountContext,
   type AccountContext,
 } from '../../identity/index.js';
+import type { ScanContext } from '../../model/scan-context.js';
 import {
   createResource as createDiscoveredResource,
   type CreateResourceInput,
@@ -56,12 +57,17 @@ export function inferAwsPartition(region: string): string {
 export function createAccountContextResolver(
   options: AwsClientOptions,
 ): () => Promise<AccountContext> {
+  if (options.scanContext) {
+    const scanContext: ScanContext = options.scanContext;
+    return async () => scanContext.account;
+  }
+
   let accountContextPromise: Promise<AccountContext> | null = null;
 
   return async () => {
     if (!accountContextPromise) {
       accountContextPromise = getCallerIdentity({
-        ...options.credentials,
+        ...(options.credentials ?? {}),
         region: options.region,
       }).then((identity) => {
         if (!identity) {

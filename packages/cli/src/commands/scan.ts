@@ -6,14 +6,15 @@ import {
   FileEvidenceStore,
   FileAuditLogger,
   generateRecommendations,
+  getCallerIdentity,
   logGovernanceAuditEvents,
   selectTopRecommendations,
+  type ScanContext,
 } from '@stronghold-dr/core';
 
 import {
   CommandAuditSession,
   collectAuditFlags,
-  resolveAuditIdentity,
 } from '../audit/command-audit.js';
 import { updateLocalPostureMemory } from '../history/posture-memory.js';
 import { resolveAwsScanSettings } from '../config/aws-scan-settings.js';
@@ -132,15 +133,18 @@ export function registerScanCommand(program: Command): void {
           roleArn: resolvedScanSettings.roleArn,
           externalId: resolvedScanSettings.externalId,
           accountName: resolvedScanSettings.accountName,
+          accountId: resolvedScanSettings.accountId,
+          partition: resolvedScanSettings.partition,
+          authHint: resolvedScanSettings.authHint,
           explicitRegions: resolvedScanSettings.explicitRegions,
           allRegions: resolvedScanSettings.allRegions,
         });
-        const identityPromise = resolveAuditIdentity(context.credentials.aws);
+        const identityPromise = resolveScanAuditIdentity(context.scanContext);
         audit.setIdentityPromise(identityPromise);
         const callerIdentity = await identityPromise.catch(() => null);
 
         const execution = await runAwsScan({
-          credentials: context.credentials,
+          scanContext: context.scanContext,
           regions: context.regions,
           services: selectedServices,
           scannerConcurrency: resolvedScanSettings.concurrency,
@@ -382,4 +386,14 @@ async function loadPreviousScanResults(
   } catch {
     return undefined;
   }
+}
+
+async function resolveScanAuditIdentity(scanContext: ScanContext) {
+  const credentials = await scanContext.getCredentials();
+  return getCallerIdentity({
+    accessKeyId: credentials.accessKeyId,
+    secretAccessKey: credentials.secretAccessKey,
+    ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
+    region: scanContext.region,
+  });
 }

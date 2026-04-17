@@ -7,14 +7,16 @@ import {
   elasticacheFailoverEnricher,
   s3ReplicationEnricher,
   scanAwsRegion,
+  withScanContextRegion,
   transformToScanResult,
   type Evidence,
   type AwsRegionScanResult,
-  type DiscoveryCredentials,
+  type DiscoveryCloudCredentials,
   type DiscoveryProgress,
   type DiscoveredResource,
   type GraphOverrides,
   type InfraNode,
+  type ScanContext,
 } from '@stronghold-dr/core';
 
 import type { SupportedService } from '../config/options.js';
@@ -43,7 +45,7 @@ export interface AwsScanIdentityMetadata {
 }
 
 export interface AwsScanOptions {
-  readonly credentials: DiscoveryCredentials;
+  readonly scanContext: ScanContext;
   readonly regions: readonly string[];
   readonly services?: readonly SupportedService[];
   readonly scannerConcurrency?: number;
@@ -72,11 +74,12 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
   for (const [index, region] of options.regions.entries()) {
     const regionStart = Date.now();
     await options.hooks?.onRegionStart?.(region);
+    const regionContext = withScanContextRegion(options.scanContext, region);
 
     const result = await scanAwsRegion(
       {
         region,
-        credentials: options.credentials.aws ?? {},
+        scanContext: regionContext,
       },
       {
         includeGlobalServices: index === 0,
@@ -97,7 +100,14 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
   const nodes = transformed.nodes as InfraNode[];
   const edges: ReadonlyArray<StoredScanEdge> = transformed.edges.map((edge) => normalizeEdge(edge));
 
-  await enrichNodes(nodes, options.credentials, options.services, warnings, options.hooks);
+  const enrichmentCredentials = await options.scanContext.getCredentials();
+  await enrichNodes(
+    nodes,
+    toDiscoveryCloudCredentials(enrichmentCredentials, options.scanContext.region),
+    options.services,
+    warnings,
+    options.hooks,
+  );
 
   const scanMetadata: ScanExecutionMetadata = {
     ...buildAwsScanSummary({
@@ -155,7 +165,7 @@ export async function runAwsScan(options: AwsScanOptions): Promise<AwsScanExecut
 
 async function enrichNodes(
   nodes: InfraNode[],
-  credentials: DiscoveryCredentials,
+  credentials: DiscoveryCloudCredentials,
   services: readonly SupportedService[] | undefined,
   warnings: string[],
   hooks?: AwsScanHooks,
@@ -164,22 +174,22 @@ async function enrichNodes(
     {
       service: 's3' as const,
       name: 'S3 metadata',
-      run: () => s3ReplicationEnricher.enrich(nodes, credentials.aws ?? {}),
+      run: () => s3ReplicationEnricher.enrich(nodes, credentials),
     },
     {
       service: 'dynamodb' as const,
       name: 'DynamoDB PITR metadata',
-      run: () => dynamoDbPitrEnricher.enrich(nodes, credentials.aws ?? {}),
+      run: () => dynamoDbPitrEnricher.enrich(nodes, credentials),
     },
     {
       service: 'ec2' as const,
       name: 'EC2 Auto Scaling metadata',
-      run: () => ec2AsgEnricher.enrich(nodes, credentials.aws ?? {}),
+      run: () => ec2AsgEnricher.enrich(nodes, credentials),
     },
     {
       service: 'elasticache' as const,
       name: 'ElastiCache failover metadata',
-      run: () => elasticacheFailoverEnricher.enrich(nodes, credentials.aws ?? {}),
+      run: () => elasticacheFailoverEnricher.enrich(nodes, credentials),
     },
   ];
 
@@ -194,4 +204,16 @@ async function enrichNodes(
       warnings.push(`${enricher.name} enrichment failed for ${result.failed} resource(s).`);
     }
   }
+}
+
+function toDiscoveryCloudCredentials(
+  credentials: Awaited<ReturnType<ScanContext['getCredentials']>>,
+  region: string,
+): DiscoveryCloudCredentials {
+  return {
+    accessKeyId: credentials.accessKeyId,
+    secretAccessKey: credentials.secretAccessKey,
+    ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
+    region,
+  };
 }

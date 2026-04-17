@@ -82,7 +82,41 @@ describe('credentials', () => {
     ).resolves.toEqual(['eu-west-1', 'us-east-1']);
   });
 
-  it('resolves assume-role execution context with profile metadata', async () => {
+  it('resolves a profile-backed execution context from environment credentials', async () => {
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret';
+
+    vi.spyOn(STSClient.prototype, 'send').mockImplementationOnce(async (command) => {
+      expect(command).toBeInstanceOf(GetCallerIdentityCommand);
+      return {
+        Account: '123456789012',
+        Arn: 'arn:aws:iam::123456789012:user/stronghold',
+        UserId: 'AIDATEST',
+      };
+    });
+
+    const context = await resolveAwsExecutionContext({
+      explicitRegions: ['eu-west-1'],
+      allRegions: false,
+    });
+
+    expect(context).toMatchObject({
+      regions: ['eu-west-1'],
+      authMode: 'profile',
+    });
+    expect(context.scanContext.account).toMatchObject({
+      accountId: '123456789012',
+      partition: 'aws',
+    });
+    await expect(context.scanContext.getCredentials()).resolves.toMatchObject({
+      accessKeyId: 'AKIA_TEST',
+      secretAccessKey: 'secret',
+    });
+  });
+
+  it('resolves assume-role execution context with environment source credentials', async () => {
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_SOURCE';
+    process.env.AWS_SECRET_ACCESS_KEY = 'source-secret';
     const send = vi.spyOn(STSClient.prototype, 'send');
     send
       .mockImplementationOnce(async (command) => {
@@ -92,21 +126,14 @@ describe('credentials', () => {
             AccessKeyId: 'ASIA_TEST',
             SecretAccessKey: 'secret',
             SessionToken: 'token',
+            Expiration: new Date('2099-04-16T11:00:00.000Z'),
           },
-        };
-      })
-      .mockImplementationOnce(async (command) => {
-        expect(command).toBeInstanceOf(GetCallerIdentityCommand);
-        return {
-          Account: '123456789012',
-          Arn: 'arn:aws:sts::123456789012:assumed-role/StrongholdReadOnly/session',
-          UserId: 'AROATEST:session',
         };
       });
 
     const context = await resolveAwsExecutionContext({
-      profile: 'production',
       roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
+      accountId: '123456789012',
       externalId: 'ext-123',
       explicitRegions: ['eu-west-1'],
       allRegions: false,
@@ -115,12 +142,12 @@ describe('credentials', () => {
 
     expect(context).toMatchObject({
       regions: ['eu-west-1'],
-      authMode: 'profile+assume-role',
-      profile: 'production',
+      authMode: 'assume-role',
       roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
       accountName: 'production',
     });
-    expect(context.credentials.aws).toMatchObject({
+    expect(context.scanContext.account.accountId).toBe('123456789012');
+    await expect(context.scanContext.getCredentials()).resolves.toMatchObject({
       accessKeyId: 'ASIA_TEST',
       secretAccessKey: 'secret',
       sessionToken: 'token',
@@ -128,6 +155,8 @@ describe('credentials', () => {
   });
 
   it('surfaces assume-role failures clearly', async () => {
+    process.env.AWS_ACCESS_KEY_ID = 'AKIA_TEST';
+    process.env.AWS_SECRET_ACCESS_KEY = 'secret';
     vi.spyOn(STSClient.prototype, 'send').mockRejectedValueOnce(
       Object.assign(new Error('Access denied'), {
         name: 'AccessDeniedException',
@@ -137,6 +166,7 @@ describe('credentials', () => {
     await expect(
       resolveAwsExecutionContext({
         roleArn: 'arn:aws:iam::123456789012:role/StrongholdReadOnly',
+        accountId: '123456789012',
         explicitRegions: ['eu-west-1'],
         allRegions: false,
       }),

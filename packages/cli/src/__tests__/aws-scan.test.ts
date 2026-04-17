@@ -38,6 +38,7 @@ vi.mock('@stronghold-dr/core', async () => {
   };
 });
 
+import { createAccountContext, createScanContext } from '@stronghold-dr/core';
 import { runAwsScan } from '../pipeline/aws-scan.js';
 
 describe('runAwsScan', () => {
@@ -135,8 +136,24 @@ describe('runAwsScan', () => {
       };
     });
 
+    const scanContext = createScanContext({
+      account: createAccountContext({
+        accountId: '123456789012',
+      }),
+      region: 'eu-west-1',
+      authProvider: {
+        kind: 'profile',
+        getCredentials: vi.fn().mockResolvedValue({
+          accessKeyId: 'AKIA_TEST',
+          secretAccessKey: 'secret',
+        }),
+        canHandle: vi.fn().mockResolvedValue(true),
+        describeAuthMethod: () => 'profile:test',
+      },
+    });
+
     const executionPromise = runAwsScan({
-      credentials: { aws: {} },
+      scanContext,
       regions: ['eu-west-1', 'us-east-1'],
       scannerConcurrency: 5,
       scannerTimeoutMs: 60_000,

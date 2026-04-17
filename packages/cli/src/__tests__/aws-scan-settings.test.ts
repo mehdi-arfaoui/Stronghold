@@ -53,9 +53,16 @@ describe('resolveAwsScanSettings', () => {
       allRegions: false,
       explicitRegions: ['us-east-1'],
       accountName: 'production',
+      accountId: '111122223333',
+      partition: 'aws',
       profile: 'cli-profile',
       roleArn: 'arn:aws:iam::111122223333:role/CliRole',
       externalId: 'cli-external-id',
+      authHint: {
+        kind: 'assume-role',
+        roleArn: 'arn:aws:iam::111122223333:role/CliRole',
+        externalId: 'cli-external-id',
+      },
       concurrency: 9,
       scannerTimeout: 120,
     });
@@ -88,7 +95,12 @@ describe('resolveAwsScanSettings', () => {
       allRegions: false,
       explicitRegions: ['eu-west-1'],
       accountName: 'sandbox',
+      partition: 'aws',
       profile: 'sandbox',
+      authHint: {
+        kind: 'profile',
+        profileName: 'sandbox',
+      },
       concurrency: 7,
       scannerTimeout: 90,
     });
@@ -125,6 +137,7 @@ describe('resolveAwsScanSettings', () => {
 
     expect(settings.concurrency).toBe(5);
     expect(settings.scannerTimeout).toBe(60);
+    expect(settings.partition).toBe('aws');
   });
 
   it('uses the default account config automatically when present', () => {
@@ -147,7 +160,12 @@ describe('resolveAwsScanSettings', () => {
       allRegions: false,
       explicitRegions: ['eu-west-1'],
       accountName: 'default',
+      partition: 'aws',
       profile: 'production',
+      authHint: {
+        kind: 'profile',
+        profileName: 'production',
+      },
       concurrency: 5,
       scannerTimeout: 60,
     });
@@ -168,9 +186,75 @@ describe('resolveAwsScanSettings', () => {
 
     expect(settings).toEqual({
       allRegions: true,
+      partition: 'aws',
       concurrency: 5,
       scannerTimeout: 60,
     });
+  });
+
+  it('supports the new aws.accounts schema with explicit auth config', () => {
+    const settings = resolveAwsScanSettings(
+      createOptions({
+        account: 'prod',
+      }),
+      {
+        config: {
+          version: 1,
+          aws: {
+            accounts: [
+              {
+                accountId: '111122223333',
+                alias: 'prod',
+                region: 'eu-west-3',
+                auth: {
+                  kind: 'profile',
+                  profileName: 'prod-profile',
+                },
+              },
+            ],
+          },
+        },
+      },
+    );
+
+    expect(settings).toEqual({
+      allRegions: false,
+      explicitRegions: ['eu-west-3'],
+      accountName: 'prod',
+      accountId: '111122223333',
+      partition: 'aws',
+      profile: 'prod-profile',
+      authHint: {
+        kind: 'profile',
+        profileName: 'prod-profile',
+      },
+      concurrency: 5,
+      scannerTimeout: 60,
+    });
+  });
+
+  it('requires an explicit selection when multiple aws.accounts entries are configured', () => {
+    expect(() =>
+      resolveAwsScanSettings(createOptions(), {
+        config: {
+          version: 1,
+          aws: {
+            accounts: [
+              {
+                accountId: '111122223333',
+                alias: 'prod',
+                region: 'eu-west-3',
+              },
+              {
+                accountId: '444455556666',
+                alias: 'staging',
+                region: 'eu-west-3',
+              },
+            ],
+          },
+        },
+      }),
+    ).toThrow(ConfigurationError);
   });
 
   it('rejects account selection when the config file is missing', () => {

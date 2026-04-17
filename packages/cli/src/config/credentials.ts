@@ -2,28 +2,49 @@ import { DescribeRegionsCommand, EC2Client } from '@aws-sdk/client-ec2';
 import { GetCallerIdentityCommand, STSClient } from '@aws-sdk/client-sts';
 
 import {
-  assumeAwsRole,
-  buildAssumeRoleSessionName,
+  AssumeRoleAuthProvider,
+  AuthenticationError,
+  CredentialExpiredError,
+  NoAuthProviderAvailableError,
+  ProfileAuthProvider,
+  SsoAuthProvider,
   buildAwsClientConfig,
+  createAccountContext,
+  createScanContext,
+  detectAuthProvider,
+  extractRoleAccountId,
+  getCallerIdentity,
+  parseArn,
+  type AuthProvider,
+  type AuthTarget,
+  type AuthTargetHint,
+  type AwsCredentials,
   type DiscoveryCloudCredentials,
   type DiscoveryCredentials,
+  type ScanContext,
 } from '@stronghold-dr/core';
 
 import { AwsCliError, ConfigurationError } from '../errors/cli-error.js';
+
+const UNKNOWN_ACCOUNT_ID = '000000000000';
 
 export interface ResolveAwsContextOptions {
   readonly profile?: string;
   readonly roleArn?: string;
   readonly externalId?: string;
   readonly accountName?: string;
+  readonly accountId?: string;
+  readonly partition?: string;
+  readonly authHint?: AuthTargetHint;
   readonly explicitRegions?: readonly string[];
   readonly allRegions?: boolean;
 }
 
 export interface AwsExecutionContext {
-  readonly credentials: DiscoveryCredentials;
+  readonly scanContext: ScanContext;
   readonly regions: readonly string[];
   readonly authMode: string;
+  readonly authDescription: string;
   readonly profile?: string;
   readonly roleArn?: string;
   readonly accountName?: string;
@@ -38,39 +59,67 @@ export interface BuildDiscoveryCredentialsOptions {
 export async function resolveAwsExecutionContext(
   options: ResolveAwsContextOptions,
 ): Promise<AwsExecutionContext> {
-  const bootstrapRegion = resolveBootstrapRegion(options.explicitRegions);
-  const sourceCredentials =
-    buildDiscoveryCredentials({
-      profile: options.profile,
+  try {
+    const bootstrapRegion = resolveBootstrapRegion(options.explicitRegions);
+    const authHint = resolveExplicitAuthHint(options);
+    const partition = resolvePartition(options.partition, authHint, options.roleArn, bootstrapRegion);
+    const targetAccountId = resolveTargetAccountId(options.accountId, authHint, options.roleArn);
+
+    if (authHint?.kind === 'assume-role' && !targetAccountId) {
+      throw new ConfigurationError(
+        'Assume-role authentication requires a target accountId or a roleArn containing the target account.',
+      );
+    }
+
+    const providers = createProviders(options.profile);
+    const provisionalTarget: AuthTarget = {
+      accountId: targetAccountId ?? UNKNOWN_ACCOUNT_ID,
+      partition,
       region: bootstrapRegion,
-      includeEnvironmentCredentials: !options.profile,
-    }).aws ?? {};
+      ...(authHint ? { hint: authHint } : {}),
+    };
 
-  const resolvedCredentials = options.roleArn
-    ? await resolveAssumedCredentials({
-        roleArn: options.roleArn,
-        externalId: options.externalId,
-        sourceCredentials,
-        region: bootstrapRegion,
-      })
-    : sourceCredentials;
+    const authProvider = await resolveAuthProviderForTarget(
+      provisionalTarget,
+      targetAccountId,
+      authHint,
+      providers,
+    );
+    const resolvedAccountId =
+      targetAccountId ?? (await resolveCallerAccountId(authProvider, provisionalTarget, bootstrapRegion));
 
-  await verifyAwsCredentials(resolvedCredentials, { profile: options.profile });
-
-  return {
-    credentials: {
-      aws: resolvedCredentials,
-    },
-    regions: await resolveAwsRegions({
-      credentials: resolvedCredentials,
+    const account = createAccountContext({
+      accountId: resolvedAccountId,
+      accountAlias: options.accountName ?? null,
+      partition,
+    });
+    const scanContext = createScanContext({
+      account,
+      region: bootstrapRegion,
+      authProvider,
+      ...(authHint ? { authHint } : {}),
+    });
+    const bootstrapCredentials = await scanContext.getCredentials();
+    const regions = await resolveAwsRegions({
+      credentials: toDiscoveryCloudCredentials(bootstrapCredentials, bootstrapRegion),
       explicitRegions: options.explicitRegions,
       allRegions: options.allRegions ?? false,
-    }),
-    authMode: resolveAuthMode(options.profile, options.roleArn),
-    ...(options.profile ? { profile: options.profile } : {}),
-    ...(options.roleArn ? { roleArn: options.roleArn } : {}),
-    ...(options.accountName ? { accountName: options.accountName } : {}),
-  };
+    });
+
+    return {
+      scanContext,
+      regions,
+      authMode: resolveAuthMode(authProvider, options.profile),
+      authDescription: authProvider.describeAuthMethod(scanContext.target),
+      ...(options.profile ? { profile: options.profile } : {}),
+      ...(resolveRoleArnMetadata(options.roleArn, authHint)
+        ? { roleArn: resolveRoleArnMetadata(options.roleArn, authHint) }
+        : {}),
+      ...(options.accountName ? { accountName: options.accountName } : {}),
+    };
+  } catch (error) {
+    throw mapAuthenticationResolutionError(error);
+  }
 }
 
 export function resolveRegionFromEnvironment(): string | null {
@@ -177,70 +226,273 @@ export async function verifyAwsCredentials(
   }
 }
 
-function resolveBootstrapRegion(explicitRegions?: readonly string[]): string {
-  return explicitRegions?.[0] ?? resolveRegionFromEnvironment() ?? 'us-east-1';
-}
-
-async function resolveAssumedCredentials(options: {
-  readonly roleArn: string;
-  readonly externalId?: string;
-  readonly sourceCredentials: DiscoveryCloudCredentials;
-  readonly region: string;
-}): Promise<DiscoveryCloudCredentials> {
-  try {
-    const assumed = await assumeAwsRole({
-      region: options.region,
-      roleArn: options.roleArn,
-      externalId: options.externalId,
-      sourceCredentials: options.sourceCredentials,
-      sessionName: buildAssumeRoleSessionName(),
-      maxAttempts: 1,
-    });
-
-    return {
-      ...assumed,
-      region: options.region,
-    };
-  } catch (error) {
-    throw mapAssumeRoleError(error, options.roleArn);
-  }
-}
-
-function resolveAuthMode(profile: string | undefined, roleArn: string | undefined): string {
-  if (profile && roleArn) {
-    return 'profile+assume-role';
-  }
-  if (roleArn) {
-    return 'assume-role';
-  }
-  if (profile) {
-    return 'profile';
-  }
-  return 'default-credential-chain';
-}
-
-function mapAssumeRoleError(error: unknown, roleArn: string): AwsCliError {
+export function mapAwsError(error: unknown, service: string): AwsCliError {
   const code = getAwsErrorCode(error);
   if (code === 'AccessDeniedException' || code === 'AccessDenied') {
-    return new AwsCliError(`Unable to assume role ${roleArn}: access denied.`, error);
+    return new AwsCliError(
+      `Access denied for ${service}. Run stronghold iam-policy to see required permissions.`,
+      error,
+    );
   }
   if (code === 'ExpiredTokenException' || code === 'ExpiredToken') {
     return new AwsCliError(
-      `Unable to assume role ${roleArn}: source credentials expired.`,
+      'AWS credentials expired. Run aws sso login or refresh your credentials.',
       error,
     );
   }
   if (code === 'UnrecognizedClientException' || code === 'InvalidClientTokenId') {
+    return new AwsCliError('Invalid AWS credentials. Check your access key and secret.', error);
+  }
+  if (code.toLowerCase().includes('timeout')) {
     return new AwsCliError(
-      `Unable to assume role ${roleArn}: source credentials are invalid.`,
+      `Connection timeout for ${service}. Check your network and AWS region availability.`,
       error,
     );
   }
 
   return new AwsCliError(
-    `Unable to assume role ${roleArn}: ${resolveErrorMessage(error)}.`,
+    `AWS error (${service}): ${resolveErrorMessage(error)}. Run with --verbose for details.`,
     error,
   );
+}
+
+function createProviders(defaultProfileName?: string): {
+  readonly profile: ProfileAuthProvider;
+  readonly assumeRole: AssumeRoleAuthProvider;
+  readonly sso: SsoAuthProvider;
+} {
+  const profile = new ProfileAuthProvider({
+    ...(defaultProfileName ? { defaultProfileName } : {}),
+  });
+
+  return {
+    profile,
+    assumeRole: new AssumeRoleAuthProvider({
+      sourceProvider: profile,
+    }),
+    sso: new SsoAuthProvider(),
+  };
+}
+
+async function resolveAuthProviderForTarget(
+  provisionalTarget: AuthTarget,
+  targetAccountId: string | undefined,
+  authHint: AuthTargetHint | undefined,
+  providers: {
+    readonly profile: ProfileAuthProvider;
+    readonly assumeRole: AssumeRoleAuthProvider;
+    readonly sso: SsoAuthProvider;
+  },
+): Promise<AuthProvider> {
+  if (authHint) {
+    const explicitProvider = providerForHint(authHint, providers);
+    if (targetAccountId) {
+      const explicitTarget = {
+        ...provisionalTarget,
+        accountId: targetAccountId,
+      };
+      if (explicitProvider.kind === 'assume-role') {
+        await explicitProvider.getCredentials(explicitTarget);
+        return explicitProvider;
+      }
+
+      const canHandle = await explicitProvider.canHandle(explicitTarget);
+      if (!canHandle) {
+        throw new AuthenticationError(
+          `Configured ${explicitProvider.kind} authentication could not access account ${targetAccountId}.`,
+          explicitTarget,
+          explicitProvider.kind,
+        );
+      }
+    }
+    return explicitProvider;
+  }
+
+  if (targetAccountId) {
+    return detectAuthProvider(
+      {
+        ...provisionalTarget,
+        accountId: targetAccountId,
+      },
+      [providers.profile, providers.assumeRole, providers.sso],
+    );
+  }
+
+  return providers.profile;
+}
+
+function providerForHint(
+  hint: AuthTargetHint,
+  providers: {
+    readonly profile: ProfileAuthProvider;
+    readonly assumeRole: AssumeRoleAuthProvider;
+    readonly sso: SsoAuthProvider;
+  },
+): AuthProvider {
+  switch (hint.kind) {
+    case 'profile':
+      return providers.profile;
+    case 'assume-role':
+      return providers.assumeRole;
+    case 'sso':
+      return providers.sso;
+    default:
+      return providers.profile;
+  }
+}
+
+function resolveExplicitAuthHint(options: ResolveAwsContextOptions): AuthTargetHint | undefined {
+  if (options.authHint) {
+    return options.authHint;
+  }
+
+  if (options.roleArn) {
+    return {
+      kind: 'assume-role',
+      roleArn: options.roleArn,
+      ...(options.externalId ? { externalId: options.externalId } : {}),
+    };
+  }
+
+  if (options.profile) {
+    return {
+      kind: 'profile',
+      profileName: options.profile,
+    };
+  }
+
+  return undefined;
+}
+
+function resolveTargetAccountId(
+  explicitAccountId: string | undefined,
+  authHint: AuthTargetHint | undefined,
+  roleArn: string | undefined,
+): string | undefined {
+  return (
+    explicitAccountId ??
+    (authHint?.kind === 'sso' ? authHint.accountId : undefined) ??
+    (authHint?.kind === 'assume-role' && authHint.roleArn
+      ? extractRoleAccountId(authHint.roleArn) ?? undefined
+      : undefined) ??
+    (roleArn ? extractRoleAccountId(roleArn) ?? undefined : undefined)
+  );
+}
+
+function resolvePartition(
+  explicitPartition: string | undefined,
+  authHint: AuthTargetHint | undefined,
+  roleArn: string | undefined,
+  region: string,
+): string {
+  if (explicitPartition) {
+    return explicitPartition;
+  }
+
+  const hintedRoleArn = authHint?.kind === 'assume-role' ? authHint.roleArn : undefined;
+  const arn = hintedRoleArn ?? roleArn;
+  if (arn) {
+    try {
+      return parseArn(arn).partition;
+    } catch {
+      return inferPartitionFromRegion(region);
+    }
+  }
+
+  return inferPartitionFromRegion(region);
+}
+
+function inferPartitionFromRegion(region: string): string {
+  const normalized = region.trim().toLowerCase();
+  if (normalized.startsWith('cn-')) {
+    return 'aws-cn';
+  }
+  if (normalized.startsWith('us-gov-')) {
+    return 'aws-us-gov';
+  }
+  return 'aws';
+}
+
+async function resolveCallerAccountId(
+  authProvider: AuthProvider,
+  provisionalTarget: AuthTarget,
+  region: string,
+): Promise<string> {
+  const credentials = await authProvider.getCredentials(provisionalTarget);
+  const identity = await getCallerIdentity(toDiscoveryCloudCredentials(credentials, region));
+
+  if (!identity) {
+    throw new AwsCliError(
+      'Unable to resolve AWS caller identity for the selected authentication method.',
+    );
+  }
+
+  return identity.accountId;
+}
+
+function resolveBootstrapRegion(explicitRegions?: readonly string[]): string {
+  return explicitRegions?.[0] ?? resolveRegionFromEnvironment() ?? 'us-east-1';
+}
+
+function resolveAuthMode(authProvider: AuthProvider, profile: string | undefined): string {
+  if (authProvider.kind === 'assume-role' && profile) {
+    return 'profile+assume-role';
+  }
+
+  return authProvider.kind;
+}
+
+function resolveRoleArnMetadata(
+  explicitRoleArn: string | undefined,
+  authHint: AuthTargetHint | undefined,
+): string | undefined {
+  if (explicitRoleArn) {
+    return explicitRoleArn;
+  }
+
+  return authHint?.kind === 'assume-role' ? authHint.roleArn : undefined;
+}
+
+function toDiscoveryCloudCredentials(
+  credentials: AwsCredentials,
+  region: string,
+): DiscoveryCloudCredentials {
+  return {
+    accessKeyId: credentials.accessKeyId,
+    secretAccessKey: credentials.secretAccessKey,
+    ...(credentials.sessionToken ? { sessionToken: credentials.sessionToken } : {}),
+    region,
+  };
+}
+
+function mapAuthenticationResolutionError(error: unknown): AwsCliError | ConfigurationError {
+  if (error instanceof ConfigurationError) {
+    return error;
+  }
+
+  if (error instanceof NoAuthProviderAvailableError) {
+    return new AwsCliError(
+      `No supported AWS authentication method was available for account ${error.target.accountId}.`,
+      error,
+    );
+  }
+
+  if (error instanceof CredentialExpiredError) {
+    return new AwsCliError(
+      'AWS credentials expired. Run aws sso login or refresh your credentials.',
+      error,
+    );
+  }
+
+  if (error instanceof AuthenticationError) {
+    return new AwsCliError(error.message, error);
+  }
+
+  if (error instanceof AwsCliError) {
+    return error;
+  }
+
+  return new AwsCliError(resolveErrorMessage(error), error);
 }
 
 function mapCredentialError(
@@ -274,7 +526,6 @@ function mapCredentialError(
 
   return new ConfigurationError(`No AWS credentials found.
 
-Stronghold uses the standard AWS credential chain.
 Set up credentials using one of:
 
 - Environment variables:
@@ -293,36 +544,6 @@ Set up credentials using one of:
 
 Or try the demo mode (no credentials needed):
   stronghold demo`, error);
-}
-
-export function mapAwsError(error: unknown, service: string): AwsCliError {
-  const code = getAwsErrorCode(error);
-  if (code === 'AccessDeniedException' || code === 'AccessDenied') {
-    return new AwsCliError(
-      `Access denied for ${service}. Run stronghold iam-policy to see required permissions.`,
-      error,
-    );
-  }
-  if (code === 'ExpiredTokenException' || code === 'ExpiredToken') {
-    return new AwsCliError(
-      'AWS credentials expired. Run aws sso login or refresh your credentials.',
-      error,
-    );
-  }
-  if (code === 'UnrecognizedClientException' || code === 'InvalidClientTokenId') {
-    return new AwsCliError('Invalid AWS credentials. Check your access key and secret.', error);
-  }
-  if (code.toLowerCase().includes('timeout')) {
-    return new AwsCliError(
-      `Connection timeout for ${service}. Check your network and AWS region availability.`,
-      error,
-    );
-  }
-
-  return new AwsCliError(
-    `AWS error (${service}): ${resolveErrorMessage(error)}. Run with --verbose for details.`,
-    error,
-  );
 }
 
 function isCredentialLoadingError(error: unknown): boolean {

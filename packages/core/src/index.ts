@@ -97,6 +97,37 @@ export {
   type AccountContext,
 } from './identity/index.js';
 
+export {
+  AuthenticationError,
+  AssumeRoleAuthProvider,
+  CredentialCache,
+  CredentialExpiredError,
+  DEFAULT_ASSUME_ROLE_NAME,
+  DEFAULT_DETECTION_ORDER,
+  NoAuthProviderAvailableError,
+  ProfileAuthProvider,
+  SsoAuthProvider,
+  buildAuthTarget,
+  detectAuthProvider,
+  extractRoleAccountId,
+  getAuthTargetCacheKey,
+  normalizeAwsCredentials,
+  resolveStsRegion,
+  withAuthTargetRegion,
+  type AuthProvider,
+  type AuthProviderKind,
+  type AuthTarget,
+  type AuthTargetHint,
+  type AwsCredentials,
+} from './auth/index.js';
+
+export {
+  createScanContext,
+  withScanContextRegion,
+  type CreateScanContextOptions,
+  type ScanContext,
+} from './model/scan-context.js';
+
 export { type InfrastructureRepository } from './ports/infrastructure-repository.js';
 
 export { type Logger } from './ports/logger.js';
@@ -515,6 +546,12 @@ export {
   STRONGHOLD_CONFIG_VERSION,
   type StrongholdConfigDefaults,
   type StrongholdAccountConfig,
+  type StrongholdAwsAuthConfig,
+  type StrongholdAwsAssumeRoleAuthConfig,
+  type StrongholdAwsConfig,
+  type StrongholdAwsAccountConfig,
+  type StrongholdAwsProfileAuthConfig,
+  type StrongholdAwsSsoAuthConfig,
   type StrongholdConfig,
   type ResolvedStrongholdAccount,
   StrongholdConfigValidationError,

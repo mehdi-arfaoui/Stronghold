@@ -82,6 +82,69 @@ accounts:
     expect(config.accounts?.default?.allRegions).toBe(true);
   });
 
+  it('parses the new aws config schema', () => {
+    const config = parseStrongholdConfig(`
+aws:
+  profile: management
+  region: eu-west-3
+  accounts:
+    - account_id: "111122223333"
+      alias: prod
+      auth:
+        kind: profile
+        profile_name: prod-profile
+    - account_id: "777788889999"
+      alias: data
+      region: us-east-1
+      auth:
+        kind: sso
+        sso_profile_name: corp-sso
+        role_name: ReadOnlyAccess
+`);
+
+    expect(config).toMatchObject({
+      version: 1,
+      aws: {
+        profile: 'management',
+        region: 'eu-west-3',
+        accounts: [
+          {
+            accountId: '111122223333',
+            alias: 'prod',
+            auth: {
+              kind: 'profile',
+              profileName: 'prod-profile',
+            },
+          },
+          {
+            accountId: '777788889999',
+            alias: 'data',
+            region: 'us-east-1',
+            auth: {
+              kind: 'sso',
+              ssoProfileName: 'corp-sso',
+              roleName: 'ReadOnlyAccess',
+            },
+          },
+        ],
+      },
+    });
+  });
+
+  it('defaults the version when omitted', () => {
+    const config = parseStrongholdConfig(`
+aws:
+  profile: production
+  region: eu-west-3
+`);
+
+    expect(config.version).toBe(1);
+    expect(config.aws).toEqual({
+      profile: 'production',
+      region: 'eu-west-3',
+    });
+  });
+
   it('rejects an invalid version', () => {
     expect(() => parseStrongholdConfig('version: 2')).toThrow(StrongholdConfigValidationError);
   });

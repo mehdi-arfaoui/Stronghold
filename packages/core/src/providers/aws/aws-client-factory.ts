@@ -5,6 +5,8 @@
 import { EFSClient } from '@aws-sdk/client-efs';
 import { Route53Client } from '@aws-sdk/client-route-53';
 import { fromIni, fromTemporaryCredentials } from '@aws-sdk/credential-providers';
+import type { AwsCredentials } from '../../auth/index.js';
+import { withScanContextRegion, type ScanContext } from '../../model/scan-context.js';
 import type { DiscoveryCloudCredentials } from '../../types/discovery.js';
 import { resolveAwsSourceCredentials } from './assume-role.js';
 
@@ -13,12 +15,14 @@ export type ResolvedAwsCredentials = {
   readonly accessKeyId: string;
   readonly secretAccessKey: string;
   readonly sessionToken?: string;
+  readonly expiration?: Date;
 };
 
 type AwsCredentialProvider =
   | ResolvedAwsCredentials
   | ReturnType<typeof fromIni>
-  | ReturnType<typeof fromTemporaryCredentials>;
+  | ReturnType<typeof fromTemporaryCredentials>
+  | (() => Promise<AwsCredentials>);
 
 /**
  * Resolves AWS credentials from discovery config.
@@ -49,7 +53,8 @@ export function resolveAwsCredentials(
 /** Options for creating an AWS SDK client. */
 export interface AwsClientOptions {
   readonly region: string;
-  readonly credentials: DiscoveryCloudCredentials;
+  readonly credentials?: DiscoveryCloudCredentials;
+  readonly scanContext?: ScanContext;
   readonly sessionName?: string;
   readonly maxAttempts?: number;
   readonly abortSignal?: AbortSignal;
@@ -62,7 +67,7 @@ export interface AwsClientOptions {
 export function buildAwsClientConfig(
   options: AwsClientOptions,
 ): { region: string; credentials?: AwsCredentialProvider; maxAttempts?: number } {
-  const resolved = resolveAwsCredentials(options.credentials, options.region, options.sessionName);
+  const resolved = resolveAwsCredentialProvider(options);
   return {
     region: options.region,
     ...(resolved ? { credentials: resolved } : {}),
@@ -100,4 +105,17 @@ export function createRoute53Client(options: AwsClientOptions): Route53Client {
 /** Creates an EFS client for the current region. */
 export function createEfsClient(options: AwsClientOptions): EFSClient {
   return createAwsClient(EFSClient, options);
+}
+
+function resolveAwsCredentialProvider(options: AwsClientOptions): AwsCredentialProvider | undefined {
+  if (options.scanContext) {
+    const context =
+      options.scanContext.region === options.region
+        ? options.scanContext
+        : withScanContextRegion(options.scanContext, options.region);
+
+    return async () => context.getCredentials();
+  }
+
+  return resolveAwsCredentials(options.credentials ?? {}, options.region, options.sessionName);
 }

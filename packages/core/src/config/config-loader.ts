@@ -1,14 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import Ajv, { type ErrorObject } from 'ajv';
 import { parseDocument } from 'yaml';
 
 import {
   DEFAULT_STRONGHOLD_CONFIG_PATH,
   STRONGHOLD_CONFIG_VERSION,
-  type StrongholdAccountConfig,
   type StrongholdConfig,
-  type StrongholdConfigDefaults,
 } from './config-types.js';
 
 type ConfigRecord = Record<string, unknown>;
@@ -22,6 +21,136 @@ const FORBIDDEN_CREDENTIAL_KEYS = new Set([
   'session_token',
   'credentials',
 ]);
+
+const KEY_ALIASES = new Map([
+  ['all_regions', 'allRegions'],
+  ['scanner_timeout', 'scannerTimeout'],
+  ['role_arn', 'roleArn'],
+  ['external_id', 'externalId'],
+  ['account_id', 'accountId'],
+  ['profile_name', 'profileName'],
+  ['session_name', 'sessionName'],
+  ['role_name', 'roleName'],
+  ['sso_profile_name', 'ssoProfileName'],
+]);
+
+const CONFIG_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    version: {
+      type: 'integer',
+      const: STRONGHOLD_CONFIG_VERSION,
+    },
+    defaults: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        regions: {
+          type: 'array',
+          items: { type: 'string', minLength: 1 },
+        },
+        allRegions: { type: 'boolean' },
+        concurrency: { type: 'integer', minimum: 1, maximum: 16 },
+        scannerTimeout: { type: 'integer', minimum: 10, maximum: 300 },
+      },
+    },
+    accounts: {
+      type: 'object',
+      additionalProperties: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          profile: { type: 'string', minLength: 1 },
+          roleArn: { type: 'string', minLength: 1 },
+          externalId: { type: 'string', minLength: 1 },
+          regions: {
+            type: 'array',
+            items: { type: 'string', minLength: 1 },
+          },
+          allRegions: { type: 'boolean' },
+        },
+      },
+    },
+    aws: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        profile: { type: 'string', minLength: 1 },
+        region: { type: 'string', minLength: 1 },
+        accounts: {
+          type: 'array',
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['accountId'],
+            properties: {
+              accountId: {
+                type: 'string',
+                pattern: '^\\d{12}$',
+              },
+              alias: { type: 'string', minLength: 1 },
+              partition: {
+                type: 'string',
+                enum: ['aws', 'aws-cn', 'aws-us-gov'],
+              },
+              region: { type: 'string', minLength: 1 },
+              regions: {
+                type: 'array',
+                items: { type: 'string', minLength: 1 },
+              },
+              allRegions: { type: 'boolean' },
+              auth: {
+                oneOf: [
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['kind', 'profileName'],
+                    properties: {
+                      kind: { const: 'profile' },
+                      profileName: { type: 'string', minLength: 1 },
+                    },
+                  },
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['kind'],
+                    properties: {
+                      kind: { const: 'assume-role' },
+                      roleArn: { type: 'string', minLength: 1 },
+                      sessionName: { type: 'string', minLength: 1 },
+                      externalId: { type: 'string', minLength: 1 },
+                    },
+                  },
+                  {
+                    type: 'object',
+                    additionalProperties: false,
+                    required: ['kind', 'ssoProfileName', 'roleName'],
+                    properties: {
+                      kind: { const: 'sso' },
+                      ssoProfileName: { type: 'string', minLength: 1 },
+                      roleName: { type: 'string', minLength: 1 },
+                      accountId: {
+                        type: 'string',
+                        pattern: '^\\d{12}$',
+                      },
+                    },
+                  },
+                ],
+              },
+            },
+          },
+        },
+      },
+    },
+  },
+} as const;
+
+const ajv = new Ajv({
+  allErrors: true,
+  strict: false,
+});
+const validateConfigDocument = ajv.compile<StrongholdConfig>(CONFIG_SCHEMA);
 
 export class StrongholdConfigValidationError extends Error {
   public readonly filePath: string;
@@ -66,195 +195,92 @@ export function validateStrongholdConfig(
   value: unknown,
   filePath = DEFAULT_STRONGHOLD_CONFIG_PATH,
 ): StrongholdConfig {
-  const issues: string[] = [];
   if (!isRecord(value)) {
     throw new StrongholdConfigValidationError(filePath, ['Config file must contain a YAML object.']);
   }
 
-  const version = readInteger(value.version);
-  if (version !== STRONGHOLD_CONFIG_VERSION) {
-    issues.push(
-      `version must be ${STRONGHOLD_CONFIG_VERSION}. Received ${String(value.version ?? 'undefined')}.`,
+  const normalized = normalizeConfigValue(value);
+  if (!validateConfigDocument(normalized)) {
+    throw new StrongholdConfigValidationError(
+      filePath,
+      formatSchemaErrors(validateConfigDocument.errors ?? []),
     );
   }
 
-  const defaults = value.defaults == null ? undefined : readDefaults(value.defaults, 'defaults', issues);
-  const accounts = value.accounts == null ? undefined : readAccounts(value.accounts, 'accounts', issues);
-
-  if (issues.length > 0) {
-    throw new StrongholdConfigValidationError(filePath, issues);
-  }
-
+  const config = normalized as StrongholdConfig;
   return {
     version: STRONGHOLD_CONFIG_VERSION,
-    ...(defaults ? { defaults } : {}),
-    ...(accounts ? { accounts } : {}),
+    ...(config.defaults ? { defaults: config.defaults } : {}),
+    ...(config.accounts ? { accounts: config.accounts } : {}),
+    ...(config.aws ? { aws: config.aws } : {}),
   };
-}
-
-function readDefaults(
-  value: unknown,
-  pathLabel: string,
-  issues: string[],
-): StrongholdConfigDefaults | undefined {
-  if (!isRecord(value)) {
-    issues.push(`${pathLabel} must be an object.`);
-    return undefined;
-  }
-
-  rejectCredentialKeys(value, pathLabel, issues);
-
-  const regions = readStringArray(value.regions, `${pathLabel}.regions`, issues);
-  const allRegions = readOptionalBoolean(
-    value.all_regions ?? value.allRegions,
-    `${pathLabel}.all_regions`,
-    issues,
-  );
-  const concurrency = readOptionalInteger(value.concurrency, 1, 16, `${pathLabel}.concurrency`, issues);
-  const scannerTimeout = readOptionalInteger(
-    value.scanner_timeout ?? value.scannerTimeout,
-    10,
-    300,
-    `${pathLabel}.scanner_timeout`,
-    issues,
-  );
-
-  return {
-    ...(regions ? { regions } : {}),
-    ...(allRegions !== undefined ? { allRegions } : {}),
-    ...(concurrency !== undefined ? { concurrency } : {}),
-    ...(scannerTimeout !== undefined ? { scannerTimeout } : {}),
-  };
-}
-
-function readAccounts(
-  value: unknown,
-  pathLabel: string,
-  issues: string[],
-): Readonly<Record<string, StrongholdAccountConfig>> | undefined {
-  if (!isRecord(value)) {
-    issues.push(`${pathLabel} must be an object keyed by account name.`);
-    return undefined;
-  }
-
-  const accounts: Record<string, StrongholdAccountConfig> = {};
-
-  for (const [accountName, accountValue] of Object.entries(value)) {
-    if (!isRecord(accountValue)) {
-      issues.push(`${pathLabel}.${accountName} must be an object.`);
-      continue;
-    }
-
-    rejectCredentialKeys(accountValue, `${pathLabel}.${accountName}`, issues);
-
-    const profile = readOptionalString(accountValue.profile);
-    const roleArn = readOptionalString(accountValue.role_arn ?? accountValue.roleArn);
-    const externalId = readOptionalString(accountValue.external_id ?? accountValue.externalId);
-    const regions = readStringArray(
-      accountValue.regions,
-      `${pathLabel}.${accountName}.regions`,
-      issues,
-    );
-    const allRegions = readOptionalBoolean(
-      accountValue.all_regions ?? accountValue.allRegions,
-      `${pathLabel}.${accountName}.all_regions`,
-      issues,
-    );
-
-    accounts[accountName] = {
-      ...(profile ? { profile } : {}),
-      ...(roleArn ? { roleArn } : {}),
-      ...(externalId ? { externalId } : {}),
-      ...(regions ? { regions } : {}),
-      ...(allRegions !== undefined ? { allRegions } : {}),
-    };
-  }
-
-  return accounts;
-}
-
-function rejectCredentialKeys(value: ConfigRecord, pathLabel: string, issues: string[]): void {
-  for (const key of Object.keys(value)) {
-    if (FORBIDDEN_CREDENTIAL_KEYS.has(key)) {
-      issues.push(`${pathLabel}.${key} is not allowed. Store account selection only, never credentials.`);
-    }
-  }
-}
-
-function readOptionalInteger(
-  value: unknown,
-  min: number,
-  max: number,
-  pathLabel: string,
-  issues: string[],
-): number | undefined {
-  if (value == null) {
-    return undefined;
-  }
-
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < min || value > max) {
-    issues.push(`${pathLabel} must be an integer between ${min} and ${max}.`);
-    return undefined;
-  }
-
-  return value;
-}
-
-function readOptionalBoolean(
-  value: unknown,
-  pathLabel: string,
-  issues: string[],
-): boolean | undefined {
-  if (value == null) {
-    return undefined;
-  }
-
-  if (typeof value !== 'boolean') {
-    issues.push(`${pathLabel} must be a boolean.`);
-    return undefined;
-  }
-
-  return value;
-}
-
-function readOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function readStringArray(
-  value: unknown,
-  pathLabel: string,
-  issues: string[],
-): readonly string[] | undefined {
-  if (value == null) {
-    return undefined;
-  }
-  if (!Array.isArray(value)) {
-    issues.push(`${pathLabel} must be an array of strings.`);
-    return undefined;
-  }
-
-  const entries = value
-    .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-    .filter((entry) => entry.length > 0);
-
-  if (entries.length !== value.length) {
-    issues.push(`${pathLabel} must contain only non-empty strings.`);
-    return undefined;
-  }
-
-  return entries;
-}
-
-function readInteger(value: unknown): number | null {
-  return typeof value === 'number' && Number.isInteger(value) ? value : null;
 }
 
 function isRecord(value: unknown): value is ConfigRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function normalizeConfigValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => normalizeConfigValue(entry));
+  }
+
+  if (!isRecord(value)) {
+    return value;
+  }
+
+  const normalized: ConfigRecord = {};
+  for (const [key, entry] of Object.entries(value)) {
+    const normalizedKey = KEY_ALIASES.get(key) ?? key;
+    normalized[normalizedKey] = normalizeConfigValue(entry);
+  }
+
+  return normalized;
+}
+
+function formatSchemaErrors(errors: readonly ErrorObject[]): readonly string[] {
+  const issues = errors
+    .filter((error) => error.keyword !== 'if')
+    .map((error) => formatSchemaError(error));
+
+  return Array.from(new Set(issues));
+}
+
+function formatSchemaError(error: ErrorObject): string {
+  const basePath = toPathLabel(error.instancePath);
+
+  if (error.keyword === 'additionalProperties') {
+    const additionalProperty = String((error.params as { additionalProperty: string }).additionalProperty);
+    const pathLabel = basePath ? `${basePath}.${additionalProperty}` : additionalProperty;
+    if (FORBIDDEN_CREDENTIAL_KEYS.has(additionalProperty)) {
+      return `${pathLabel} is not allowed. Store account selection only, never credentials.`;
+    }
+    return `${pathLabel} is not allowed.`;
+  }
+
+  if (error.keyword === 'required') {
+    const missingProperty = String((error.params as { missingProperty: string }).missingProperty);
+    const pathLabel = basePath ? `${basePath}.${missingProperty}` : missingProperty;
+    return `${pathLabel} is required.`;
+  }
+
+  const pathLabel = basePath || 'config';
+  return `${pathLabel} ${error.message ?? 'is invalid.'}`;
+}
+
+function toPathLabel(instancePath: string): string {
+  if (!instancePath) {
+    return '';
+  }
+
+  return instancePath
+    .split('/')
+    .filter((segment) => segment.length > 0)
+    .map((segment) => (/^\d+$/u.test(segment) ? `[${segment}]` : segment))
+    .reduce((result, segment) => {
+      if (segment.startsWith('[')) {
+        return `${result}${segment}`;
+      }
+      return result ? `${result}.${segment}` : segment;
+    }, '');
 }
