@@ -79,6 +79,59 @@ describe('CrossAccountDetector', () => {
     expect(result.summary.degraded).toBe(1);
     expect(result.summary.informational).toBe(1);
   });
+
+  it('combines networking and security detectors in one summary', () => {
+    const graph = createTestGraph();
+    addVpc(graph, '111122223333', 'vpc-a');
+    addVpc(graph, '444455556666', 'vpc-b');
+    addPeering(graph);
+    addRole(graph, '444455556666', 'workload-role');
+    addRole(graph, '111122223333', 'target-role', {
+      AssumeRolePolicyDocument: toPolicyDocument({
+        Version: '2012-10-17',
+        Statement: {
+          Effect: 'Allow',
+          Action: 'sts:AssumeRole',
+          Principal: {
+            AWS: 'arn:aws:iam::444455556666:role/workload-role',
+          },
+        },
+      }),
+    });
+    addKmsKey(graph, '111122223333', 'key-integration', {
+      keyPolicy: toPolicyDocument({
+        Version: '2012-10-17',
+        Statement: {
+          Sid: 'DecryptAccess',
+          Effect: 'Allow',
+          Action: 'kms:Decrypt',
+          Principal: {
+            AWS: 'arn:aws:iam::444455556666:role/workload-role',
+          },
+        },
+      }),
+    });
+
+    const scanResult = createMultiAccountScanResult(graph, [
+      '111122223333',
+      '444455556666',
+    ]);
+    const result = new CrossAccountDetector({
+      enabledKinds: ['vpc_peering', 'iam_assume_role', 'kms_cross_account_grant'],
+    }).detect(graph, scanResult);
+
+    expect(result.edges).toHaveLength(3);
+    expect(result.summary.byKind.get('vpc_peering')).toBe(1);
+    expect(result.summary.byKind.get('iam_assume_role')).toBe(1);
+    expect(result.summary.byKind.get('kms_cross_account_grant')).toBe(1);
+    expect(result.summary.byKind.get('transit_gateway')).toBe(0);
+    expect(result.summary.byKind.get('route53_shared_zone')).toBe(0);
+    expect(result.summary.byKind.get('vpc_endpoint_shared')).toBe(0);
+    expect(result.summary.byKind.get('ram_share')).toBe(0);
+    expect(result.edges.find((edge) => edge.kind === 'vpc_peering')?.direction).toBe('bidirectional');
+    expect(result.edges.find((edge) => edge.kind === 'iam_assume_role')?.direction).toBe('unidirectional');
+    expect(result.edges.find((edge) => edge.kind === 'kms_cross_account_grant')?.direction).toBe('unidirectional');
+  });
 });
 
 function createGraphWithAllDependencyKinds() {
@@ -219,4 +272,42 @@ function addHostedZonePartial(graph: ReturnType<typeof createTestGraph>): void {
       ],
     },
   });
+}
+
+function addRole(
+  graph: ReturnType<typeof createTestGraph>,
+  accountId: string,
+  roleName: string,
+  metadata: Record<string, unknown> = {},
+): void {
+  addTestNode(graph, {
+    arn: `arn:aws:iam::${accountId}:role/${roleName}`,
+    accountId,
+    sourceType: 'IAM_ROLE',
+    metadata: {
+      roleName,
+      ...metadata,
+    },
+  });
+}
+
+function addKmsKey(
+  graph: ReturnType<typeof createTestGraph>,
+  accountId: string,
+  keyId: string,
+  metadata: Record<string, unknown>,
+): void {
+  addTestNode(graph, {
+    arn: `arn:aws:kms:eu-west-1:${accountId}:key/${keyId}`,
+    accountId,
+    sourceType: 'KMS_KEY',
+    metadata: {
+      keyId,
+      ...metadata,
+    },
+  });
+}
+
+function toPolicyDocument(policy: Record<string, unknown>): string {
+  return JSON.stringify(policy);
 }
