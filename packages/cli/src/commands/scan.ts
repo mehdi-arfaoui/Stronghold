@@ -2,6 +2,7 @@ import fs from 'node:fs';
 
 import { Command } from 'commander';
 import {
+  type CrossAccountDetectionResult,
   DEFAULT_ACCOUNT_SCAN_TIMEOUT_MS,
   DEFAULT_MULTI_ACCOUNT_CONCURRENCY,
   MultiAccountOrchestrator,
@@ -373,6 +374,18 @@ interface MultiAccountJsonPayload {
     readonly message: string;
     readonly timestamp: string;
   }>;
+  readonly crossAccount: {
+    readonly edges: CrossAccountDetectionResult['edges'];
+    readonly summary: {
+      readonly total: number;
+      readonly byKind: Readonly<Record<string, number>>;
+      readonly complete: number;
+      readonly partial: number;
+      readonly critical: number;
+      readonly degraded: number;
+      readonly informational: number;
+    };
+  };
   readonly summary: {
     readonly totalAccounts: number;
     readonly successfulAccounts: number;
@@ -837,6 +850,7 @@ async function executeMultiAccountScan(input: {
         message: error.error.message,
         timestamp: error.timestamp.toISOString(),
       })),
+      crossAccount: serializeCrossAccountDetection(orchestrationResult.crossAccount),
       summary: {
         totalAccounts,
         successfulAccounts: orchestrationResult.accounts.length,
@@ -845,7 +859,7 @@ async function executeMultiAccountScan(input: {
         resourcesByAccount: buildResourceCountsByAccount(accountOutputById),
         totalFindings: totalFindingCount,
         findingsByAccount,
-        crossAccountEdges: 0,
+        crossAccountEdges: orchestrationResult.crossAccount.summary.total,
       },
     },
   };
@@ -1023,6 +1037,27 @@ function selectValidationFindings(
   return results.filter((result) =>
     result.status === 'fail' || result.status === 'warn' || result.status === 'error',
   );
+}
+
+function serializeCrossAccountDetection(
+  detection: CrossAccountDetectionResult,
+): MultiAccountJsonPayload['crossAccount'] {
+  return {
+    edges: detection.edges,
+    summary: {
+      total: detection.summary.total,
+      byKind: Object.fromEntries(
+        [...detection.summary.byKind.entries()].sort(([left], [right]) =>
+          left.localeCompare(right),
+        ),
+      ),
+      complete: detection.summary.complete,
+      partial: detection.summary.partial,
+      critical: detection.summary.critical,
+      degraded: detection.summary.degraded,
+      informational: detection.summary.informational,
+    },
+  };
 }
 
 function countFindings(
