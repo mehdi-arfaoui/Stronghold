@@ -9,6 +9,11 @@ interface GraphNodeEntry {
   readonly attrs: GraphRecord;
 }
 
+export interface PolicyPrincipalEntry {
+  readonly type: 'aws' | 'service' | 'canonical' | 'federated' | 'wildcard';
+  readonly value: string;
+}
+
 const PRODUCTION_TOKENS = ['prod', 'production', 'live', 'customer'] as const;
 const NON_PRODUCTION_TOKENS = [
   'dev',
@@ -51,6 +56,11 @@ const DATA_SERVICE_TOKENS = [
   'mq',
   'broker',
 ] as const;
+const CROSS_ACCOUNT_CONDITION_KEYS = [
+  'aws:principalaccount',
+  'aws:sourceaccount',
+  'kms:calleraccount',
+] as const;
 
 export function isRecord(value: unknown): value is GraphRecord {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -89,6 +99,184 @@ export function readRecordArray(value: unknown): readonly GraphRecord[] {
   }
 
   return value.filter((entry): entry is GraphRecord => isRecord(entry));
+}
+
+export function parsePolicyDocument(
+  value: unknown,
+  cache?: Map<string, GraphRecord | null>,
+): GraphRecord | null {
+  if (isRecord(value)) {
+    return value;
+  }
+
+  const raw = readString(value);
+  if (!raw) {
+    return null;
+  }
+
+  if (cache?.has(raw)) {
+    return cache.get(raw) ?? null;
+  }
+
+  const parsed = tryParseJsonRecord(raw);
+  cache?.set(raw, parsed);
+  return parsed;
+}
+
+export function readPolicyStatements(
+  value: unknown,
+  cache?: Map<string, GraphRecord | null>,
+): readonly GraphRecord[] {
+  const parsed = parsePolicyDocument(value, cache);
+  if (!parsed) {
+    return [];
+  }
+
+  if (isRecord(parsed.Statement)) {
+    return [parsed.Statement];
+  }
+
+  return readRecordArray(parsed.Statement);
+}
+
+export function readPolicyActions(value: unknown): readonly string[] {
+  const direct = readString(value);
+  if (direct) {
+    return [direct];
+  }
+
+  return readStringArray(value);
+}
+
+export function policyActionsInclude(
+  actions: readonly string[],
+  targetAction: string,
+): boolean {
+  const normalizedTarget = normalizePolicyToken(targetAction);
+  return actions.some((action) =>
+    matchesPolicyAction(normalizePolicyToken(action), normalizedTarget),
+  );
+}
+
+export function readPolicyPrincipalEntries(
+  value: unknown,
+): readonly PolicyPrincipalEntry[] {
+  const entries: PolicyPrincipalEntry[] = [];
+  const direct = readString(value);
+  if (direct) {
+    appendPrincipalEntry(entries, inferPrincipalType(direct), direct);
+    return entries;
+  }
+
+  if (!isRecord(value)) {
+    return entries;
+  }
+
+  appendPrincipalEntries(entries, 'aws', value.AWS);
+  appendPrincipalEntries(entries, 'service', value.Service);
+  appendPrincipalEntries(entries, 'canonical', value.CanonicalUser);
+  appendPrincipalEntries(entries, 'federated', value.Federated);
+  return entries;
+}
+
+export function readConditionEntries(
+  value: unknown,
+): ReadonlyMap<string, readonly string[]> {
+  if (!isRecord(value)) {
+    return new Map();
+  }
+
+  const entries = new Map<string, string[]>();
+  for (const [outerKey, outerValue] of Object.entries(value)) {
+    if (isRecord(outerValue)) {
+      for (const [conditionKey, conditionValue] of Object.entries(outerValue)) {
+        addConditionEntry(entries, conditionKey, conditionValue);
+      }
+      continue;
+    }
+
+    addConditionEntry(entries, outerKey, outerValue);
+  }
+
+  return entries;
+}
+
+export function readConditionKeys(value: unknown): readonly string[] {
+  return [...readConditionEntries(value).keys()].sort();
+}
+
+export function readConditionValues(
+  value: unknown,
+  matchers: readonly string[],
+): readonly string[] {
+  const matcherSet = new Set(matchers.map((matcher) => matcher.toLowerCase()));
+  const collected = new Set<string>();
+
+  for (const [key, entries] of readConditionEntries(value).entries()) {
+    if (!matcherSet.has(key.toLowerCase())) {
+      continue;
+    }
+
+    for (const entry of entries) {
+      collected.add(entry);
+    }
+  }
+
+  return [...collected];
+}
+
+export function readConditionAccountIds(value: unknown): readonly string[] {
+  const collected = new Set<string>();
+  for (const entry of readConditionValues(value, CROSS_ACCOUNT_CONDITION_KEYS)) {
+    const accountId = extractAccountIdFromPrincipal(entry);
+    if (accountId) {
+      collected.add(accountId);
+    }
+  }
+  return [...collected];
+}
+
+export function buildIamRootArn(
+  partition: string,
+  accountId: string,
+): string {
+  return formatArn({
+    raw: '',
+    partition,
+    service: 'iam',
+    region: null,
+    accountId,
+    resourceType: null,
+    resourceId: 'root',
+  });
+}
+
+export function buildPrincipalArn(
+  partition: string,
+  principal: string,
+): string | null {
+  const normalized = principal.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const parsed = tryParseArn(normalized);
+  if (parsed) {
+    return parsed.raw;
+  }
+
+  return /^\d{12}$/.test(normalized)
+    ? buildIamRootArn(partition, normalized)
+    : null;
+}
+
+export function extractAccountIdFromPrincipal(value: string): string | null {
+  const normalized = value.trim();
+  if (/^\d{12}$/.test(normalized)) {
+    return normalized;
+  }
+
+  return tryParseArn(normalized)?.accountId ?? null;
 }
 
 export function getMetadata(attrs: GraphRecord): GraphRecord {
@@ -277,6 +465,136 @@ export function isDataServiceLike(
     .map((value) => value.toLowerCase());
 
   return containsKeyword(haystack, DATA_SERVICE_TOKENS);
+}
+
+function tryParseJsonRecord(value: string): GraphRecord | null {
+  const candidates = [value, safeDecodeURIComponent(value)].filter(
+    (candidate, index, all): candidate is string =>
+      candidate !== null && all.indexOf(candidate) === index,
+  );
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJsonCandidate(candidate);
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  return null;
+}
+
+function tryParseJsonCandidate(value: string): GraphRecord | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (isRecord(parsed)) {
+      return parsed;
+    }
+
+    if (typeof parsed === 'string') {
+      const nested = JSON.parse(parsed) as unknown;
+      return isRecord(nested) ? nested : null;
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function safeDecodeURIComponent(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded === value ? null : decoded;
+  } catch {
+    return null;
+  }
+}
+
+function appendPrincipalEntries(
+  target: PolicyPrincipalEntry[],
+  type: Exclude<PolicyPrincipalEntry['type'], 'wildcard'>,
+  value: unknown,
+): void {
+  const direct = readString(value);
+  if (direct) {
+    appendPrincipalEntry(target, direct === '*' ? 'wildcard' : type, direct);
+    return;
+  }
+
+  for (const entry of readStringArray(value)) {
+    appendPrincipalEntry(target, entry === '*' ? 'wildcard' : type, entry);
+  }
+}
+
+function appendPrincipalEntry(
+  target: PolicyPrincipalEntry[],
+  type: PolicyPrincipalEntry['type'],
+  value: string,
+): void {
+  const normalized = value.trim();
+  if (!normalized) {
+    return;
+  }
+
+  target.push({
+    type,
+    value: normalized,
+  });
+}
+
+function inferPrincipalType(value: string): PolicyPrincipalEntry['type'] {
+  if (value === '*') {
+    return 'wildcard';
+  }
+
+  return value.endsWith('.amazonaws.com') ? 'service' : 'aws';
+}
+
+function addConditionEntry(
+  target: Map<string, string[]>,
+  key: string,
+  value: unknown,
+): void {
+  const entries = readConditionStrings(value);
+  if (entries.length === 0) {
+    return;
+  }
+
+  const existing = target.get(key) ?? [];
+  for (const entry of entries) {
+    if (!existing.includes(entry)) {
+      existing.push(entry);
+    }
+  }
+  target.set(key, existing);
+}
+
+function readConditionStrings(value: unknown): readonly string[] {
+  const direct = readString(value);
+  if (direct) {
+    return [direct];
+  }
+
+  return readStringArray(value);
+}
+
+function normalizePolicyToken(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function matchesPolicyAction(
+  action: string,
+  targetAction: string,
+): boolean {
+  if (action === '*') {
+    return true;
+  }
+
+  if (action.endsWith('*')) {
+    return targetAction.startsWith(action.slice(0, -1));
+  }
+
+  return action === targetAction;
 }
 
 function containsKeyword(

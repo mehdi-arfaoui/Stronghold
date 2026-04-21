@@ -1,6 +1,0 @@
-prod_account_id    = "111122223333"
-staging_account_id = "444455556666"
-prod_profile       = "stronghold-test-prod"
-staging_profile    = "stronghold-test-staging"
-region             = "eu-west-3"
-my_ip              = "1.2.3.4/32"

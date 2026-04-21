@@ -1,0 +1,46 @@
+# Build outputs
+packages/core/dist/
+packages/cli/dist/
+packages/server/dist/
+packages/web/dist/
+github-action/dist/
+
+# Dependencies
+node_modules/
+
+# Generated files
+package-lock.json
+*.lock
+
+# Fixtures (grosses, rarement nécessaires)
+packages/core/src/__fixtures__/aws-real/
+
+# Landing page (pas du code Stronghold)
+landing/
+
+# Git history
+.git/
+
+# Local state
+.stronghold/
+
+# Web UI (rarement modifié par Codex)
+packages/web/src/components/
+packages/web/src/pages/
+packages/web/src/store/
+packages/web/src/lib/
+
+# Server (rarement modifié sauf routes)
+packages/server/src/__tests__/
+packages/server/prisma/migrations/
+
+# Docs (texte, pas du code)
+docs/
+
+# Scripts one-shot
+scripts/
+
+landing/
+docs/marketing/
+web/
+scripts/non-essential/
