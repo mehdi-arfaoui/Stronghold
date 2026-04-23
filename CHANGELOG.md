@@ -9,6 +9,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 No changes yet.
 
+## [2.0.0] - 2026-04-23
+
+### Breaking Changes
+
+- **JSON output format unified.** The `stronghold scan --format json` output now uses a single canonical format, regardless of whether the scan is single-account or multi-account.
+  - **Before (single-account legacy)**: `nodes` and `edges` were at the root of the output.
+  - **Before (multi-account)**: nodes and edges were under `graph.nodes` and `graph.edges`.
+  - **Now**: always `output.graph.nodes`, `output.graph.edges`, and `output.graph.crossAccount.edges`.
+  - Scripts parsing the legacy single-account format must be updated to read from `graph.nodes` and `graph.edges`.
+  - See [docs/migrations/v2-json-contract.md](docs/migrations/v2-json-contract.md) for migration examples.
+
+### Added
+
+- **`stronghold graph` command.** Dedicated CLI command to export the DR dependency graph as a standalone interactive HTML file or as JSON.
+- **Cross-account edges in graph output.** The canonical JSON includes `graph.crossAccount` with detected cross-account dependencies.
+
+### Changed
+
+- The Terraform lab config template (`infra/stronghold-config.yaml.tpl`) now uses the canonical `accounts[]` format for single-account setups.
+
+### Migration from 1.x
+
+See [docs/migrations/v2-json-contract.md](docs/migrations/v2-json-contract.md).
+
 ## [1.0.0] - 2026-04-08
 
 ### Added

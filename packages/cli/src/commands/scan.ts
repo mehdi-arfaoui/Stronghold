@@ -2,7 +2,6 @@ import fs from 'node:fs';
 
 import { Command } from 'commander';
 import {
-  type CrossAccountDetectionResult,
   DEFAULT_ACCOUNT_SCAN_TIMEOUT_MS,
   DEFAULT_MULTI_ACCOUNT_CONCURRENCY,
   MultiAccountOrchestrator,
@@ -58,10 +57,18 @@ import { writeError, writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { determineScanExitCode, renderScanSummary } from '../output/scan-summary.js';
 import { formatReadOnlyMessage } from '../output/theme.js';
+import {
+  serializeCanonicalScanJson,
+  serializeCrossAccountDetection,
+} from '../output/canonical-json-serializer.js';
+import type {
+  AccountSummary,
+  MultiAccountScanSerializationMetadata,
+} from '../output/canonical-json-types.js';
 import { runAwsScan, type AwsScanExecution } from '../pipeline/aws-scan.js';
 import { buildGraph, snapshotEdges, snapshotNodes } from '../pipeline/graph-builder.js';
 import { runScanPipeline } from '../pipeline/scan-pipeline.js';
-import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
+import type { ScanExecutionMetadata } from '../storage/file-store.js';
 import { loadScanResultsWithEncryption, saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
 
@@ -89,10 +96,11 @@ export function registerScanCommand(program: Command): void {
       parseScannerTimeoutOption,
     )
     .option('--output <format>', 'summary|json|silent', DEFAULT_SCAN_OUTPUT)
+    .option('--format <format>', 'Alias for --output: summary|json|silent')
     .option('--no-save', "Don't save scan results")
     .option('--verbose', 'Show detailed logs', false),
   ).action(async (_: ScanCommandOptions, command: Command) => {
-      const options = getCommandOptions<ScanCommandOptions>(command);
+      const options = normalizeScanCommandOptions(getCommandOptions<ScanCommandOptions>(command));
       let audit: CommandAuditSession | null = null;
 
       try {
@@ -239,14 +247,29 @@ export function registerScanCommand(program: Command): void {
         const topRecommendations = selectTopRecommendations(recommendations);
 
         if (options.output === 'json') {
+          const canonical = serializeCanonicalScanJson(
+            multiAccountOutput
+              ? {
+                  kind: 'multi-account',
+                  results: execution.results,
+                  ...multiAccountOutput,
+                }
+              : {
+                  kind: 'single-account',
+                  results: execution.results,
+                  account: {
+                    ...(callerIdentity?.accountId ? { accountId: callerIdentity.accountId } : {}),
+                    ...(execution.results.scanMetadata?.accountName
+                      ? { alias: execution.results.scanMetadata.accountName }
+                      : {}),
+                    ...(execution.results.regions[0] ? { region: execution.results.regions[0] } : {}),
+                    durationMs: execution.scanMetadata.totalDurationMs,
+                  },
+                },
+          );
           await writeOutput(
             JSON.stringify(
-              multiAccountOutput
-                ? buildMultiAccountJsonOutput(execution.results, recommendations, multiAccountOutput)
-                : {
-                    ...execution.results,
-                    recommendations,
-                  },
+              canonical,
               null,
               2,
             ),
@@ -358,54 +381,20 @@ interface PendingStageRef {
   value: string | null;
 }
 
+function normalizeScanCommandOptions(
+  options: ScanCommandOptions & { readonly passphrase?: string; readonly encrypt: boolean; readonly redact?: boolean },
+): ScanCommandOptions & { readonly passphrase?: string; readonly encrypt: boolean; readonly redact?: boolean } {
+  return {
+    ...options,
+    output: options.format ?? options.output,
+  };
+}
+
 interface CommandExecutionResult {
   readonly execution: AwsScanExecution;
   readonly callerIdentity: Awaited<ReturnType<typeof resolveScanAuditIdentity>> | null;
   readonly exitCodeOverride?: 0 | 1;
-  readonly multiAccountOutput?: MultiAccountJsonPayload;
-}
-
-interface MultiAccountJsonPayload {
-  readonly accounts: readonly MultiAccountJsonAccount[];
-  readonly errors: ReadonlyArray<{
-    readonly accountId: string;
-    readonly alias: string | null;
-    readonly phase: string;
-    readonly message: string;
-    readonly timestamp: string;
-  }>;
-  readonly crossAccount: {
-    readonly edges: CrossAccountDetectionResult['edges'];
-    readonly summary: {
-      readonly total: number;
-      readonly byKind: Readonly<Record<string, number>>;
-      readonly complete: number;
-      readonly partial: number;
-      readonly critical: number;
-      readonly degraded: number;
-      readonly informational: number;
-    };
-  };
-  readonly summary: {
-    readonly totalAccounts: number;
-    readonly successfulAccounts: number;
-    readonly failedAccounts: number;
-    readonly totalResources: number;
-    readonly resourcesByAccount: Readonly<Record<string, number>>;
-    readonly totalFindings: number;
-    readonly findingsByAccount: Readonly<Record<string, number>>;
-    readonly crossAccountEdges: number;
-  };
-}
-
-interface MultiAccountJsonAccount {
-  readonly accountId: string;
-  readonly alias: string | null;
-  readonly status: 'success' | 'failed';
-  readonly resourceCount?: number;
-  readonly findingCount?: number;
-  readonly scanDurationMs?: number;
-  readonly error?: string;
+  readonly multiAccountOutput?: MultiAccountScanSerializationMetadata;
 }
 
 interface ResolvedMultiAccountScanSetting {
@@ -543,7 +532,7 @@ async function executeMultiAccountScan(input: {
   readonly accountConcurrency: number;
 }): Promise<CommandExecutionResult> {
   const collector = new ScanErrorCollector();
-  const accountOutputById = new Map<string, MultiAccountJsonAccount>();
+  const accountOutputById = new Map<string, AccountSummary>();
   const resolvedTargets: ResolvedMultiAccountTarget[] = [];
   const totalAccounts = input.settings.length;
   const progress = { completed: 0 };
@@ -600,7 +589,11 @@ async function executeMultiAccountScan(input: {
       accountOutputById.set(setting.accountId, {
         accountId: setting.accountId,
         alias: setting.accountName,
+        region: formatConfiguredRegions(setting),
         status: 'failed',
+        resourceCount: 0,
+        findingCount: 0,
+        durationMs: 0,
         error: normalized.message,
       });
       progress.completed += 1;
@@ -720,10 +713,11 @@ async function executeMultiAccountScan(input: {
       accountOutputById.set(account.accountId, {
         accountId: account.accountId,
         alias: account.accountAlias,
+        region: result.regions.join(','),
         status: 'success',
         resourceCount: result.resources.length,
         findingCount: countFindings(result.findings),
-        scanDurationMs: result.scanDurationMs,
+        durationMs: result.scanDurationMs,
       });
       if (input.shouldPrint) {
         writeError(
@@ -744,7 +738,11 @@ async function executeMultiAccountScan(input: {
       accountOutputById.set(account.accountId, {
         accountId: account.accountId,
         alias: account.accountAlias,
+        region: resolvedTargetByAccountId.get(account.accountId)?.target.regions.join(',') ?? 'unknown',
         status: 'failed',
+        resourceCount: 0,
+        findingCount: 0,
+        durationMs: 0,
         error: error.message,
       });
       if (input.shouldPrint) {
@@ -842,7 +840,7 @@ async function executeMultiAccountScan(input: {
     multiAccountOutput: {
       accounts: input.settings
         .map((setting) => accountOutputById.get(setting.accountId))
-        .filter((account): account is MultiAccountJsonAccount => account !== undefined),
+        .filter((account): account is AccountSummary => account !== undefined),
       errors: collector.getErrors().map((error) => ({
         accountId: error.account.accountId,
         alias: error.account.accountAlias,
@@ -1014,52 +1012,6 @@ function buildMultiAccountScanMetadata(input: {
   };
 }
 
-function buildMultiAccountJsonOutput(
-  results: ScanResults,
-  recommendations: ReturnType<typeof generateRecommendations>,
-  payload: MultiAccountJsonPayload,
-): Record<string, unknown> {
-  return {
-    ...results,
-    recommendations,
-    scan: payload,
-    graph: {
-      nodes: results.nodes,
-      edges: results.edges,
-    },
-    findings: selectValidationFindings(results.validationReport.results),
-  };
-}
-
-function selectValidationFindings(
-  results: ScanResults['validationReport']['results'],
-): readonly ScanResults['validationReport']['results'][number][] {
-  return results.filter((result) =>
-    result.status === 'fail' || result.status === 'warn' || result.status === 'error',
-  );
-}
-
-function serializeCrossAccountDetection(
-  detection: CrossAccountDetectionResult,
-): MultiAccountJsonPayload['crossAccount'] {
-  return {
-    edges: detection.edges,
-    summary: {
-      total: detection.summary.total,
-      byKind: Object.fromEntries(
-        [...detection.summary.byKind.entries()].sort(([left], [right]) =>
-          left.localeCompare(right),
-        ),
-      ),
-      complete: detection.summary.complete,
-      partial: detection.summary.partial,
-      critical: detection.summary.critical,
-      degraded: detection.summary.degraded,
-      informational: detection.summary.informational,
-    },
-  };
-}
-
 function countFindings(
   results: readonly { readonly status: string }[],
 ): number {
@@ -1069,25 +1021,32 @@ function countFindings(
 }
 
 function buildResourceCountsByAccount(
-  accounts: ReadonlyMap<string, MultiAccountJsonAccount>,
+  accounts: ReadonlyMap<string, AccountSummary>,
 ): Readonly<Record<string, number>> {
   return Object.fromEntries(
     Array.from(accounts.values())
       .filter((account) => account.status === 'success')
-      .map((account) => [account.accountId, account.resourceCount ?? 0] as const)
+      .map((account) => [account.accountId, account.resourceCount] as const)
       .sort(([left], [right]) => left.localeCompare(right)),
   );
 }
 
 function buildFindingsByAccount(
-  accounts: ReadonlyMap<string, MultiAccountJsonAccount>,
+  accounts: ReadonlyMap<string, AccountSummary>,
 ): Readonly<Record<string, number>> {
   return Object.fromEntries(
     Array.from(accounts.values())
       .filter((account) => account.status === 'success')
-      .map((account) => [account.accountId, account.findingCount ?? 0] as const)
+      .map((account) => [account.accountId, account.findingCount] as const)
       .sort(([left], [right]) => left.localeCompare(right)),
   );
+}
+
+function formatConfiguredRegions(setting: ResolvedMultiAccountScanSetting): string {
+  if (setting.allRegions) {
+    return 'all-regions';
+  }
+  return setting.explicitRegions?.join(',') ?? 'unknown';
 }
 
 function resolveAccountErrorPhase(error: Error): string {

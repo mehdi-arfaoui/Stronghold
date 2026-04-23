@@ -136,10 +136,12 @@ aws:
     const parsed = JSON.parse(stdout.join(''));
     expect(parsed.scan.accounts).toHaveLength(2);
     expect(parsed.scan.errors).toHaveLength(1);
-    expect(Array.isArray(parsed.scan.crossAccount.edges)).toBe(true);
-    expect(parsed.scan.summary.crossAccountEdges).toBe(parsed.scan.crossAccount.edges.length);
+    expect(Array.isArray(parsed.graph.crossAccount.edges)).toBe(true);
+    expect(parsed.graph.crossAccount.summary).toBeDefined();
+    expect(parsed.scan.summary.crossAccountEdges).toBe(parsed.graph.crossAccount.edges.length);
     expect(parsed.summary).toBeUndefined();
     expect(parsed.graph.nodes.length).toBeGreaterThan(0);
+    expect(parsed.graph.edges.length).toBeGreaterThan(0);
     expect(Array.isArray(parsed.findings)).toBe(true);
     expect(stderr.join('')).toContain('Scanning 2 accounts...');
     expect(process.exitCode).toBe(1);

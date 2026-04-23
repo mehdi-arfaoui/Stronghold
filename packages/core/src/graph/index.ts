@@ -73,3 +73,11 @@ export {
 } from './graph-scenario-propagation.js';
 
 export { type GenerateBiaOptions, generateBIA } from './bia-engine.js';
+
+export {
+  type RenderGraphOptions,
+  type RenderedGraphEdge,
+  type RenderedGraphNode,
+} from './graph-html-renderer-types.js';
+
+export { renderGraphAsHtml } from './graph-html-renderer.js';

@@ -244,6 +244,10 @@ export {
   buildGraphScenarioPropagation,
   type GenerateBiaOptions,
   generateBIA,
+  type RenderGraphOptions,
+  type RenderedGraphEdge,
+  type RenderedGraphNode,
+  renderGraphAsHtml,
 } from './graph/index.js';
 
 export {

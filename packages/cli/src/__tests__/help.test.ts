@@ -22,6 +22,7 @@ describe('CLI help output', () => {
     expect(help).toContain('report');
     expect(help).toContain('plan');
     expect(help).toContain('drift');
+    expect(help).toContain('graph');
     expect(help).toContain('evidence');
     expect(help).toContain('history');
     expect(help).toContain('overrides');
@@ -49,6 +50,7 @@ describe('CLI help output', () => {
     expect(help).toContain('--profile');
     expect(help).toContain('--role-arn');
     expect(help).toContain('--external-id');
+    expect(help).toContain('--format');
   });
 
   it('stronghold report --help lists evidence-related flags', () => {

@@ -9,6 +9,7 @@ import { registerDemoCommand } from './commands/demo.js';
 import { registerDriftCommand } from './commands/drift.js';
 import { registerEvidenceCommand } from './commands/evidence.js';
 import { registerGovernanceCommand } from './commands/governance.js';
+import { registerGraphCommand } from './commands/graph.js';
 import { registerHistoryCommand } from './commands/history.js';
 import { registerIamPolicyCommand } from './commands/iam-policy.js';
 import { registerInitCommand } from './commands/init.js';
@@ -25,7 +26,7 @@ export function createProgram(): Command {
   program
     .name('stronghold')
     .description('Open-source disaster recovery automation for cloud infrastructure')
-    .version('1.0.0')
+    .version('2.0.0')
     .option('--encrypt', 'Encrypt sensitive files written by Stronghold', false)
     .option('--passphrase <string>', 'Passphrase used to encrypt or decrypt files')
     .option('--redact', 'Redact sensitive identifiers from generated output', false)
@@ -36,6 +37,7 @@ export function createProgram(): Command {
   registerReportCommand(program);
   registerPlanCommand(program);
   registerDriftCommand(program);
+  registerGraphCommand(program);
   registerEvidenceCommand(program);
   registerGovernanceCommand(program);
   registerHistoryCommand(program);

@@ -7,7 +7,7 @@ import { createAccountContext, createScanContext } from '@stronghold-dr/core';
 
 import { createDemoResults, createTempDirectory } from './test-utils.js';
 
-describe('scan command single-account compatibility', () => {
+describe('scan command single-account JSON contract', () => {
   const originalCwd = process.cwd();
   const originalExitCode = process.exitCode;
 
@@ -18,7 +18,7 @@ describe('scan command single-account compatibility', () => {
     vi.resetModules();
   });
 
-  it('keeps legacy single-account JSON output backward-compatible', async () => {
+  it('emits the canonical JSON output for legacy single-account config', async () => {
     const cwd = createLegacyWorkspace(`
 version: 1
 aws:
@@ -65,7 +65,7 @@ aws:
       'stronghold',
       'scan',
       '--no-save',
-      '--output',
+      '--format',
       'json',
     ]);
 
@@ -78,13 +78,19 @@ aws:
     );
     expect(runAwsScanSpy).toHaveBeenCalledTimes(1);
 
-    const parsed = JSON.parse(stdout.join('')) as Record<string, unknown>;
-    expect(parsed.scan).toBeUndefined();
-    expect(parsed.graph).toBeUndefined();
-    expect(parsed.findings).toBeUndefined();
-    expect(Array.isArray(parsed.nodes)).toBe(true);
-    expect(Array.isArray(parsed.edges)).toBe(true);
-    expect(Array.isArray(parsed.recommendations)).toBe(true);
+    const parsed = JSON.parse(stdout.join(''));
+    expect(parsed.nodes).toBeUndefined();
+    expect(parsed.edges).toBeUndefined();
+    expect(parsed.scan.accounts).toHaveLength(1);
+    expect(parsed.scan.accounts[0].status).toBe('success');
+    expect(parsed.scan.summary.totalAccounts).toBe(1);
+    expect(Array.isArray(parsed.graph.nodes)).toBe(true);
+    expect(Array.isArray(parsed.graph.edges)).toBe(true);
+    expect(parsed.graph.crossAccount.edges).toEqual([]);
+    expect(Array.isArray(parsed.findings)).toBe(true);
+    expect(Array.isArray(parsed.services)).toBe(true);
+    expect(parsed.scoring.validation).toBeDefined();
+    expect(parsed.realityGap).toBeDefined();
     expect(stderr.join('')).not.toContain('Scanning 1 accounts...');
     expect(process.exitCode).toBe(0);
   });

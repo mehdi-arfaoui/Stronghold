@@ -52,6 +52,7 @@ export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly concurrency?: number;
   readonly scannerTimeout?: number;
   readonly output: ScanOutputFormat;
+  readonly format?: ScanOutputFormat;
   readonly save: boolean;
   readonly verbose: boolean;
 }

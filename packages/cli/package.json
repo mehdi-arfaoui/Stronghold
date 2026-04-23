@@ -1,6 +1,6 @@
 {
   "name": "@stronghold-dr/cli",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "CLI for Stronghold - open-source disaster recovery automation",
   "bin": {
     "stronghold": "./bin/stronghold.js"
