@@ -416,4 +416,96 @@ describe('transformToScanResult', () => {
 
     expect(findEdge(result, 'backup-plan-1', 'vault-1', EdgeType.BACKS_UP_TO)).toBeDefined();
   });
+
+  it('links Lambda event sources, DLQs, and async destinations', () => {
+    const lambdaArn = 'arn:aws:lambda:eu-west-1:123456789012:function:worker';
+    const queueArn = 'arn:aws:sqs:eu-west-1:123456789012:jobs';
+    const dlqArn = 'arn:aws:sqs:eu-west-1:123456789012:worker-dlq';
+    const topicArn = 'arn:aws:sns:eu-west-1:123456789012:worker-success';
+    const result = transformToScanResult(
+      [
+        createResource({
+          externalId: lambdaArn,
+          type: 'LAMBDA',
+          metadata: {
+            region: 'eu-west-1',
+            functionArn: lambdaArn,
+            functionName: 'worker',
+            deadLetterConfig: { targetArn: dlqArn },
+            eventSourceMappings: [
+              {
+                uuid: 'esm-sqs',
+                eventSourceArn: queueArn,
+                state: 'Enabled',
+              },
+            ],
+            asyncInvokeConfig: {
+              maximumRetryAttempts: 2,
+              maximumEventAgeInSeconds: 21_600,
+              destinationConfig: {
+                onSuccess: { destination: topicArn },
+                onFailure: { destination: dlqArn },
+              },
+            },
+          },
+        }),
+        createResource({
+          externalId: queueArn,
+          type: 'SQS_QUEUE',
+          metadata: { region: 'eu-west-1', queueArn, queueName: 'jobs' },
+        }),
+        createResource({
+          externalId: dlqArn,
+          type: 'SQS_QUEUE',
+          metadata: { region: 'eu-west-1', queueArn: dlqArn, queueName: 'worker-dlq' },
+        }),
+        createResource({
+          externalId: topicArn,
+          type: 'SNS_TOPIC',
+          metadata: { region: 'eu-west-1', topicArn, topicName: 'worker-success' },
+        }),
+      ],
+      [],
+      'aws',
+    );
+
+    expect(findEdge(result, queueArn, lambdaArn, EdgeType.TRIGGERS)).toBeDefined();
+    expect(findEdge(result, lambdaArn, dlqArn, EdgeType.DEAD_LETTER)).toBeDefined();
+    expect(findEdge(result, lambdaArn, topicArn, EdgeType.PUBLISHES_TO_APPLICATIVE)).toBeDefined();
+  });
+
+  it('normalizes DynamoDB stream event sources to their table dependency', () => {
+    const lambdaArn = 'arn:aws:lambda:eu-west-1:123456789012:function:stream-worker';
+    const tableArn = 'arn:aws:dynamodb:eu-west-1:123456789012:table/orders';
+    const streamArn = `${tableArn}/stream/2026-04-01T00:00:00.000`;
+    const result = transformToScanResult(
+      [
+        createResource({
+          externalId: lambdaArn,
+          type: 'LAMBDA',
+          metadata: {
+            region: 'eu-west-1',
+            functionArn: lambdaArn,
+            functionName: 'stream-worker',
+            eventSourceMappings: [
+              {
+                uuid: 'esm-ddb',
+                eventSourceArn: streamArn,
+                state: 'Enabled',
+              },
+            ],
+          },
+        }),
+        createResource({
+          externalId: tableArn,
+          type: 'DYNAMODB',
+          metadata: { region: 'eu-west-1', tableArn, tableName: 'orders' },
+        }),
+      ],
+      [],
+      'aws',
+    );
+
+    expect(findEdge(result, tableArn, lambdaArn, EdgeType.TRIGGERS)).toBeDefined();
+  });
 });

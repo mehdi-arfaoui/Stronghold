@@ -68,6 +68,99 @@ export type EcsResourceType =
   | 'ECS_TASK_DEFINITION'
   | 'ECS_TASK'
   | 'ECS_CAPACITY_PROVIDER';
+export type LambdaResourceType = 'LAMBDA';
+
+export interface LambdaDeadLetterConfig {
+  readonly targetArn: string;
+}
+
+export interface LambdaDestinationTarget {
+  readonly destination: string;
+}
+
+export interface LambdaEventSourceMappingDestinationConfig {
+  readonly onFailure: LambdaDestinationTarget | null;
+}
+
+export interface LambdaEventSourceMappingAttributes {
+  readonly uuid: string;
+  readonly eventSourceArn: string;
+  readonly state: string;
+  readonly batchSize: number | null;
+  readonly maximumRetryAttempts: number | null;
+  readonly bisectBatchOnFunctionError: boolean | null;
+  readonly destinationConfig: LambdaEventSourceMappingDestinationConfig | null;
+  readonly functionResponseTypes: readonly string[];
+}
+
+export interface LambdaProvisionedConcurrencyAttributes {
+  readonly allocatedConcurrency: number;
+  readonly availableConcurrency: number;
+  readonly status: string;
+  readonly aliasOrVersion: string;
+}
+
+export interface LambdaAsyncInvokeDestinationConfig {
+  readonly onSuccess: LambdaDestinationTarget | null;
+  readonly onFailure: LambdaDestinationTarget | null;
+}
+
+export interface LambdaAsyncInvokeConfig {
+  readonly maximumRetryAttempts: number;
+  readonly maximumEventAgeInSeconds: number;
+  readonly destinationConfig: LambdaAsyncInvokeDestinationConfig | null;
+}
+
+export interface LambdaLayerAttributes {
+  readonly arn: string;
+  readonly codeSize: number;
+}
+
+export interface LambdaEnvironmentReference {
+  readonly varName: string;
+  readonly referenceType: string;
+  readonly value: string;
+}
+
+export interface LambdaDependencyEdgeAttributes {
+  readonly source?: string;
+  readonly target: string;
+  readonly type: string;
+  readonly relationship: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
+export interface LambdaFunctionMetadata {
+  readonly runtime: string | null;
+  readonly handler: string | null;
+  readonly functionName: string;
+  readonly functionArn: string;
+  readonly timeout: number | null;
+  readonly memorySize: number | null;
+  readonly roleArn: string | null;
+  readonly region: string;
+  readonly vpcId: string | null;
+  readonly subnetId: string | null;
+  readonly subnetIds: readonly string[];
+  readonly securityGroups: readonly string[];
+  readonly deadLetterConfig: LambdaDeadLetterConfig | null;
+  readonly deadLetterTargetArn: string | null;
+  readonly asyncInvokeConfig: LambdaAsyncInvokeConfig | null;
+  readonly eventInvokeConfig: LambdaAsyncInvokeConfig | null;
+  readonly onSuccessDestinationArn: string | null;
+  readonly onFailureDestinationArn: string | null;
+  readonly environmentVariableNames: readonly string[];
+  readonly environmentReferences: readonly LambdaEnvironmentReference[];
+  readonly eventSourceMappings: readonly LambdaEventSourceMappingAttributes[];
+  readonly provisionedConcurrency: LambdaProvisionedConcurrencyAttributes | null;
+  readonly provisionedConcurrencyConfigs: readonly Record<string, unknown>[];
+  readonly provisionedConcurrencyEnabled: boolean;
+  readonly reservedConcurrency: number | null;
+  readonly layers: readonly LambdaLayerAttributes[];
+  readonly directDependencyEdges: readonly LambdaDependencyEdgeAttributes[];
+  readonly displayName: string;
+  readonly awsTags?: Record<string, string>;
+}
 
 /** Attributes stored on each graphology node. */
 export interface InfraNodeAttrs {

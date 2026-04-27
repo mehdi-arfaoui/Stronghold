@@ -34,6 +34,9 @@ function mapAwsType(lower: string): string {
   if (normalized.includes('ec2') || normalized === 'instance') return NodeType.VM;
   if (normalized.includes('aurora')) return NodeType.DATABASE;
   if (normalized.includes('rds') || normalized.includes('database')) return NodeType.DATABASE;
+  if (normalized.includes('step-function') || normalized.includes('state-machine')) {
+    return NodeType.SERVERLESS;
+  }
   if (normalized.includes('lambda')) return NodeType.SERVERLESS;
   if (normalized.includes('ecs') || normalized.includes('fargate')) return NodeType.CONTAINER;
   if (normalized.includes('eks')) return NodeType.KUBERNETES_CLUSTER;
@@ -57,6 +60,7 @@ function mapAwsType(lower: string): string {
   if (
     normalized.includes('sqs') ||
     normalized.includes('sns') ||
+    normalized.includes('eventbridge') ||
     normalized.includes('kinesis') ||
     normalized.includes('queue') ||
     normalized.includes('topic')
@@ -240,6 +244,13 @@ function readRecordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function readStringArrayValue(value: unknown): readonly string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => readStringValue(entry))
+    .filter((entry): entry is string => Boolean(entry));
+}
+
 function toEngineLabel(engine: string | null): string | null {
   if (!engine) return null;
   const lower = engine.toLowerCase();
@@ -262,7 +273,12 @@ function inferAwsServiceLabel(
   const engine = toEngineLabel(readStringValue(metadata.engine));
 
   if (nodeType === NodeType.VM) return 'EC2 Instance';
-  if (nodeType === NodeType.SERVERLESS) return 'Lambda Function';
+  if (nodeType === NodeType.SERVERLESS) {
+    if (sourceLower.includes('step-function') || sourceLower.includes('state-machine')) {
+      return 'Step Functions State Machine';
+    }
+    return 'Lambda Function';
+  }
   if (nodeType === NodeType.CONTAINER) {
     if (sourceLower.includes('ecs-cluster')) return 'ECS Cluster';
     if (sourceLower.includes('ecs-service')) return 'ECS Service';
@@ -291,6 +307,7 @@ function inferAwsServiceLabel(
     return 'Object Storage';
   }
   if (nodeType === NodeType.MESSAGE_QUEUE) {
+    if (sourceLower.includes('eventbridge')) return 'EventBridge Rule';
     if (sourceLower.includes('sns') || sourceLower.includes('topic')) return 'SNS Topic';
     if (sourceLower.includes('sqs') || sourceLower.includes('queue')) return 'SQS Queue';
     return 'Messaging Service';
@@ -332,6 +349,8 @@ function resolveDisplayName(
     readStringValue(metadata.alarmName) ??
     readStringValue(metadata.clusterName) ??
     readStringValue(metadata.serviceName) ??
+    readStringValue(metadata.ruleName) ??
+    readStringValue(metadata.stateMachineName) ??
     readStringValue(metadata.family);
   if (metadataName) return metadataName;
 
@@ -408,6 +427,11 @@ function getMetadataReferences(metadata: Record<string, unknown>): readonly stri
     'serviceArn',
     'serviceName',
     'taskDefinitionArn',
+    'ruleArn',
+    'ruleName',
+    'eventBusName',
+    'stateMachineArn',
+    'stateMachineName',
   ] as const;
 
   for (const key of keys) addReference(references, readStringValue(metadata[key]));
@@ -415,6 +439,17 @@ function getMetadataReferences(metadata: Record<string, unknown>): readonly stri
   if (Array.isArray(metadata.subnetIds)) {
     for (const subnetId of metadata.subnetIds) {
       addReference(references, readStringValue(subnetId));
+    }
+  }
+  for (const key of [
+    'targetArns',
+    'targetRoleArns',
+    'targetDeadLetterArns',
+    'ecsTargetTaskDefinitionArns',
+    'definitionResourceArns',
+  ] as const) {
+    for (const entry of readStringArrayValue(metadata[key])) {
+      addReference(references, entry);
     }
   }
 
@@ -473,6 +508,56 @@ function addInferredEdge(edges: ScanEdge[], dedupe: Set<string>, edge: ScanEdge)
   edges.push(edge);
 }
 
+function addEdgesFromReferences(
+  node: InfraNodeAttrs,
+  edges: ScanEdge[],
+  dedupe: Set<string>,
+  referenceIndex: ReadonlyMap<string, readonly InfraNodeAttrs[]>,
+  references: readonly string[],
+  type: string,
+  metadata?: (reference: string) => Record<string, unknown> | undefined,
+): void {
+  for (const reference of references) {
+    for (const target of findNodeMatches(referenceIndex, reference)) {
+      if (target.id === node.id) continue;
+      addInferredEdge(edges, dedupe, {
+        source: node.id,
+        target: target.id,
+        type,
+        confidence: 1.0,
+        inferenceMethod: 'metadata',
+        provenance: 'aws-api',
+        metadata: metadata?.(reference),
+      });
+    }
+  }
+}
+
+function addIncomingEdgesFromReferences(
+  node: InfraNodeAttrs,
+  edges: ScanEdge[],
+  dedupe: Set<string>,
+  referenceIndex: ReadonlyMap<string, readonly InfraNodeAttrs[]>,
+  references: readonly string[],
+  type: string,
+  metadata?: (reference: string) => Record<string, unknown> | undefined,
+): void {
+  for (const reference of references) {
+    for (const source of findNodeMatches(referenceIndex, reference)) {
+      if (source.id === node.id) continue;
+      addInferredEdge(edges, dedupe, {
+        source: source.id,
+        target: node.id,
+        type,
+        confidence: 1.0,
+        inferenceMethod: 'metadata',
+        provenance: 'aws-api',
+        metadata: metadata?.(reference),
+      });
+    }
+  }
+}
+
 function addDirectDependencyEdges(
   node: InfraNodeAttrs,
   edges: ScanEdge[],
@@ -499,6 +584,19 @@ function addDirectDependencyEdges(
       },
     });
   }
+}
+
+function readDestination(value: unknown): string | null {
+  const target = readRecordValue(value);
+  return readStringValue(target?.destination);
+}
+
+function normalizeLambdaEventSourceDependencyArn(eventSourceArn: string): string {
+  const streamMarker = '/stream/';
+  if (eventSourceArn.includes(':dynamodb:') && eventSourceArn.includes(streamMarker)) {
+    return eventSourceArn.slice(0, eventSourceArn.indexOf(streamMarker));
+  }
+  return eventSourceArn;
 }
 
 /**
@@ -837,6 +935,24 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
       }
     }
 
+    if (Array.isArray(node.metadata.subnetIds) && !skipTypes.has(node.type as NodeType)) {
+      const subnetIds = (node.metadata.subnetIds as unknown[])
+        .map((value) => readStringValue(value))
+        .filter((value): value is string => Boolean(value));
+      for (const subnetId of subnetIds) {
+        const subnet = subnetNodes.find((candidate) => candidate.id.includes(subnetId));
+        if (!subnet) continue;
+        addInferredEdge(edges, dedupe, {
+          source: node.id,
+          target: subnet.id,
+          type: EdgeType.PLACED_IN,
+          confidence: 0.9,
+          inferenceMethod: 'metadata',
+          provenance: 'aws-api',
+        });
+      }
+    }
+
     const attachedSecurityGroups = Array.isArray(node.metadata.securityGroups)
       ? (node.metadata.securityGroups as unknown[])
           .map((value) => (typeof value === 'string' ? value : null))
@@ -974,6 +1090,191 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
             provenance: 'aws-api',
           });
         }
+      }
+    }
+
+    if (sourceTypeEquals(node, 'ecs_service')) {
+      const clusterArn = readStringValue(node.metadata.clusterArn);
+      for (const clusterNode of findNodeMatches(referenceIndex, clusterArn)) {
+        if (clusterNode.id === node.id) continue;
+        addInferredEdge(edges, dedupe, {
+          source: clusterNode.id,
+          target: node.id,
+          type: EdgeType.CONTAINS,
+          confidence: 1.0,
+          inferenceMethod: 'metadata',
+          provenance: 'aws-api',
+        });
+      }
+
+      const taskDefinitionArn = readStringValue(node.metadata.taskDefinitionArn);
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        taskDefinitionArn ? [taskDefinitionArn] : [],
+        EdgeType.USES,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue([
+          node.metadata.roleArn,
+          node.metadata.taskRoleArn,
+          node.metadata.executionRoleArn,
+        ]),
+        EdgeType.IAM_ACCESS,
+      );
+    }
+
+    if (sourceTypeEquals(node, 'eventbridge_rule')) {
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.targetArns),
+        EdgeType.TRIGGERS,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.targetRoleArns),
+        EdgeType.IAM_ACCESS,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.targetDeadLetterArns),
+        EdgeType.DEAD_LETTER,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.ecsTargetTaskDefinitionArns),
+        EdgeType.USES,
+      );
+    }
+
+    if (sourceTypeEquals(node, 'step_function_state_machine')) {
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue([
+          node.metadata.roleArn,
+        ]),
+        EdgeType.IAM_ACCESS,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.definitionResourceArns),
+        EdgeType.USES,
+      );
+    }
+
+    if (sourceTypeEquals(node, 'lambda')) {
+      const deadLetterConfig = readRecordValue(node.metadata.deadLetterConfig);
+      const deadLetterTargetArn =
+        readStringValue(deadLetterConfig?.targetArn) ??
+        readStringValue(node.metadata.deadLetterTargetArn);
+      if (deadLetterTargetArn) {
+        addEdgesFromReferences(
+          node,
+          edges,
+          dedupe,
+          referenceIndex,
+          [deadLetterTargetArn],
+          EdgeType.DEAD_LETTER,
+          () => ({ relationship: 'lambda_dead_letter_queue' }),
+        );
+      }
+
+      for (const mapping of readRecordArray(node.metadata.eventSourceMappings)) {
+        const eventSourceArn = readStringValue(mapping.eventSourceArn);
+        if (eventSourceArn) {
+          addIncomingEdgesFromReferences(
+            node,
+            edges,
+            dedupe,
+            referenceIndex,
+            [normalizeLambdaEventSourceDependencyArn(eventSourceArn)],
+            EdgeType.TRIGGERS,
+            () => ({
+              relationship: 'lambda_event_source',
+              eventSourceArn,
+              uuid: readStringValue(mapping.uuid),
+              state: readStringValue(mapping.state),
+            }),
+          );
+        }
+
+        const mappingDestinationConfig = readRecordValue(mapping.destinationConfig);
+        const mappingOnFailureDestination = readDestination(mappingDestinationConfig?.onFailure);
+        if (mappingOnFailureDestination) {
+          addEdgesFromReferences(
+            node,
+            edges,
+            dedupe,
+            referenceIndex,
+            [mappingOnFailureDestination],
+            EdgeType.DEAD_LETTER,
+            () => ({
+              relationship: 'lambda_event_source_on_failure_destination',
+              eventSourceArn,
+              uuid: readStringValue(mapping.uuid),
+            }),
+          );
+        }
+      }
+
+      const asyncInvokeConfig =
+        readRecordValue(node.metadata.asyncInvokeConfig) ??
+        readRecordValue(node.metadata.eventInvokeConfig);
+      const asyncDestinationConfig = readRecordValue(asyncInvokeConfig?.destinationConfig);
+      const onSuccessDestinationArn =
+        readDestination(asyncDestinationConfig?.onSuccess) ??
+        readStringValue(asyncDestinationConfig?.onSuccessDestination) ??
+        readStringValue(node.metadata.onSuccessDestinationArn);
+      if (onSuccessDestinationArn) {
+        addEdgesFromReferences(
+          node,
+          edges,
+          dedupe,
+          referenceIndex,
+          [onSuccessDestinationArn],
+          EdgeType.PUBLISHES_TO_APPLICATIVE,
+          () => ({ relationship: 'lambda_async_on_success_destination' }),
+        );
+      }
+
+      const onFailureDestinationArn =
+        readDestination(asyncDestinationConfig?.onFailure) ??
+        readStringValue(asyncDestinationConfig?.onFailureDestination) ??
+        readStringValue(node.metadata.onFailureDestinationArn);
+      if (onFailureDestinationArn) {
+        addEdgesFromReferences(
+          node,
+          edges,
+          dedupe,
+          referenceIndex,
+          [onFailureDestinationArn],
+          EdgeType.DEAD_LETTER,
+          () => ({ relationship: 'lambda_async_on_failure_destination' }),
+        );
       }
     }
   }
