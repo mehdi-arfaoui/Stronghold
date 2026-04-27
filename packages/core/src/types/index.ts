@@ -4,6 +4,7 @@ export {
   type Severity,
   type EdgeProvenance,
   type CriticalitySource,
+  type EcsResourceType,
   type InfraNodeAttrs,
   type InfraEdgeAttrs,
   type ScanResult,

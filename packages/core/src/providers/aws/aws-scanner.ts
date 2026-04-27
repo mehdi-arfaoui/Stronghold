@@ -30,6 +30,7 @@ import {
   scanVpcs,
 } from './services/ec2-scanner.js';
 import { scanEfsFileSystems } from './services/efs-scanner.js';
+import { scanEcsServices } from './services/ecs-scanner.js';
 import { scanEksClusters } from './services/eks-scanner.js';
 import { scanElastiCacheClusters } from './services/elasticache-scanner.js';
 import { scanLoadBalancers } from './services/elb-scanner.js';
@@ -59,6 +60,7 @@ const SERVICE_SCANNERS = [
   'Aurora',
   'EFS',
   'Lambda',
+  'ECS',
   'ElastiCache',
   'DynamoDB',
   'SQS',
@@ -150,6 +152,7 @@ function buildAwsServiceScanners(
     },
     { name: 'EFS', scan: scanEfsFileSystems },
     { name: 'Lambda', scan: scanLambdaFunctions },
+    { name: 'ECS', scan: scanEcsServices },
     { name: 'ElastiCache', scan: scanElastiCacheClusters },
     { name: 'DynamoDB', scan: scanDynamoDbTables },
     { name: 'SQS', scan: scanSqsQueues },
@@ -218,6 +221,10 @@ function normalizeRequestedServices(
     }
     if (normalized === 'lambda') {
       selected.add('Lambda');
+      continue;
+    }
+    if (normalized === 'ecs' || normalized === 'fargate') {
+      selected.add('ECS');
       continue;
     }
     if (normalized === 'dynamodb') {

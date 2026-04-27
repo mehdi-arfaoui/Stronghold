@@ -227,6 +227,19 @@ function readStringValue(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+function readRecordArray(value: unknown): readonly Record<string, unknown>[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object')
+    .map((entry) => entry as Record<string, unknown>);
+}
+
+function readRecordValue(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
 function toEngineLabel(engine: string | null): string | null {
   if (!engine) return null;
   const lower = engine.toLowerCase();
@@ -250,6 +263,13 @@ function inferAwsServiceLabel(
 
   if (nodeType === NodeType.VM) return 'EC2 Instance';
   if (nodeType === NodeType.SERVERLESS) return 'Lambda Function';
+  if (nodeType === NodeType.CONTAINER) {
+    if (sourceLower.includes('ecs-cluster')) return 'ECS Cluster';
+    if (sourceLower.includes('ecs-service')) return 'ECS Service';
+    if (sourceLower.includes('ecs-task-definition')) return 'ECS Task Definition';
+    if (sourceLower.includes('ecs-task')) return 'ECS Task';
+    if (sourceLower.includes('ecs-capacity-provider')) return 'ECS Capacity Provider';
+  }
   if (nodeType === NodeType.CACHE) {
     if (sourceLower.includes('elasticache')) return `ElastiCache ${engine ?? 'Cache'}`;
     return engine ? `${engine} Cache` : 'Cache Service';
@@ -309,7 +329,10 @@ function resolveDisplayName(
     readStringValue(metadata.mountTargetId) ??
     readStringValue(metadata.backupPlanName) ??
     readStringValue(metadata.backupVaultName) ??
-    readStringValue(metadata.alarmName);
+    readStringValue(metadata.alarmName) ??
+    readStringValue(metadata.clusterName) ??
+    readStringValue(metadata.serviceName) ??
+    readStringValue(metadata.family);
   if (metadataName) return metadataName;
 
   if (sourceType.includes('topic')) {
@@ -380,7 +403,11 @@ function getMetadataReferences(metadata: Record<string, unknown>): readonly stri
     'natGatewayId',
     'vpcId',
     'subnetId',
+    'clusterArn',
     'clusterName',
+    'serviceArn',
+    'serviceName',
+    'taskDefinitionArn',
   ] as const;
 
   for (const key of keys) addReference(references, readStringValue(metadata[key]));
@@ -444,6 +471,34 @@ function addInferredEdge(edges: ScanEdge[], dedupe: Set<string>, edge: ScanEdge)
   if (dedupe.has(key)) return;
   dedupe.add(key);
   edges.push(edge);
+}
+
+function addDirectDependencyEdges(
+  node: InfraNodeAttrs,
+  edges: ScanEdge[],
+  dedupe: Set<string>,
+): void {
+  for (const dependency of readRecordArray(node.metadata.directDependencyEdges)) {
+    const target = readStringValue(dependency.target);
+    const type = readStringValue(dependency.type) ?? EdgeType.DEPENDS_ON;
+    const source = readStringValue(dependency.source) ?? node.id;
+    if (!target || !type || source === target) continue;
+
+    const extraMetadata = readRecordValue(dependency.metadata);
+    const relationship = readStringValue(dependency.relationship);
+    addInferredEdge(edges, dedupe, {
+      source,
+      target,
+      type,
+      confidence: 1.0,
+      inferenceMethod: 'metadata',
+      provenance: 'aws-api',
+      metadata: {
+        ...(relationship ? { relationship } : {}),
+        ...(extraMetadata ?? {}),
+      },
+    });
+  }
 }
 
 /**
@@ -593,6 +648,8 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
   ]);
 
   for (const node of nodes) {
+    addDirectDependencyEdges(node, edges, dedupe);
+
     if (node.type === NodeType.SUBNET && node.metadata.vpcId) {
       const vpc = vpcNodes.find((candidate) => candidate.id.includes(String(node.metadata.vpcId)));
       if (vpc) {

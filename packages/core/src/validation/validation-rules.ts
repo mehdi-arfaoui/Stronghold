@@ -13,6 +13,7 @@ import type {
   ValidationRule,
 } from './validation-types.js';
 import { collectNodeReferences, hasNodeKind } from './validation-node-utils.js';
+import { ecsValidationRules } from './rules/ecs-rules.js';
 
 const MINIMUM_BACKUP_RETENTION_DAYS = 7;
 const ROUTE53_WARN_TTL_SECONDS = 60;
@@ -1603,6 +1604,7 @@ export const allValidationRules: readonly ValidationRule[] = [
   elbHealthCheckRule,
   elbMultiAzRule,
   sqsDlqConfiguredRule,
+  ...ecsValidationRules,
   eksMultiAzRule,
   vpcMultiAzSubnetsRule,
   vpcNatRedundancyRule,

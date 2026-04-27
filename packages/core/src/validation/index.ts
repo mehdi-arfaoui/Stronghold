@@ -18,6 +18,7 @@ export type {
 } from './validation-types.js';
 
 export { allValidationRules } from './validation-rules.js';
+export { ecsValidationRules } from './rules/ecs-rules.js';
 
 export {
   blastRadiusWeight,

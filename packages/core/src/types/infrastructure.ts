@@ -62,6 +62,12 @@ export enum EdgeType {
 export type Severity = 'critical' | 'high' | 'medium' | 'low';
 export type EdgeProvenance = 'manual' | 'inferred' | 'aws-api';
 export type CriticalitySource = 'computed' | 'manual';
+export type EcsResourceType =
+  | 'ECS_CLUSTER'
+  | 'ECS_SERVICE'
+  | 'ECS_TASK_DEFINITION'
+  | 'ECS_TASK'
+  | 'ECS_CAPACITY_PROVIDER';
 
 /** Attributes stored on each graphology node. */
 export interface InfraNodeAttrs {

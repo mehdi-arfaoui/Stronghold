@@ -73,6 +73,16 @@ export function collectNodeKinds(node: InfraNode): ReadonlySet<string> {
     if (withoutPrefix.includes('elasticache')) kinds.add('elasticache');
     if (withoutPrefix.includes('dynamodb')) kinds.add('dynamodb');
     if (withoutPrefix.includes('lambda')) kinds.add('lambda');
+    if (withoutPrefix.includes('ecs')) {
+      kinds.add('ecs');
+      if (withoutPrefix.includes('cluster')) kinds.add('ecs-cluster');
+      if (withoutPrefix.includes('service')) kinds.add('ecs-service');
+      if (withoutPrefix.includes('task-definition')) kinds.add('ecs-task-definition');
+      if (withoutPrefix.includes('task') && !withoutPrefix.includes('task-definition')) {
+        kinds.add('ecs-task');
+      }
+      if (withoutPrefix.includes('capacity-provider')) kinds.add('ecs-capacity-provider');
+    }
     if (withoutPrefix.includes('sqs')) kinds.add('sqs');
     if (withoutPrefix.includes('eks')) kinds.add('eks');
     if (withoutPrefix.includes('vpc')) kinds.add('vpc');
@@ -144,7 +154,11 @@ export function collectNodeReferences(node: InfraNode): ReadonlySet<string> {
     'natGatewayId',
     'vpcId',
     'subnetId',
+    'clusterArn',
     'clusterName',
+    'serviceArn',
+    'serviceName',
+    'taskDefinitionArn',
   ] as const;
 
   addReference(references, node.id);
