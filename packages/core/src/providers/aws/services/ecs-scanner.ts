@@ -51,6 +51,7 @@ const ECR_IMAGE_PATTERN =
   /^(?<accountId>\d{12})\.dkr\.ecr\.(?<region>[a-z0-9-]+)\.(?<domain>amazonaws\.com(?:\.cn)?)\/(?<repository>[^:@]+)(?:(?<separator>[:@])(?<reference>.+))?$/;
 
 interface EcsDependencyEdgeSummary {
+  readonly source?: string;
   readonly target: string;
   readonly type: string;
   readonly relationship: string;
@@ -638,7 +639,7 @@ function dedupeDependencyEdges(
 ): readonly EcsDependencyEdgeSummary[] {
   const byKey = new Map<string, EcsDependencyEdgeSummary>();
   for (const edge of edges) {
-    byKey.set(`${source}|${edge.target}|${edge.type}|${edge.relationship}`, edge);
+    byKey.set(`${edge.source ?? source}|${edge.target}|${edge.type}|${edge.relationship}`, edge);
   }
   return Array.from(byKey.values());
 }
@@ -745,12 +746,19 @@ function buildClusterDependencyEdges(
 
 function buildServiceDependencyEdges(input: {
   readonly service: Service;
+  readonly serviceArn: string;
   readonly clusterArn: string;
   readonly taskDefinitionArn: string | null;
   readonly accountContext: AccountContext;
   readonly region: string;
 }): readonly EcsDependencyEdgeSummary[] {
   const edges: EcsDependencyEdgeSummary[] = [
+    {
+      source: input.clusterArn,
+      target: input.serviceArn,
+      type: EdgeType.CONTAINS,
+      relationship: 'contains_service',
+    },
     {
       target: input.clusterArn,
       type: EdgeType.DEPENDS_ON,
@@ -1032,6 +1040,7 @@ function buildServiceResource(input: {
         capacityProviderStrategy.some((provider) => provider.capacityProvider === 'FARGATE'),
       directDependencyEdges: buildServiceDependencyEdges({
         service: input.service,
+        serviceArn: input.serviceArn,
         clusterArn: input.clusterArn,
         taskDefinitionArn: input.taskDefinitionArn,
         accountContext: input.accountContext,
