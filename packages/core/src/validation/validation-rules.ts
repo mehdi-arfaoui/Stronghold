@@ -14,7 +14,9 @@ import type {
 } from './validation-types.js';
 import { collectNodeReferences, hasNodeKind } from './validation-node-utils.js';
 import { ecsValidationRules } from './rules/ecs-rules.js';
+import { eventBridgeValidationRules } from './rules/eventbridge-rules.js';
 import { lambdaValidationRules } from './rules/lambda-rules.js';
+import { stepFunctionsValidationRules } from './rules/stepfunctions-rules.js';
 
 const MINIMUM_BACKUP_RETENTION_DAYS = 7;
 const ROUTE53_WARN_TTL_SECONDS = 60;
@@ -1605,6 +1607,8 @@ export const allValidationRules: readonly ValidationRule[] = [
   elbHealthCheckRule,
   elbMultiAzRule,
   sqsDlqConfiguredRule,
+  ...eventBridgeValidationRules,
+  ...stepFunctionsValidationRules,
   ...lambdaValidationRules,
   ...ecsValidationRules,
   eksMultiAzRule,

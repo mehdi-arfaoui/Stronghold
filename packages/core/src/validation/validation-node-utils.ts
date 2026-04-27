@@ -85,6 +85,23 @@ export function collectNodeKinds(node: InfraNode): ReadonlySet<string> {
     }
     if (withoutPrefix.includes('sqs')) kinds.add('sqs');
     if (withoutPrefix.includes('eks')) kinds.add('eks');
+    if (withoutPrefix.includes('eventbridge') || withoutPrefix.includes('events-rule')) {
+      kinds.add('eventbridge');
+      if (withoutPrefix.includes('bus')) kinds.add('eventbridge-bus');
+      if (withoutPrefix.includes('target')) kinds.add('eventbridge-target');
+      if (withoutPrefix.includes('rule') || withoutPrefix.includes('events-rule')) {
+        kinds.add('eventbridge-rule');
+      }
+    }
+    if (
+      withoutPrefix.includes('sfn') ||
+      withoutPrefix.includes('step-function') ||
+      withoutPrefix.includes('state-machine')
+    ) {
+      kinds.add('step-functions');
+      kinds.add('step-function-state-machine');
+      kinds.add('sfn-state-machine');
+    }
     if (withoutPrefix.includes('vpc')) kinds.add('vpc');
     if (withoutPrefix.includes('subnet')) kinds.add('subnet');
     if (
@@ -159,6 +176,11 @@ export function collectNodeReferences(node: InfraNode): ReadonlySet<string> {
     'serviceArn',
     'serviceName',
     'taskDefinitionArn',
+    'ruleArn',
+    'ruleName',
+    'eventBusName',
+    'stateMachineArn',
+    'stateMachineName',
   ] as const;
 
   addReference(references, node.id);

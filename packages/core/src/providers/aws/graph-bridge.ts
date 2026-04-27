@@ -307,6 +307,8 @@ function inferAwsServiceLabel(
     return 'Object Storage';
   }
   if (nodeType === NodeType.MESSAGE_QUEUE) {
+    if (sourceLower.includes('eventbridge-bus')) return 'EventBridge Event Bus';
+    if (sourceLower.includes('eventbridge-target')) return 'EventBridge Target';
     if (sourceLower.includes('eventbridge')) return 'EventBridge Rule';
     if (sourceLower.includes('sns') || sourceLower.includes('topic')) return 'SNS Topic';
     if (sourceLower.includes('sqs') || sourceLower.includes('queue')) return 'SQS Queue';
@@ -429,7 +431,10 @@ function getMetadataReferences(metadata: Record<string, unknown>): readonly stri
     'taskDefinitionArn',
     'ruleArn',
     'ruleName',
+    'eventBusArn',
     'eventBusName',
+    'targetArn',
+    'cloudWatchLogGroupArn',
     'stateMachineArn',
     'stateMachineName',
   ] as const;
@@ -443,10 +448,12 @@ function getMetadataReferences(metadata: Record<string, unknown>): readonly stri
   }
   for (const key of [
     'targetArns',
+    'targetResourceArns',
     'targetRoleArns',
     'targetDeadLetterArns',
     'ecsTargetTaskDefinitionArns',
     'definitionResourceArns',
+    'cloudWatchLogGroupArns',
   ] as const) {
     for (const entry of readStringArrayValue(metadata[key])) {
       addReference(references, entry);
@@ -1136,6 +1143,26 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
         edges,
         dedupe,
         referenceIndex,
+        readStringArrayValue([
+          node.metadata.eventBusArn,
+        ]),
+        EdgeType.DEPENDS_ON,
+        () => ({ relationship: 'belongs_to_eventbridge_bus' }),
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.targetResourceArns),
+        EdgeType.TRIGGERS,
+        () => ({ relationship: 'has_eventbridge_target' }),
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
         readStringArrayValue(node.metadata.targetArns),
         EdgeType.TRIGGERS,
       );
@@ -1165,7 +1192,44 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
       );
     }
 
-    if (sourceTypeEquals(node, 'step_function_state_machine')) {
+    if (sourceTypeEquals(node, 'eventbridge_target')) {
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue([
+          node.metadata.targetArn,
+        ]),
+        EdgeType.TRIGGERS,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue([
+          node.metadata.roleArn,
+        ]),
+        EdgeType.IAM_ACCESS,
+      );
+      const deadLetterConfig = readRecordValue(node.metadata.deadLetterConfig);
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue([
+          readStringValue(deadLetterConfig?.arn),
+        ]),
+        EdgeType.DEAD_LETTER,
+      );
+    }
+
+    if (
+      sourceTypeEquals(node, 'step_function_state_machine') ||
+      sourceTypeEquals(node, 'sfn_state_machine')
+    ) {
       addEdgesFromReferences(
         node,
         edges,
@@ -1183,6 +1247,15 @@ function inferMetadataEdges(nodes: InfraNodeAttrs[], edges: ScanEdge[]): void {
         referenceIndex,
         readStringArrayValue(node.metadata.definitionResourceArns),
         EdgeType.USES,
+      );
+      addEdgesFromReferences(
+        node,
+        edges,
+        dedupe,
+        referenceIndex,
+        readStringArrayValue(node.metadata.cloudWatchLogGroupArns),
+        EdgeType.USES,
+        () => ({ relationship: 'writes_logs_to' }),
       );
     }
 

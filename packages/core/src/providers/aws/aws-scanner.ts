@@ -34,12 +34,14 @@ import { scanEcsServices } from './services/ecs-scanner.js';
 import { scanEksClusters } from './services/eks-scanner.js';
 import { scanElastiCacheClusters } from './services/elasticache-scanner.js';
 import { scanLoadBalancers } from './services/elb-scanner.js';
+import { scanEventBridgeRules } from './services/eventbridge-scanner.js';
 import { scanLambdaFunctions } from './services/lambda-scanner.js';
 import { scanRdsInstances } from './services/rds-scanner.js';
 import { scanRoute53HostedZones } from './services/route53-scanner.js';
 import { scanS3Buckets } from './services/s3-scanner.js';
 import { scanSnsTopics } from './services/sns-scanner.js';
 import { scanSqsQueues } from './services/sqs-scanner.js';
+import { scanStepFunctionStateMachines } from './services/stepfunctions-scanner.js';
 
 export const DEFAULT_SCANNER_CONCURRENCY = 5;
 export const MIN_SCANNER_CONCURRENCY = 1;
@@ -67,6 +69,8 @@ const SERVICE_SCANNERS = [
   'SNS',
   'ELB',
   'EKS',
+  'EventBridge',
+  'StepFunctions',
   'AutoScaling',
   'VPC',
   'NATGateway',
@@ -159,6 +163,8 @@ function buildAwsServiceScanners(
     { name: 'SNS', scan: scanSnsTopics },
     { name: 'ELB', scan: scanLoadBalancers },
     { name: 'EKS', scan: scanEksClusters },
+    { name: 'EventBridge', scan: scanEventBridgeRules },
+    { name: 'StepFunctions', scan: scanStepFunctionStateMachines },
     { name: 'AutoScaling', scan: scanAutoScalingGroups },
     { name: 'VPC', scan: scanVpcs },
     { name: 'NATGateway', scan: scanNatGateways },
@@ -249,6 +255,18 @@ function normalizeRequestedServices(
     }
     if (normalized === 'eks') {
       selected.add('EKS');
+      continue;
+    }
+    if (normalized === 'eventbridge' || normalized === 'events') {
+      selected.add('EventBridge');
+      continue;
+    }
+    if (
+      normalized === 'stepfunctions' ||
+      normalized === 'step-functions' ||
+      normalized === 'sfn'
+    ) {
+      selected.add('StepFunctions');
       continue;
     }
     if (normalized === 'efs') {

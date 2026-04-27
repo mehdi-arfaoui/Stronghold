@@ -32,6 +32,9 @@ const RESOURCE_IDENTITY_EXPECTATIONS: Record<string, readonly ResourceIdentityEx
   EKS_NODEGROUP: [{ service: 'eks', resourceTypes: ['nodegroup'] }],
   ELASTICACHE: [{ service: 'elasticache', resourceTypes: ['cluster'] }],
   ELB: [{ service: 'elasticloadbalancing', resourceTypes: ['loadbalancer'] }],
+  EVENTBRIDGE_BUS: [{ service: 'events', resourceTypes: ['event-bus'] }],
+  EVENTBRIDGE_RULE: [{ service: 'events', resourceTypes: ['rule'] }],
+  EVENTBRIDGE_TARGET: [{ service: 'events', resourceTypes: ['target'] }],
   LAMBDA: [{ service: 'lambda', resourceTypes: ['function'] }],
   NAT_GATEWAY: [{ service: 'ec2', resourceTypes: ['natgateway'] }],
   RDS: [{ service: 'rds', resourceTypes: ['db'] }],
@@ -41,6 +44,8 @@ const RESOURCE_IDENTITY_EXPECTATIONS: Record<string, readonly ResourceIdentityEx
   SECURITY_GROUP: [{ service: 'ec2', resourceTypes: ['security-group'] }],
   SNS_TOPIC: [{ service: 'sns', resourceTypes: [null] }],
   SQS_QUEUE: [{ service: 'sqs', resourceTypes: [null] }],
+  SFN_STATE_MACHINE: [{ service: 'states', resourceTypes: ['statemachine'] }],
+  STEP_FUNCTION_STATE_MACHINE: [{ service: 'states', resourceTypes: ['statemachine'] }],
   SUBNET: [{ service: 'ec2', resourceTypes: ['subnet'] }],
   VPC: [{ service: 'ec2', resourceTypes: ['vpc'] }],
 };

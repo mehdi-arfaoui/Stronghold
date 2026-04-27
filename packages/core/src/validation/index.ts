@@ -19,7 +19,9 @@ export type {
 
 export { allValidationRules } from './validation-rules.js';
 export { ecsValidationRules } from './rules/ecs-rules.js';
+export { eventBridgeValidationRules } from './rules/eventbridge-rules.js';
 export { lambdaValidationRules } from './rules/lambda-rules.js';
+export { stepFunctionsValidationRules } from './rules/stepfunctions-rules.js';
 
 export {
   blastRadiusWeight,

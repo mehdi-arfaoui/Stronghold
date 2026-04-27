@@ -68,7 +68,108 @@ export type EcsResourceType =
   | 'ECS_TASK_DEFINITION'
   | 'ECS_TASK'
   | 'ECS_CAPACITY_PROVIDER';
+export type EventBridgeResourceType =
+  | 'EVENTBRIDGE_BUS'
+  | 'EVENTBRIDGE_RULE'
+  | 'EVENTBRIDGE_TARGET';
 export type LambdaResourceType = 'LAMBDA';
+export type StepFunctionsResourceType = 'SFN_STATE_MACHINE';
+
+export interface EventBridgeTargetDeadLetterConfig {
+  readonly arn: string;
+}
+
+export interface EventBridgeTargetRetryPolicy {
+  readonly maximumRetryAttempts: number;
+  readonly maximumEventAgeInSeconds: number;
+}
+
+export interface EventBridgeBusMetadata {
+  readonly name: string;
+  readonly eventBusName: string;
+  readonly eventBusArn: string;
+  readonly state: string;
+  readonly policy: string | null;
+}
+
+export interface EventBridgeRuleMetadata {
+  readonly name: string;
+  readonly eventBusName: string;
+  readonly state: string;
+  readonly scheduleExpression: string | null;
+  readonly eventPattern: string | null;
+  readonly description: string | null;
+  readonly targetsCount: number;
+  readonly managedBy: string | null;
+}
+
+export interface EventBridgeTargetMetadata {
+  readonly id: string;
+  readonly ruleArn: string;
+  readonly targetArn: string;
+  readonly inputTransformer: boolean;
+  readonly deadLetterConfig: EventBridgeTargetDeadLetterConfig | null;
+  readonly retryPolicy: EventBridgeTargetRetryPolicy | null;
+}
+
+export interface StepFunctionsLoggingConfiguration {
+  readonly level: string;
+  readonly includeExecutionData: boolean;
+  readonly destinations: readonly {
+    readonly cloudWatchLogsLogGroup: {
+      readonly logGroupArn: string;
+    };
+  }[];
+}
+
+export interface StepFunctionsTracingConfiguration {
+  readonly enabled: boolean;
+}
+
+export interface StepFunctionsTaskRetry {
+  readonly errorEquals: readonly string[];
+  readonly intervalSeconds: number;
+  readonly maxAttempts: number;
+  readonly backoffRate: number;
+}
+
+export interface StepFunctionsTaskCatch {
+  readonly errorEquals: readonly string[];
+  readonly next: string;
+}
+
+export interface StepFunctionsTaskState {
+  readonly name: string;
+  readonly resource: string;
+  readonly service: string | null;
+  readonly timeoutSeconds: number | null;
+  readonly heartbeatSeconds: number | null;
+  readonly retry: readonly StepFunctionsTaskRetry[] | null;
+  readonly catch: readonly StepFunctionsTaskCatch[] | null;
+  readonly next: string | null;
+  readonly end: boolean;
+  readonly isTerminal: boolean;
+}
+
+export interface StepFunctionsParsedDefinition {
+  readonly totalStates: number;
+  readonly taskStates: readonly StepFunctionsTaskState[];
+  readonly waitStates: number;
+  readonly parallelStates: number;
+  readonly hasTimeout: boolean;
+}
+
+export interface StepFunctionsStateMachineMetadata {
+  readonly name: string;
+  readonly stateMachineArn: string;
+  readonly type: string;
+  readonly status: string;
+  readonly roleArn: string;
+  readonly definition: string;
+  readonly loggingConfiguration: StepFunctionsLoggingConfiguration | null;
+  readonly tracingConfiguration: StepFunctionsTracingConfiguration | null;
+  readonly parsedDefinition: StepFunctionsParsedDefinition;
+}
 
 export interface LambdaDeadLetterConfig {
   readonly targetArn: string;
