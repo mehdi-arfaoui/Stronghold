@@ -15,6 +15,8 @@ const INFRASTRUCTURE_KINDS = new Set([
   'network-acl',
   'route-table',
   'network-device',
+  'ecs-cluster',
+  'ecs-task-definition',
 ]);
 
 const COMPUTE_KINDS = new Set([
@@ -27,9 +29,11 @@ const COMPUTE_KINDS = new Set([
   'serverless',
   'container',
   'kubernetes-cluster',
+  'ecs-service',
+  'step-function-state-machine',
 ]);
 
-const DATASTORE_KINDS = new Set([
+const DATASTORE_KINDS = new Set<string>([
   'rds',
   'rds-instance',
   'aurora',
@@ -41,7 +45,7 @@ const DATASTORE_KINDS = new Set([
   'cache',
 ]);
 
-const QUEUE_KINDS = new Set(['sqs', 'sns', 'message-queue']);
+const QUEUE_KINDS = new Set(['sqs', 'sns', 'message-queue', 'eventbridge-rule']);
 const STORAGE_KINDS = new Set([
   's3',
   's3-bucket',
@@ -114,6 +118,10 @@ export function isInfrastructureNode(node: InfraNode): boolean {
 }
 
 export function isApplicationStackCandidate(node: InfraNode): boolean {
+  if (isInfrastructureNode(node)) {
+    return false;
+  }
+
   const role = classifyResourceRole(node);
   return role === 'compute' || role === 'datastore' || role === 'queue' || role === 'storage';
 }

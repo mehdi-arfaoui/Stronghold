@@ -19,10 +19,15 @@ function generateLambdaRunbook(
 ): ComponentRunbook {
   const functionName = resolveIdentifier(metadata, ['functionName'], componentId);
   const region = resolveRegion(metadata);
+  const eventSourceMappingUuids = readEventSourceMappingUuids(metadata);
+  const hasEventSourceMappings = readHasEventSourceMappings(metadata);
   const stateCommand =
     `aws lambda get-function --function-name ${functionName} --query "Configuration.[State,LastModified]" --region ${region}`;
   const dlqCommand =
     `aws lambda get-function-configuration --function-name ${functionName} --query "DeadLetterConfig" --region ${region}`;
+  const eventSourceCommand = eventSourceMappingUuids.length > 0
+    ? `aws lambda list-event-source-mappings --function-name ${functionName} --query "EventSourceMappings[?contains(\`${eventSourceMappingUuids.join('|')}\`, UUID)].[UUID,State,EventSourceArn]" --region ${region}`
+    : `aws lambda list-event-source-mappings --function-name ${functionName} --region ${region}`;
 
   return componentRunbook({
     componentId,
@@ -63,6 +68,18 @@ function generateLambdaRunbook(
         estimatedMinutes: 10,
         requiresApproval: true,
       }),
+      ...(hasEventSourceMappings
+        ? [
+            createStep({
+              order: 5,
+              title: 'Reconnect event source mappings',
+              description: 'Verify event source mappings are enabled and reconnect disabled triggers after the function is healthy.',
+              command: awsCli(eventSourceCommand, 'Lists the scanned event source mappings and their current states.'),
+              estimatedMinutes: 2,
+              verification: verification(eventSourceCommand, 'Event source mappings are Enabled or intentionally disabled.'),
+            }),
+          ]
+        : []),
     ],
     rollback: rollback('Redeploy the previously known-good version if the new deployment is faulty.', [
       createStep({
@@ -80,6 +97,27 @@ function generateLambdaRunbook(
     ]),
     finalValidation: verification(stateCommand, 'The function state is Active after redeploy.'),
   });
+}
+
+function readEventSourceMappingUuids(metadata: Record<string, unknown>): readonly string[] {
+  if (!Array.isArray(metadata.eventSourceMappings)) return [];
+  return metadata.eventSourceMappings
+    .map((entry) => readString(readRecord(entry)?.uuid))
+    .filter((entry): entry is string => entry !== null);
+}
+
+function readHasEventSourceMappings(metadata: Record<string, unknown>): boolean {
+  return Array.isArray(metadata.eventSourceMappings) && metadata.eventSourceMappings.length > 0;
+}
+
+function readRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim().length > 0 ? value : null;
 }
 
 registerRunbookStrategy('lambda', '*', {
