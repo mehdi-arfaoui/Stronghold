@@ -124,6 +124,47 @@ describe('IamAssumeRoleDetector', () => {
     });
   });
 
+  it('detects cross-account ECS task roles trusted by source account condition', () => {
+    const graph = createTestGraph();
+    addRole(graph, '444455556666', 'shared-ecs-task-role', {
+      AssumeRolePolicyDocument: toPolicyDocument({
+        Version: '2012-10-17',
+        Statement: {
+          Effect: 'Allow',
+          Action: 'sts:AssumeRole',
+          Principal: {
+            Service: 'ecs-tasks.amazonaws.com',
+          },
+          Condition: {
+            StringEquals: {
+              'aws:SourceAccount': '111122223333',
+            },
+          },
+        },
+      }),
+    });
+    addAccountRoot(graph, '111122223333');
+
+    const result = new IamAssumeRoleDetector().detect(
+      graph,
+      createAccountResults(['111122223333', '444455556666']),
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      sourceArn: 'arn:aws:iam::111122223333:root',
+      sourceAccountId: '111122223333',
+      targetArn: 'arn:aws:iam::444455556666:role/shared-ecs-task-role',
+      targetAccountId: '444455556666',
+      kind: 'iam_assume_role',
+      completeness: 'complete',
+    });
+    expect(result[0]?.metadata).toMatchObject({
+      trustedPrincipal: 'ecs-tasks.amazonaws.com',
+      conditionKeys: ['aws:SourceAccount'],
+    });
+  });
+
   it('ignores service-linked roles', () => {
     const graph = createTestGraph();
     addTestNode(graph, {

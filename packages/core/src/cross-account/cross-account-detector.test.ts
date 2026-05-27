@@ -27,6 +27,8 @@ describe('CrossAccountDetector', () => {
     expect(result.summary.byKind.get('transit_gateway')).toBe(1);
     expect(result.summary.byKind.get('route53_shared_zone')).toBe(1);
     expect(result.summary.byKind.get('vpc_endpoint_shared')).toBe(1);
+    expect(result.summary.byKind.get('service_reference')).toBe(0);
+    expect(result.summary.byKind.get('eventbridge_bus_policy')).toBe(0);
     expect(graph.size).toBe(4);
 
     const edgeAttrs = graph.getEdgeAttributes(graph.edges()[0] ?? '');
@@ -128,9 +130,56 @@ describe('CrossAccountDetector', () => {
     expect(result.summary.byKind.get('route53_shared_zone')).toBe(0);
     expect(result.summary.byKind.get('vpc_endpoint_shared')).toBe(0);
     expect(result.summary.byKind.get('ram_share')).toBe(0);
+    expect(result.summary.byKind.get('service_reference')).toBe(0);
+    expect(result.summary.byKind.get('eventbridge_bus_policy')).toBe(0);
     expect(result.edges.find((edge) => edge.kind === 'vpc_peering')?.direction).toBe('bidirectional');
     expect(result.edges.find((edge) => edge.kind === 'iam_assume_role')?.direction).toBe('unidirectional');
     expect(result.edges.find((edge) => edge.kind === 'kms_cross_account_grant')?.direction).toBe('unidirectional');
+  });
+
+  it('detects cross-account service references from ECS, Lambda, and EventBridge metadata', () => {
+    const graph = createTestGraph();
+    addTestNode(graph, {
+      arn: 'arn:aws:ecs:eu-west-1:111122223333:service/payments/api',
+      accountId: '111122223333',
+      type: 'CONTAINER',
+      sourceType: 'ECS_SERVICE',
+      metadata: {
+        taskRoleArn: 'arn:aws:iam::444455556666:role/shared-task-role',
+      },
+    });
+    addTestNode(graph, {
+      arn: 'arn:aws:lambda:eu-west-1:111122223333:function:payments-worker',
+      accountId: '111122223333',
+      type: 'SERVERLESS',
+      sourceType: 'LAMBDA',
+      metadata: {
+        eventSourceMappings: [
+          {
+            eventSourceArn: 'arn:aws:sqs:eu-west-1:444455556666:shared-jobs',
+          },
+        ],
+      },
+    });
+    addTestNode(graph, {
+      arn: 'arn:aws:events:eu-west-1:111122223333:rule/payments-sync',
+      accountId: '111122223333',
+      type: 'MESSAGE_QUEUE',
+      sourceType: 'EVENTBRIDGE_RULE',
+      metadata: {
+        targetArns: ['arn:aws:lambda:eu-west-1:444455556666:function:shared-handler'],
+      },
+    });
+
+    const scanResult = createMultiAccountScanResult(graph, ['111122223333', '444455556666']);
+    const result = new CrossAccountDetector({
+      enabledKinds: ['service_reference'],
+    }).detect(graph, scanResult);
+
+    expect(result.edges).toHaveLength(3);
+    expect(result.summary.byKind.get('service_reference')).toBe(3);
+    expect(result.edges.every((edge) => edge.kind === 'service_reference')).toBe(true);
+    expect(result.edges.every((edge) => edge.direction === 'unidirectional')).toBe(true);
   });
 });
 
