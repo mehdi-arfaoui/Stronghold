@@ -13,6 +13,7 @@ import type {
   ValidationRule,
 } from './validation-types.js';
 import { collectNodeReferences, hasNodeKind } from './validation-node-utils.js';
+import { auroraValidationRules } from './rules/aurora-rules.js';
 import { ecsValidationRules } from './rules/ecs-rules.js';
 import { eventBridgeValidationRules } from './rules/eventbridge-rules.js';
 import { lambdaValidationRules } from './rules/lambda-rules.js';
@@ -1582,6 +1583,7 @@ export const allValidationRules: readonly ValidationRule[] = [
   auroraDeletionProtectionRule,
   auroraGlobalDatabaseRule,
   auroraPromotionTierRule,
+  ...auroraValidationRules,
   s3VersioningEnabledRule,
   s3ReplicationActiveRule,
   ec2InAsgRule,

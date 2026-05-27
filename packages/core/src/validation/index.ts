@@ -18,6 +18,7 @@ export type {
 } from './validation-types.js';
 
 export { allValidationRules } from './validation-rules.js';
+export { auroraValidationRules } from './rules/aurora-rules.js';
 export { ecsValidationRules } from './rules/ecs-rules.js';
 export { eventBridgeValidationRules } from './rules/eventbridge-rules.js';
 export { lambdaValidationRules } from './rules/lambda-rules.js';
