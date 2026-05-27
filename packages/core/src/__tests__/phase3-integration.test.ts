@@ -288,6 +288,21 @@ describe('Phase 3 Pipeline Integration', () => {
     });
   });
 
+  describe('Non-regression', () => {
+    it('demo minimal fixture has no Phase 3 findings when Phase 3 resources are absent', () => {
+      const fixture = loadFixture('demo-minimal.json');
+      const report = runValidation(fixture.nodes, fixture.edges, allValidationRules, undefined, {
+        timestamp: '2026-05-27T00:00:00.000Z',
+      });
+      const phase3Failures = report.results.filter(
+        (result) =>
+          ['fail', 'warn', 'error'].includes(result.status) &&
+          /^(ECS_|EVENTBRIDGE_|SFN_|AURORA_SERVERLESS_V1_|LAMBDA_NO_DLQ)/.test(result.ruleId),
+      );
+
+      expect(phase3Failures).toEqual([]);
+    });
+  });
 });
 
 function createPhase3Nodes(): readonly InfraNode[] {
