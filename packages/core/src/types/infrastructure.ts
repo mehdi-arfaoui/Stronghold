@@ -74,6 +74,28 @@ export type EventBridgeResourceType =
   | 'EVENTBRIDGE_TARGET';
 export type LambdaResourceType = 'LAMBDA';
 export type StepFunctionsResourceType = 'SFN_STATE_MACHINE';
+export type AuroraServerlessVersion = 'v1' | 'v2' | null;
+
+export interface AuroraScalingConfigurationV1 {
+  readonly minCapacity: number;
+  readonly maxCapacity: number;
+  readonly autoPause: boolean;
+  readonly secondsUntilAutoPause: number;
+}
+
+export interface AuroraServerlessV2ScalingConfiguration {
+  readonly minCapacity: number | undefined;
+  readonly maxCapacity: number | undefined;
+  readonly secondsUntilAutoPause: number | undefined;
+}
+
+export interface AuroraClusterMetadata {
+  readonly engineMode: string | null;
+  readonly serverlessVersion: AuroraServerlessVersion;
+  readonly scalingConfigurationV1: AuroraScalingConfigurationV1 | null;
+  readonly serverlessV2ScalingConfiguration: AuroraServerlessV2ScalingConfiguration | null;
+  readonly httpEndpointEnabled: boolean;
+}
 
 export interface EventBridgeTargetDeadLetterConfig {
   readonly arn: string;

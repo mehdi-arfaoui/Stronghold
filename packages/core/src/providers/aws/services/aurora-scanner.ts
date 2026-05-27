@@ -22,6 +22,10 @@ import {
   paginateAws,
 } from '../scan-utils.js';
 import { fetchAwsTagsWithRetry, getNameTag, tagsArrayToMap } from '../tag-utils.js';
+import type {
+  AuroraScalingConfigurationV1,
+  AuroraServerlessVersion,
+} from '../../../types/infrastructure.js';
 
 interface AuroraScannerConfig {
   readonly includeGlobalClusters?: boolean;
@@ -52,8 +56,41 @@ function resolveSubnetId(instance: DBInstance): string | undefined {
   );
 }
 
+function isServerlessV2Instance(instance: DBInstance): boolean {
+  return instance.DBInstanceClass === 'db.serverless';
+}
+
+function deriveServerlessVersion(
+  cluster: DBCluster,
+  instances: readonly DBInstance[],
+): AuroraServerlessVersion {
+  if (cluster.EngineMode === 'serverless') {
+    return 'v1';
+  }
+  if (cluster.ServerlessV2ScalingConfiguration) {
+    return 'v2';
+  }
+  return instances.some(isServerlessV2Instance) ? 'v2' : null;
+}
+
+function buildScalingConfigurationV1(
+  cluster: DBCluster,
+): AuroraScalingConfigurationV1 | null {
+  if (cluster.EngineMode !== 'serverless' || !cluster.ScalingConfigurationInfo) {
+    return null;
+  }
+
+  return {
+    minCapacity: cluster.ScalingConfigurationInfo.MinCapacity ?? 0,
+    maxCapacity: cluster.ScalingConfigurationInfo.MaxCapacity ?? 0,
+    autoPause: cluster.ScalingConfigurationInfo.AutoPause ?? false,
+    secondsUntilAutoPause: cluster.ScalingConfigurationInfo.SecondsUntilAutoPause ?? 0,
+  };
+}
+
 function buildAuroraCluster(
   cluster: DBCluster,
+  instances: readonly DBInstance[],
   region: string,
   accountContext: AccountContext,
   tags: Record<string, string>,
@@ -78,6 +115,10 @@ function buildAuroraCluster(
       dbClusterArn: clusterArn,
       engine: cluster.Engine,
       engineVersion: cluster.EngineVersion,
+      engineMode: cluster.EngineMode ?? null,
+      serverlessVersion: deriveServerlessVersion(cluster, instances),
+      scalingConfigurationV1: buildScalingConfigurationV1(cluster),
+      httpEndpointEnabled: Boolean(cluster.HttpEndpointEnabled),
       clusterEndpoint: cluster.Endpoint,
       readerEndpoint: cluster.ReaderEndpoint,
       multiAZ: Boolean(cluster.MultiAZ),
@@ -258,15 +299,18 @@ export async function scanAuroraClusters(
           },
         )
       : {};
-    resources.push(buildAuroraCluster(cluster, options.region, accountContext, clusterTags));
 
+    let instances: readonly DBInstance[] = [];
     try {
       const membersById = new Map(
         (cluster.DBClusterMembers ?? [])
           .map((member) => [member.DBInstanceIdentifier, member] as const)
           .filter((entry): entry is readonly [string, DBClusterMember] => Boolean(entry[0])),
       );
-      const instances = await describeAuroraInstances(rds, options, cluster);
+      instances = await describeAuroraInstances(rds, options, cluster);
+      resources.push(
+        buildAuroraCluster(cluster, instances, options.region, accountContext, clusterTags),
+      );
       for (const instance of instances) {
         const instanceTags = instance.DBInstanceArn
           ? await fetchAwsTagsWithRetry(
@@ -297,6 +341,9 @@ export async function scanAuroraClusters(
     } catch {
       warnings.push(
         `Aurora instance members unavailable for cluster ${cluster.DBClusterIdentifier ?? 'unknown'}.`,
+      );
+      resources.push(
+        buildAuroraCluster(cluster, instances, options.region, accountContext, clusterTags),
       );
     }
   }
