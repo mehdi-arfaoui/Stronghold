@@ -4,10 +4,12 @@ import type {
   MultiAccountScanResult,
 } from '../orchestration/types.js';
 import { EdgeType } from '../types/infrastructure.js';
+import { EventBridgeBusPolicyDetector } from './detectors/eventbridge-bus-policy-detector.js';
 import { IamAssumeRoleDetector } from './detectors/iam-assume-role-detector.js';
 import { KmsCrossAccountDetector } from './detectors/kms-cross-account-detector.js';
 import { RamShareDetector } from './detectors/ram-share-detector.js';
 import { Route53SharedZoneDetector } from './detectors/route53-shared-zone-detector.js';
+import { ServiceReferenceDetector } from './detectors/service-reference-detector.js';
 import { TransitGatewayDetector } from './detectors/transit-gateway-detector.js';
 import { VpcEndpointSharedDetector } from './detectors/vpc-endpoint-shared-detector.js';
 import { VpcPeeringDetector } from './detectors/vpc-peering-detector.js';
@@ -50,6 +52,8 @@ export class CrossAccountDetector {
       new IamAssumeRoleDetector(),
       new KmsCrossAccountDetector(),
       new RamShareDetector(),
+      new ServiceReferenceDetector(),
+      new EventBridgeBusPolicyDetector(),
     ].filter((detector) => enabledKinds.has(detector.kind));
   }
 
@@ -304,6 +308,38 @@ function mergeMetadata(
           incoming.shareArn,
         ),
       };
+    case 'service_reference':
+      return {
+        ...existing,
+        detectedByKinds,
+        relatedDetections,
+      };
+    case 'eventbridge_bus_policy':
+      if (incoming.kind !== 'eventbridge_bus_policy') {
+        return {
+          ...existing,
+          detectedByKinds,
+          relatedDetections,
+        };
+      }
+
+      return {
+        ...existing,
+        detectedByKinds,
+        relatedDetections,
+        actions: [...new Set([
+          ...existing.actions,
+          ...incoming.actions,
+        ])],
+        conditionKeys: [...new Set([
+          ...existing.conditionKeys,
+          ...incoming.conditionKeys,
+        ])].sort(),
+        organizationWide:
+          existing.organizationWide || incoming.organizationWide,
+        isWildcardPrincipal:
+          existing.isWildcardPrincipal || incoming.isWildcardPrincipal,
+      };
   }
 }
 
@@ -466,5 +502,9 @@ function getMetadataIdentity(metadata: CrossAccountEdgeMetadata): string {
       return metadata.grantId;
     case 'ram_share':
       return `${metadata.shareArn}:${metadata.resourceArn}:${metadata.principalAccountId}`;
+    case 'service_reference':
+      return `${metadata.referenceType}:${metadata.fieldPath}:${metadata.targetArn}`;
+    case 'eventbridge_bus_policy':
+      return `${metadata.eventBusArn}:${metadata.statementId}:${metadata.trustedPrincipal}`;
   }
 }

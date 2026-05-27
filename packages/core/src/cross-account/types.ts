@@ -6,6 +6,8 @@ export const CROSS_ACCOUNT_DEPENDENCY_KINDS = [
   'iam_assume_role',
   'kms_cross_account_grant',
   'ram_share',
+  'service_reference',
+  'eventbridge_bus_policy',
 ] as const;
 
 /**
@@ -101,6 +103,24 @@ export type CrossAccountEdgeMetadata =
       readonly status: string;
       readonly organizationWide?: boolean;
       readonly relatedShareArns?: readonly string[];
+    })
+  | (CrossAccountEdgeMetadataBase & {
+      readonly kind: 'service_reference';
+      readonly sourceResourceArn: string;
+      readonly targetArn: string;
+      readonly sourceType: string;
+      readonly referenceType: string;
+      readonly fieldPath: string;
+    })
+  | (CrossAccountEdgeMetadataBase & {
+      readonly kind: 'eventbridge_bus_policy';
+      readonly eventBusArn: string;
+      readonly trustedPrincipal: string;
+      readonly actions: readonly string[];
+      readonly statementId: string;
+      readonly conditionKeys: readonly string[];
+      readonly organizationWide?: boolean;
+      readonly isWildcardPrincipal?: boolean;
     });
 
 /**

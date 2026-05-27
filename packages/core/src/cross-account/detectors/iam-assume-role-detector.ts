@@ -42,6 +42,10 @@ const ROLE_MONITORING_HINT_KEYS = [
 ] as const;
 const EXTERNAL_ID_CONDITION_KEYS = ['sts:externalid'] as const;
 const ORGANIZATION_CONDITION_KEYS = ['aws:principalorgid'] as const;
+const ECS_TASK_SERVICE_PRINCIPALS = new Set([
+  'ecs-tasks.amazonaws.com',
+  'ecs-tasks.amazonaws.com.cn',
+]);
 const COMPUTE_HINTS = [
   'lambda',
   'ecs',
@@ -197,7 +201,28 @@ function resolveTrustedPrincipals(
     readConditionValues(conditionValue, EXTERNAL_ID_CONDITION_KEYS).length > 0;
 
   for (const entry of readPolicyPrincipalEntries(principalValue)) {
-    if (entry.type === 'service' || entry.type === 'canonical' || entry.type === 'federated') {
+    if (entry.type === 'service') {
+      for (const accountId of resolveServicePrincipalAccountIds(
+        entry.value,
+        conditionAccountIds,
+        roleAccountId,
+        scannedAccountIds,
+        organizationWide,
+      )) {
+        addResolvedPrincipal(
+          resolved,
+          seen,
+          partition,
+          accountId,
+          entry.value,
+          false,
+          organizationWide,
+        );
+      }
+      continue;
+    }
+
+    if (entry.type === 'canonical' || entry.type === 'federated') {
       continue;
     }
 
@@ -239,6 +264,26 @@ function resolveTrustedPrincipals(
   }
 
   return resolved;
+}
+
+function resolveServicePrincipalAccountIds(
+  servicePrincipal: string,
+  conditionAccountIds: readonly string[],
+  roleAccountId: string,
+  scannedAccountIds: ReadonlySet<string>,
+  organizationWide: boolean,
+): readonly string[] {
+  const normalized = servicePrincipal.trim().toLowerCase();
+  if (!ECS_TASK_SERVICE_PRINCIPALS.has(normalized)) {
+    return [];
+  }
+
+  const candidateAccountIds = conditionAccountIds.length > 0
+    ? conditionAccountIds
+    : organizationWide
+      ? [...scannedAccountIds]
+      : [];
+  return [...new Set(candidateAccountIds)].filter((accountId) => accountId !== roleAccountId);
 }
 
 function addResolvedPrincipal(

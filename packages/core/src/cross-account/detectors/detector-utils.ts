@@ -59,6 +59,7 @@ const DATA_SERVICE_TOKENS = [
 const CROSS_ACCOUNT_CONDITION_KEYS = [
   'aws:principalaccount',
   'aws:sourceaccount',
+  'aws:sourcearn',
   'kms:calleraccount',
 ] as const;
 
