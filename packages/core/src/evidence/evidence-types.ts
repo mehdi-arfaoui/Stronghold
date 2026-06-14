@@ -50,6 +50,10 @@ export interface EvidenceObservation {
 export interface EvidenceTestResult {
   readonly status: 'success' | 'failure' | 'partial';
   readonly duration?: string;
+  /** Measured recovery time objective in minutes, when a test records it. */
+  readonly measuredRTO?: number;
+  /** Measured recovery point objective in minutes, when a test records it. */
+  readonly measuredRPO?: number;
   readonly notes?: string;
   readonly executor?: string;
 }
@@ -66,6 +70,10 @@ export interface Evidence {
   readonly observation: EvidenceObservation;
   readonly timestamp: string;
   readonly expiresAt?: string;
+  /** Measured recovery time objective in minutes, when backed by tested evidence. */
+  readonly measuredRTO?: number;
+  /** Measured recovery point objective in minutes, when backed by tested evidence. */
+  readonly measuredRPO?: number;
   readonly testResult?: EvidenceTestResult;
 }
 
