@@ -6,6 +6,9 @@ import type {
   Service,
   ServiceScoringResult,
   WeightedValidationResult,
+  AllContractsEvaluationResult,
+  ContractEvaluationResult,
+  ContractSummary,
 } from '@stronghold-dr/core';
 
 import type { ScanResults } from '../storage/file-store.js';
@@ -72,6 +75,13 @@ export interface CanonicalScoringResult {
   readonly services: ServiceScoringResult | null;
 }
 
+export interface CanonicalContractsJson {
+  readonly evaluated: boolean;
+  readonly results: readonly ContractEvaluationResult[];
+  readonly globalSummary: ContractSummary;
+  readonly enforceableViolations: number;
+}
+
 export interface CanonicalScanJsonOutput {
   readonly scan: {
     readonly version: string;
@@ -90,6 +100,7 @@ export interface CanonicalScanJsonOutput {
   readonly services: readonly Service[];
   readonly scoring: CanonicalScoringResult;
   readonly realityGap: ProofOfRecoveryResult | null;
+  readonly contracts?: CanonicalContractsJson;
 }
 
 export interface SingleAccountSerializationContext {
@@ -103,6 +114,7 @@ export interface SingleAccountScanResult {
   readonly kind: 'single-account';
   readonly results: ScanResults;
   readonly account?: SingleAccountSerializationContext;
+  readonly contracts?: AllContractsEvaluationResult | null;
 }
 
 export interface MultiAccountScanSerializationMetadata {
@@ -115,6 +127,7 @@ export interface MultiAccountScanSerializationMetadata {
 export interface CanonicalMultiAccountScanResult extends MultiAccountScanSerializationMetadata {
   readonly kind: 'multi-account';
   readonly results: ScanResults;
+  readonly contracts?: AllContractsEvaluationResult | null;
 }
 
 export type CanonicalScanSerializationInput =

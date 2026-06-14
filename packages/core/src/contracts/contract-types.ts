@@ -12,7 +12,7 @@ export type ChainCoverageLevel = 'partial' | 'observed' | 'proven';
 export type SpofTolerance = 'any' | 'mitigated' | 'none';
 
 /** Enforcement levels. */
-export type EnforcementLevel = 'warn' | 'enforce' | 'hook';
+export type EnforcementLevel = 'warn' | 'enforce';
 
 /** Events that trigger a hook. */
 export type HookTriggerEvent = 'met' | 'violated' | 'unknown';
@@ -58,7 +58,7 @@ export interface Contract {
   readonly description: string | null;
   readonly owner: string | null;
   readonly enforcement: EnforcementLevel;
-  readonly hook: ContractHookConfig | null;
+  readonly hooks: readonly ContractHookConfig[];
   readonly requirements: readonly ContractRequirement[];
 }
 
@@ -85,7 +85,7 @@ export interface RawContract {
   readonly description?: string;
   readonly owner?: string;
   readonly enforcement?: EnforcementLevel;
-  readonly hook?: RawContractHookConfig;
+  readonly hooks?: readonly RawContractHookConfig[];
   readonly requirements: readonly RawContractRequirement[];
 }
 

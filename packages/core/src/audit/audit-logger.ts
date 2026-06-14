@@ -66,6 +66,26 @@ function normalizeAuditEntry(entry: AuditEntry): AuditEntry {
       ...(entry.parameters.severity ? { severity: entry.parameters.severity } : {}),
       ...(entry.parameters.note ? { note: entry.parameters.note } : {}),
     },
+    ...(entry.details
+      ? {
+          details: {
+            ...(entry.details.contractCount !== undefined
+              ? { contractCount: entry.details.contractCount }
+              : {}),
+            ...(entry.details.met !== undefined ? { met: entry.details.met } : {}),
+            ...(entry.details.violated !== undefined
+              ? { violated: entry.details.violated }
+              : {}),
+            ...(entry.details.unknown !== undefined ? { unknown: entry.details.unknown } : {}),
+            ...(entry.details.enforceableViolations !== undefined
+              ? { enforceableViolations: entry.details.enforceableViolations }
+              : {}),
+            ...(entry.details.hooksFired !== undefined
+              ? { hooksFired: entry.details.hooksFired }
+              : {}),
+          },
+        }
+      : {}),
     result: {
       status: entry.result.status,
       duration_ms: entry.result.duration_ms,

@@ -18,6 +18,7 @@ export type AuditAction =
   | 'scenarios_show'
   | 'status'
   | 'history'
+  | 'contract_evaluated'
   | 'risk_accept'
   | 'risk_expire'
   | 'risk_supersede'
@@ -61,6 +62,14 @@ export interface AuditEntry {
     readonly nextReviewAt?: string;
     readonly severity?: string;
     readonly note?: string;
+  };
+  readonly details?: {
+    readonly contractCount?: number;
+    readonly met?: number;
+    readonly violated?: number;
+    readonly unknown?: number;
+    readonly enforceableViolations?: number;
+    readonly hooksFired?: number;
   };
   readonly result: {
     readonly status: 'success' | 'failure' | 'partial';

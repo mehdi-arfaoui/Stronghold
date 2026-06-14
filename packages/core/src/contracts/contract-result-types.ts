@@ -1,7 +1,9 @@
 import type {
   Contract,
+  ContractHookConfig,
   ContractRequirement,
   ContractVerdict,
+  HookTriggerEvent,
 } from './contract-types.js';
 
 export interface DimensionResult {
@@ -42,6 +44,13 @@ export interface AllContractsEvaluationResult {
   readonly globalSummary: ContractSummary;
   readonly hasEnforceableViolations: boolean;
   readonly enforceableViolations: readonly RequirementEvaluationResult[];
+  readonly hooksFired: readonly ContractHookFireInfo[];
+}
+
+export interface ContractHookFireInfo {
+  readonly contractService: string;
+  readonly hook: Pick<ContractHookConfig, 'type'>;
+  readonly trigger: HookTriggerEvent;
 }
 
 export interface ContractEvaluationInput {

@@ -236,7 +236,7 @@ describe('ContractEvaluator aggregation', () => {
 });
 
 describe('ContractEvaluator enforcement', () => {
-  it('does not treat warn violations as enforceable but does treat enforce and hook violations as enforceable', () => {
+  it('does not treat warn violations as enforceable but does treat enforce violations as enforceable', () => {
     const warnContract = contract({
       service: 'payment-processing',
       enforcement: 'warn',
@@ -247,24 +247,14 @@ describe('ContractEvaluator enforcement', () => {
       enforcement: 'enforce',
       requirements: [requirement({ rto: parseDuration('1h') })],
     });
-    const hookContract = contract({
-      service: 'payment-processing',
-      enforcement: 'hook',
-      hook: {
-        type: 'webhook',
-        url: 'https://example.com/hook',
-        on: ['violated'],
-      },
-      requirements: [requirement({ rto: parseDuration('1h') })],
-    });
 
     const result = evaluateContracts(
-      [warnContract, enforceContract, hookContract],
+      [warnContract, enforceContract],
       input({ evidenceByService: new Map([[PAYMENT.serviceId, [evidence({ measuredRTO: 90 })]]]) }),
     );
 
     expect(result.hasEnforceableViolations).toBe(true);
-    expect(result.enforceableViolations).toHaveLength(2);
+    expect(result.enforceableViolations).toHaveLength(1);
   });
 });
 
@@ -343,7 +333,7 @@ function contract(overrides: Partial<Contract> = {}): Contract {
     description: null,
     owner: null,
     enforcement: 'warn',
-    hook: null,
+    hooks: [],
     requirements: [requirement({ evidence: 'observed' })],
     ...overrides,
   };

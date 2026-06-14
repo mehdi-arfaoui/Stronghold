@@ -106,7 +106,7 @@ contracts:
       expect(result.status).toBe('invalid');
     });
 
-    it('rejects hook enforcement without hook config', () => {
+    it('rejects old hook enforcement level', () => {
       const yaml = `
 version: "1"
 contracts:
@@ -121,7 +121,7 @@ contracts:
       expect(result.status).toBe('invalid');
     });
 
-    it('rejects hook config without hook enforcement', () => {
+    it('rejects old singular hook config', () => {
       const yaml = `
 version: "1"
 contracts:
@@ -139,16 +139,15 @@ contracts:
       expect(result.status).toBe('invalid');
     });
 
-    it('rejects scalar hook on value', () => {
+    it('rejects scalar hooks on value', () => {
       const yaml = `
 version: "1"
 contracts:
   - service: payments
-    enforcement: hook
-    hook:
-      type: webhook
-      url: https://example.com/hook
-      on: violated
+    hooks:
+      - type: webhook
+        url: https://example.com/hook
+        on: violated
     requirements:
       - scenario: az-failure
         evidence: observed
@@ -252,6 +251,7 @@ contracts:
         expect(result.config.contracts).toHaveLength(1);
         expect(contract?.service).toBe('*');
         expect(contract?.enforcement).toBe('warn');
+        expect(contract?.hooks).toEqual([]);
         expect(requirement?.evidence).toBe('observed');
         expect(requirement?.rto).toBeNull();
       }
@@ -294,11 +294,11 @@ contracts:
 version: "1"
 contracts:
   - service: auth
-    enforcement: hook
-    hook:
-      type: webhook
-      url: https://hooks.slack.com/services/T00/B00/xxx
-      on: [violated]
+    enforcement: enforce
+    hooks:
+      - type: webhook
+        url: https://hooks.slack.com/services/T00/B00/xxx
+        on: [violated]
     requirements:
       - scenario: az-failure
         rto: 5m
@@ -307,11 +307,52 @@ contracts:
 
       expect(result.status).toBe('loaded');
       if (result.status === 'loaded') {
-        const hook = result.config.contracts[0]?.hook;
+        const hook = result.config.contracts[0]?.hooks[0];
         expect(hook).toBeDefined();
         expect(hook?.type).toBe('webhook');
         expect(hook?.url).toContain('hooks.slack.com');
         expect(hook?.on).toEqual(['violated']);
+      }
+    });
+
+    it('loads hooks without explicit enforcement using warn by default', () => {
+      const yaml = `
+version: "1"
+contracts:
+  - service: auth
+    hooks:
+      - type: webhook
+        url: https://hooks.slack.com/services/T00/B00/xxx
+        on: [violated]
+    requirements:
+      - scenario: az-failure
+        rto: 5m
+`;
+      const result = parseContractsYaml(yaml);
+
+      expect(result.status).toBe('loaded');
+      if (result.status === 'loaded') {
+        expect(result.config.contracts[0]?.enforcement).toBe('warn');
+        expect(result.config.contracts[0]?.hooks).toHaveLength(1);
+      }
+    });
+
+    it('loads enforce without hooks', () => {
+      const yaml = `
+version: "1"
+contracts:
+  - service: auth
+    enforcement: enforce
+    requirements:
+      - scenario: az-failure
+        rto: 5m
+`;
+      const result = parseContractsYaml(yaml);
+
+      expect(result.status).toBe('loaded');
+      if (result.status === 'loaded') {
+        expect(result.config.contracts[0]?.enforcement).toBe('enforce');
+        expect(result.config.contracts[0]?.hooks).toEqual([]);
       }
     });
 
@@ -471,11 +512,11 @@ const ADR_EXAMPLE_4 = `
 version: "1"
 contracts:
   - service: user-auth
-    enforcement: hook
-    hook:
-      type: webhook
-      url: https://hooks.slack.com/services/T00/B00/xxx
-      on: [violated]
+    enforcement: enforce
+    hooks:
+      - type: webhook
+        url: https://hooks.slack.com/services/T00/B00/xxx
+        on: [violated]
     requirements:
       - scenario: az-failure
         rto: 5m

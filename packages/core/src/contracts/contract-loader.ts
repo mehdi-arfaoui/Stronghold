@@ -109,14 +109,14 @@ function mapContract(rawContract: RawContract, errors: string[]): Contract {
     description: rawContract.description ?? null,
     owner: rawContract.owner ?? null,
     enforcement: rawContract.enforcement ?? 'warn',
-    hook: rawContract.hook ? mapHook(rawContract.hook) : null,
+    hooks: rawContract.hooks?.map(mapHook) ?? [],
     requirements: rawContract.requirements.map((requirement, index) =>
       mapRequirement(rawContract.service, requirement, index, errors),
     ),
   };
 }
 
-function mapHook(rawHook: NonNullable<RawContract['hook']>): ContractHookConfig {
+function mapHook(rawHook: NonNullable<RawContract['hooks']>[number]): ContractHookConfig {
   return {
     type: rawHook.type,
     url: rawHook.url,

@@ -62,6 +62,7 @@ export class ContractEvaluator {
       globalSummary,
       hasEnforceableViolations: enforceableViolations.length > 0,
       enforceableViolations,
+      hooksFired: [],
     };
   }
 }
@@ -360,10 +361,7 @@ function collectEnforceableViolations(
   contractResults: readonly ContractEvaluationResult[],
 ): readonly RequirementEvaluationResult[] {
   return contractResults.flatMap((contractResult) => {
-    if (
-      contractResult.contract.enforcement !== 'enforce' &&
-      contractResult.contract.enforcement !== 'hook'
-    ) {
+    if (contractResult.contract.enforcement !== 'enforce') {
       return [];
     }
 

@@ -29,29 +29,33 @@ export const CONTRACTS_SCHEMA = {
           owner: { type: 'string', minLength: 1 },
           enforcement: {
             type: 'string',
-            enum: ['warn', 'enforce', 'hook'],
+            enum: ['warn', 'enforce'],
             default: 'warn',
           },
-          hook: {
-            type: 'object',
-            required: ['type', 'url', 'on'],
-            additionalProperties: false,
-            properties: {
-              type: { type: 'string', enum: ['webhook'] },
-              url: {
-                type: 'string',
-                minLength: 1,
-                pattern: '^https?://[^\\s]+$',
-              },
-              // YAML 1.1 treats "on" as a boolean in some parsers; the schema
-              // keeps the intended key strict and requires an array value.
-              on: {
-                type: 'array',
-                minItems: 1,
-                uniqueItems: true,
-                items: {
+          hooks: {
+            type: 'array',
+            minItems: 0,
+            items: {
+              type: 'object',
+              required: ['type', 'url', 'on'],
+              additionalProperties: false,
+              properties: {
+                type: { type: 'string', enum: ['webhook'] },
+                url: {
                   type: 'string',
-                  enum: ['met', 'violated', 'unknown'],
+                  minLength: 1,
+                  pattern: '^https?://[^\\s]+$',
+                },
+                // YAML 1.1 treats "on" as a boolean in some parsers; the schema
+                // keeps the intended key strict and requires an array value.
+                on: {
+                  type: 'array',
+                  minItems: 1,
+                  uniqueItems: true,
+                  items: {
+                    type: 'string',
+                    enum: ['met', 'violated', 'unknown'],
+                  },
                 },
               },
             },
@@ -90,26 +94,6 @@ export const CONTRACTS_SCHEMA = {
             },
           },
         },
-        allOf: [
-          {
-            if: {
-              required: ['enforcement'],
-              properties: { enforcement: { const: 'hook' } },
-            },
-            then: {
-              required: ['hook'],
-            },
-          },
-          {
-            if: {
-              required: ['hook'],
-            },
-            then: {
-              required: ['enforcement'],
-              properties: { enforcement: { const: 'hook' } },
-            },
-          },
-        ],
       },
     },
   },

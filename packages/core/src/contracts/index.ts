@@ -17,6 +17,7 @@ export type {
   AllContractsEvaluationResult,
   ContractEvaluationInput,
   ContractEvaluationResult,
+  ContractHookFireInfo,
   ContractSummary,
   CoverageDetailInfo,
   DimensionResult,
@@ -26,6 +27,12 @@ export type {
   ServiceInfo,
   SpofInfo,
 } from './contract-result-types.js';
+
+export type {
+  ContractHook,
+  ContractHookPayload,
+  ContractViolationSummary,
+} from './hooks/hook-types.js';
 
 export {
   CHAIN_COVERAGE_ORDER,
@@ -42,6 +49,20 @@ export {
 export { filterServicesByPattern, matchesServicePattern } from './service-matcher.js';
 export { loadContracts, parseContractsYaml } from './contract-loader.js';
 export { ContractEvaluator, evaluateContracts } from './contract-evaluator.js';
+export {
+  buildContractEvaluationInput,
+  ContractPipelineError,
+  runContractEvaluation,
+  type PipelineCoverageDetail,
+  type PipelineEvidence,
+  type PipelineEvidenceSource,
+  type PipelineProofOfRecoveryService,
+  type PipelineResult,
+  type PipelineScenario,
+  type PipelineService,
+  type PipelineSpofReport,
+  type PipelineValidationResult,
+} from './contract-pipeline.js';
 export {
   deriveEvidenceLevel,
   evaluateEvidenceRequirement,
