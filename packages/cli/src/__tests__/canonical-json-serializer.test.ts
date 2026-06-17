@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CrossAccountEdge } from '@stronghold-dr/core';
+import type { AllContractsEvaluationResult, CrossAccountEdge } from '@stronghold-dr/core';
 
 import { serializeCanonicalScanJson } from '../output/canonical-json-serializer.js';
 import type {
@@ -135,6 +135,18 @@ describe('serializeCanonicalScanJson', () => {
     expect(Object.keys(single.scan)).toEqual(Object.keys(multi.scan));
     expect(Object.keys(single.graph)).toEqual(Object.keys(multi.graph));
   });
+
+  it('redacts contract reason strings in canonical JSON', async () => {
+    const result = serializeCanonicalScanJson({
+      kind: 'single-account',
+      results: await createDemoResults('minimal'),
+      contracts: contractEvaluationWithArnReason(),
+    });
+    const serialized = JSON.stringify(result.contracts);
+
+    expect(serialized).not.toContain('arn:aws:');
+    expect(serialized).toContain('[redacted-resource]');
+  });
 });
 
 function buildCrossAccountEdge(
@@ -161,5 +173,67 @@ function buildCrossAccountEdge(
       accepterVpcId: 'vpc-2222',
       status: 'active',
     },
+  };
+}
+
+function contractEvaluationWithArnReason(): AllContractsEvaluationResult {
+  const requirement = {
+    scenario: 'region_failure',
+    rto: null,
+    rpo: null,
+    evidence: null,
+    chainCoverage: null,
+    spof: 'none' as const,
+  };
+  const result = {
+    requirement,
+    serviceId: 'database',
+    serviceName: 'database',
+    verdict: 'violated' as const,
+    dimensions: [
+      {
+        dimension: 'spof' as const,
+        verdict: 'violated' as const,
+        required: 'none',
+        actual: '1 SPOF',
+        source: 'graph_analysis' as const,
+        reason: 'Problematic SPOF arn:aws:rds:eu-west-1:123456789012:db:primary.',
+      },
+    ],
+    summary: 'Problematic SPOF arn:aws:rds:eu-west-1:123456789012:db:primary.',
+  };
+
+  return {
+    contractResults: [
+      {
+        contract: {
+          service: 'database',
+          description: null,
+          owner: null,
+          enforcement: 'enforce',
+          hooks: [],
+          requirements: [requirement],
+        },
+        matchedServices: ['database'],
+        results: [result],
+        summary: {
+          met: 0,
+          violated: 1,
+          unknown: 0,
+          notApplicable: 0,
+          total: 1,
+        },
+      },
+    ],
+    globalSummary: {
+      met: 0,
+      violated: 1,
+      unknown: 0,
+      notApplicable: 0,
+      total: 1,
+    },
+    hasEnforceableViolations: true,
+    enforceableViolations: [result],
+    hooksFired: [],
   };
 }
