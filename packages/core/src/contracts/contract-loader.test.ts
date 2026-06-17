@@ -186,15 +186,15 @@ contracts:
       expect(result.status).toBe('invalid');
     });
 
-    it('accepts an empty contracts array', () => {
+    it('rejects empty contracts array', () => {
       const result = parseContractsYaml(`
 version: "1"
 contracts: []
 `);
 
-      expect(result.status).toBe('loaded');
-      if (result.status === 'loaded') {
-        expect(result.config.contracts).toEqual([]);
+      expect(result.status).toBe('invalid');
+      if (result.status === 'invalid') {
+        expect(result.errors).toContain('contracts array must contain at least one contract');
       }
     });
   });

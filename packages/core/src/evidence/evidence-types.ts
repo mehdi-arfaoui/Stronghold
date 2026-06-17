@@ -70,6 +70,8 @@ export interface Evidence {
   readonly observation: EvidenceObservation;
   readonly timestamp: string;
   readonly expiresAt?: string;
+  /** Disaster recovery scenario this evidence applies to, when scoped. */
+  readonly scenario?: string;
   /** Measured recovery time objective in minutes, when backed by tested evidence. */
   readonly measuredRTO?: number;
   /** Measured recovery point objective in minutes, when backed by tested evidence. */

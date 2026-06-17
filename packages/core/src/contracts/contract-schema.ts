@@ -18,7 +18,7 @@ export const CONTRACTS_SCHEMA = {
     },
     contracts: {
       type: 'array',
-      minItems: 0,
+      minItems: 1,
       items: {
         type: 'object',
         required: ['service', 'requirements'],

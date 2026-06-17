@@ -142,6 +142,7 @@ describe('evaluateRto', () => {
 
     expect(result.reason).toContain('stronghold evidence add');
     expect(result.reason).toContain('--rto <duration>');
+    expect(result.reason).toContain('--scenario region_failure');
   });
 });
 

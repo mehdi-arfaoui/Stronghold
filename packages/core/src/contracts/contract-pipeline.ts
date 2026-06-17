@@ -110,6 +110,7 @@ export interface PipelineEvidence {
   };
   readonly timestamp: string;
   readonly expiresAt?: string;
+  readonly scenario?: string;
   readonly measuredRTO?: number;
   readonly measuredRPO?: number;
   readonly testResult?: {
@@ -149,12 +150,13 @@ export function buildContractEvaluationInput(
   const services = buildServices(pipelineResult);
   const resourceToService = buildResourceToServiceMap(pipelineResult);
   const serviceNames = new Map(services.map((service) => [service.serviceName, service.serviceId] as const));
+  const evidenceByService = buildEvidenceByService(pipelineResult, resourceToService, services);
 
   return {
     services,
-    evidenceByService: buildEvidenceByService(pipelineResult, resourceToService, services),
+    evidenceByService,
     scenarioCoverage: buildScenarioCoverage(pipelineResult),
-    proofOfRecovery: buildProofOfRecovery(pipelineResult),
+    proofOfRecovery: buildProofOfRecovery(pipelineResult, evidenceByService),
     spofsByService: buildSpofsByService(pipelineResult, resourceToService, serviceNames),
   };
 }
@@ -302,6 +304,9 @@ function mapEvidenceRecord(
 }
 
 function readEvidenceScenario(evidence: PipelineEvidence): string | null {
+  if (typeof evidence.scenario === 'string' && evidence.scenario.length > 0) {
+    return evidence.scenario;
+  }
   if (evidence.observation.key === 'scenario' && typeof evidence.observation.value === 'string') {
     return evidence.observation.value;
   }
@@ -424,8 +429,9 @@ function mergeCoverageDetails(
 
 function buildProofOfRecovery(
   pipelineResult: PipelineResult,
+  evidenceByService: ReadonlyMap<string, readonly EvidenceRecordInfo[]>,
 ): ReadonlyMap<string, ProofOfRecoveryInfo> {
-  return new Map(
+  const proofByService = new Map(
     (pipelineResult.proofOfRecovery?.perService ?? []).map((service) => [
       service.serviceId,
       {
@@ -436,6 +442,36 @@ function buildProofOfRecovery(
       },
     ] as const),
   );
+
+  for (const [serviceId, evidenceRecords] of evidenceByService.entries()) {
+    const current = proofByService.get(serviceId) ?? {
+      hasTestedEvidence: false,
+      hasObservedEvidence: false,
+      testedRuleCount: 0,
+      totalRuleCount: 0,
+    };
+    const activeEvidence = evidenceRecords.filter((record) => !record.expired);
+    const hasTestedEvidence = activeEvidence.some((record) => record.type === 'tested');
+    const hasObservedEvidence = activeEvidence.some(
+      (record) => record.type === 'observed' || record.type === 'declared',
+    );
+
+    proofByService.set(serviceId, {
+      hasTestedEvidence: current.hasTestedEvidence || hasTestedEvidence,
+      hasObservedEvidence: current.hasObservedEvidence || hasObservedEvidence,
+      testedRuleCount: current.testedRuleCount > 0
+        ? current.testedRuleCount
+        : hasTestedEvidence
+          ? 1
+          : 0,
+      totalRuleCount: Math.max(
+        current.totalRuleCount,
+        activeEvidence.length > 0 ? 1 : 0,
+      ),
+    });
+  }
+
+  return proofByService;
 }
 
 function buildSpofsByService(

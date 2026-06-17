@@ -177,7 +177,7 @@ contracts:
     const payload = JSON.stringify(hook.calls[0]?.payload);
     expect(payload).not.toContain('arn:aws');
     expect(payload).not.toContain('123456789012');
-    expect(payload).toContain('[redacted-resource]');
+    expect(payload).toContain('RDS instance (payment-db)');
   });
 });
 

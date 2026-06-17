@@ -50,7 +50,7 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
       required,
       actual: null,
       source: 'not_available',
-      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration>`,
+      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration> --scenario ${input.scenario}`,
     };
   }
 
@@ -66,14 +66,14 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
       required,
       actual: null,
       source: 'not_available',
-      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration>`,
+      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration> --scenario ${input.scenario}`,
     };
   }
 
   const actual = formatMeasuredMinutes(measuredMinutes);
   const measuredMs = measuredMinutesToMilliseconds(measuredMinutes);
   const verdict = measuredMs <= input.required.totalMs ? 'met' : 'violated';
-  const comparison = verdict === 'met' ? 'within' : 'exceeds';
+  const comparison = verdict === 'met' ? '≤' : '>';
 
   return {
     dimension: input.dimension,
@@ -81,7 +81,7 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
     required,
     actual,
     source: 'measured',
-    reason: `Measured ${label} ${actual} ${comparison} required ${required} for scenario ${input.scenario}.`,
+    reason: `Tested ${label} ${actual} ${comparison} required ${input.required.raw} for scenario ${input.scenario}.`,
   };
 }
 

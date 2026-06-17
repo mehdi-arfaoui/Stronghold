@@ -191,6 +191,10 @@ function formatSchemaError(error: ErrorObject): string {
     return `${pathLabel} must include at least one verifiable dimension: rto, rpo, evidence, chain_coverage, or spof.`;
   }
 
+  if (error.keyword === 'minItems' && basePath === 'contracts') {
+    return 'contracts array must contain at least one contract';
+  }
+
   const pathLabel = basePath || 'contracts';
   return `${pathLabel} ${error.message ?? 'is invalid.'}`;
 }

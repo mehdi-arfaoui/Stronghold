@@ -25,7 +25,8 @@ describe('evaluateSpofRequirement', () => {
     const result = evaluateSpofRequirement('none', [spof({ mitigated: true })], SERVICE);
 
     expect(result.verdict).toBe('violated');
-    expect(result.reason).toContain('arn:aws:rds:eu-west-1:123456789012:db:primary');
+    expect(result.reason).not.toContain('arn:aws:');
+    expect(result.reason).toContain('RDS instance (primary)');
   });
 
   it('returns met for required mitigated when all SPOFs are mitigated', () => {
@@ -42,7 +43,8 @@ describe('evaluateSpofRequirement', () => {
     );
 
     expect(result.verdict).toBe('violated');
-    expect(result.reason).toContain('arn:aws:ec2:eu-west-1:123456789012:instance/i-1');
+    expect(result.reason).not.toContain('arn:aws:');
+    expect(result.reason).toContain('EC2 instance (i-1)');
   });
 
   it('returns unknown when SPOF data is absent', () => {
@@ -51,7 +53,7 @@ describe('evaluateSpofRequirement', () => {
     expect(result.verdict).toBe('unknown');
   });
 
-  it('lists ARN values in violated reasons', () => {
+  it('redacts ARN values in violated reasons', () => {
     const result = evaluateSpofRequirement(
       'none',
       [
@@ -61,8 +63,9 @@ describe('evaluateSpofRequirement', () => {
       SERVICE,
     );
 
-    expect(result.reason).toContain('arn:aws:rds:eu-west-1:123456789012:db:primary');
-    expect(result.reason).toContain('arn:aws:elasticache:eu-west-1:123456789012:cluster/cache');
+    expect(result.reason).not.toContain('arn:aws:');
+    expect(result.reason).toContain('RDS instance (primary)');
+    expect(result.reason).toContain('ElastiCache resource (cache)');
   });
 });
 
