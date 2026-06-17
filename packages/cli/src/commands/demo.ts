@@ -1,5 +1,8 @@
+import fs from 'node:fs';
+
 import { Command } from 'commander';
 import {
+  FileEvidenceStore,
   generateRecommendations,
   selectTopRecommendations,
 } from '@stronghold-dr/core';
@@ -10,6 +13,7 @@ import {
   DEFAULT_DEMO_SCENARIO,
   getCommandOptions,
 } from '../config/options.js';
+import { DEMO_CONTRACTS_YAML } from '../demo/demo-contracts.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
 import { updateLocalPostureMemory } from '../history/posture-memory.js';
 import {
@@ -23,7 +27,7 @@ import { renderScanSummary } from '../output/scan-summary.js';
 import { formatDemoMessage } from '../output/theme.js';
 import { runScanPipeline } from '../pipeline/scan-pipeline.js';
 import { saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import { resolveStrongholdPaths, type StrongholdPaths } from '../storage/paths.js';
 
 export function registerDemoCommand(program: Command): void {
   program
@@ -36,6 +40,8 @@ export function registerDemoCommand(program: Command): void {
       const options = getCommandOptions<DemoCommandOptions>(command);
       let pendingStage: string | null = null;
       const demo = getDemoInfrastructure(options.scenario);
+      const paths = resolveStrongholdPaths();
+      const evidence = await new FileEvidenceStore(paths.evidencePath).getAll();
 
       if (options.output === 'summary') {
         await writeOutput(formatDemoMessage());
@@ -49,6 +55,7 @@ export function registerDemoCommand(program: Command): void {
         edges: demo.edges,
         timestamp: new Date().toISOString(),
         isDemo: true,
+        evidence,
         onStage: async (stage) => {
           const label =
             stage === 'graph'
@@ -70,8 +77,8 @@ export function registerDemoCommand(program: Command): void {
         await writeOutput('');
       }
 
-      const paths = resolveStrongholdPaths();
       await saveScanResultsWithEncryption(results, paths.latestScanPath, options);
+      copyDemoContractsIfMissing(paths);
       const postureMemory = await updateLocalPostureMemory(results, paths);
       const savedPath = options.encrypt
         ? '.stronghold/latest-scan.stronghold-enc'
@@ -148,4 +155,13 @@ export function registerDemoCommand(program: Command): void {
         'This was a demo. To scan your real infrastructure: stronghold scan --region <your-region>',
       );
     });
+}
+
+function copyDemoContractsIfMissing(paths: StrongholdPaths): void {
+  if (fs.existsSync(paths.contractsPath)) {
+    return;
+  }
+
+  fs.mkdirSync(paths.rootDir, { recursive: true });
+  fs.writeFileSync(paths.contractsPath, DEMO_CONTRACTS_YAML, 'utf8');
 }

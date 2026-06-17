@@ -17,6 +17,7 @@ import {
   type SingleAccountScanResult,
 } from './canonical-json-types.js';
 import type { ScanResults } from '../storage/file-store.js';
+import { redactContractEvaluation } from './contracts-redaction.js';
 
 const EMPTY_CROSS_ACCOUNT_SUMMARY: CrossAccountSummaryJson = {
   total: 0,
@@ -201,10 +202,12 @@ function createEmptyCrossAccountJson(): CrossAccountJson {
 function serializeContracts(
   contracts: AllContractsEvaluationResult,
 ): CanonicalContractsJson {
+  const redacted = redactContractEvaluation(contracts);
+
   return {
     evaluated: true,
-    results: contracts.contractResults,
-    globalSummary: contracts.globalSummary,
-    enforceableViolations: contracts.enforceableViolations.length,
+    results: redacted.contractResults,
+    globalSummary: redacted.globalSummary,
+    enforceableViolations: redacted.enforceableViolations.length,
   };
 }
