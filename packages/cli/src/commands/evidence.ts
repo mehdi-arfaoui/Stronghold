@@ -3,21 +3,21 @@ import { randomUUID } from 'node:crypto';
 
 import { Command } from 'commander';
 import {
+  EVIDENCE_TYPES,
   FileEvidenceStore,
   checkFreshness,
-  getCallerIdentity,
+  parseDuration,
   parseManualServices,
   type Evidence,
   type EvidenceStore,
+  type EvidenceType,
   type InfraNode,
 } from '@stronghold-dr/core';
 
 import {
   CommandAuditSession,
   collectAuditFlags,
-  resolveAuditIdentity,
 } from '../audit/command-audit.js';
-import { buildDiscoveryCredentials } from '../config/credentials.js';
 import { ConfigurationError } from '../errors/cli-error.js';
 import { writeOutput } from '../output/io.js';
 import { loadScanResultsWithEncryption } from '../storage/secure-file-store.js';
@@ -26,12 +26,16 @@ import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/pat
 const DEFAULT_TEST_EVIDENCE_EXPIRY_DAYS = 90;
 
 interface EvidenceAddCommandOptions {
-  readonly node: string;
+  readonly node?: string;
   readonly type: string;
   readonly result: 'success' | 'failure' | 'partial';
   readonly duration?: string;
   readonly notes?: string;
+  readonly description?: string;
   readonly service?: string;
+  readonly scenario?: string;
+  readonly rto?: string;
+  readonly rpo?: string;
   readonly expires?: number;
   readonly author?: string;
   readonly passphrase?: string;
@@ -43,12 +47,16 @@ export function registerEvidenceCommand(program: Command): void {
   evidence
     .command('add')
     .description('Register the result of a manual DR test')
-    .requiredOption('--node <id>', 'Resource identifier (ARN or Stronghold resource ID)')
-    .requiredOption('--type <string>', 'Test type, for example restore-test or failover-test')
-    .requiredOption('--result <result>', 'Test outcome: success|failure|partial')
+    .option('--node <id>', 'Resource identifier (ARN or Stronghold resource ID)')
+    .requiredOption('--type <string>', 'Evidence type (tested|observed|declared|inferred) or legacy test type')
+    .option('--result <result>', 'Test outcome: success|failure|partial', parseEvidenceResult, 'success')
     .option('--duration <string>', 'Test duration, for example "12 minutes"')
     .option('--notes <string>', 'Freeform notes about the test')
+    .option('--description <string>', 'Description of the evidence')
     .option('--service <id>', 'Service this evidence applies to')
+    .option('--scenario <name>', 'DR scenario this evidence applies to')
+    .option('--rto <duration>', 'Measured RTO, for example 45m or 1h')
+    .option('--rpo <duration>', 'Measured RPO, for example 2m or 30s')
     .option(
       '--expires <days>',
       'Expiration in days (default: 90)',
@@ -62,7 +70,11 @@ export function registerEvidenceCommand(program: Command): void {
         ...(collectAuditFlags({
           '--duration': Boolean(options.duration),
           '--notes': Boolean(options.notes),
+          '--description': Boolean(options.description),
           '--service': Boolean(options.service),
+          '--scenario': Boolean(options.scenario),
+          '--rto': Boolean(options.rto),
+          '--rpo': Boolean(options.rpo),
           '--expires': options.expires !== undefined,
           '--author': Boolean(options.author),
         })
@@ -70,33 +82,53 @@ export function registerEvidenceCommand(program: Command): void {
               flags: collectAuditFlags({
                 '--duration': Boolean(options.duration),
                 '--notes': Boolean(options.notes),
+                '--description': Boolean(options.description),
                 '--service': Boolean(options.service),
+                '--scenario': Boolean(options.scenario),
+                '--rto': Boolean(options.rto),
+                '--rpo': Boolean(options.rpo),
                 '--expires': options.expires !== undefined,
                 '--author': Boolean(options.author),
               }),
             }
           : {}),
       });
-      audit.setIdentityPromise(resolveAuditIdentity());
       await audit.start();
 
       try {
         const paths = resolveStrongholdPaths();
         const store = new FileEvidenceStore(paths.evidencePath);
+        const evidenceType = resolveEvidenceType(options.type);
+        const measuredRTO = parseMeasuredDurationOption('--rto', options.rto);
+        const measuredRPO = parseMeasuredDurationOption('--rpo', options.rpo);
+        if ((measuredRTO !== undefined || measuredRPO !== undefined) && evidenceType !== 'tested') {
+          throw new ConfigurationError('measured RTO/RPO requires --type tested');
+        }
+        if (!options.node && !options.service) {
+          throw new ConfigurationError('evidence add requires --node or --service.');
+        }
         const serviceId =
-          options.service ??
+          (options.service
+            ? await resolveServiceIdForName(options.service, {
+                passphrase: options.passphrase,
+              })
+            : null) ??
           (await resolveServiceIdForNode(options.node, {
             passphrase: options.passphrase,
           }));
         const executor = await resolveEvidenceAuthor(options.author);
         const evidenceEntry = await addEvidenceEntry({
           store,
-          nodeId: options.node,
+          nodeId: options.node ?? `service:${serviceId ?? options.service ?? 'unknown'}`,
           serviceId,
-          testType: options.type,
+          evidenceType,
+          testType: resolveTestType(options.type, options.scenario),
           result: options.result,
           duration: options.duration,
-          notes: options.notes,
+          notes: options.description ?? options.notes,
+          scenario: options.scenario,
+          measuredRTO,
+          measuredRPO,
           expiresInDays: options.expires,
           executor,
         });
@@ -119,7 +151,6 @@ export function registerEvidenceCommand(program: Command): void {
       const audit = new CommandAuditSession('evidence_list', {
         outputFormat: 'summary',
       });
-      audit.setIdentityPromise(resolveAuditIdentity());
       await audit.start();
 
       try {
@@ -143,7 +174,6 @@ export function registerEvidenceCommand(program: Command): void {
       const audit = new CommandAuditSession('evidence_show', {
         outputFormat: 'summary',
       });
-      audit.setIdentityPromise(resolveAuditIdentity());
       await audit.start();
 
       try {
@@ -168,10 +198,14 @@ export function registerEvidenceCommand(program: Command): void {
 export async function addEvidenceEntry(input: {
   readonly store: EvidenceStore;
   readonly nodeId: string;
+  readonly evidenceType?: EvidenceType;
   readonly testType: string;
   readonly result: 'success' | 'failure' | 'partial';
   readonly duration?: string;
   readonly notes?: string;
+  readonly scenario?: string;
+  readonly measuredRTO?: number;
+  readonly measuredRPO?: number;
   readonly serviceId?: string | null;
   readonly expiresInDays?: number;
   readonly executor: string;
@@ -181,30 +215,47 @@ export async function addEvidenceEntry(input: {
   const timestamp = now.toISOString();
   const expiresInDays = input.expiresInDays ?? DEFAULT_TEST_EVIDENCE_EXPIRY_DAYS;
   const expiresAt = addDays(now, expiresInDays).toISOString();
+  const evidenceType = input.evidenceType ?? 'tested';
 
   const evidence: Evidence = {
     id: randomUUID(),
-    type: 'tested',
-    source: {
-      origin: 'test',
-      testType: input.testType,
-      testDate: timestamp,
-    },
+    type: evidenceType,
+    source: evidenceType === 'tested'
+      ? {
+          origin: 'test',
+          testType: input.testType,
+          testDate: timestamp,
+        }
+      : {
+          origin: 'manual',
+          author: input.executor,
+        },
     subject: {
       nodeId: input.nodeId,
       ...(input.serviceId ? { serviceId: input.serviceId } : {}),
     },
     observation: {
-      key: input.testType,
-      value: input.result,
+      key: input.scenario ? 'scenario' : input.testType,
+      value: input.scenario
+        ? {
+            scenario: input.scenario,
+            result: input.result,
+            testType: input.testType,
+          }
+        : input.result,
       expected: 'success',
-      description: `Manual ${input.testType} recorded as ${input.result}.`,
+      description: input.notes ?? `Manual ${input.testType} recorded as ${input.result}.`,
     },
     timestamp,
     expiresAt,
+    ...(input.scenario ? { scenario: input.scenario } : {}),
+    ...(input.measuredRTO !== undefined ? { measuredRTO: input.measuredRTO } : {}),
+    ...(input.measuredRPO !== undefined ? { measuredRPO: input.measuredRPO } : {}),
     testResult: {
       status: input.result,
       ...(input.duration ? { duration: input.duration } : {}),
+      ...(input.measuredRTO !== undefined ? { measuredRTO: input.measuredRTO } : {}),
+      ...(input.measuredRPO !== undefined ? { measuredRPO: input.measuredRPO } : {}),
       ...(input.notes ? { notes: input.notes } : {}),
       executor: input.executor,
     },
@@ -215,11 +266,15 @@ export async function addEvidenceEntry(input: {
 }
 
 export async function resolveServiceIdForNode(
-  nodeId: string,
+  nodeId: string | undefined,
   options: {
     readonly passphrase?: string;
   } = {},
 ): Promise<string | null> {
+  if (!nodeId) {
+    return null;
+  }
+
   const paths = resolveStrongholdPaths();
   const scanPath = resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
 
@@ -255,6 +310,34 @@ export async function resolveServiceIdForNode(
   } catch {
     return null;
   }
+}
+
+export async function resolveServiceIdForName(
+  serviceName: string,
+  options: {
+    readonly passphrase?: string;
+  } = {},
+): Promise<string | null> {
+  const paths = resolveStrongholdPaths();
+  const scanPath = resolvePreferredScanPath(paths.latestEncryptedScanPath, paths.latestScanPath);
+
+  try {
+    if (fs.existsSync(scanPath)) {
+      const scan = await loadScanResultsWithEncryption(scanPath, {
+        passphrase: options.passphrase,
+      });
+      const serviceFromScan = scan.servicePosture?.detection.services.find(
+        (service) => service.id === serviceName || service.name === serviceName,
+      );
+      if (serviceFromScan) {
+        return serviceFromScan.id;
+      }
+    }
+  } catch {
+    return serviceName;
+  }
+
+  return serviceName;
 }
 
 export function renderEvidenceRegistered(evidence: Evidence): string {
@@ -337,8 +420,7 @@ async function resolveEvidenceAuthor(author?: string): Promise<string> {
     return author;
   }
 
-  const identity = await getCallerIdentity(buildDiscoveryCredentials().aws ?? {});
-  return identity?.arn ?? 'unknown';
+  return process.env.USERNAME ?? process.env.USER ?? 'unknown';
 }
 
 function createSyntheticNode(nodeId: string): InfraNode {
@@ -401,6 +483,47 @@ function parsePositiveInteger(value: string): number {
     throw new ConfigurationError('--expires must be a positive integer.');
   }
   return parsed;
+}
+
+function parseEvidenceResult(value: string): 'success' | 'failure' | 'partial' {
+  if (value === 'success' || value === 'failure' || value === 'partial') {
+    return value;
+  }
+
+  throw new ConfigurationError('--result must be success, failure, or partial.');
+}
+
+function resolveEvidenceType(type: string): EvidenceType {
+  return isEvidenceType(type) ? type : 'tested';
+}
+
+function resolveTestType(type: string, scenario?: string): string {
+  if (isEvidenceType(type)) {
+    return scenario ?? 'manual-evidence';
+  }
+
+  return type;
+}
+
+function isEvidenceType(value: string): value is EvidenceType {
+  return (EVIDENCE_TYPES as readonly string[]).includes(value);
+}
+
+function parseMeasuredDurationOption(
+  flag: '--rto' | '--rpo',
+  value: string | undefined,
+): number | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  try {
+    return parseDuration(value).totalMs / 60_000;
+  } catch {
+    throw new ConfigurationError(
+      `${flag} must be a positive duration such as 45m, 1h, or 1h30m.`,
+    );
+  }
 }
 
 function capitalize(value: string): string {

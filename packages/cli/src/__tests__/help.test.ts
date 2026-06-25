@@ -19,6 +19,7 @@ describe('CLI help output', () => {
 
     expect(help).toContain('init');
     expect(help).toContain('scan');
+    expect(help).toContain('contracts');
     expect(help).toContain('report');
     expect(help).toContain('plan');
     expect(help).toContain('drift');

@@ -55,6 +55,8 @@ export interface ScanCommandOptions extends GraphOverrideCommandOptions {
   readonly format?: ScanOutputFormat;
   readonly save: boolean;
   readonly verbose: boolean;
+  readonly ci: boolean;
+  readonly hooks: boolean;
 }
 
 export interface InitCommandOptions {

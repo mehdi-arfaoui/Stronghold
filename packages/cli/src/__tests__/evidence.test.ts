@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { FileEvidenceStore, type ServicePosture } from '@stronghold-dr/core';
+import { FileEvidenceStore, type Evidence, type ServicePosture } from '@stronghold-dr/core';
 
 import {
   addEvidenceEntry,
@@ -12,11 +12,18 @@ import {
   resolveServiceIdForNode,
 } from '../commands/evidence.js';
 import { renderStatusSnapshot } from '../commands/status.js';
+import { createTempDirectory } from './test-utils.js';
 
 describe('evidence command helpers', () => {
+  const originalCwd = process.cwd();
+  const originalExitCode = process.exitCode;
+
   afterEach(() => {
+    process.chdir(originalCwd);
+    process.exitCode = originalExitCode;
     vi.restoreAllMocks();
     vi.useRealTimers();
+    vi.resetModules();
   });
 
   it('writes a tested evidence entry with the default 90-day expiration', async () => {
@@ -176,6 +183,137 @@ services:
   });
 });
 
+describe('evidence add with RTO/RPO', () => {
+  const originalCwd = process.cwd();
+  const originalExitCode = process.exitCode;
+
+  afterEach(() => {
+    process.chdir(originalCwd);
+    process.exitCode = originalExitCode;
+    vi.restoreAllMocks();
+    vi.resetModules();
+  });
+
+  it('adds evidence with --rto 45m --rpo 2m', async () => {
+    const cwd = createTempDirectory('stronghold-evidence-rto-');
+
+    await runCliIn(cwd, [
+      'evidence',
+      'add',
+      '--service',
+      'database',
+      '--type',
+      'tested',
+      '--scenario',
+      'region_failure',
+      '--rto',
+      '45m',
+      '--rpo',
+      '2m',
+      '--description',
+      'Game day Q2 2026',
+    ]);
+
+    const evidence = readEvidence(cwd)[0];
+    expect(evidence?.type).toBe('tested');
+    expect(evidence?.subject.serviceId).toBe('database');
+    expect(evidence?.scenario).toBe('region_failure');
+    expect(evidence?.measuredRTO).toBe(45);
+    expect(evidence?.measuredRPO).toBe(2);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('rejects --rto abc', async () => {
+    const output = await runCliIn(createTempDirectory('stronghold-evidence-rto-'), [
+      'evidence',
+      'add',
+      '--service',
+      'database',
+      '--type',
+      'tested',
+      '--rto',
+      'abc',
+    ]);
+
+    expect(process.exitCode).toBe(2);
+    expect(output.stderr).toContain('--rto must be a positive duration');
+  });
+
+  it('rejects --rto 0m', async () => {
+    const output = await runCliIn(createTempDirectory('stronghold-evidence-rto-'), [
+      'evidence',
+      'add',
+      '--service',
+      'database',
+      '--type',
+      'tested',
+      '--rto',
+      '0m',
+    ]);
+
+    expect(process.exitCode).toBe(2);
+    expect(output.stderr).toContain('--rto must be a positive duration');
+  });
+
+  it('rejects --rto with --type observed', async () => {
+    const output = await runCliIn(createTempDirectory('stronghold-evidence-rto-'), [
+      'evidence',
+      'add',
+      '--service',
+      'database',
+      '--type',
+      'observed',
+      '--rto',
+      '45m',
+    ]);
+
+    expect(process.exitCode).toBe(2);
+    expect(output.stderr).toContain('measured RTO/RPO requires --type tested');
+  });
+
+  it('works without --rto/--rpo for backward compatibility', async () => {
+    const cwd = createTempDirectory('stronghold-evidence-rto-');
+
+    await runCliIn(cwd, [
+      'evidence',
+      'add',
+      '--node',
+      'payment-db',
+      '--type',
+      'restore-test',
+      '--result',
+      'success',
+    ]);
+
+    const evidence = readEvidence(cwd)[0];
+    expect(evidence?.type).toBe('tested');
+    expect(evidence?.source.origin).toBe('test');
+    if (evidence?.source.origin === 'test') {
+      expect(evidence.source.testType).toBe('restore-test');
+    }
+    expect(evidence?.measuredRTO).toBeUndefined();
+  });
+
+  it('stores scenario when --scenario provided', async () => {
+    const cwd = createTempDirectory('stronghold-evidence-rto-');
+
+    await runCliIn(cwd, [
+      'evidence',
+      'add',
+      '--service',
+      'database',
+      '--type',
+      'tested',
+      '--scenario',
+      'region_failure',
+    ]);
+
+    const evidence = readEvidence(cwd)[0];
+    expect(evidence?.scenario).toBe('region_failure');
+    expect(evidence?.observation.key).toBe('scenario');
+  });
+});
+
 function createStatusPosture(): ServicePosture {
   return {
     detection: {
@@ -272,4 +410,38 @@ function createStatusPosture(): ServicePosture {
       recommendations: [],
     },
   };
+}
+
+async function runCliIn(
+  cwd: string,
+  args: readonly string[],
+): Promise<{ readonly stdout: string; readonly stderr: string }> {
+  process.chdir(cwd);
+  process.exitCode = undefined;
+  const stdout: string[] = [];
+  const stderr: string[] = [];
+  vi.spyOn(process.stdout, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    stdout.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+    return true;
+  });
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+    stderr.push(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+    return true;
+  });
+
+  const programModule = await import('../index.js');
+  await programModule.runCli(['node', 'stronghold', ...args]);
+
+  return {
+    stdout: stdout.join(''),
+    stderr: stderr.join(''),
+  };
+}
+
+function readEvidence(cwd: string): readonly Evidence[] {
+  const contents = fs.readFileSync(path.join(cwd, '.stronghold', 'evidence.jsonl'), 'utf8');
+  return contents
+    .trim()
+    .split('\n')
+    .map((line) => JSON.parse(line) as Evidence);
 }

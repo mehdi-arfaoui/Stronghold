@@ -5,6 +5,7 @@ import { Command } from 'commander';
 
 import { CliError } from './errors/cli-error.js';
 import { writeError } from './output/io.js';
+import { registerContractsCommand } from './commands/contracts.js';
 import { registerDemoCommand } from './commands/demo.js';
 import { registerDriftCommand } from './commands/drift.js';
 import { registerEvidenceCommand } from './commands/evidence.js';
@@ -34,6 +35,7 @@ export function createProgram(): Command {
 
   registerInitCommand(program);
   registerScanCommand(program);
+  registerContractsCommand(program);
   registerReportCommand(program);
   registerPlanCommand(program);
   registerDriftCommand(program);

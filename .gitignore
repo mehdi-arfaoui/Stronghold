@@ -25,7 +25,6 @@ tmp/
 *.tar.gz
 *.lic
 
-AGENTS.md
 .DS_Store
 Thumbs.db
 .idea/

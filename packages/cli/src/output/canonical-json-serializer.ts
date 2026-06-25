@@ -1,9 +1,13 @@
-import type { CrossAccountDetectionResult } from '@stronghold-dr/core';
+import type {
+  AllContractsEvaluationResult,
+  CrossAccountDetectionResult,
+} from '@stronghold-dr/core';
 
 import {
   STRONGHOLD_JSON_VERSION,
   type AccountSummary,
   type CanonicalMultiAccountScanResult,
+  type CanonicalContractsJson,
   type CanonicalScanJsonOutput,
   type CanonicalScanSerializationInput,
   type CrossAccountJson,
@@ -13,6 +17,7 @@ import {
   type SingleAccountScanResult,
 } from './canonical-json-types.js';
 import type { ScanResults } from '../storage/file-store.js';
+import { redactContractEvaluation } from './contracts-redaction.js';
 
 const EMPTY_CROSS_ACCOUNT_SUMMARY: CrossAccountSummaryJson = {
   total: 0,
@@ -29,6 +34,7 @@ export function serializeCanonicalScanJson(
 ): CanonicalScanJsonOutput {
   const multiAccountResult = toMultiAccountResult(result);
   const scanResults = multiAccountResult.results;
+  const contracts = isSerializationEnvelope(result) ? result.contracts : null;
 
   return {
     scan: {
@@ -52,6 +58,7 @@ export function serializeCanonicalScanJson(
       services: scanResults.servicePosture?.scoring ?? null,
     },
     realityGap: scanResults.proofOfRecovery ?? null,
+    ...(contracts ? { contracts: serializeContracts(contracts) } : {}),
   };
 }
 
@@ -189,5 +196,18 @@ function createEmptyCrossAccountJson(): CrossAccountJson {
   return {
     edges: [],
     summary: EMPTY_CROSS_ACCOUNT_SUMMARY,
+  };
+}
+
+function serializeContracts(
+  contracts: AllContractsEvaluationResult,
+): CanonicalContractsJson {
+  const redacted = redactContractEvaluation(contracts);
+
+  return {
+    evaluated: true,
+    results: redacted.contractResults,
+    globalSummary: redacted.globalSummary,
+    enforceableViolations: redacted.enforceableViolations.length,
   };
 }

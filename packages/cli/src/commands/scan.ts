@@ -16,7 +16,10 @@ import {
   loadStrongholdConfig,
   logGovernanceAuditEvents,
   parseArn,
+  ContractPipelineError,
+  runContractEvaluation,
   selectTopRecommendations,
+  type AllContractsEvaluationResult,
   type AccountScanTarget,
   type AuthTargetHint,
   type ScanContext,
@@ -56,7 +59,7 @@ import {
 import { writeError, writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
 import { determineScanExitCode, renderScanSummary } from '../output/scan-summary.js';
-import { formatReadOnlyMessage } from '../output/theme.js';
+import { formatReadOnlyMessage, theme } from '../output/theme.js';
 import {
   serializeCanonicalScanJson,
   serializeCrossAccountDetection,
@@ -71,6 +74,7 @@ import { runScanPipeline } from '../pipeline/scan-pipeline.js';
 import type { ScanExecutionMetadata } from '../storage/file-store.js';
 import { loadScanResultsWithEncryption, saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
 import { resolvePreferredScanPath, resolveStrongholdPaths } from '../storage/paths.js';
+import { WebhookHook } from '../hooks/webhook-hook.js';
 
 export function registerScanCommand(program: Command): void {
   addGraphOverrideOptions(
@@ -97,6 +101,8 @@ export function registerScanCommand(program: Command): void {
     )
     .option('--output <format>', 'summary|json|silent', DEFAULT_SCAN_OUTPUT)
     .option('--format <format>', 'Alias for --output: summary|json|silent')
+    .option('--ci', 'Use CI-friendly contract status labels', false)
+    .option('--no-hooks', 'Disable contract notification hooks')
     .option('--no-save', "Don't save scan results")
     .option('--verbose', 'Show detailed logs', false),
   ).action(async (_: ScanCommandOptions, command: Command) => {
@@ -129,6 +135,8 @@ export function registerScanCommand(program: Command): void {
           '--no-save': !options.save,
           '--encrypt': options.encrypt,
           '--verbose': options.verbose,
+          '--ci': options.ci,
+          '--no-hooks': options.hooks === false,
           '--no-overrides': options.useOverrides === false,
           '--overrides': options.useOverrides !== false,
         });
@@ -232,6 +240,16 @@ export function registerScanCommand(program: Command): void {
         const allWarnings = postureMemory.warning
           ? [...execution.warnings, postureMemory.warning]
           : execution.warnings;
+        const contractEvaluation = await runContractEvaluation({
+          contractsPath: paths.contractsPath,
+          pipelineResult: {
+            ...execution.results,
+            evidence,
+          },
+          hookImplementation: new WebhookHook((message) => logger.warn(message)),
+          disableHooks: options.hooks === false,
+          strongholdVersion: '2.0.0',
+        });
 
         if (options.verbose && allWarnings.length > 0) {
           allWarnings.forEach((warning) => logger.warn(`[WARN] ${warning}`));
@@ -245,6 +263,8 @@ export function registerScanCommand(program: Command): void {
           redact: options.redact,
         });
         const topRecommendations = selectTopRecommendations(recommendations);
+        const baseExitCode = exitCodeOverride ?? determineScanExitCode(execution.results);
+        const finalExitCode = contractEvaluation?.hasEnforceableViolations ? 1 : baseExitCode;
 
         if (options.output === 'json') {
           const canonical = serializeCanonicalScanJson(
@@ -252,11 +272,13 @@ export function registerScanCommand(program: Command): void {
               ? {
                   kind: 'multi-account',
                   results: execution.results,
+                  contracts: contractEvaluation,
                   ...multiAccountOutput,
                 }
               : {
                   kind: 'single-account',
                   results: execution.results,
+                  contracts: contractEvaluation,
                   account: {
                     ...(callerIdentity?.accountId ? { accountId: callerIdentity.accountId } : {}),
                     ...(execution.results.scanMetadata?.accountName
@@ -285,6 +307,10 @@ export function registerScanCommand(program: Command): void {
             },
           });
           await writeOutput(summary);
+          if (contractEvaluation) {
+            await writeOutput('');
+            await writeOutput(renderContractsSummary(contractEvaluation, options.ci, finalExitCode));
+          }
           const currentDebt =
             postureMemory.currentSnapshot?.totalDebt ??
             postureMemory.currentDebt.reduce((sum, service) => sum + service.totalDebt, 0);
@@ -328,7 +354,7 @@ export function registerScanCommand(program: Command): void {
           }
         }
 
-        process.exitCode = exitCodeOverride ?? determineScanExitCode(execution.results);
+        process.exitCode = finalExitCode;
         const governanceEvents =
           execution.results.governance && execution.results.servicePosture
             ? collectGovernanceAuditEvents(
@@ -353,6 +379,16 @@ export function registerScanCommand(program: Command): void {
             {
               timestamp: execution.results.timestamp,
               ...(callerIdentity ? { identity: callerIdentity } : {}),
+            },
+          );
+        }
+        if (contractEvaluation) {
+          await logContractEvaluationAudit(
+            new FileAuditLogger(paths.auditLogPath),
+            contractEvaluation,
+            {
+              timestamp: execution.results.timestamp,
+              identity: callerIdentity,
             },
           );
         }
@@ -395,6 +431,139 @@ interface CommandExecutionResult {
   readonly callerIdentity: Awaited<ReturnType<typeof resolveScanAuditIdentity>> | null;
   readonly exitCodeOverride?: 0 | 1;
   readonly multiAccountOutput?: MultiAccountScanSerializationMetadata;
+}
+
+type ContractEvaluationEntry = AllContractsEvaluationResult['contractResults'][number];
+type ContractDisplayVerdict = 'met' | 'violated' | 'unknown' | 'not_applicable';
+
+function renderContractsSummary(
+  evaluation: AllContractsEvaluationResult,
+  ci: boolean,
+  exitCode: 0 | 1,
+): string {
+  const lines = [`Contracts: ${evaluation.contractResults.length} evaluated`];
+  for (const contractResult of evaluation.contractResults) {
+    const verdict = resolveContractDisplayVerdict(contractResult.summary);
+    lines.push(
+      `  ${formatContractVerdictMarker(verdict, ci)} ${contractResult.contract.service}: ${formatContractCounts(contractResult.summary)}${formatContractDetail(contractResult, verdict)}`,
+    );
+  }
+
+  if (evaluation.enforceableViolations.length > 0) {
+    const count = evaluation.enforceableViolations.length;
+    lines.push('');
+    lines.push(
+      `${theme.warn('\u26A0')} ${count} enforceable violation${count === 1 ? '' : 's'} - exit code ${exitCode}`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
+function resolveContractDisplayVerdict(
+  summary: AllContractsEvaluationResult['globalSummary'],
+): ContractDisplayVerdict {
+  if (summary.violated > 0) {
+    return 'violated';
+  }
+  if (summary.unknown > 0) {
+    return 'unknown';
+  }
+  if (summary.met > 0 || summary.total === 0) {
+    return 'met';
+  }
+  return 'not_applicable';
+}
+
+function formatContractVerdictMarker(verdict: ContractDisplayVerdict, ci: boolean): string {
+  if (ci) {
+    switch (verdict) {
+      case 'met':
+        return '[PASS]';
+      case 'violated':
+        return '[FAIL]';
+      case 'unknown':
+      case 'not_applicable':
+        return '[UNKNOWN]';
+    }
+  }
+
+  switch (verdict) {
+    case 'met':
+      return theme.pass('\u2713');
+    case 'violated':
+      return theme.fail('\u2717');
+    case 'unknown':
+    case 'not_applicable':
+      return theme.warn('?');
+  }
+}
+
+function formatContractCounts(
+  summary: AllContractsEvaluationResult['globalSummary'],
+): string {
+  const parts = [
+    formatContractCount(summary.met, 'met'),
+    formatContractCount(summary.violated, 'violated'),
+    formatContractCount(summary.unknown, 'unknown'),
+    formatContractCount(summary.notApplicable, 'not applicable'),
+  ].filter((part): part is string => part !== null);
+
+  return parts.length > 0 ? parts.join(', ') : '0 evaluated';
+}
+
+function formatContractCount(count: number, label: string): string | null {
+  return count > 0 ? `${count} ${label}` : null;
+}
+
+function formatContractDetail(
+  contractResult: ContractEvaluationEntry,
+  verdict: ContractDisplayVerdict,
+): string {
+  if (verdict !== 'violated' && verdict !== 'unknown') {
+    return '';
+  }
+
+  const result = contractResult.results.find((entry) => entry.verdict === verdict);
+  const dimensions = result?.dimensions
+    .filter((dimension) => dimension.verdict === verdict)
+    .slice(0, 2) ?? [];
+  if (dimensions.length === 0) {
+    return '';
+  }
+
+  return ` (${dimensions.map((dimension) =>
+    `${dimension.dimension}: required ${dimension.required}, actual ${dimension.actual ?? 'unknown'}`,
+  ).join('; ')})`;
+}
+
+async function logContractEvaluationAudit(
+  auditLogger: FileAuditLogger,
+  evaluation: AllContractsEvaluationResult,
+  options: {
+    readonly timestamp: string;
+    readonly identity: Awaited<ReturnType<typeof resolveScanAuditIdentity>> | null;
+  },
+): Promise<void> {
+  await auditLogger.log({
+    timestamp: options.timestamp,
+    version: '1.0.0',
+    action: 'contract_evaluated',
+    ...(options.identity ? { identity: options.identity } : {}),
+    parameters: {},
+    details: {
+      contractCount: evaluation.contractResults.length,
+      met: evaluation.globalSummary.met,
+      violated: evaluation.globalSummary.violated,
+      unknown: evaluation.globalSummary.unknown,
+      enforceableViolations: evaluation.enforceableViolations.length,
+      hooksFired: evaluation.hooksFired.length,
+    },
+    result: {
+      status: 'success',
+      duration_ms: 0,
+    },
+  });
 }
 
 interface ResolvedMultiAccountScanSetting {
@@ -1110,7 +1279,11 @@ function mapScanCommandError(error: unknown): unknown {
     return error;
   }
 
-  if (error instanceof ConfigurationError || error instanceof StrongholdConfigValidationError) {
+  if (
+    error instanceof ConfigurationError ||
+    error instanceof StrongholdConfigValidationError ||
+    error instanceof ContractPipelineError
+  ) {
     return new CliError(error.message, 3, error);
   }
 

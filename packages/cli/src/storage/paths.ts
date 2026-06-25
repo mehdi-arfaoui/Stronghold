@@ -11,6 +11,7 @@ export interface StrongholdPaths {
   readonly baselineEncryptedScanPath: string;
   readonly auditLogPath: string;
   readonly evidencePath: string;
+  readonly contractsPath: string;
   readonly historyPath: string;
   readonly findingLifecyclesPath: string;
   readonly servicesPath: string;
@@ -23,6 +24,7 @@ const LATEST_SCAN_FILENAME = 'latest-scan.json';
 const BASELINE_SCAN_FILENAME = 'baseline-scan.json';
 const AUDIT_LOG_FILENAME = 'audit.jsonl';
 const EVIDENCE_FILENAME = 'evidence.jsonl';
+const CONTRACTS_FILENAME = 'contracts.yml';
 const HISTORY_FILENAME = 'history.jsonl';
 const FINDING_LIFECYCLES_FILENAME = 'finding-lifecycles.json';
 const SERVICES_FILENAME = 'services.yml';
@@ -39,6 +41,7 @@ export function resolveStrongholdPaths(cwd = process.cwd()): StrongholdPaths {
     baselineEncryptedScanPath: path.join(rootDir, `baseline-scan${ENCRYPTED_FILE_EXTENSION}`),
     auditLogPath: path.join(rootDir, AUDIT_LOG_FILENAME),
     evidencePath: path.join(rootDir, EVIDENCE_FILENAME),
+    contractsPath: path.join(rootDir, CONTRACTS_FILENAME),
     historyPath: path.join(rootDir, HISTORY_FILENAME),
     findingLifecyclesPath: path.join(rootDir, FINDING_LIFECYCLES_FILENAME),
     servicesPath: path.join(rootDir, SERVICES_FILENAME),

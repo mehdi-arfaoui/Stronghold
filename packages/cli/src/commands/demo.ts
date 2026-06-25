@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+
 import { Command } from 'commander';
 import {
   generateRecommendations,
@@ -10,12 +12,11 @@ import {
   DEFAULT_DEMO_SCENARIO,
   getCommandOptions,
 } from '../config/options.js';
+import { DEMO_CONTRACTS_YAML } from '../demo/demo-contracts.js';
 import { getDemoInfrastructure } from '../demo/demo-infrastructure.js';
 import { updateLocalPostureMemory } from '../history/posture-memory.js';
 import {
-  calculateDebtChangePercent,
   renderExecutiveSummary,
-  resolveExecutiveTrendFromSnapshots,
 } from '../output/executive-summary.js';
 import { writeOutput } from '../output/io.js';
 import { renderRecommendationHighlights } from '../output/recommendations.js';
@@ -23,7 +24,10 @@ import { renderScanSummary } from '../output/scan-summary.js';
 import { formatDemoMessage } from '../output/theme.js';
 import { runScanPipeline } from '../pipeline/scan-pipeline.js';
 import { saveScanResultsWithEncryption } from '../storage/secure-file-store.js';
-import { resolveStrongholdPaths } from '../storage/paths.js';
+import { resolveStrongholdPaths, type StrongholdPaths } from '../storage/paths.js';
+import type { ScanExecutionMetadata, ScanResults } from '../storage/file-store.js';
+
+const DEMO_SCANNER_NAME = 'DemoFixture';
 
 export function registerDemoCommand(program: Command): void {
   program
@@ -35,14 +39,22 @@ export function registerDemoCommand(program: Command): void {
     .action(async (_: DemoCommandOptions, command: Command) => {
       const options = getCommandOptions<DemoCommandOptions>(command);
       let pendingStage: string | null = null;
+      const demoStartedAt = Date.now();
       const demo = getDemoInfrastructure(options.scenario);
+      const paths = resolveStrongholdPaths();
+      const hasExistingState = hasExistingScanState(paths);
 
       if (options.output === 'summary') {
         await writeOutput(formatDemoMessage());
         await writeOutput('');
+        if (hasExistingState) {
+          await writeOutput('Note: existing .stronghold/ state detected. Demo will use fresh data.');
+          await writeOutput('Previous scan results will not be affected.');
+          await writeOutput('');
+        }
       }
 
-      const results = await runScanPipeline({
+      const pipelineResults = await runScanPipeline({
         provider: demo.provider,
         regions: demo.regions,
         nodes: demo.nodes,
@@ -64,14 +76,21 @@ export function registerDemoCommand(program: Command): void {
           }
         },
       });
+      const results: ScanResults = {
+        ...pipelineResults,
+        scanMetadata: buildDemoScanMetadata(
+          pipelineResults,
+          Math.max(1, Date.now() - demoStartedAt),
+        ),
+      };
 
       if (pendingStage && options.output === 'summary') {
         await writeOutput(`${pendingStage} done`);
         await writeOutput('');
       }
 
-      const paths = resolveStrongholdPaths();
       await saveScanResultsWithEncryption(results, paths.latestScanPath, options);
+      copyDemoContractsIfMissing(paths);
       const postureMemory = await updateLocalPostureMemory(results, paths);
       const savedPath = options.encrypt
         ? '.stronghold/latest-scan.stronghold-enc'
@@ -105,8 +124,8 @@ export function registerDemoCommand(program: Command): void {
           warnings: postureMemory.warning ? [postureMemory.warning] : [],
           postureDelta: {
             currentSnapshot: postureMemory.currentSnapshot,
-            previousSnapshot: postureMemory.previousSnapshot,
-            lifecycleDelta: postureMemory.lifecycleDelta,
+            previousSnapshot: null,
+            lifecycleDelta: null,
           },
         }),
       );
@@ -124,11 +143,8 @@ export function registerDemoCommand(program: Command): void {
           scenariosCovered: results.scenarioAnalysis?.summary.covered ?? 0,
           scenariosTotal: results.scenarioAnalysis?.summary.total ?? 0,
           drDebt: currentDebt,
-          drDebtChange: calculateDebtChangePercent(currentDebt, postureMemory.previousSnapshot?.totalDebt),
-          trend: resolveExecutiveTrendFromSnapshots(
-            postureMemory.currentSnapshot?.globalScore,
-            postureMemory.previousSnapshot?.globalScore,
-          ),
+          drDebtChange: null,
+          trend: 'first_scan',
           nextAction: topRecommendations[0] ?? null,
         }),
       );
@@ -148,4 +164,51 @@ export function registerDemoCommand(program: Command): void {
         'This was a demo. To scan your real infrastructure: stronghold scan --region <your-region>',
       );
     });
+}
+
+function hasExistingScanState(paths: StrongholdPaths): boolean {
+  return [
+    paths.latestScanPath,
+    paths.latestEncryptedScanPath,
+    paths.baselineScanPath,
+    paths.baselineEncryptedScanPath,
+    paths.historyPath,
+    paths.findingLifecyclesPath,
+  ].some((filePath) => fs.existsSync(filePath));
+}
+
+function buildDemoScanMetadata(
+  results: Pick<ScanResults, 'nodes' | 'regions'>,
+  totalDurationMs: number,
+): ScanExecutionMetadata {
+  const scannerResults = results.regions.map((region) => ({
+    scannerName: DEMO_SCANNER_NAME,
+    region,
+    durationMs: totalDurationMs,
+    retryCount: 0,
+    finalStatus: 'success' as const,
+    resourceCount: results.nodes.filter(
+      (node) => node.region === region || node.region === 'global',
+    ).length,
+  }));
+
+  return {
+    totalDurationMs,
+    scannerConcurrency: 1,
+    scannerTimeoutMs: 0,
+    scannedRegions: [...results.regions],
+    discoveredResourceCount: results.nodes.length,
+    successfulScanners: scannerResults.length,
+    failedScanners: 0,
+    scannerResults,
+  };
+}
+
+function copyDemoContractsIfMissing(paths: StrongholdPaths): void {
+  if (fs.existsSync(paths.contractsPath)) {
+    return;
+  }
+
+  fs.mkdirSync(paths.rootDir, { recursive: true });
+  fs.writeFileSync(paths.contractsPath, DEMO_CONTRACTS_YAML, 'utf8');
 }

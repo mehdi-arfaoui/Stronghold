@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Runtime entrypoints must stay byte-stable on Windows checkouts.
+github-action/dist/index.js text eol=lf
+packages/cli/bin/stronghold.js text eol=lf
