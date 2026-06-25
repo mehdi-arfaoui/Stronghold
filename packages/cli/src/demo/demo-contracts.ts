@@ -1,8 +1,8 @@
 export const DEMO_CONTRACTS_YAML = `# Demo recoverability contract.
-# This targets the built-in startup demo service named "database".
+# This targets the built-in startup demo service named "startup-api".
 version: "1"
 contracts:
-  - service: database
+  - service: startup-api
     description: "Demo contract - critical service DR requirements"
     enforcement: enforce
     requirements:

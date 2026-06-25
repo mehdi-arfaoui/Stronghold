@@ -139,16 +139,18 @@ describe('stronghold contracts', () => {
 
     await runCliIn(cwd, ['demo', '--output', 'json']);
     expect(fs.existsSync(path.join(cwd, '.stronghold', 'contracts.yml'))).toBe(true);
+    const serviceName = readContractService(cwd);
 
     const firstValidation = await runCliIn(cwd, ['contracts', 'validate']);
     expect(firstValidation.stdout).toContain('UNKNOWN');
     expect(firstValidation.stdout).toContain('No tested evidence with measured RTO');
+    expect(firstValidation.stdout).toContain(`${serviceName} / region_failure: UNKNOWN`);
 
     await runCliIn(cwd, [
       'evidence',
       'add',
       '--service',
-      'database',
+      serviceName,
       '--scenario',
       'region_failure',
       '--type',
@@ -209,6 +211,12 @@ function writeContracts(cwd: string, contents: string): void {
   const contractsPath = path.join(cwd, '.stronghold', 'contracts.yml');
   fs.mkdirSync(path.dirname(contractsPath), { recursive: true });
   fs.writeFileSync(contractsPath, contents, 'utf8');
+}
+
+function readContractService(cwd: string): string {
+  const contractsPath = path.join(cwd, '.stronghold', 'contracts.yml');
+  const contents = fs.readFileSync(contractsPath, 'utf8');
+  return contents.match(/service:\s*["']?([^"'\s]+)/u)?.[1] ?? 'startup-api';
 }
 
 function contractYaml(input: {

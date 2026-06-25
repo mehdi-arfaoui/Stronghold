@@ -164,7 +164,8 @@ function formatRequirementLine(
   ci: boolean,
 ): string {
   const scenario = result.requirement.scenario;
-  return `${result.serviceName} / ${scenario}: ${formatVerdictLabel(result.verdict)} - ${formatRequirementReason(result, ci)}`;
+  const serviceName = result.serviceName.length > 0 ? result.serviceName : result.serviceId;
+  return `${serviceName} / ${scenario}: ${formatVerdictLabel(result.verdict)} - ${formatRequirementReason(result, ci)}`;
 }
 
 function formatRequirementReason(

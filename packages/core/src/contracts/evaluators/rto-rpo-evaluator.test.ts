@@ -141,8 +141,10 @@ describe('evaluateRto', () => {
     });
 
     expect(result.reason).toContain('stronghold evidence add');
-    expect(result.reason).toContain('--rto <duration>');
+    expect(result.reason).toContain('--service payment-processing');
     expect(result.reason).toContain('--scenario region_failure');
+    expect(result.reason).toContain('--type tested');
+    expect(result.reason).toContain('--rto <measured_duration> --rpo <measured_duration>');
   });
 });
 

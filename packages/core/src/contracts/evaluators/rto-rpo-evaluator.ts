@@ -42,6 +42,7 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
   );
   const required = `<= ${input.required.raw}`;
   const label = dimensionLabel(input.dimension);
+  const evidenceCommand = formatEvidenceCommand(input.service.serviceName, input.scenario);
 
   if (!latestEvidence) {
     return {
@@ -50,7 +51,7 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
       required,
       actual: null,
       source: 'not_available',
-      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration> --scenario ${input.scenario}`,
+      reason: `No tested evidence with measured ${label} for service '${input.service.serviceName}' under scenario '${input.scenario}'. Run: ${evidenceCommand}`,
     };
   }
 
@@ -66,7 +67,7 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
       required,
       actual: null,
       source: 'not_available',
-      reason: `No tested evidence with measured ${label}. Run: stronghold evidence add --service ${input.service.serviceName} --type tested --${input.dimension} <duration> --scenario ${input.scenario}`,
+      reason: `No tested evidence with measured ${label} for service '${input.service.serviceName}' under scenario '${input.scenario}'. Run: ${evidenceCommand}`,
     };
   }
 
@@ -83,6 +84,10 @@ export function evaluateRtoRpo(input: EvaluateRtoRpoInput): DimensionResult {
     source: 'measured',
     reason: `Tested ${label} ${actual} ${comparison} required ${input.required.raw} for scenario ${input.scenario}.`,
   };
+}
+
+function formatEvidenceCommand(serviceName: string, scenario: string): string {
+  return `stronghold evidence add --service ${serviceName} --scenario ${scenario} --type tested --rto <measured_duration> --rpo <measured_duration>`;
 }
 
 function findLatestMeasuredEvidence(
