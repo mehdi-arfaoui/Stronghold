@@ -12,9 +12,11 @@ The local alpha proof loop is:
 Use:
 
 ```bash
+npm run build
 npm run ai:proof-loop
 ```
 
 The proof loop must be native. Do not use RTK as the authoritative output for the proof-loop result.
+If compiled workspace artifacts are missing, the proof loop reports: `Compiled workspace artifacts are missing. Run: npm run build`.
 
 `ai:state`, `ai:context`, and `ai:impact` are stdout-only by design; their output is Git-SHA-tied and should not be redirected into tracked files without deliberate review.

@@ -17,6 +17,8 @@
     "ai:proof-loop": "node scripts/ai/proof-loop.mjs",
     "ai:rtk-status": "node scripts/ai/rtk-status.mjs",
     "ai:test": "vitest run scripts/ai/__tests__",
+    "artifacts:refresh": "npm run build --workspace=github-action",
+    "artifacts:check": "node scripts/verify-generated-artifacts.mjs",
     "typecheck": "npm run typecheck --workspace=packages/core && npm run typecheck --workspace=packages/cli && npm run typecheck --workspace=packages/server && npm run typecheck --workspace=packages/web && npm run typecheck --workspace=github-action",
     "lint": "npm run lint --workspace=packages/core && npm run lint --workspace=packages/cli && npm run lint --workspace=packages/server && npm run lint --workspace=packages/web",
     "test": "npm run ai:test && npm run test --workspace=packages/core && npm run test --workspace=packages/cli && npm run test --workspace=packages/server && npm run test --workspace=github-action",

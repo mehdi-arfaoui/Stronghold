@@ -77,6 +77,9 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm run build
+      - run: npm run artifacts:check
+      - run: npm run ai:verify-invariants
+      - run: npm run ai:proof-loop
 
   docker:
     name: Docker Compose Smoke

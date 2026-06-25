@@ -9,57 +9,60 @@ export function runProofLoop(options = {}) {
   const repoRoot = options.repoRoot ?? resolveRepoRoot();
   const workspace =
     options.workspace ?? fs.mkdtempSync(path.join(os.tmpdir(), 'stronghold-proof-loop-'));
-  const cli = resolveCliRunner(repoRoot);
 
-  const demo = runCli(cli, workspace, ['demo', '--output', 'summary']);
-  assertExitCode(demo, 0, 'demo');
+  try {
+    const cli = resolveCliRunner(repoRoot);
 
-  const before = runCli(cli, workspace, ['contracts', 'validate', '--format', 'json'], {
-    allowFailure: true,
-  });
-  const beforeJson = parseJsonOutput(before.stdout, 'initial contracts validate');
-  assertSummary(beforeJson, {
-    unknownAtLeast: 1,
-    metExactly: 0,
-    label: 'demo before evidence',
-  });
+    const demo = runCli(cli, workspace, ['demo', '--output', 'summary']);
+    assertExitCode(demo, 0, 'demo');
 
-  const serviceName = readDemoServiceName(workspace);
-  const evidence = runCli(cli, workspace, [
-    'evidence',
-    'add',
-    '--service',
-    serviceName,
-    '--scenario',
-    'region_failure',
-    '--type',
-    'tested',
-    '--rto',
-    '45m',
-    '--rpo',
-    '2m',
-  ]);
-  assertExitCode(evidence, 0, 'evidence add');
+    const before = runCli(cli, workspace, ['contracts', 'validate', '--format', 'json'], {
+      allowFailure: true,
+    });
+    const beforeJson = parseJsonOutput(before.stdout, 'initial contracts validate');
+    assertSummary(beforeJson, {
+      unknownAtLeast: 1,
+      metExactly: 0,
+      label: 'demo before evidence',
+    });
 
-  const after = runCli(cli, workspace, ['contracts', 'validate', '--format', 'json']);
-  assertExitCode(after, 0, 'contracts validate after evidence');
-  const afterJson = parseJsonOutput(after.stdout, 'final contracts validate');
-  assertSummary(afterJson, {
-    unknownExactly: 0,
-    metAtLeast: 1,
-    label: 'demo after measured evidence',
-  });
+    const serviceName = readDemoServiceName(workspace);
+    const evidence = runCli(cli, workspace, [
+      'evidence',
+      'add',
+      '--service',
+      serviceName,
+      '--scenario',
+      'region_failure',
+      '--type',
+      'tested',
+      '--rto',
+      '45m',
+      '--rpo',
+      '2m',
+    ]);
+    assertExitCode(evidence, 0, 'evidence add');
 
-  if (!options.keepWorkspace) {
-    fs.rmSync(workspace, { recursive: true, force: true });
+    const after = runCli(cli, workspace, ['contracts', 'validate', '--format', 'json']);
+    assertExitCode(after, 0, 'contracts validate after evidence');
+    const afterJson = parseJsonOutput(after.stdout, 'final contracts validate');
+    assertSummary(afterJson, {
+      unknownExactly: 0,
+      metAtLeast: 1,
+      label: 'demo after measured evidence',
+    });
+
+    return {
+      workspace,
+      serviceName,
+      before: beforeJson.globalSummary,
+      after: afterJson.globalSummary,
+    };
+  } finally {
+    if (!options.keepWorkspace) {
+      fs.rmSync(workspace, { recursive: true, force: true });
+    }
   }
-
-  return {
-    workspace,
-    serviceName,
-    before: beforeJson.globalSummary,
-    after: afterJson.globalSummary,
-  };
 }
 
 export function renderProofLoopResult(result) {
@@ -75,19 +78,13 @@ export function renderProofLoopResult(result) {
 }
 
 function resolveCliRunner(repoRoot) {
-  const tsxCli = path.join(repoRoot, 'node_modules', 'tsx', 'dist', 'cli.mjs');
-  const cliSource = path.join(repoRoot, 'packages', 'cli', 'src', 'index.ts');
   const cliDist = path.join(repoRoot, 'packages', 'cli', 'dist', 'index.js');
-
-  if (fs.existsSync(tsxCli) && fs.existsSync(cliSource)) {
-    return [process.execPath, [tsxCli, cliSource]];
-  }
 
   if (fs.existsSync(cliDist)) {
     return [process.execPath, [cliDist]];
   }
 
-  throw new Error('Cannot find a runnable Stronghold CLI. Run npm install or npm run build.');
+  throw new Error('Compiled workspace artifacts are missing. Run: npm run build');
 }
 
 function runCli(cli, cwd, args, options = {}) {
