@@ -10,12 +10,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "ai:state": "node scripts/ai/state.mjs",
-    "ai:context": "node scripts/ai/context.mjs",
-    "ai:impact": "node scripts/ai/impact.mjs",
     "ai:verify-invariants": "node scripts/ai/verify-invariants.mjs",
     "ai:proof-loop": "node scripts/ai/proof-loop.mjs",
-    "ai:rtk-status": "node scripts/ai/rtk-status.mjs",
     "ai:test": "vitest run scripts/ai/__tests__",
     "artifacts:refresh": "npm run build --workspace=github-action",
     "artifacts:check": "node scripts/verify-generated-artifacts.mjs",
