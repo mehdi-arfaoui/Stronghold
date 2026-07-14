@@ -260,7 +260,6 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request.
 ```bash
 npm ci
 npm run build
-npm run ai:state
 npm run ai:verify-invariants
 npm run ai:proof-loop
 ```
